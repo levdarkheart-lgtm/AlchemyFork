@@ -11,6 +11,8 @@
 #include <limits>
 #include <span>
 
+class ALNativeFrameBudget;
+
 // Published by the render owner after resolving mutable viewer state. A lease
 // must exclude backing-store reuse, not only keep an Objective-C name alive.
 // This record deliberately has no LLDrawInfo, avatar, cull or matrix pointers.
@@ -131,6 +133,24 @@ bool alMetalPrepareShadowBatches(
     std::span<const ALMetalShadowPrepareInstance> inputs,
     const ALMetalShadowPrepareContext& context,
     std::span<ALMetalWorldSpotShadowBatch> output,
+    std::uint64_t epoch,
+    const std::atomic<std::uint64_t>* current_epoch = nullptr,
+    bool allow_dispatch = false,
+    ALMetalShadowPrepareStats* stats = nullptr,
+    std::string* error = nullptr);
+
+// Application admission overload. A two-range dispatch reserves TWO shared
+// preparation credits before starting either range and holds them only until
+// the synchronous join. Any denial or disabled/small work uses the identical
+// required serial kernel. Initialization, pressure and draining policy belong
+// to ALNativeFrameBudget; this adapter adds no separate eligibility veto. Credits
+// never enter the input packet, output records or native command lifetime.
+// The pure overload above remains available for isolated mechanism checks.
+bool alMetalPrepareShadowBatches(
+    std::span<const ALMetalShadowPrepareInstance> inputs,
+    const ALMetalShadowPrepareContext& context,
+    std::span<ALMetalWorldSpotShadowBatch> output,
+    ALNativeFrameBudget& budget,
     std::uint64_t epoch,
     const std::atomic<std::uint64_t>* current_epoch = nullptr,
     bool allow_dispatch = false,

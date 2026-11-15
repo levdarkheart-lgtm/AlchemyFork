@@ -43,6 +43,7 @@
 #include "llvoavatar.h"
 #include "llfetchedgltfmaterial.h"
 #include "alnativeregionmodel.h"
+#include "alnativeframebudget.h"
 
 #include <boost/unordered_map.hpp>
 #include <array>
@@ -389,11 +390,13 @@ public:
     // CPU descriptions survive backing-store mutation; membership changes
     // discard them. The layout owns only weak native generation identities.
     std::shared_ptr<ALSceneGroupPublicationNative::Layout> mMetalGroupLayout;
+    ALNativeCohortCompilationAdmission mMetalGroupCompilation;
     struct MetalMaterialCohort
     {
         std::shared_ptr<ALNativePublication::State> state;
         std::shared_ptr<ALNativePublication::Observer> dependencies;
         std::shared_ptr<ALSceneGroupPublicationNative::Layout> layout;
+        ALNativeCohortCompilationAdmission compilation;
     };
     // One completed ordinary material pass, preserving its original map order.
     // Dirty geometry/membership withdraws every cohort; child resource signals

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "almetalshadowprepare.h"
+#include "../llcommon/alnativeframebudget.h"
 
 #include <arm_neon.h>
 #include <dispatch/dispatch.h>
@@ -309,7 +310,8 @@ bool prepareBatches(
     const ALMetalShadowPrepareContext* context,
     std::span<ALMetalWorldSpotShadowBatch> output,
     std::uint64_t epoch, const std::atomic<std::uint64_t>* current_epoch,
-    bool allow_dispatch, ALMetalShadowPrepareStats* stats, std::string* error)
+    bool allow_dispatch, ALMetalShadowPrepareStats* stats, std::string* error,
+    ALNativeFrameBudget* budget = nullptr)
 {
     if (stats) *stats = {};
     const auto clear = [&]
@@ -336,6 +338,25 @@ bool prepareBatches(
         }
     }
     if (inputs.empty()) return true;
+    std::array<ALNativeFrameBudget::Lease, 2> range_credits;
+    if (budget && allow_dispatch && inputs.size() >= 256)
+    {
+        try
+        {
+            range_credits[0] = budget->tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
+            if (range_credits[0])
+                range_credits[1] = budget->tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
+        }
+        catch (const std::bad_alloc&) {} // Optional credit allocation cannot remove required preparation.
+        if (!range_credits[0] || !range_credits[1])
+        {
+            // A first reservation must not occupy the remaining shared
+            // slot while the required packet falls back to the owner.
+            range_credits[1].reset();
+            range_credits[0].reset();
+            allow_dispatch = false;
+        }
+    }
     // Release old output owners on the calling owner before jobs start. The
     // range kernel only copies scalar values and writes immutable borrows.
     for (auto& batch : output) batch.clearInputOwnership();
@@ -377,4 +398,17 @@ bool alMetalPrepareShadowBatches(
 {
     const ALMetalShadowPrepareContext immutable_context = context;
     return prepareBatches(inputs, &immutable_context, output, epoch, current_epoch, allow_dispatch, stats, error);
+}
+
+bool alMetalPrepareShadowBatches(
+    std::span<const ALMetalShadowPrepareInstance> inputs,
+    const ALMetalShadowPrepareContext& context,
+    std::span<ALMetalWorldSpotShadowBatch> output,
+    ALNativeFrameBudget& budget,
+    std::uint64_t epoch, const std::atomic<std::uint64_t>* current_epoch,
+    bool allow_dispatch, ALMetalShadowPrepareStats* stats, std::string* error)
+{
+    const ALMetalShadowPrepareContext immutable_context = context;
+    return prepareBatches(inputs, &immutable_context, output, epoch, current_epoch,
+                          allow_dispatch, stats, error, &budget);
 }

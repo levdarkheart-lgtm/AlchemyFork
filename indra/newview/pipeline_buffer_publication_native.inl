@@ -113,6 +113,7 @@ try
     flavor.alpha_mask = capture.alpha_mask;
     flavor.rigged = capture.rigged;
     flavor.pbr_glow = capture.pbr_glow;
+    flavor.post_water_pbr_glow = family == 2 && capture.pbr_glow && capture.post_water_pbr_glow;
     flavor.impostor_fullbright = capture.impostor_fullbright;
     flavor.impostor_shiny = capture.impostor_shiny;
     flavor.impostor_emboss = capture.impostor_emboss;

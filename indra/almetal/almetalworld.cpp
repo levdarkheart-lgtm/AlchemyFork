@@ -9032,15 +9032,16 @@ WorldSimpleConstants buildWorldSimpleConstants(const ALMetalWorldGBufferScene& s
     return buildWorldSimpleConstants(scene, ALMetalWorldDraw(batch));
 }
 
-WorldMaterialConstants buildWorldMaterialConstants([[maybe_unused]] const ALMetalWorldGBufferScene& scene,
-    const ALMetalWorldSimpleBatch& batch, bool material_normal_map, bool material_specular_map)
+WorldMaterialConstants buildWorldMaterialConstants(
+    const ALMetalWorldSimpleBatch::MaterialSlots& slots,std::uint32_t count,std::uint32_t alpha_mode,
+    bool material_normal_map,bool material_specular_map)
 {
     WorldMaterialConstants material_constants{};
     for (std::size_t slot = 0;
-         slot < batch.material_slot_count; ++slot)
+         slot < count; ++slot)
     {
         const ALMetalWorldMaterialSlot& source =
-            batch.materialSlots()[slot];
+            slots[slot];
         WorldMaterialSlotConstants& destination =
             material_constants.slots[slot];
         std::memcpy(destination.specular_color,
@@ -9050,20 +9051,27 @@ WorldMaterialConstants buildWorldMaterialConstants([[maybe_unused]] const ALMeta
         destination.properties[1] = source.alpha_cutoff;
         destination.properties[2] = source.fullbright;
     }
-    material_constants.config[0] = batch.material_slot_count;
-    material_constants.config[1] = batch.material_alpha_mode;
+    material_constants.config[0] = count;
+    material_constants.config[1] = alpha_mode;
     material_constants.config[2] = material_normal_map ? 1u : 0u;
     material_constants.config[3] = material_specular_map ? 1u : 0u;
     return material_constants;
 }
 
-WorldPBRConstants buildWorldPBRConstants(const ALMetalWorldGBufferScene& scene,
-    const ALMetalWorldSimpleBatch& batch)
+WorldMaterialConstants buildWorldMaterialConstants([[maybe_unused]] const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch,bool material_normal_map,bool material_specular_map)
+{
+    return buildWorldMaterialConstants(batch.materialSlots(),batch.material_slot_count,
+        batch.material_alpha_mode,material_normal_map,material_specular_map);
+}
+
+WorldPBRConstants buildWorldPBRConstants(const ALMetalWorldSimpleBatch::PBRSlots& slots,
+    std::uint32_t count,bool alpha_mask,bool normal_hdr)
 {
     WorldPBRConstants pbr_constants{};
-    for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+    for (std::size_t slot = 0; slot < count; ++slot)
     {
-        const ALMetalWorldPBRSlot& source = batch.pbrSlots()[slot];
+        const ALMetalWorldPBRSlot& source = slots[slot];
         WorldPBRSlotConstants& destination =
             pbr_constants.slots[slot];
         std::memcpy(destination.texture_transform,
@@ -9076,10 +9084,16 @@ WorldPBRConstants buildWorldPBRConstants(const ALMetalWorldGBufferScene& scene,
         destination.properties[1] = source.metallic_factor;
         destination.properties[2] = source.alpha_cutoff;
     }
-    pbr_constants.config[0] = batch.pbr_slot_count;
-    pbr_constants.config[1] = batch.alpha_mask ? 1u : 0u;
-    pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
+    pbr_constants.config[0] = count;
+    pbr_constants.config[1] = alpha_mask ? 1u : 0u;
+    pbr_constants.config[2] = normal_hdr ? 1u : 0u;
     return pbr_constants;
+}
+
+WorldPBRConstants buildWorldPBRConstants(const ALMetalWorldGBufferScene& scene,
+    const ALMetalWorldSimpleBatch& batch)
+{
+    return buildWorldPBRConstants(batch.pbrSlots(),batch.pbr_slot_count,batch.alpha_mask,scene.normal_hdr);
 }
 
 bool validateWorldMaterialTables(const ALMetalWorldSimpleBatch& batch,
@@ -9138,6 +9152,21 @@ bool validateWorldMaterialTables(const ALMetalWorldSimpleBatch& batch,
     return true;
 }
 }
+
+bool ALMetalWorldSimpleBatch::freezeCpuSlots(std::string* error)
+try
+{
+    if(material_slot_count>max_material_slots || pbr_slot_count>max_material_slots)
+    {setError(error,"CPU world slot count is invalid");return false;}
+    auto material=mMaterialStorage.sealed;auto pbr=mPBRStorage.sealed;
+    if(material_slot_count && !material)material=std::make_shared<const MaterialSlots>(mMaterialStorage.read());
+    if(pbr_slot_count && !pbr)pbr=std::make_shared<const PBRSlots>(mPBRStorage.read());
+    // No allocation or native publication follows this commit. Retain the
+    // original authored allocations so previously returned references survive.
+    mMaterialStorage.sealed=std::move(material);mPBRStorage.sealed=std::move(pbr);
+    return true;
+}
+catch(const std::bad_alloc&){if(error)error->clear();return false;}
 
 struct ALMetalWorldMaterialSource::Impl
 {
@@ -9203,13 +9232,10 @@ try
         static_cast<const ALMetalWorldSimpleBatch&>(prototype).materialSlots());
     if (pbr) impl->pbr_slots = std::make_shared<const ALMetalWorldSimpleBatch::PBRSlots>(
         static_cast<const ALMetalWorldSimpleBatch&>(prototype).pbrSlots());
-    ALMetalWorldSimpleBatch staged = prototype;
-    staged.mMaterialStorage.sealed = impl->material_slots;
-    staged.mPBRStorage.sealed = impl->pbr_slots;
-    ALMetalWorldGBufferScene scene;
     if (material)
     {
-        const auto constants = buildWorldMaterialConstants(scene, staged, normal, specular);
+        const auto constants = buildWorldMaterialConstants(*impl->material_slots,impl->material_count,
+            impl->material_alpha_mode,normal,specular);
         impl->material = cache.getOrPublish(std::as_bytes(std::span(&constants, 1)),
             "Alchemy immutable legacy material uniforms", error);
         if (!impl->material) return {};
@@ -9218,8 +9244,7 @@ try
     {
         for (unsigned hdr = 0; hdr < 2; ++hdr)
         {
-            scene.normal_hdr = hdr != 0;
-            const auto constants = buildWorldPBRConstants(scene, staged);
+            const auto constants = buildWorldPBRConstants(*impl->pbr_slots,impl->pbr_count,impl->alpha_mask,hdr!=0);
             impl->pbr[hdr] = cache.getOrPublish(std::as_bytes(std::span(&constants, 1)),
                 "Alchemy immutable PBR material uniforms", error);
             if (!impl->pbr[hdr]) return {};

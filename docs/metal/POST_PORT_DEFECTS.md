@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-204 -->
+<!-- next-defect-id: PPD-206 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4991,3 +4991,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before accepting or integrating the experimental layout; source-derived size prediction is now independently compiled, while rendered-path evidence remains pending.
+
+
+## PPD-204 — Large shadow preparation bypasses shared preparation admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex frame-wide native CPU preparation
+- Discovered: 2026-11-15
+- Original reference: Native shadow preparation replaces owner-side traversal with detached immutable-input work; additional CPU jobs must share the same frame admission as main/probe preparation, while denied work retains the required serial result.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Full-goal source audit: main extra preparation obtains FrameBudget::Work::preparation, but shadow count>=8192 calls alMetalPrepareShadowBatches with allow_dispatch=true. shadowprepare.mm uses dispatch_apply_f(2) without that caller obtaining shared preparation credit. It is locally bounded but can overlap other admitted work outside the global CPU plan. No executed oversubscription/FPS incident attributed.
+- Next action: Admit extra shadow preparation through the existing shared budget, hold CPU-local credit through join and preserve serial fallback on denial. Check the dispatch helper's actual extra-worker count and add focused admission/parity/lifetime evidence without moving mutable viewer state to workers.
+- Verification: Source-confirmed missing integration, registered before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered from original-goal audit; disabled or rejected world submission experiments do not waive this existing shadow path.
+
+
+## PPD-205 — Optional CPU slot freezing rejects a valid reader-pinned transient source
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native scene publication
+- Discovered: 2026-11-15
+- Original reference: Required forward rendering must retain its valid authored source when optional CPU slot freezing is unavailable; cache withdrawal is not producer invalidation.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source24 review finds that a native_materials=false authored variant can legally survive optional freeze allocation failure. After child cache eviction, a real reader can retain that exact weak transient at the unchanged producer revision. world() retries CPU freezing, but its publication-only promotion guard rejects the transient because State.publication is null. No executed allocation-failure crash is claimed.
+- Next action: Preserve the exact current authored transient when CPU freezing is its only missing optional capability, without creating a child publisher or weakening revision/newer-publication checks; add an actual-owner regression fixture.
+- Verification: Source-confirmed lost required fallback; candidate is unbuilt.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before repair. PPD-195 promotion freshness guards and PPD-200 plain-source transient history remain separate and must be preserved.

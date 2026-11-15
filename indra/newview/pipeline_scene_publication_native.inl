@@ -56,6 +56,7 @@ struct WorldFlavor
     bool cohort_source = false;
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
+    bool post_water_pbr_glow = false;
     bool impostor_fullbright = false, impostor_shiny = false, impostor_emboss = false;
     U32 material_alpha_mode = 0;
     bool hasResourceConsumer() const noexcept
@@ -73,6 +74,7 @@ struct WorldFlavor
             (U64(impostor_fullbright) << 9) | (U64(impostor_shiny) << 10) |
             (U64(impostor_emboss) << 11) | (U64(visibility_bounds) << 12) |
             (U64(native_materials && family != WorldFamily::simple) << 13) |
+            (U64(post_water_pbr_glow) << 15) |
             (U64(material_alpha_mode) << 32);
     }
 };
@@ -82,6 +84,7 @@ struct WorldVariant
     U64 key = 0;
     ALMetalWorldSimpleBatch prototype;
     std::shared_ptr<const ALMetalWorldCohortSource> cohort_source;
+    bool cpu_slots_frozen = false;
 };
 struct ShadowVariant
 {
@@ -320,6 +323,7 @@ inline bool publish(const LLDrawInfo& info, const std::shared_ptr<Payload>& valu
 inline bool buildWorld(const LLDrawInfo& info, const WorldFlavor& flavor,
                        Payload& value, ALMetalWorldSimpleBatch& batch)
 {
+    if (flavor.post_water_pbr_glow && (flavor.family != WorldFamily::pbr || !flavor.pbr_glow)) return false;
     auto* buffer = info.mVertexBuffer.get();
     const auto has = [&](LLVertexBuffer::AttributeType type) { return buffer->hasDataType(type); };
     if ((!flavor.impostor_fullbright && !has(LLVertexBuffer::TYPE_NORMAL)) ||
@@ -441,6 +445,7 @@ inline bool buildWorld(const LLDrawInfo& info, const WorldFlavor& flavor,
             destination.alpha_cutoff = masked ? material->mAlphaCutoff : -1.f;
             batch.double_sided = batch.double_sided || material->mDoubleSided;
         }
+        if (flavor.post_water_pbr_glow) destination.alpha_cutoff = 0.004f;
         batch.diffuse_textures[slot] = resolve(value, base ? base : white());
         destination.normal_texture = resolve(value, normal ? normal : flat());
         destination.orm_texture = resolve(value, orm ? orm : white());
@@ -546,11 +551,16 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         if (auto value = current(info))
             if (const auto* found = findWorldVariant(*value, key))
             {
+                const auto needs_cpu_freeze = [&](const WorldVariant& variant)
+                {
+                    return !flavor.native_materials &&
+                        (variant.prototype.material_slot_count || variant.prototype.pbr_slot_count) && !variant.cpu_slots_frozen;
+                };
                 const auto ready = [&](const WorldVariant& variant)
                 {
                     return (!flavor.native_resources || (variant.prototype.native_resource_source &&
                         variant.prototype.native_resource_source->matches(variant.prototype))) &&
-                        (!flavor.cohort_source || variant.cohort_source);
+                        (!flavor.cohort_source || variant.cohort_source) && !needs_cpu_freeze(variant);
                 };
                 if (ready(*found))
                 {
@@ -565,12 +575,29 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                 const auto revision = value->producer_revision;
                 const auto original_current = [&]
                 { return state->identity() == identity && state->revision() == revision && state->publication().get() == value.get(); };
+                const auto authored_transient_current = [&]
+                {
+                    if (!needs_cpu_freeze(*found) || flavor.native_resources || flavor.cohort_source ||
+                        state->publication() || state->identity() != identity || state->revision() != revision ||
+                        info.metalSourcePublication() != state) return false;
+                    const auto& metadata = info.mMetalShadowSource;
+                    if (!metadata || metadata->native_scene_revision != revision) return false;
+                    auto reader = metadata->native_scene_transient.lock();
+                    return reader && reader.get() == value.get() &&
+                        !reader.owner_before(value) && !value.owner_before(reader);
+                };
                 try
                 {
                     if (capabilityPromotionAllocationForTesting) capabilityPromotionAllocationForTesting(*state);
+                    // Cache withdrawal may leave only this real reader. CPU
+                    // freezing is optional: retain its exact authored source,
+                    // never resurrect an unbudgeted publisher just to freeze.
+                    if (authored_transient_current())
+                        return {std::move(value), &found->prototype, nullptr, true};
                     const auto index = static_cast<std::size_t>(found - value->worlds.data());
                     auto promoted = std::make_shared<Payload>(*value);
                     auto& variant = promoted->worlds[index];
+                    if (needs_cpu_freeze(variant)) variant.cpu_slots_frozen = variant.prototype.freezeCpuSlots();
                     const bool had_cohort_source = static_cast<bool>(variant.cohort_source);
                     if (flavor.native_resources && (!variant.prototype.native_resource_source ||
                         !variant.prototype.native_resource_source->matches(variant.prototype)))
@@ -594,7 +621,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                 }
                 catch (const std::bad_alloc&)
                 {
-                    if (original_current())
+                    if (original_current() || authored_transient_current())
                         return {std::move(value), &found->prototype, nullptr, true};
                     return {{}, nullptr, "Native scene changed while optional promotion allocation failed"};
                 }
@@ -608,6 +635,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         variant.key = key;
         if (!buildWorld(info, flavor, *value, variant.prototype))
             return {{}, nullptr, "Native scene world material/layout is incomplete"};
+        if (!flavor.native_materials) variant.cpu_slots_frozen = variant.prototype.freezeCpuSlots();
         if (flavor.native_materials && flavor.family != WorldFamily::simple)
         {
             // Optional native table publication never removes required draws.

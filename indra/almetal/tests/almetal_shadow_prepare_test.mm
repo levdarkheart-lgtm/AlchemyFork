@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "../almetalshadowprepare.h"
+#include "../../llcommon/alnativeframebudget.h"
 #include "llmath.h"
 #include "llmatrix4a.h"
 
@@ -406,6 +407,166 @@ TEST_CASE("almetal: compact shadow context and instance failures reset the whole
         REQUIRE(alMetalPrepareShadowBatches(inputs, context, output, 7));
         CHECK_FALSE(alMetalPrepareShadowBatches(inputs, context, std::span<Batch>(output).first(1), 7));
         CHECK_FALSE(output[0].sourceRecord());
+    }
+}
+
+TEST_CASE("almetal: budgeted compact shadows preserve immutable ordered packets and retire both CPU credits",
+          "[almetal][shadow-prepare][shadow-prepare-budget]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        std::vector<std::shared_ptr<const Record>> sources;
+        for (const auto coverage : {ALMetalWorldSpotShadowCoverage::opaque,
+                ALMetalWorldSpotShadowCoverage::legacy_mask, ALMetalWorldSpotShadowCoverage::pbr_mask})
+            for (bool rigged : {false, true})
+                sources.push_back(fixture.source(sources.size() + 1, fixture.prototype(coverage, rigged)));
+        for (const auto& source : sources) REQUIRE(source);
+        const std::array<std::array<float, 16>, 2> uv = []
+        {
+            std::array<std::array<float, 16>, 2> result{alMetalShadowIdentity, alMetalShadowIdentity};
+            result[0][12] = .25f;result[1][0] = .5f;return result;
+        }();
+        ALMetalShadowPrepareContext context;
+        context.view[12] = .125f;context.projection[5] = .75f;context.texture_matrices = uv;
+        ALNativeFrameBudget budget;
+        ALNativeFrameBudget::FrameInputs plan;plan.frame = 1;budget.beginFrame(plan);
+        for (std::size_t count : {0u, 1u, 255u, 256u, 257u})
+        {
+            CAPTURE(count);
+            std::vector<ALMetalShadowPrepareInstance> inputs(count);
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                auto& instance = inputs[index];instance.source = sources[index % sources.size()].get();
+                instance.source_generation = instance.source->generation();instance.epoch = 7;
+                instance.palette = instance.source->requiresPalette() ? fixture.pose.get() : nullptr;
+                instance.has_model = index % 3 != 0;instance.model[12] = float(index) / 1024.f;
+                if (index % 3) instance.texture_matrix_slot = static_cast<std::uint32_t>(index % 2);
+            }
+            std::vector<Batch> serial(count), budgeted(count);
+            REQUIRE(alMetalPrepareShadowBatches(inputs, context, serial, 7));
+            const auto before = budget.snapshot();
+            const auto source_owners = sources[0].use_count(), pose_owners = fixture.pose.use_count();
+            ALMetalShadowPrepareStats stats;
+            REQUIRE(alMetalPrepareShadowBatches(inputs, context, budgeted, budget, 7, nullptr, true, &stats));
+            const bool dispatched = count >= 256;
+            CHECK(stats.jobs == (count ? dispatched ? 2u : 1u : 0u));
+            CHECK(stats.dispatched == dispatched);CHECK_FALSE(stats.cancelled);
+            const auto after = budget.snapshot();
+            CHECK(after.admitted - before.admitted == (dispatched ? 2u : 0u));
+            CHECK(after.retired - before.retired == (dispatched ? 2u : 0u));
+            CHECK(after.preparation_in_flight == 0);CHECK(after.optional_views_in_flight == 0);
+            CHECK(after.scene_publications_in_flight == 0);CHECK(after.uploads_in_flight == 0);
+            CHECK(sources[0].use_count() == source_owners);CHECK(fixture.pose.use_count() == pose_owners);
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                CHECK(std::memcmp(serial[index].modelview_projection, budgeted[index].modelview_projection, 64) == 0);
+                CHECK(std::memcmp(serial[index].texture_matrix, budgeted[index].texture_matrix, 64) == 0);
+                CHECK(serial[index].sourceRecord() == budgeted[index].sourceRecord());
+                CHECK(serial[index].skinPaletteRecord() == budgeted[index].skinPaletteRecord());
+                CHECK(serial[index].coverageDataIdentity() == budgeted[index].coverageDataIdentity());
+                CHECK(inputs[index].source->matchesStableInputs(budgeted[index]));
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: shadow dispatch shares occupied slots and follows budget pressure startup and drain policy",
+          "[almetal][shadow-prepare][shadow-prepare-budget]")
+{
+    @autoreleasepool
+    {
+        using Budget = ALNativeFrameBudget;
+        Fixture fixture;
+        auto source = fixture.source(11, fixture.prototype(ALMetalWorldSpotShadowCoverage::pbr_mask, true));
+        REQUIRE(source);
+        ALMetalShadowPrepareInstance instance;
+        instance.source = source.get();instance.palette = fixture.pose.get();instance.source_generation = 11;instance.epoch = 7;
+        std::vector<ALMetalShadowPrepareInstance> inputs(257, instance);
+        std::vector<Batch> serial(inputs.size()), output(inputs.size());
+        ALMetalShadowPrepareContext context;
+        REQUIRE(alMetalPrepareShadowBatches(inputs, context, serial, 7));
+        Budget::Limits limits;limits.preparation_jobs = 2;
+        Budget budget(limits);Budget::FrameInputs plan;plan.frame = 1;budget.beginFrame(plan);
+        ALMetalShadowPrepareStats stats;
+        const auto require_serial = [&](Budget& policy, bool allow = true)
+        {
+            REQUIRE(alMetalPrepareShadowBatches(inputs, context, output, policy, 7, nullptr, allow, &stats));
+            CHECK(stats.jobs == 1);CHECK_FALSE(stats.dispatched);
+            for (std::size_t index = 0; index < inputs.size(); ++index)
+            {
+                REQUIRE(std::memcmp(serial[index].modelview_projection, output[index].modelview_projection, 64) == 0);
+                REQUIRE(output[index].sourceRecord() == source.get());
+                REQUIRE(output[index].skinPaletteRecord() == fixture.pose.get());
+            }
+        };
+        const auto require_dispatched = [&](Budget& policy)
+        {
+            const auto initial = policy.snapshot();
+            REQUIRE(alMetalPrepareShadowBatches(inputs, context, output, policy, 7, nullptr, true, &stats));
+            CHECK(stats.jobs == 2);CHECK(stats.dispatched);
+            const auto completed = policy.snapshot();
+            CHECK(completed.admitted == initial.admitted + 2);
+            CHECK(completed.retired == initial.retired + 2);CHECK(completed.preparation_in_flight == 0);
+            for (std::size_t index = 0; index < inputs.size(); ++index)
+            {
+                REQUIRE(std::memcmp(serial[index].modelview_projection, output[index].modelview_projection, 64) == 0);
+                REQUIRE(output[index].sourceRecord() == source.get());
+                REQUIRE(output[index].skinPaletteRecord() == fixture.pose.get());
+            }
+        };
+        auto occupied = budget.tryAcquire(Budget::Work::preparation);REQUIRE(occupied);
+        auto before = budget.snapshot();
+        require_serial(budget);
+        auto after = budget.snapshot();
+        CHECK(after.preparation_in_flight == 1);
+        CHECK(after.admitted == before.admitted + 1); // first reserve succeeded, second was denied
+        CHECK(after.retired == before.retired + 1);CHECK(after.deferred == before.deferred + 1);
+        auto full = budget.tryAcquire(Budget::Work::preparation);REQUIRE(full);
+        before = budget.snapshot();require_serial(budget);after = budget.snapshot();
+        CHECK(after.preparation_in_flight == 2);CHECK(after.admitted == before.admitted);
+        CHECK(after.deferred == before.deferred + 1);
+        full.credit.reset();occupied.credit.reset();CHECK(budget.snapshot().preparation_in_flight == 0);
+
+        before = budget.snapshot();require_serial(budget, false);
+        CHECK(budget.snapshot().admitted == before.admitted);
+        plan.frame = 2;plan.frame_interval_ns = 16'000'000;plan.required_main_cpu_ns = 30'000'000;
+        budget.beginFrame(plan);REQUIRE(budget.snapshot().main_busy);require_dispatched(budget);
+        plan.frame = 3;plan.required_main_cpu_ns = 0;plan.os_available_bytes = 1;
+        budget.beginFrame(plan);REQUIRE(budget.snapshot().memory_pressure);require_dispatched(budget);
+        // Preserve the budget's existing permissive preparation startup,
+        // rather than inventing a second initialization/pressure policy.
+        Budget uninitialized;REQUIRE_FALSE(uninitialized.snapshot().initialized);require_dispatched(uninitialized);
+        Budget draining(limits);plan = {};plan.frame = 4;draining.beginFrame(plan);draining.beginDrain();
+        before = draining.snapshot();REQUIRE_FALSE(before.main_busy);REQUIRE_FALSE(before.memory_pressure);
+        require_serial(draining);CHECK(draining.snapshot().admitted == before.admitted);
+        CHECK(draining.snapshot().deferred == before.deferred + 1);
+
+        // Invalid input discovered after both ranges were admitted must clear
+        // the entire packet and release both synchronous credits.
+        Budget failures(limits);plan = {};plan.frame = 4;failures.beginFrame(plan);
+        inputs.back().source_generation = 12;before = failures.snapshot();
+        CHECK_FALSE(alMetalPrepareShadowBatches(inputs, context, output, failures, 7, nullptr, true, &stats));
+        CHECK(stats.jobs == 2);CHECK(stats.dispatched);CHECK_FALSE(stats.cancelled);
+        after = failures.snapshot();CHECK(after.admitted == before.admitted + 2);
+        CHECK(after.retired == before.retired + 2);CHECK(after.preparation_in_flight == 0);
+        const auto cleared = [&]
+        { CHECK(std::all_of(output.begin(), output.end(), [](const Batch& batch)
+            { return !batch.vertices && !batch.sourceRecord() && !batch.skinPaletteRecord() && !batch.hasBorrowedInputs(); })); };
+        cleared();inputs.back() = instance;
+        // A stale epoch is rejected before admission, not dispatched merely
+        // to discover cancellation; no new credits or valid prefix survive.
+        std::atomic<std::uint64_t> epoch{8};before = failures.snapshot();
+        CHECK_FALSE(alMetalPrepareShadowBatches(inputs, context, output, failures, 7, &epoch, true, &stats));
+        CHECK(stats.cancelled);CHECK(stats.jobs == 0);cleared();
+        CHECK(failures.snapshot().admitted == before.admitted);CHECK(failures.snapshot().preparation_in_flight == 0);
+        epoch.store(7);
+        REQUIRE(alMetalPrepareShadowBatches(inputs, context, output, failures, 7, &epoch, true, &stats));
+        CHECK(stats.jobs == 2);CHECK(failures.snapshot().preparation_in_flight == 0);
+        context.view[1] = std::numeric_limits<float>::quiet_NaN();before = failures.snapshot();
+        CHECK_FALSE(alMetalPrepareShadowBatches(inputs, context, output, failures, 7, &epoch, true, &stats));
+        CHECK(stats.jobs == 0);cleared();CHECK(failures.snapshot().admitted == before.admitted);
+        CHECK(failures.snapshot().preparation_in_flight == 0);
     }
 }
 

@@ -5,6 +5,7 @@
  */
 #include "almetal_world_prepare_fixture.h"
 #include "../almetalworldmaterialdata.h"
+#include <cmath>
 #include <time.h>
 
 namespace
@@ -181,7 +182,7 @@ TEST_CASE("almetal: sealed material edits preserve pending native pixels and wea
             auto batch = materialBatch(f, family, false);
             auto scene = f.scene(); scene.hdr = true;
             const auto expected = renderMaterial(f, scene, batch, false, 2).pixels;
-            // These references remain in the producer's optional storage.
+            // These references remain in the producer's authored storage.
             // Successful sealing must not certify that mutable allocation.
             auto& old_material = batch.materialSlots();
             auto& old_pbr = batch.pbrSlots();
@@ -370,6 +371,8 @@ TEST_CASE("almetal: sealed table copies and moves preserve source aliases and na
 {
     STATIC_REQUIRE(std::is_nothrow_move_constructible_v<ALMetalWorldSimpleBatch>);
     STATIC_REQUIRE(std::is_nothrow_move_assignable_v<ALMetalWorldSimpleBatch>);
+    STATIC_REQUIRE_FALSE(std::is_nothrow_copy_constructible_v<ALMetalWorldSimpleBatch>);
+    STATIC_REQUIRE_FALSE(std::is_nothrow_copy_assignable_v<ALMetalWorldSimpleBatch>);
     @autoreleasepool
     {
         Fixture f;
@@ -432,6 +435,31 @@ TEST_CASE("almetal: sealed table copies and moves preserve source aliases and na
             if(material_alias)CHECK(original.materialSlots().data()==material_alias);
             if(pbr_alias)CHECK(original.pbrSlots().data()==pbr_alias);
             CHECK(renderMaterial(f,scene,moved_original,true,++frame).pixels==expected);
+
+            // Detaching the original producer reuses its authored allocation:
+            // old mutable references stay valid, but cannot reach the sealed
+            // copy or its immutable native constant bytes.
+            auto producer=materialBatch(f,family,true);
+            producer.modelview_projection[12]=.1f;producer.texture_matrix[12]=.125f;
+            auto* held_material=family==1?producer.materialSlots().data():nullptr;
+            auto* held_pbr=family==2?producer.pbrSlots().data():nullptr;
+            auto sealed=ALMetalWorldMaterialSource::publish(*f.device,producer,cache,&f.error);REQUIRE(sealed);
+            const auto unchanged=producer;
+            if(held_material)
+            {
+                held_material[0].env_intensity=std::numeric_limits<float>::quiet_NaN();
+                auto& writable=producer.materialSlots();CHECK(writable.data()==held_material);
+                CHECK(std::isfinite(writable[0].env_intensity));writable[0].env_intensity=.13f;
+            }
+            if(held_pbr)
+            {
+                held_pbr[0].roughness_factor=std::numeric_limits<float>::quiet_NaN();
+                auto& writable=producer.pbrSlots();CHECK(writable.data()==held_pbr);
+                CHECK(std::isfinite(writable[0].roughness_factor));writable[0].roughness_factor=.13f;
+            }
+            CHECK_FALSE(producer.native_material_source);CHECK_FALSE(sealed->matches(producer));
+            CHECK(sealed->matches(unchanged));
+            CHECK(renderMaterial(f,scene,unchanged,false,++frame).pixels==expected);
         }
     }
 }
@@ -444,12 +472,19 @@ TEST_CASE("almetal: manual table copies and moves retain defaults and independen
     CHECK(std::as_const(defaults).materialSlots()[7].alpha_cutoff==.5f);
     CHECK(std::as_const(defaults).pbrSlots()[7].roughness_factor==1.f);
     CHECK(std::as_const(defaults).pbrSlots()[7].texture_transform[3][1]==1.f);
+    const auto* default_material=&std::as_const(defaults).materialSlots();
+    const auto* default_pbr=&std::as_const(defaults).pbrSlots();
+    auto empty_copy=defaults;
+    CHECK(&std::as_const(empty_copy).materialSlots()==default_material);
+    CHECK(&std::as_const(empty_copy).pbrSlots()==default_pbr);
     ALMetalWorldSimpleBatch original;
     auto& material_alias=original.materialSlots();
     auto& pbr_alias=original.pbrSlots();
     material_alias[7].env_intensity=.37f;pbr_alias[7].roughness_factor=.63f;
     original.modelview_projection[12]=.25f;
     ALMetalWorldSimpleBatch copied(original),assigned;
+    CHECK(&std::as_const(copied).materialSlots()!=&material_alias);
+    CHECK(&std::as_const(copied).pbrSlots()!=&pbr_alias);
     assigned.materialSlots()[7].env_intensity=.99f;
     assigned.pbrSlots()[7].roughness_factor=.01f;
     assigned=original;
@@ -474,6 +509,84 @@ TEST_CASE("almetal: manual table copies and moves retain defaults and independen
     moved=defaults;
     CHECK(std::as_const(moved).materialSlots()[7].env_intensity==0.f);
     CHECK(std::as_const(moved).pbrSlots()[7].roughness_factor==1.f);
+    CHECK(&std::as_const(moved).materialSlots()==default_material);
+    CHECK(&std::as_const(moved).pbrSlots()==default_pbr);
+    ALMetalWorldSimpleBatch authored;
+    auto* material_data=authored.materialSlots().data();auto* pbr_data=authored.pbrSlots().data();
+    ALMetalWorldSimpleBatch moved_authored(std::move(authored));
+    CHECK(std::as_const(moved_authored).materialSlots().data()==material_data);
+    CHECK(std::as_const(moved_authored).pbrSlots().data()==pbr_data);
+    CHECK(&std::as_const(authored).materialSlots()==default_material);
+    CHECK(&std::as_const(authored).pbrSlots()==default_pbr);
+    std::cout<<"WORLD_MATERIAL_STORAGE_LAYOUT batch_bytes="<<sizeof(ALMetalWorldSimpleBatch)
+        <<" material_slots_bytes="<<sizeof(ALMetalWorldSimpleBatch::MaterialSlots)
+        <<" pbr_slots_bytes="<<sizeof(ALMetalWorldSimpleBatch::PBRSlots)
+        <<" const_defaults_shared=1 unsealed_copies_independent=1 sealed_moves_noexcept=1\n";
+}
+
+TEST_CASE("almetal: CPU slot publication shares immutable values without publishing native uniforms",
+          "[almetal][world-material-source][world-material-storage]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALMetalWorldMaterialDataCache cache(*f.device);std::uint64_t frame=900;
+        for(unsigned family:{1u,2u})for(bool indexed:{false,true})
+        {
+            CAPTURE(family,indexed);auto batch=materialBatch(f,family,indexed);
+            auto manual=batch;
+            const auto expected=renderMaterial(f,f.scene(),manual,false,++frame).pixels;
+            auto* material_alias=family==1?batch.materialSlots().data():nullptr;
+            auto* pbr_alias=family==2?batch.pbrSlots().data():nullptr;
+            const auto before_tables=cache.stats().publications;
+            const auto before=alMetalResourceAllocationStats();const auto commands=ALMetalDevice::committedCommandBufferCount();
+            REQUIRE(batch.freezeCpuSlots(&f.error));
+            const auto after=alMetalResourceAllocationStats();
+            CHECK(after.buffers_created==before.buffers_created);CHECK(after.textures_created==before.textures_created);
+            CHECK(ALMetalDevice::committedCommandBufferCount()==commands);
+            CHECK_FALSE(batch.native_material_source);CHECK_FALSE(batch.native_resource_source);
+            CHECK(cache.stats().publications==before_tables);
+            auto copied=batch;
+            if(material_alias)
+            {
+                CHECK(std::as_const(batch).materialSlots().data()!=material_alias);
+                CHECK(&std::as_const(copied).materialSlots()==&std::as_const(batch).materialSlots());
+                material_alias[0].env_intensity=std::numeric_limits<float>::quiet_NaN();
+            }
+            if(pbr_alias)
+            {
+                CHECK(std::as_const(batch).pbrSlots().data()!=pbr_alias);
+                CHECK(&std::as_const(copied).pbrSlots()==&std::as_const(batch).pbrSlots());
+                pbr_alias[0].roughness_factor=std::numeric_limits<float>::quiet_NaN();
+            }
+            REQUIRE(batch.freezeCpuSlots(&f.error));
+            CHECK(renderMaterial(f,f.scene(),batch,false,++frame).pixels==expected);
+            CHECK(renderMaterial(f,f.scene(),copied,true,++frame).pixels==expected);
+            auto equivalent=manual;
+            auto native=ALMetalWorldMaterialSource::publish(*f.device,batch,cache,&f.error);INFO(f.error);REQUIRE(native);
+            auto ordinary=ALMetalWorldMaterialSource::publish(*f.device,equivalent,cache,&f.error);REQUIRE(ordinary);
+            REQUIRE(native->matches(batch));CHECK_FALSE(native->matches(copied));
+            for(bool normal_hdr:{false,true})CHECK(tableLease(*native,family,normal_hdr)==tableLease(*ordinary,family,normal_hdr));
+            REQUIRE(ALMetalWorldResourceSource::publish(*f.device,batch,f.resources->textures,&f.error));
+            const auto resource=batch.native_resource_source;
+            const auto* slots=family==1?static_cast<const void*>(&std::as_const(batch).materialSlots()):
+                static_cast<const void*>(&std::as_const(batch).pbrSlots());
+            REQUIRE(batch.freezeCpuSlots(&f.error));
+            CHECK(batch.native_material_source==native);CHECK(batch.native_resource_source==resource);CHECK(native->matches(batch));
+            CHECK(slots==(family==1?static_cast<const void*>(&std::as_const(batch).materialSlots()):
+                static_cast<const void*>(&std::as_const(batch).pbrSlots())));
+            if(family==1)copied.materialSlots()[0].env_intensity=.91f;
+            else copied.pbrSlots()[0].roughness_factor=.91f;
+            CHECK(renderMaterial(f,f.scene(),batch,true,++frame).pixels==expected);
+            // The fallback remains authored and editable when a complete CPU
+            // snapshot cannot be issued; no partial family is committed.
+            ALMetalWorldSimpleBatch invalid;
+            auto* authored=invalid.materialSlots().data();authored[0].env_intensity=.37f;
+            invalid.material_slot_count=1;invalid.pbr_slot_count=ALMetalWorldSimpleBatch::max_material_slots+1;
+            CHECK_FALSE(invalid.freezeCpuSlots(&f.error));
+            CHECK(std::as_const(invalid).materialSlots().data()==authored);
+            CHECK(std::as_const(invalid).materialSlots()[0].env_intensity==.37f);
+        }
+    }
 }
 
 // Complete owner-side work, including capture construction, adoption, real

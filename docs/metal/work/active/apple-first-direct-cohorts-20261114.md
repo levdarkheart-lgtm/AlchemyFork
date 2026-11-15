@@ -353,3 +353,41 @@ ordinary AND cohort complete72-case costs against23 plus raw-authoring risk.
 Keep earlier negative evidence, PPD202/203 and GroupSourcesOFF until assessed.
 Current root commands are terminal; no build/test process remains running.
 Next defect204; original whole-engine goal remains active and incomplete.
+
+
+## Source24 integration checkpoint and owner readiness
+
+Owner asks whether a useful architecture candidate can be tried. Latest verified
+app remains26.4.0.69055 at8eb; it does not exercise disabled GroupSources, source
+rows or command banks by default. A build of that state cannot establish the
+performance of those mechanisms. The architecture is still incomplete: useful
+small/mixed GPU command preparation and fuller pass/dependency scheduling remain
+open. Do not present successful narrow costs or another compile as completion.
+
+Source24 integrates actual frame-wide CPU cohort compilation admission, lazy
+1688-byte batches with immutable CPU slot snapshots, snapshot-based numeric
+serialization, and post-water glow coverage as keyed immutable source facts.
+PPD202 terrain allocation containment and PPD204 shared preparation credits are
+authored. Shadow dispatch acquires two CPU-local preparation credits through
+the existing shared policy; pressure/busy behavior is not independently vetoed.
+PPD205 preserves an exact real-reader authored transient when optional CPU
+freezing is its sole missing capability and no publisher remains; semantic
+revision/newer-publication checks remain intact. Actual-owner fixture pending
+final freeze. No executed OOM claim. All new source remains unbuilt at this note.
+
+Required24 script: /tmp/persistent_native_build_24.py. Root integrates the
+coherent source freeze into the main experiment, then runs doctor/configure/
+build/static and `python3 /tmp/run_source_cohort_correctness_24.py 24 native-correctness-24`. It adds material snapshot
+and shared-shadow suites to the existing actual-owner/native gates. Broader
+combined checks use /tmp/run_combined_correctness_24.py. Complete material48 +
+plain24 costs follow only correctness; retain denied samples and compare the
+ordinary path as well as cohort costs against23. PPD203 raw-copy tradeoff stays
+open. No viewer launch/login/profile/push; no owner candidate claimed yet.
+
+
+All three disjoint source owners have now frozen source24. Root read-only
+review and git diff --check pass; harness33files passes. PPD205 actual-owner
+fixture covers Legacy/PBR normal and thrown-allocation transient fallback,
+producer revision changes, newer same-revision publications and replaced weak
+reader identity. These tests are authored, not executed. Integrate this coherent
+freeze and run required24 next; no source changes are authorized during build.

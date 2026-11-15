@@ -484,15 +484,15 @@ private:
                       std::is_nothrow_copy_assignable_v<Slots> &&
                       std::is_nothrow_move_constructible_v<Slots> &&
                       std::is_nothrow_move_assignable_v<Slots>);
-        std::optional<Slots> authored;
+        std::unique_ptr<Slots> authored;
         std::shared_ptr<const Slots> sealed;
 
         SlotStorage() noexcept = default;
-        SlotStorage(const SlotStorage& other) noexcept : sealed(other.sealed)
+        SlotStorage(const SlotStorage& other) : sealed(other.sealed)
         {
-            if (!sealed && other.authored) authored.emplace(*other.authored);
+            if (!sealed && other.authored) authored = std::make_unique<Slots>(*other.authored);
         }
-        SlotStorage& operator=(const SlotStorage& other) noexcept
+        SlotStorage& operator=(const SlotStorage& other)
         {
             if (this == &other) return *this;
             if (other.sealed)
@@ -502,14 +502,17 @@ private:
             }
             else
             {
-                authored = other.authored;
+                auto copy = other.authored ? std::make_unique<Slots>(*other.authored) : nullptr;
+                authored = std::move(copy);
                 sealed.reset();
             }
             return *this;
         }
         SlotStorage(SlotStorage&& other) noexcept : sealed(std::move(other.sealed))
         {
-            if (!sealed && other.authored) authored.emplace(std::move(*other.authored));
+            // A sealed producer keeps its old authored allocation: mutable
+            // references issued before sealing must remain valid on source.
+            if (!sealed) authored = std::move(other.authored);
         }
         SlotStorage& operator=(SlotStorage&& other) noexcept
         {
@@ -526,14 +529,18 @@ private:
             }
             return *this;
         }
-        Slots& writable() noexcept
+        Slots& writable()
         {
             if (sealed)
             {
-                authored = *sealed;
+                // Reuse an existing producer allocation so its held mutable
+                // references survive detachment. A sealed copy has no such
+                // allocation and clones before changing either owner/proof.
+                if (authored) *authored = *sealed;
+                else authored = std::make_unique<Slots>(*sealed);
                 sealed.reset();
             }
-            if (!authored) authored.emplace();
+            if (!authored) authored = std::make_unique<Slots>();
             return *authored;
         }
         const Slots& read() const noexcept
@@ -545,14 +552,16 @@ private:
 
 public:
 
-    // Most draws need neither material family. Keep their inline storage
-    // inactive until a producer writes it, preserving every slot default.
+    // Most draws need neither material family. Allocate authored values only
+    // when a producer writes them, preserving allocation-free const defaults.
     ALMetalWorldSimpleBatch() noexcept {}
 
     MaterialSlots& materialSlots()
     {
-        if (mMaterialStorage.sealed) { native_material_source.reset(); native_resource_source.reset(); }
-        return mMaterialStorage.writable();
+        const bool detach = bool(mMaterialStorage.sealed);
+        auto& slots = mMaterialStorage.writable();
+        if (detach) { native_material_source.reset(); native_resource_source.reset(); }
+        return slots;
     }
     const MaterialSlots& materialSlots() const noexcept
     {
@@ -560,13 +569,19 @@ public:
     }
     PBRSlots& pbrSlots()
     {
-        if (mPBRStorage.sealed) { native_material_source.reset(); native_resource_source.reset(); }
-        return mPBRStorage.writable();
+        const bool detach = bool(mPBRStorage.sealed);
+        auto& slots = mPBRStorage.writable();
+        if (detach) { native_material_source.reset(); native_resource_source.reset(); }
+        return slots;
     }
     const PBRSlots& pbrSlots() const noexcept
     {
         return mPBRStorage.read();
     }
+    // Optional CPU-only publication: clone active authored values once, then
+    // let immutable cached copies share them without creating GPU uniforms.
+    // Allocation failure leaves authored values, aliases and proofs intact.
+    bool freezeCpuSlots(std::string* error = nullptr);
 
     // Valid only with this batch's private sealed table identity and matching
     // scalar modes/counts. Manual or mutated batches retain ordinary packing.
@@ -703,7 +718,7 @@ public:
     bool terrain_tessellation_pinned = false;
 
 private:
-    // Publication clones the authored optional value. Previously returned
+    // Publication clones the authored value. Previously returned
     // mutable references on the original prototype retain their storage.
     // Sealed copies/moves share only the immutable snapshot; first mutable
     // access reconstructs private authored values and detaches the proof.
