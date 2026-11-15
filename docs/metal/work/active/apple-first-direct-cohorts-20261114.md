@@ -307,3 +307,49 @@ It creates no scheduler and is NOT YET integrated into postSort. Caller must
 warm-check, sort eligible owners deterministically and charge checked logical
 work bytes; logical byte caps are not wall-clock latency guarantees. Original
 whole-engine goal remains ACTIVE; source/ICB experiments and GroupSourcesOFF.
+
+## Required23 pass and exact next implementation boundary
+
+Main experiment source8eb7e37f17c716d8dcbc3d042f7cc9e91a04e4b9 is clean.
+Required23 passes817.302s (1435 targets after shared budget header change).
+Static69055 passes346ARM64/signatures/imports/source/retained features and seven
+diagnostic defaultsOFF. Strict23 scans3585files,905informational,0blockers/errors.
+Policy333assertions/19cases and actual producer10807/50 pass with native
+validation. PPD200 transient reader retry preserves all original child/group
+entry/byte/reader assertions; PPD201 route and PPD199 assertion fixes pass.
+
+Saved pre-layout baseline23: material92880/48, plain46440/24 and compile-stage
+115236/1 all pass. Large warm material CPU61.91–65.21%lower/plain67.41–68.97%lower;
+singleview cold/churn remains slower. Full summaries/raw logs retain all small
+cases and GPU variability. No owner FPS or completed architecture acceptance.
+No viewer, profiling of viewer, launch/login or push occurred. The only sampling
+target was the explicitly recorded contained llrender fixture.
+
+Source24 is in the isolated cohort tree, based on8eb. Architecture owns
+pipeline.cpp, llspatialpartition.h, new pipeline_cohort_compilation_native.inl
+and actual producer fixture. Actual owner compilation credit/admission ordering
+and PPD202 terrain catch are authored/frozen pending any coordinated glow change;
+peer review found no blocker. Residency owns world.h SlotStorage, narrowly
+MaterialSource.publish/serializers in world.cpp, pipeline_scene_publication_native.inl
+CPU-only slot freezing/static source facts and material-source fixtures.
+No overlapping source edits are authorized. Root owns docs/CMake/execution.
+
+Lazy authored slots are an experiment, not yet accepted into the main tree.
+Standalone exact-header ARM64/O3 comparison verifies3672→1688bytes but PPD203
+unsealed PBR copy/fresh-author regressions. Native alias/copy/move/output tests
+are authored. No custom pool or weakened copy semantics is permitted. The next
+narrow change removes MaterialSource's whole-batch serialization staging copy
+only through immutable cloned slot inputs and nonthrowing final commit. CPU-only
+sealing for numeric-disabled published sources must keep required authored input
+on allocation failure. PBR glow's0.004 cutoff may move into keyed source facts
+only after all callers are proved equivalent; otherwise preserve the rewrite
+and contain newly throwing detach. These coordinated source changes are not
+frozen or executed at this checkpoint.
+
+Next obtain both final source freezes, review immutable-slot/exception/admission
+invariants, integrate a fresh24 source, run required doctor/configure/build/static,
+native material/cohort/actual/policy and appropriate broader gates, then compare
+ordinary AND cohort complete72-case costs against23 plus raw-authoring risk.
+Keep earlier negative evidence, PPD202/203 and GroupSourcesOFF until assessed.
+Current root commands are terminal; no build/test process remains running.
+Next defect204; original whole-engine goal remains active and incomplete.

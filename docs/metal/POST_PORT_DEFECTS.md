@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-202 -->
+<!-- next-defect-id: PPD-204 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4955,3 +4955,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before correcting the expanded fixture route.
+
+
+## PPD-202 — Lazy material storage adds an uncontained allocation to PBR terrain capture
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex batch storage experiment and terrain capture integration
+- Discovered: 2026-11-15
+- Original reference: Native terrain capture must reject an incomplete transaction through its existing fail/clear path. Lazy authored slots are a new CPU storage mechanism, not a reason to bypass that boundary.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Unbuilt lazy SlotStorage experiment makes first mutable pbrSlots() allocate. captureMetalWorldPBRTerrainBatch uses that accessor outside a local bad_alloc guard, with callers in lldrawpoolterrain.cpp also lacking a surrounding allocation guard. The function already had allocation-bearing vector operations; this adds a new throwing point even with retained vector capacity. No executed out-of-memory crash or viewer incident is claimed.
+- Next action: Audit remaining writable-slot capture boundaries, contain allocation failure in the existing complete-transaction failure path before integrating the storage experiment, and retain terrain inputs/output/feature tests. Do not change shader behavior or treat the proposed size reduction as a verified speedup.
+- Verification: Source-confirmed new exception boundary, registered before integration repair. Storage experiment remains unbuilt and separate from required23.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered after exception audit and before caller repair or storage integration.
+
+
+## PPD-203 — Lazy slot layout trades smaller batches for slower unsealed PBR authoring/copying
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex measured CPU batch layout experiment
+- Discovered: 2026-11-15
+- Original reference: CPU layout changes must preserve efficient raw/forward material preparation as well as retained opaque scenes; smaller sizeof alone is not a performance acceptance gate.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Standalone ARM64/O3 mechanism benchmark compiles the exact old23 and candidate headers, executes no viewer/GPU, includes allocation/retirement,4096 rows/24samples plus4warmups/twoseparate runs, equal checksums. Actual sizeof falls3672→1688. PBR unsealed-copy median0.446–0.449→0.524ms (+17–18%); fresh PBR author/move0.590–0.593→0.622–0.630ms (+5–7%). Legacy copies improve; fresh Legacy is roughly flat/slightly higher. This is an input-storage mechanism result, not rendered alpha or whole-viewer FPS.
+- Next action: Keep layout acceptance open. Compare complete before23/after costs and native alias/output correctness, including raw preparation risk; avoid unnecessary publication staging copies only if transactional snapshot semantics remain intact. Do not infer a full-engine regression or win from this narrow check alone.
+- Verification: Reproduced mechanism tradeoff with exact header/source/command receipts and raw logs in raw-slot-storage-cpu-before-after-23.json. Candidate is not owner-tested or pushed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before accepting or integrating the experimental layout; source-derived size prediction is now independently compiled, while rendered-path evidence remains pending.
