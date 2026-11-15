@@ -1436,3 +1436,81 @@ Specific first predicates remain unknown; no guard/threshold/cap changes based
 on these counters. Typed bounded diagnostics remain followup, not cause claims.
 Full original producer/pass/visibility/memory architecture and owner FPS gates
 remain incomplete; current candidate is a meaningful partial experiment.
+
+
+Next-iteration isolated diagnostics: PPD240 frozen group-failure-census inl
+SHAa68a5559e0c6bf087781e466784271d17fdfdaa6acc3f4d24b6c7bbc330dfb83 and
+actualCPP074cc7642ac3b89d5d9d26cab32cce570857d3744b8734bbcfd25066382957b2
+have independent source peer review, no execution/integration. PPD125 terrain
+preflight WIP pipeline.cpp only is separately reviewed. PPD242 records its
+first-snapshot hero-face freshness edge before author repair; no43/69065 impact.
+Next243. Both are followup, not part of the source43 build/cost receipts.
+
+
+## Source43 executed — meaningful partial trial point
+
+Frozen6af308d1650818d5334a0e0494a2ad825955fdf0 /26.4.0.69085 required43
+exits0/0/0, broad shared-header rebuild834.740s. Static43 passes346ARM64,
+signatures/imports/source/media/codecs, allnine experimental controlsOFF/Persist0
+and compiled stability method/census. Strict43 scans3587/905info/0blocking/0errors.
+All21native43 processes pass API/GPU validation, including common5091/27,
+pages5914/25,visibility7521/13,shadow98414/14,renderer9394/9,commands4055/12,
+admission2460/10,actual15220/60. Remaining scope counts are retained in private
+native-correctness-43.json; no88CTest rerun43 claim. No viewer was launched.
+
+Fresh ungatedfourarm costs219988/1(5.963s),many2645160/1(11.686s); gated
+210260/1(5.756s),many2638312/1(11.714s) allPASS. Each single has192summaryrows,
+2688raw; eachmany32/2688. Process guard before each scope sees no owner viewer;
+no simultaneous build/native validation/cost scopes. Baseline/new shader receipt
+hashes and source/binary guards retained. Source43 mesh tags not rerun;42mesh
+proof remains explicitly older and addresses unchanged bank implementations.
+
+Mechanism proof: gated single cold/churn defers eachoptional seal (12measured
+stability deferrals/config,0admitted,0capturedcohortdraws) while retaining every
+required raw logicaldraw and MRT/query parity. Warmsingle and64/256many reach
+allretained required draws,0raw,0compile,0deferrals inmeasured windows, preserving
+allstrictbank cache/slot/noNencode checks. Cold CPU versus ungateddirectcohort
+improves13/16 configs(range20.67%lower–21.18%higher); churn10/16(range25.97%lower–
+108.68%higher). Total/querysettlement mixed(cold9/16wins,churn7/16); separate warm
+runs vary too, despite no measured sealing/deferral. These12sample synthetic
+separate-run timings prove neither universal gain nor causal warm GPU effects.
+No300frame/inworld FPS claim or shippeddefault activation. Stability remains an
+owner-trial switch; directbanks/visibility/preparation remainOFF for primary trial.
+
+Privatecomparison: stable-direct-cohort-comparison-43.json and corresponding
+fourrawreceipts/summaries. Purpose of69085 trial is incremental retained-group
+admission/churn behavior versus69065, not evaluation of completed architecture.
+Original animated-geometry/pass preparation, useful broader GPU submission and
+whole-viewer feature/stability/FPS acceptance remain incomplete. Separate staged
+copy/owner-operated launcher are being finalized; preserve69065.
+
+Next iteration (not69085): group-failure-census tree frozeninl a68a5559e0c6...
+plus actualCPP074cc7642ac3... bothsourcepeerPASS, notexecuted. Terrain-preflight-
+census tree frozenpipeline.cpp d1ad9070d150... with242resetpeerPASS, notexecuted.
+Root must review/integrate those disjointfiles, addexistingperiodiccensus stage/
+resolvedcap logging, freeze nextsource, build and actualcapture fault-injection
+checks. Do not infer125/240/241 causes or change guards/caps from old counters.
+
+
+Owner preview69085 ready at canonical ignored artifacts/metal/
+apple-first-persistent-native-scene-20261114/owner-preview-69085/
+Alchemy Metal Alpha G2G5.app. Full source-before/staged/source-after inventories
+8273entries(7839files/432directories/2links) match exactly; native/static/signature
+checks PASS again on stagedcopy. ExecutableSHA0d22a4345fe703d0039d6f40da33d3888ecb5a2709d32e941f8a05ccf33d425b.
+Owner-operated Launch Architecture Preview.command is syntaxchecked, notexecuted,
+SHA71b8591706e731421135b734f70eebf4221ea8eeeec011e0a741c8d92e3ce4b9.
+It explicitly enables GroupSources+GroupSourceStability and disables native
+visibility, depthprepass, preparation, compactinputs, scalarrows, resourcetables,
+joinstatic and bothbanks. Shipped settings remainOFF/nonpersistent; this is an
+incremental owner experiment, not a finished architecture/performance claim.
+Receipts owner-preview-69085.json/-static.json/-launcher.json preserve exactpins.
+No launch/login/profile/push;69065stagedapp remains untouched. OriginalgoalACTIVE.
+
+Next executable continuation: review frozen group-failure-census inl+actualCPP
+and terrain-preflight-census pipeline.cpp (allbase6af), integrate disjointfiles
+into root, wire bounded groupfailure/miss/mask/resolvedcap census without new
+walks, and author meaningful actual ordered-terrain/hero-face242 fault cases.
+Run harness, cleancommit/FFbuildtree, requiredbuild44+static/strict and changed
+actual native scopes; do not rerun unrelated cost suites without changed costs.
+Keep69085immutable for owner trial. Existing owner125/240/241 causal questions,
+complete architecture, whole-engine FPS and owner acceptance remain open.

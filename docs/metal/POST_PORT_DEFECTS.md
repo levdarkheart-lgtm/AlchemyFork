@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-242 -->
+<!-- next-defect-id: PPD-243 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3486,6 +3486,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14 final candidate handoff: Combined69008 builds/contained native checks pass, but this incident attribution remains unproved; no live teleport/shutdown retest or owner closure. Keep investigating.
 - 2026-11-15: Owner-authorized69065trial snapshot(source14837e631a8e96492bb3037de24dd1c1a8030ac5,08:44:55–08:48:29UTC) adds27hero/mirror warm-up/incomplete warnings. Six-face radiance publication succeeds08:46:32(line1563), then aborted faces recur at1590/2308/2350 with first_incomplete_line15588, mapping to exact-source terrain compound preflight. Individual predicate and causal identity with earlier teleport case remain unproved; do not claim permanent mirror failure/recovery or weaken guards. Private snapshot hash37a69080e41dea552883f663e35af3be825b37db0fd713dc97d8c2435d15b8d3 verified; no new launch/profile. See direct-cohort ledger for retained evidence path.
 
+- 2026-11-15 source audit of exact69065 anded235 confirms classic terrain compound preflight precedes all texture/map/material checks. GroupSources eligibility is PARTITION_VOLUME and cannot convert terrain face pools; shared timing/allocation interaction remains unproved. Successfulsixface publication preceded later aborts; no permanent mirror-failure claim. First predicate is unobserved; bounded first-reason diagnostics are next, preserving prepare-once evaluation and incomplete/clear/cancel/retry. No guard relaxation or stale resource recovery authorized by this evidence.
+
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
 - Status: investigating
@@ -5750,7 +5752,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-239 — Stability helper can recreate pending age on a stale call
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex optional cohort stability admission
 - Discovered: 2026-11-15
@@ -5765,6 +5767,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Registered before reordering the new helper. Next240.
 
+
+- 2026-11-15 source43 6af308d165/69085 required build, static/strict and all21native processes pass. Common stability/frame-budget5091assertions/27cases and actual owner15220/60 include stale-after-completed regression plus current raw pixels during deferral. Owner confirmation/push remain pending; no closure from tests.
 
 ## PPD-240 — Trial cohort publication failures lack a diagnostic reason breakdown
 
@@ -5783,6 +5787,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Imported owner-authorized separate Trial run evidence without touching its app/preferences/source. Raw log stays private; next242after241.
 
+- 2026-11-15 exacttrial/current source audit:1260 combines source/proof/certificate/state publication, native/CPU retention, supersession and allocation failures; it does not specifically mean State::publish failed. Historical CPU-layout rejections0 excludes ordinary rejection returns, not CPU allocation failure. Source-cache resource estimates plateau near3.89GB with2169entries, making native byte admission a candidate only: effective cap/reason unknown. No per-camera main/probe flavor-key churn found. Add typed existing-exit buckets without new producer walks/callbacks; no cap increase, negative cache or causal FPS claim. Separate scalar region-origin invalidation candidate needs its own producer regression before repair.
 
 ## PPD-241 — Trial shadow capture failures lack a source-level attribution
 
@@ -5800,3 +5805,29 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Retained as a distinct observation from hero-face terrain rejection125 and optional group publication240. No new viewer/profiler action.
+
+- 2026-11-15 exacttrial/current audit: failed_views samples !spot_shadow_capture_complete at captureMetalShadowScene scope exit before final reconciliation/encoding/commit. Possible admission/source/palette/matrix/logical/pool-hook exits are not distinguished.7main/1probe therefore means CPU capture incompleteness, not GPU errors; final transaction failures are outside this counter. Detached threshold8192 was not reached. Add first-reason buckets before clearing; preserve first failure and count later reconciliation separately. No threshold change or attribution to125/240.
+
+
+## PPD-242 — First terrain diagnostic can survive into a later hero face
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` terrain face draw behavior remains the rendering contract; this first-failure diagnostic is new. Source43 `6af308d165` does not contain the affected WIP diagnostic.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Reset or qualify first terrain diagnostic at actual hero-face begin; retain cumulative/recent counters and re-review source before integration. Validate current-face attribution with the actual capture boundary.
+- Verification: Read-only peer source review finds resetCompleteness/newGBuffer reset insufficient when beginMetalHeroProbeFaceCapture starts a later face before a new GBuffer. No affected build/test/viewer execution.
+- Owner verification: pending
+- Push approval: not_granted
+
+The isolated PPD125 diagnostics WIP stores a first terrain preflight snapshot.
+A failed face followed by a later hero face that aborts before GBuffer reset can
+append the earlier face's diagnostic to the new abort. This is a diagnostic
+freshness defect, not evidence of stale rendered terrain or the owner incident.
+
+### History
+
+- 2026-11-15 peer review identifies this new WIP diagnostic lifetime mismatch before integration. Rendering failure/cancel/retry remains unchanged. Register before repair; source43 and owner69065 unaffected.
+- 2026-11-15 author resets only the first diagnostic at actual beginMetalHeroProbeFaceCapture, retaining recent/cumulative counters. WIP pipeline.cpp SHA d1ad9070d150eb813005d7049f2912b7cd8bde42d240484fc7fbff3ce0bff167; focused peer re-review PASS on exact hash, no affected execution/integration yet.
