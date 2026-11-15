@@ -3199,6 +3199,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const auto compilation = ALSceneGroupCompilationNative::statistics;
             LL_INFOS("MetalFramePlan") << "CPU cohort compilation: candidates/duplicate_views=" << compilation.candidates << '/' << compilation.duplicate_views
                 << ", admitted/denied/published/failed=" << compilation.admitted << '/' << compilation.denied << '/' << compilation.published << '/' << compilation.failed
+                << ", stability_enabled/deferred=" << gSavedSettings.getBOOL("RenderMetalGroupSourceStability") << '/' << compilation.stability_deferred
                 << ", logical_work_requested/admitted=" << compilation.requested_bytes << '/' << compilation.admitted_bytes
                 << ", saturated=" << compilation.saturated
                 << ", reason(admitted/progress/frame/inflight/pressure/drain)=" << compilation.reasons[0] << '/' << compilation.reasons[1]
@@ -21698,6 +21699,7 @@ void LLPipeline::postSort(LLCamera &camera)
     LLVertexBuffer::flushBuffers();
     if (native_group_view)
     {
+        static LLCachedControl<bool> group_stability(gSavedSettings, "RenderMetalGroupSourceStability", false);
         auto& budget=ALNativeFrameBudget::instance();
         const auto frame=budget.snapshot().frame;
         struct ColdCohort
@@ -21815,7 +21817,7 @@ void LLPipeline::postSort(LLCamera &camera)
                     auto& owner=group->mMetalMaterialCohorts[candidate.type];
                     return ALSceneGroupPublicationNative::sealMaterial(candidate.publisher,owner.dependencies,owner.layout,
                         *model,region,sources->second,candidate.flavor,sNativeSceneSources,sNativeSceneSerial,gFrameCount);
-                });
+                },group_stability());
                 consume(group,candidate.type,sources->second,packet,region,static_cast<U32>(candidate.flavor.family));
             }
             catch(const std::bad_alloc&){++ALSceneGroupPublicationNative::statistics.failures;}

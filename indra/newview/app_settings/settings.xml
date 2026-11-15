@@ -8042,6 +8042,13 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalGroupSourceStability</key>
+  <map>
+    <key>Comment</key><string>Diagnostic delay of optional group compilation until the same publisher revision is observed in two outer frames. Requires GroupSources; required current native rendering remains active.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalSourceCommandBanks</key>
   <map>
     <key>Comment</key><string>Diagnostic persistent ordered native indexed command banks for eligible static Legacy/PBR source rows. Disabled until complete-path correctness and cost gates pass.</string>

@@ -11,6 +11,7 @@ struct Statistics
 {
     U64 candidates=0,duplicate_views=0,admitted=0,denied=0,published=0,failed=0;
     U64 requested_bytes=0,admitted_bytes=0,saturated=0;
+    U64 stability_deferred=0;
     std::array<U64,6> reasons{};
 };
 inline Statistics statistics;
@@ -39,12 +40,20 @@ template<class Compile>
 std::shared_ptr<const ALSceneGroupPublicationNative::Payload> compile(
     ALNativeCohortCompilationAdmission& admission,
     const std::shared_ptr<ALNativePublication::State>& publisher,
-    ALNativeFrameBudget& budget,std::size_t rows,U32 family,Compile&& produce)
+    ALNativeFrameBudget& budget,std::size_t rows,U32 family,Compile&& produce,
+    bool require_stable_revision=false)
 {
     const auto frame=budget.snapshot().frame;
     admission.notePending(frame);
     if(admission.lastConsideredFrame() && frame<=*admission.lastConsideredFrame())
     {++statistics.duplicate_views;return {};}
+    // Before the first real seal, cold groups have no child subscriptions.
+    // This is only evidence of owner-stamp stability, not a claim that every
+    // child texture/geometry generation was unchanged. Required raw capture
+    // and the eventual seal still resolve their current producer generations.
+    if(require_stable_revision && admission.deferUnstableRevision(frame,
+        ALNativeCohortCompilationAdmission::ProducerStamp{publisher->identity(),publisher->revision()}))
+    {++statistics.stability_deferred;return {};}
     const U64 bytes=workBytes(rows,family);
     if(bytes==ALNativeFrameBudget::unknown_bytes)++statistics.saturated;
     else statistics.requested_bytes+=bytes;

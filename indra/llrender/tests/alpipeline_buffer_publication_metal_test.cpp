@@ -2360,6 +2360,91 @@ TEST_CASE("Actual post-water PBR glow seals a distinct coverage flavor before pe
     CHECK_FALSE(capture.complete);CHECK(capture.batches.empty());CHECK_FALSE(capture.post_water_pbr_glow);CHECK_FALSE(capture.pass_active);
 }
 
+TEST_CASE("Actual optional stable cohorts defer before factories while required native sources stay current",
+          "[almetal][pipeline-buffer-publication][native-cohort-admission][cohort-stability]")
+{
+    using Budget=ALNativeFrameBudget;
+    for(U32 family:{0u,1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);auto& info=f.materialDraw();
+        Inputs::gSavedSettings.native_resources=false;f.flavor.native_resources=false;
+        Budget budget;U32 produced=0;bool cancel_after_publish=false;
+        const auto begin=[&](U64 id){Budget::FrameInputs frame;frame.frame=id;budget.beginFrame(frame);};
+        const auto attempt=[&](std::size_t rows=1)
+        {
+            return Inputs::ALSceneGroupCompilationNative::compile(f.compilation,f.group,budget,rows,family,[&]
+            {
+                ++produced;CHECK(budget.snapshot().scene_publications_in_flight==1);
+                auto result=f.sealMaterial();
+                if(cancel_after_publish)f.group->invalidate();
+                return result;
+            },true);
+        };
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        const auto raw_image=[&]
+        {
+            Inputs::LLCullResult cull;cull.pushDrawInfo(f.type,&info);
+            Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,false,false);
+            {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);
+            CHECK(capture.logicalDrawCount()==1);CHECK(capture.source_cohorts.empty());CHECK_FALSE(capture.source_rows);
+            auto target=renderer->render(f.scene(capture),&f.error);INFO(f.error);REQUIRE(target);return f.read(*target);
+        };
+        begin(0);const auto reads=f.reads();const auto serial=Inputs::sNativeSceneSerial;
+        const auto before=Inputs::ALSceneGroupCompilationNative::statistics;
+        // Even a saturated work size is not estimated while the optional
+        // owner has only its first observation. No producer or lease exists.
+        CHECK_FALSE(attempt(std::numeric_limits<std::size_t>::max()));CHECK(produced==0);
+        CHECK(f.reads()==reads);CHECK(Inputs::sNativeSceneSerial==serial);CHECK_FALSE(f.group->publication());CHECK_FALSE(f.group_layout);
+        for(U32 probe=0;probe<3;++probe)CHECK_FALSE(attempt());
+        const auto skipped=Inputs::ALSceneGroupCompilationNative::statistics;
+        CHECK(skipped.stability_deferred==before.stability_deferred+1);CHECK(skipped.duplicate_views==before.duplicate_views+3);
+        CHECK(skipped.requested_bytes==before.requested_bytes);CHECK(skipped.admitted_bytes==before.admitted_bytes);
+        CHECK(skipped.denied==before.denied);CHECK(skipped.saturated==before.saturated);CHECK(skipped.reasons==before.reasons);
+        CHECK(budget.snapshot().admitted==0);CHECK(budget.snapshot().deferred==0);
+        const auto left=raw_image();CHECK(f.reads()[0]>reads[0]);
+
+        f.positions(*info.mVertexBuffer,true);info.mVertexBuffer->unmapBuffer();info.state->invalidate();f.group->invalidate();
+        begin(1);const auto changed_reads=f.reads();CHECK_FALSE(attempt());CHECK(f.reads()==changed_reads);
+        CHECK(f.compilation.pendingSince()==0);CHECK_FALSE(f.compilation.lastAdmittedFrame());
+        const auto right=raw_image();CHECK_FALSE(right==left); // Required raw source changed immediately.
+        CHECK(budget.snapshot().scene_publications_this_frame==0);CHECK_FALSE(f.group->publication());
+
+        begin(2);auto packet=attempt();REQUIRE(packet);CHECK(produced==1);CHECK_FALSE(f.compilation.pending());
+        CHECK(f.group->publication().get()==packet.get());CHECK(budget.snapshot().scene_publications_this_frame==1);
+        CHECK(budget.snapshot().scene_publications_in_flight==0);
+        Inputs::LLCullResult cull;
+        REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()):cull.pushNativeSimpleRange(packet,1,f.region.snapshot())));
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,false,false);
+        {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);REQUIRE(capture.source_cohorts.size()==1);
+        auto target=renderer->render(f.scene(capture),&f.error);INFO(f.error);REQUIRE(target);CHECK(f.read(*target)==right);
+        const auto warm_reads=f.reads();CHECK(f.currentMaterial()==packet);CHECK(f.reads()==warm_reads);
+
+        const auto revision=f.group->revision();f.group->evict();CHECK(f.group->revision()==revision);
+        begin(3);const auto deferrals=Inputs::ALSceneGroupCompilationNative::statistics.stability_deferred;
+        auto restored=attempt();REQUIRE(restored);CHECK(produced==2);
+        CHECK(Inputs::ALSceneGroupCompilationNative::statistics.stability_deferred==deferrals);
+        CHECK(f.group->revision()==revision);CHECK_FALSE(f.compilation.pending());
+
+        f.group->invalidate();begin(4);CHECK_FALSE(attempt());CHECK(f.compilation.pendingSince()==4);
+        begin(5);cancel_after_publish=true;CHECK_FALSE(attempt());cancel_after_publish=false;
+        CHECK(produced==3);CHECK_FALSE(f.group->publication());CHECK(f.compilation.pendingSince()==4);
+        CHECK(f.compilation.lastAdmittedFrame()==5);CHECK(budget.snapshot().scene_publications_in_flight==0);
+        CHECK_FALSE(attempt());CHECK(produced==3); // Later probe cannot revive the cancelled result.
+        begin(6);const auto cancelled_reads=f.reads();CHECK_FALSE(attempt());CHECK(f.reads()==cancelled_reads);
+        CHECK(f.compilation.pendingSince()==4);begin(7);REQUIRE(attempt());CHECK(produced==4);CHECK_FALSE(f.compilation.pending());
+
+        // Replacing the actual publisher with an equal numeric revision cannot
+        // inherit the old publisher's evidence. No mutable LL/native owner is
+        // stored by the admission heuristic to make this identity check work.
+        const auto previous_revision=f.group->revision();f.group->evict();
+        f.group=std::make_shared<ALNativePublication::State>();
+        while(f.group->revision()<previous_revision)f.group->invalidate();
+        f.group_dependencies.reset();f.group_layout.reset();
+        begin(8);const auto replaced_reads=f.reads();CHECK_FALSE(attempt());CHECK(f.reads()==replaced_reads);CHECK_FALSE(f.group->publication());
+        CHECK(f.compilation.pendingSince()==8);begin(9);REQUIRE(attempt());CHECK(produced==5);CHECK_FALSE(f.compilation.pending());
+    }
+}
+
 TEST_CASE("Actual cold cohort owners use shared frame credits once and preserve required raw fallback",
           "[almetal][pipeline-buffer-publication][native-cohort-admission]")
 {

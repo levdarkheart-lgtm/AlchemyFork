@@ -1349,3 +1349,90 @@ cannot mature it. Requiredraw/native source publication stays current. Cold
 child subscriptions do not exist before seal, so stamp is a cheap heuristic,
 not proof every child was unchanged; no Nper-view walk is allowed. No policy
 activation, execution or performance claim yet. Full original goal remainsACTIVE.
+
+PPD239 source-only stability helper review: stale/duplicate calls must reject
+before notePending, including after publicationCompleted. Add regression before
+freeze; existing wrapper/current42production unaffected.
+
+
+## Owner69065 trial evidence imported without viewer actions
+
+Separate owner-authorized Trial run session supplies exact69065/source14837e631a8e
+PID13388 snapshot08:44:55–08:48:29UTC. Private evidence is canonical
+artifacts/metal/architecture-trial-69065-20261115T084831Z/
+(trial-findings.json/.txt,snapshot-receipt.json,Alchemy-trial-snapshot.log).
+Root verifies642821bytes/SHA37a69080e41dea552883f663e35af3be825b37db0fd713dc97d8c2435d15b8d3.
+No raw log upload, settings/app change, source edit by Trial session, profiler,
+new viewer launch or FPS comparison occurred. Owner was told logout is safe.
+
+GroupSources activation is observed in accepted797788main/91688probe cumulative
+cohort logicaldraws; banks/preparation/visibility/otherexperimental flagsOFF.
+Automatic process policy49152MiB,OS/process low flags0 isobserved, not memory
+acceptance.148warnings/zeroERROR/FATAL; no logged Metal command/device failure,
+without proof GPU validation was enabled. Source40/41bank results cannot explain
+this older bank-disabled run. Source/project/app identity is exact.
+
+Compilation39088admitted/1149230frame-limit-denied/35576published/3512failed
+isprocess-cumulative main/probe work, not dropped draws/GPUerrors.3512equals
+2252unsupported+1260unattributed publicationfailures(PPD240).558598capturedgroup
+occurrences/889910drawoccurrences average1.59draws/group, directly supporting
+actual small-run coverage and cheap bookkeeping/stability work, without an FPS
+claim. CPUlayoutcache2048entries/3221rows/29682912estimatedbytes has2073evictions.
+Source failed shadow views7/1 and zero detached prep (familymax2201/1293 below
+8192) are separate PPD241; do not blindly lower measured threshold.
+
+PPD125 retains27hero/mirror warnings, successfulsix-face publication08:46:32,
+thenlaterabortfaces1590/2308/2350 terrain guard exact15588. Cause/predicate and
+relation to prior teleport issue unknown; fail-closed guard stays. Assetfetch/
+texture403/HTTP/DNS/alpha warnings do not establish architecture regression.
+Next independent source audits target125/240/241 while stability43 integrates.
+
+
+## Source42 observed and source43 stability freeze
+
+Source42 ed235581673629f0c527a9d16e3b3525551ab27b /26.4.0.69084 required
+build42 exits0/0/0 in30.468s; static42 passes346ARM64/signatures/source/imports.
+Production unchanged from41; byte-identical almetal_tests supports explicit
+reuse of all21native41 and broad88CTest/10specializations/3archive41, not a claim
+of rerunning them. Changed LLRender reruns region64/5 and actual14809/59 with
+API/GPU validation, actual41.081s. New mesh costs PASS151960/1(single6.362s)
+and2738216/1(many17.560s). Private receipts: frozen-source-build-42,
+static-native-42,native-binary-equivalence-41-42,native-correctness-42,
+actual-direct-bound-cohort-mesh-costs-42 and actual-many-direct-bound-cohort-mesh-costs-42.
+
+Heavier indexed geometry confirms CPU savings but not a universal bank gain.
+Warm512 single groups: CPU73.03–77.15%lower versus directcohort, full/query
+settlement1.36–7.24%lower, GPU5.95–8.10%higher. Many64/256groups×2/4draws:
+CPU25.46–57.97%lower, GPU8.27–24.65%higher, complete8.80%lower to10.74%higher
+(wins3/8). Cold/churn adverse. No setting activation or viewer FPS conclusion.
+
+Source43 integrates the reviewed source41-based feature while preserving42's
+shared mesh helper. New RenderMetalGroupSourceStability is defaultOFF/Persist0,
+requires GroupSources, and only delays optional compilation until the same
+publisher identity+revision appears in two distinct outer frames. Current raw
+native capture/resource publication stays live; main/probe views in one frame
+cannot mature the observation. Cache eviction preserves scalar stamp evidence;
+new identity/revision restarts it. It estimates no work and consumes no budget
+on deferral. Stability has its own counter, separate from budget denial/failure.
+Cold child subscriptions are absent before sealing: this is a bounded owner-
+stamp heuristic, not proof every child stayed unchanged. PPD239 stale/duplicate
+checks precede notePending in the new helper; added common and actual-owner
+cases include completed→stale, frame0, raw changed pixels during deferral,
+eventual parity, cache eviction, cancellation and equal-revision new owners.
+
+All code/cost source peer reviews pass; execution43 pending. New optional gated
+cost tags cover allfour existing modes and retain measured required raw work:
+[.native-stable-direct-bound-cohort-cost] and
+[.native-many-stable-direct-bound-cohort-cost]. Existing tags unchanged. Root
+owns source integration/docs/build; no agent launches/profiles. Next: clean
+freeze43, doctor/configure/build/verify_app, strict and21native, then paired
+ungated/gated cost controls if no owner viewer is running. Stage a separate
+owner candidate only after observed checks; preserve69065.
+
+Read-only exacttrial source audits narrow125 to the compound terrain preflight
+before texture lookup,241 to CPU capture completeness before GPU commit, and240
+to publication stages rather than ordinary CPU-layout rejects(rejections0).
+Specific first predicates remain unknown; no guard/threshold/cap changes based
+on these counters. Typed bounded diagnostics remain followup, not cause claims.
+Full original producer/pass/visibility/memory architecture and owner FPS gates
+remain incomplete; current candidate is a meaningful partial experiment.

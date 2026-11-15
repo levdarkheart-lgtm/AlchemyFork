@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-239 -->
+<!-- next-defect-id: PPD-242 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3484,6 +3484,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Combined69008 builds/contained native checks pass, but this incident attribution remains unproved; no live teleport/shutdown retest or owner closure. Keep investigating.
+- 2026-11-15: Owner-authorized69065trial snapshot(source14837e631a8e96492bb3037de24dd1c1a8030ac5,08:44:55–08:48:29UTC) adds27hero/mirror warm-up/incomplete warnings. Six-face radiance publication succeeds08:46:32(line1563), then aborted faces recur at1590/2308/2350 with first_incomplete_line15588, mapping to exact-source terrain compound preflight. Individual predicate and causal identity with earlier teleport case remain unproved; do not claim permanent mirror failure/recovery or weaken guards. Private snapshot hash37a69080e41dea552883f663e35af3be825b37db0fd713dc97d8c2435d15b8d3 verified; no new launch/profile. See direct-cohort ledger for retained evidence path.
+
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
 - Status: investigating
@@ -5744,3 +5746,57 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Fixture-only repair uses3commands for128view slots plusdenial/blocker(total5), preserving all128cap/borrowedCPUreader/actualGPUcompletion/exactstorage-reuse/no-allocation assertions. Production queue64 and slot128 unchanged. No native test or hang occurred for40; full41execution follows.
 
 - 2026-11-15: Source41 pages5914/25 finishes normally and proves128distinctslots on bounded nativecommands, borrowedCPUreader protection, actualGPUcompletion andsameallocation recovery. No unmodified238fixture was executed/hung; productionqueue64 unchanged.
+
+
+## PPD-239 — Stability helper can recreate pending age on a stale call
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex optional cohort stability admission
+- Discovered: 2026-11-15
+- Original reference: Stale/duplicate owner-frame consideration must not create new pending work or alter service age after publication completion.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Unbuilt stable-cohort-admission helper calls notePending(frame) before rejecting stale/duplicate frames. After publicationCompleted clears pending state, a stale standalone helper call can recreate an older pending age. The wrapper already short-circuits duplicate/stale work and actual frame budgets do not rewind; no source42 or runtime incident is attributed.
+- Next action: Reject stale/duplicate frames before notePending and add completion-then-stale regression coverage requiring pending to remain absent; preserve valid unstable pending age and eventual eligibility.
+- Verification: Source author reports before repair; no build/test execution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before reordering the new helper. Next240.
+
+
+## PPD-240 — Trial cohort publication failures lack a diagnostic reason breakdown
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native cohort publication diagnostics
+- Discovered: 2026-11-15
+- Original reference: Required raw rendering remains available after optional compilation failure; failures/unsupported declines must be distinguishable from GPU errors and cannot justify repeated work without source evidence.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Verified private69065/source14837e631a8e96492bb3037de24dd1c1a8030ac5 trial snapshot reports39088admitted/1149230frame-limit-denied/35576published/3512failed compilation attempts. Failure totals decompose into2252unsupported declines and1260publication failures; no reason breakdown identifies the1260. Counters are process-cumulative main/probe and raw fallback is retained. No CPU/FPS regression or dropped draws are inferred.
+- Next action: Trace exact source factory return paths and record bounded typed reason counters before any retry/caching policy. Preserve required rendering and source generations. Evaluate repeated small-group work with actual1.59draws per captured group occurrence and existing contained cost evidence.
+- Verification: Snapshot bytes/hash and summary verified; no viewer/profile/source fix yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Imported owner-authorized separate Trial run evidence without touching its app/preferences/source. Raw log stays private; next242after241.
+
+
+## PPD-241 — Trial shadow capture failures lack a source-level attribution
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex shadow source capture diagnostics
+- Discovered: 2026-11-15
+- Original reference: Shadow source/preparation rejection must remain separate from GPU device/command failure and preserve existing transactional/fail-closed behavior.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Same verified69065trial census logs failed_views7main/1probe without shadow warnings or Metal command/device errors. Detached prep stays0 because max_family_inputs2201/1293 are below8192. A counter alone does not prove a visual regression or GPU fault, and no cause is identified.
+- Next action: Inspect exact failed-view increment sites and existing source diagnostics; add bounded attribution only where absent. Do not lower dispatch thresholds without complete-path cost evidence or weaken shadow validation.
+- Verification: Owner-authorized log observation, no reproduced rendering failure or source repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Retained as a distinct observation from hero-face terrain rejection125 and optional group publication240. No new viewer/profiler action.

@@ -118,6 +118,30 @@ ALNativeCohortCompilationAdmission::priority(std::uint64_t stable_tie) const noe
         : std::numeric_limits<Frame>::max(), stable_tie};
 }
 
+bool ALNativeCohortCompilationAdmission::deferUnstableRevision(
+    Frame frame, std::optional<ProducerStamp> producer) noexcept
+{
+    if (!producer) return false;
+    if ((mLastConsidered && frame <= *mLastConsidered) ||
+        (mLastObservedFrame && frame < *mLastObservedFrame)) return true;
+    notePending(frame);
+    if (!producer->identity || !producer->revision)
+    {
+        mLastConsidered = frame;
+        return true;
+    }
+    const bool same = mObservedProducer && *mObservedProducer == *producer;
+    if (!same)
+    {
+        mObservedProducer = producer;
+        mFirstObservedFrame = frame;
+    }
+    mLastObservedFrame = frame;
+    if (same && mFirstObservedFrame && frame > *mFirstObservedFrame) return false;
+    mLastConsidered = frame;
+    return true;
+}
+
 ALNativeFrameBudget::Decision ALNativeCohortCompilationAdmission::tryAcquire(
     ALNativeFrameBudget& budget, std::uint64_t logical_bytes)
 {
@@ -140,6 +164,9 @@ ALNativeFrameBudget::Decision ALNativeCohortCompilationAdmission::tryAcquire(
 void ALNativeCohortCompilationAdmission::publicationCompleted() noexcept
 {
     mPendingSince.reset();
+    // Same-revision cache eviction is not producer mutation. Retain scalar
+    // observations as well as consideration/service history; an actual new
+    // producer identity/revision must establish its own two-frame evidence.
 }
 
 void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)

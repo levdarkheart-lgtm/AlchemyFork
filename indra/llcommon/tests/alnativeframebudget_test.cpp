@@ -385,6 +385,113 @@ TEST_CASE("Scene credits survive policy destruction and draining admits no new s
     SUCCEED("Actual command credit retires without borrowing the destroyed policy owner");
 }
 
+TEST_CASE("Optional cohort stability requires distinct outer frames without consuming credits",
+          "[native-frame-budget][cohort-compilation][cohort-stability]")
+{
+    using Owner=ALNativeCohortCompilationAdmission;
+    Budget budget(smallScene());Owner owner;const Owner::ProducerStamp producer{17,1};
+    budget.beginFrame(frame(0));const auto untouched=budget.snapshot();
+    CHECK_FALSE(owner.deferUnstableRevision(0)); // default remains immediate
+    REQUIRE(owner.deferUnstableRevision(0,producer));CHECK(owner.pendingSince()==0);
+    CHECK(owner.lastConsideredFrame()==0);CHECK_FALSE(owner.lastAdmittedFrame());
+    for(unsigned view=0;view<4;++view)CHECK(owner.deferUnstableRevision(0,producer));
+    CHECK_FALSE(owner.tryAcquire(budget,8));
+    CHECK(budget.snapshot().admitted==untouched.admitted);CHECK(budget.snapshot().deferred==untouched.deferred);
+    CHECK(budget.snapshot().scene_publications_this_frame==0);
+    budget.beginFrame(frame(1));REQUIRE_FALSE(owner.deferUnstableRevision(1,producer));
+    {
+        auto credit=owner.tryAcquire(budget,8);REQUIRE(credit);CHECK(owner.lastAdmittedFrame()==1);
+        CHECK(owner.deferUnstableRevision(1,producer));CHECK_FALSE(owner.tryAcquire(budget,8));
+        owner.publicationCompleted();CHECK_FALSE(owner.pending());
+    }
+    CHECK(budget.snapshot().scene_publications_in_flight==0);
+    // Cache-only loss does not change the producer stamp or require two more
+    // observations. A skipped outer frame is distinct; adjacency is not needed.
+    budget.beginFrame(frame(8));REQUIRE_FALSE(owner.deferUnstableRevision(8,producer));
+    auto reused=owner.tryAcquire(budget,8);REQUIRE(reused);CHECK(owner.pendingSince()==8);
+    CHECK(owner.lastConsideredFrame()==8);CHECK(owner.deferUnstableRevision(7,Owner::ProducerStamp{99,1}));
+    CHECK(owner.lastConsideredFrame()==8);CHECK(owner.pendingSince()==8);
+    owner.publicationCompleted();CHECK_FALSE(owner.pending());
+    CHECK(owner.deferUnstableRevision(7,Owner::ProducerStamp{99,1}));
+    CHECK_FALSE(owner.pending());CHECK(owner.lastConsideredFrame()==8); // PPD239: no false old pending age.
+}
+
+TEST_CASE("Cohort stability resets for a new revision or publisher and ignores stale observations",
+          "[native-frame-budget][cohort-compilation][cohort-stability]")
+{
+    using Owner=ALNativeCohortCompilationAdmission;
+    Budget budget(smallScene());Owner owner;
+    budget.beginFrame(frame(0));CHECK(owner.deferUnstableRevision(0,Owner::ProducerStamp{41,1}));
+    budget.beginFrame(frame(1));CHECK(owner.deferUnstableRevision(1,Owner::ProducerStamp{41,2}));
+    CHECK(owner.pendingSince()==0);CHECK(owner.lastConsideredFrame()==1);
+    CHECK(owner.deferUnstableRevision(0,Owner::ProducerStamp{41,1}));
+    budget.beginFrame(frame(2));REQUIRE_FALSE(owner.deferUnstableRevision(2,Owner::ProducerStamp{41,2}));
+    // Observation alone does not grant service or move consideration. A
+    // regressing observation cannot replace this newer stamp's evidence.
+    CHECK(owner.deferUnstableRevision(1,Owner::ProducerStamp{41,3}));
+    CHECK(owner.lastConsideredFrame()==1);CHECK_FALSE(owner.lastAdmittedFrame());
+    REQUIRE_FALSE(owner.deferUnstableRevision(2,Owner::ProducerStamp{41,2}));
+    {auto granted=owner.tryAcquire(budget,8);REQUIRE(granted);}
+    budget.beginFrame(frame(3));CHECK(owner.deferUnstableRevision(3,Owner::ProducerStamp{42,2}));
+    CHECK(owner.pendingSince()==0);CHECK(owner.lastAdmittedFrame()==2);
+    budget.beginFrame(frame(4));REQUIRE_FALSE(owner.deferUnstableRevision(4,Owner::ProducerStamp{42,2}));
+    {auto granted=owner.tryAcquire(budget,8);REQUIRE(granted);owner.publicationCompleted();}
+    budget.beginFrame(frame(5));CHECK(owner.deferUnstableRevision(5,Owner::ProducerStamp{0,2}));
+    CHECK(budget.snapshot().scene_publications_this_frame==0);
+    budget.beginFrame(frame(6));REQUIRE_FALSE(owner.deferUnstableRevision(6,Owner::ProducerStamp{42,2}));
+    budget.beginDrain();CHECK_FALSE(owner.tryAcquire(budget,8));CHECK(owner.pendingSince()==5);
+    CHECK(budget.snapshot().scene_publications_in_flight==0);
+}
+
+TEST_CASE("Stable failed CPU cohorts retain fairness with later page and bank publication",
+          "[native-frame-budget][cohort-compilation][cohort-stability][PPD-214]")
+{
+    using Owner=ALNativeCohortCompilationAdmission;
+    for(bool pressure:{false,true})
+    {
+        CAPTURE(pressure);Budget budget(smallScene());std::array<Owner,65> cpu;
+        bool pages=false,commands=false;std::optional<Budget::Frame> command_pending;
+        Budget::Lease page_completion,command_completion;unsigned services=0,unstable=0;
+        for(Budget::Frame id=0;id<24;++id)
+        {
+            auto input=frame(id);if(pressure)input.os_available_bytes=0;else input.required_main_cpu_ns=45'000'000;
+            budget.beginFrame(input);std::array<unsigned,65> order;
+            for(unsigned i=0;i<order.size();++i){order[i]=i;cpu[i].notePending(id);}
+            std::sort(order.begin(),order.end(),[&](unsigned a,unsigned b){return cpu[a].priority(a)<cpu[b].priority(b);});
+            for(unsigned i:order)
+            {
+                // Half the optional owners never stabilize. They must not
+                // reserve a busy progress turn or manufacture budget denials.
+                const Owner::ProducerStamp stamp{U64(i)+1,i%2?id+1:1};
+                const auto before=budget.snapshot();
+                if(cpu[i].deferUnstableRevision(id,stamp))
+                {
+                    ++unstable;CHECK(budget.snapshot().admitted==before.admitted);
+                    CHECK(budget.snapshot().deferred==before.deferred);continue;
+                }
+                auto admitted=cpu[i].tryAcquire(budget,8);if(admitted){++services;CHECK(cpu[i].pendingSince()==0);}
+                // No completed publication: local credit retires on failure,
+                // preserving original pending age and last-service fairness.
+            }
+            if(!pages)
+            {
+                auto credit=budget.tryAcquire(Budget::Work::scene_publication,8,0);
+                if(credit){pages=true;page_completion=credit.credit;command_pending=id;}
+            }
+            if(pages&&!commands)
+            {
+                auto credit=budget.tryAcquire(Budget::Work::scene_publication,8,*command_pending);
+                if(credit){commands=true;command_completion=credit.credit;}
+            }
+            if(commands){page_completion.reset();command_completion.reset();}
+            CHECK(budget.snapshot().scene_publications_this_frame<=1);
+            CHECK(budget.snapshot().scene_publications_in_flight<=2);
+        }
+        REQUIRE(pages);REQUIRE(commands);CHECK(services>0);CHECK(unstable>24);
+        CHECK(budget.snapshot().scene_publications_in_flight==0);
+    }
+}
+
 TEST_CASE("Cohort compilation is considered once across main and probe and owns no idle credit",
           "[native-frame-budget][cohort-compilation]")
 {

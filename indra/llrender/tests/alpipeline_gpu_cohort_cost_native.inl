@@ -5,10 +5,11 @@
  * Included after the actual production capture/producer fixtures.
  */
 
-template<bool include_direct_bound,bool heavier_mesh=false>
+template<bool include_direct_bound,bool heavier_mesh=false,bool gated=false>
 static void actualNativeCohortBankCosts()
 {
     static_assert(!heavier_mesh||include_direct_bound);
+    static_assert(!gated||include_direct_bound);
     constexpr U32 samples=12,warmups=2,modes=include_direct_bound?4:3,indices_per_source=heavier_mesh?768:3;
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::minutes(10);
     const auto cpu_ns=[]
@@ -19,9 +20,9 @@ static void actualNativeCohortBankCosts()
     {
         double cpu=0,encode=0,complete=0,gpu=0;
         U64 source_publications=0,group_builds=0,source_builds=0,records=0,descriptors=0,getters=0,dependencies=0,images=0;
-        U64 raw_bytes=0,reference_bytes=0,order_bytes=0,cohort_bytes=0,candidate_bytes=0,regional_bytes=0;
+        U64 raw_draws=0,raw_bytes=0,reference_bytes=0,order_bytes=0,cohort_bytes=0,candidate_bytes=0,regional_bytes=0;
         U64 cpu_pins=0,native_pins=0,cohort_draws=0,replacements=0,native_frame_bytes=0,gpu_ready=0;
-        U64 compile_admitted=0,compile_denied=0,compile_duplicates=0,compile_bytes=0;
+        U64 compile_admitted=0,compile_denied=0,compile_duplicates=0,compile_bytes=0,compile_stability_deferred=0;
         U64 accepted_cohort_draws=0,bank_requested=0,bank_draws=0,bank_fallback=0,execute_calls=0;
         U64 bank_hits=0,bank_builds=0,bank_admission_requests=0,bank_admission_denials=0,bank_argument_bytes=0;
         U64 page_cohort_requests=0,page_cohort_hits=0,page_cohort_builds=0,page_cohort_failures=0;
@@ -196,7 +197,7 @@ static void actualNativeCohortBankCosts()
                                     arm.compilation,arm.group,arm.budget,count,family,[&]
                                     {return Inputs::ALSceneGroupPublicationNative::sealMaterial(arm.group,arm.dependencies,arm.layout,
                                         f.model,f.region.snapshot(),arm.sources,f.flavor,Inputs::sNativeSceneSources,
-                                        Inputs::sNativeSceneSerial,Inputs::gFrameCount);});
+                                        Inputs::sNativeSceneSerial,Inputs::gFrameCount);},gated);
                                 if(sealed)
                                 {
                                     const auto at=pending.find(arm.group.get());REQUIRE(at!=pending.end());REQUIRE(at->second.size()==1);
@@ -208,6 +209,7 @@ static void actualNativeCohortBankCosts()
                             }
                             {CullScope scope(cull);f.capture(arm.pipeline);}INFO(f.error);REQUIRE(capture.complete);
                             REQUIRE(capture.logicalDrawCount()==count);REQUIRE(capture.flushDrawOrder());
+                            value.raw_draws+=capture.batches.size();
                             value.raw_bytes+=capture.batches.size()*sizeof(ALMetalWorldSimpleBatch);
                             value.reference_bytes+=capture.source_references.size()*sizeof(ALMetalWorldSourceReference);
                             value.order_bytes+=capture.draw_order.size()*sizeof(ALMetalWorldDrawIndex);
@@ -268,6 +270,9 @@ static void actualNativeCohortBankCosts()
                         value.native_frame_bytes=arm.data->stats().published_bytes-before_native;
                         value.compile_admitted=compilation.admitted-before_compile.admitted;value.compile_denied=compilation.denied-before_compile.denied;
                         value.compile_duplicates=compilation.duplicate_views-before_compile.duplicate_views;value.compile_bytes=compilation.admitted_bytes-before_compile.admitted_bytes;
+                        value.compile_stability_deferred=compilation.stability_deferred-before_compile.stability_deferred;
+                        if(gated&&value.compile_stability_deferred&&!value.compile_admitted&&!value.compile_denied)
+                        {CHECK(value.compile_bytes==0);CHECK(compilation.requested_bytes==before_compile.requested_bytes);}
                         const std::array<ALMetalWorldCohortStats,2> cohorts{arm.main->worldCohortStats(),arm.probe->worldCohortStats()};
                         const std::array<ALMetalWorldSourceCommandDrawStats,2> draws{arm.main->worldSourceCommandStats(),arm.probe->worldSourceCommandStats()};
                         for(U32 owner=0;owner<2;++owner)
@@ -317,13 +322,19 @@ static void actualNativeCohortBankCosts()
                         }
                         if(sample>=warmups&&mode&&condition==1&&value.cohort_draws==U64(count)*views)
                         {CHECK(value.getters==0);CHECK(value.dependencies==0);CHECK(value.images==0);CHECK(value.compile_admitted==0);}
+                        if(gated&&sample>=warmups&&mode&&condition==1)
+                        {
+                            CHECK(value.cohort_draws==U64(count)*views);CHECK(value.compile_stability_deferred==0);
+                            CHECK(value.compile_admitted==0);CHECK(value.compile_denied==0);CHECK(value.compile_bytes==0);
+                            CHECK(compilation.requested_bytes==before_compile.requested_bytes);
+                        }
                         if(sample>=warmups)costs[mode][sample-warmups]=value;
                         if(sample==warmups-1||heavier_mesh)for(U32 view=0;view<views;++view)
                         {
                             pixels[mode][view]=f.read(*targets[view]);
                             if constexpr(heavier_mesh)CHECK(std::any_of(pixels[mode][view].depth.begin(),pixels[mode][view].depth.end(),[](F32 depth){return depth<1.f;}));
                         }
-                        std::cout<<(heavier_mesh?"NATIVE_DIRECT_BOUND_COHORT_MESH_RAW family=":include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_RAW family=":"NATIVE_GPU_COHORT_RAW family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        std::cout<<(gated?"NATIVE_STABLE_DIRECT_BOUND_COHORT_RAW family=":heavier_mesh?"NATIVE_DIRECT_BOUND_COHORT_MESH_RAW family=":include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_RAW family=":"NATIVE_GPU_COHORT_RAW family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
                             <<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
                             <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
                             <<" candidate_vertices="<<arm.geometry[0]<<" candidate_indices="<<arm.geometry[1]
@@ -334,9 +345,10 @@ static void actualNativeCohortBankCosts()
                             <<" source_and_group_publications="<<value.source_publications<<" group_builds="<<value.group_builds<<" source_builds="<<value.source_builds
                             <<" static_records="<<value.records<<" producer_resource_descriptors="<<value.descriptors
                             <<" source_getters="<<value.getters<<" dependency_walks="<<value.dependencies<<" image_getters="<<value.images
-                            <<" compile_admitted="<<value.compile_admitted<<" compile_denied="<<value.compile_denied<<" compile_duplicate_views="<<value.compile_duplicates
+                            <<" compile_admitted="<<value.compile_admitted<<" compile_denied="<<value.compile_denied<<" compile_stability_deferred="<<value.compile_stability_deferred
+                            <<" require_stable_revision="<<(gated&&mode!=0)<<" compile_duplicate_views="<<value.compile_duplicates
                             <<" compile_logical_work_bytes="<<value.compile_bytes<<" same_view_replacements="<<value.replacements
-                            <<" captured_cohort_draws="<<value.cohort_draws<<" accepted_cohort_draws="<<value.accepted_cohort_draws
+                            <<" required_raw_draws="<<value.raw_draws<<" captured_cohort_draws="<<value.cohort_draws<<" accepted_cohort_draws="<<value.accepted_cohort_draws
                             <<" bank_requested="<<value.bank_requested<<" bank_draws="<<value.bank_draws<<" fallback="<<value.bank_fallback<<" execute_calls="<<value.execute_calls
                             <<" bank_hits="<<value.bank_hits<<" bank_builds="<<value.bank_builds<<" bank_admission_requests="<<value.bank_admission_requests
                             <<" bank_admission_denials="<<value.bank_admission_denials<<" bank_logical_argument_bytes="<<value.bank_argument_bytes
@@ -373,6 +385,9 @@ static void actualNativeCohortBankCosts()
                     for(U32 sample=0;sample<samples;++sample)
                     {
                         const auto& value=costs[mode][sample];cpu[sample]=value.cpu;encode[sample]=value.encode;complete[sample]=value.complete;gpu[sample]=value.gpu;
+                        direct_totals.raw_draws+=value.raw_draws;direct_totals.cohort_draws+=value.cohort_draws;
+                        direct_totals.compile_admitted+=value.compile_admitted;direct_totals.compile_denied+=value.compile_denied;
+                        direct_totals.compile_stability_deferred+=value.compile_stability_deferred;
                         direct_totals.direct_builds+=value.direct_builds;direct_totals.direct_hits+=value.direct_hits;direct_totals.direct_encoded_calls+=value.direct_encoded_calls;
                         direct_totals.direct_slot_allocations+=value.direct_slot_allocations;direct_totals.direct_slot_hits+=value.direct_slot_hits;
                         direct_totals.direct_binding_work_bytes+=value.direct_binding_work_bytes;
@@ -380,7 +395,7 @@ static void actualNativeCohortBankCosts()
                         direct_totals.direct_binding_bytes=std::max(direct_totals.direct_binding_bytes,value.direct_binding_bytes);
                         direct_totals.live_direct_slot_bytes=std::max(direct_totals.live_direct_slot_bytes,value.live_direct_slot_bytes);
                     }
-                    std::cout<<(heavier_mesh?"NATIVE_DIRECT_BOUND_COHORT_MESH_COST family=":include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_COST family=":"NATIVE_GPU_COHORT_COST family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                    std::cout<<(gated?"NATIVE_STABLE_DIRECT_BOUND_COHORT_COST family=":heavier_mesh?"NATIVE_DIRECT_BOUND_COHORT_MESH_COST family=":include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_COST family=":"NATIVE_GPU_COHORT_COST family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
                         <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
                         <<" vertices_per_view="<<arms[mode].geometry[0]<<" indices_per_view="<<arms[mode].geometry[1]
                         <<" vertex_buffer_wrapper_extent_bytes="<<arms[mode].geometry[2]<<" index_buffer_wrapper_extent_bytes="<<arms[mode].geometry[3]
@@ -390,6 +405,9 @@ static void actualNativeCohortBankCosts()
                         <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
                         <<" completion_and_query_settle_median_ms="<<median(complete)<<" completion_and_query_settle_max_ms="<<*std::max_element(complete.begin(),complete.end())
                         <<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())
+                        <<" measured_required_raw_draws="<<direct_totals.raw_draws<<" measured_captured_cohort_draws="<<direct_totals.cohort_draws
+                        <<" measured_compile_admitted="<<direct_totals.compile_admitted<<" measured_compile_denied="<<direct_totals.compile_denied
+                        <<" measured_compile_stability_deferred="<<direct_totals.compile_stability_deferred<<" require_stable_revision="<<(gated&&mode!=0)
                         <<" measured_direct_bank_builds="<<direct_totals.direct_builds<<" measured_direct_bank_hits="<<direct_totals.direct_hits
                         <<" measured_direct_encoded_calls="<<direct_totals.direct_encoded_calls<<" measured_direct_slot_allocations="<<direct_totals.direct_slot_allocations
                         <<" measured_direct_charged_logical_binding_bytes="<<direct_totals.direct_binding_work_bytes
@@ -423,3 +441,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct pointer-bank and dire
 TEST_CASE("Actual heavy mesh retained cohorts compare ordinary direct pointer-bank and direct-bound complete costs",
           "[almetal][.native-direct-bound-cohort-mesh-cost]")
 {actualNativeCohortBankCosts<true,true>();}
+
+TEST_CASE("Actual stable retained cohorts compare ordinary direct pointer-bank and direct-bound complete costs",
+          "[almetal][.native-stable-direct-bound-cohort-cost]")
+{actualNativeCohortBankCosts<true,false,true>();}

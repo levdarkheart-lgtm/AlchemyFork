@@ -146,6 +146,11 @@ class ALNativeCohortCompilationAdmission final
 {
 public:
     using Frame = ALNativeFrameBudget::Frame;
+    struct ProducerStamp
+    {
+        std::uint64_t identity = 0, revision = 0;
+        bool operator==(const ProducerStamp&) const = default;
+    };
     struct Priority
     {
         Frame unserved_since = 0;
@@ -170,6 +175,13 @@ public:
     // must be filtered by the caller. stable_tie must be stable and unique
     // among that caller's candidates (for example, publication identity).
     Priority priority(std::uint64_t stable_tie) const noexcept;
+    // Optional owner-revision heuristic, before estimating/compiling work.
+    // A first/new stamp defers without touching the shared budget. Only the
+    // same stamp observed in a later outer frame becomes eligible. Unstable
+    // consideration still consumes this owner's frame, including probes.
+    // Ready callers proceed immediately to tryAcquire(); no credit is stored.
+    // An absent stamp preserves the existing immediate-admission behavior.
+    bool deferUnstableRevision(Frame, std::optional<ProducerStamp> = std::nullopt) noexcept;
     // At most one consideration per owner/outer frame, including denial or
     // failure. logical_bytes is checked compilation/copy/proof work, not
     // resident geometry/texture size or a wall-clock bound. unknown_bytes is
@@ -185,4 +197,6 @@ private:
     std::optional<Frame> mPendingSince;
     std::optional<Frame> mLastConsidered;
     std::optional<Frame> mLastAdmitted;
+    std::optional<ProducerStamp> mObservedProducer;
+    std::optional<Frame> mFirstObservedFrame, mLastObservedFrame;
 };

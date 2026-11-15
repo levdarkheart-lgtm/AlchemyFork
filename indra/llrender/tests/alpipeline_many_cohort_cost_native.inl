@@ -5,10 +5,11 @@
  * Included after alpipeline_buffer_publication_metal_test.cpp's fixtures.
  */
 
-template<bool include_direct_bound,bool heavier_mesh=false>
+template<bool include_direct_bound,bool heavier_mesh=false,bool gated=false>
 static void actualManyCohortBankCosts()
 {
     static_assert(!heavier_mesh||include_direct_bound);
+    static_assert(!gated||include_direct_bound);
     constexpr U32 loading_frames=8,warmup_frames=64,measured_frames=12,modes=include_direct_bound?4:3;
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::minutes(10);
     const auto cpu_ns=[]
@@ -20,7 +21,7 @@ static void actualManyCohortBankCosts()
         double cpu=0,encode=0,complete=0,gpu=0;
         U64 captured_groups=0,captured_draws=0,accepted_draws=0,raw_draws=0,replacements=0;
         U64 requested=0,bound=0,fallback=0,executions=0,hits=0,builds=0,evictions=0;
-        U64 compile_admitted=0,compile_denied=0,page_hits=0,page_builds=0,page_failures=0;
+        U64 compile_admitted=0,compile_denied=0,compile_bytes=0,compile_stability_deferred=0,page_hits=0,page_builds=0,page_failures=0;
         U64 direct_builds=0,direct_hits=0,direct_encoded_calls=0,direct_binding_bytes=0,direct_binding_limit=0,direct_binding_work_bytes=0;
         U64 direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0,live_direct_slots=0,live_direct_slot_bytes=0;
     };
@@ -237,7 +238,7 @@ static void actualManyCohortBankCosts()
                                 group.sources.size(),static_cast<U32>(candidate.flavor.family),[&]
                                 {return Inputs::ALSceneGroupPublicationNative::sealMaterial(candidate.publisher,group.dependencies,group.layout,
                                     f.model,region,group.sources,candidate.flavor,Inputs::sNativeSceneSources,
-                                    Inputs::sNativeSceneSerial,Inputs::gFrameCount);});
+                                    Inputs::sNativeSceneSerial,Inputs::gFrameCount);},gated);
                             consume(group,candidate.type,packet,region,static_cast<U32>(candidate.flavor.family));
                         }
                     }
@@ -319,6 +320,10 @@ static void actualManyCohortBankCosts()
                 value.page_hits=pages.cohort_hits-before_pages.cohort_hits;value.page_builds=pages.cohort_builds-before_pages.cohort_builds;
                 value.page_failures=pages.cohort_failures-before_pages.cohort_failures;
                 value.compile_admitted=compilation.admitted-before_compile.admitted;value.compile_denied=compilation.denied-before_compile.denied;
+                value.compile_bytes=compilation.admitted_bytes-before_compile.admitted_bytes;
+                value.compile_stability_deferred=compilation.stability_deferred-before_compile.stability_deferred;
+                if(gated&&value.compile_stability_deferred&&!value.compile_admitted&&!value.compile_denied)
+                {CHECK(value.compile_bytes==0);CHECK(compilation.requested_bytes==before_compile.requested_bytes);}
                 value.direct_builds=cache.direct_builds-before_cache.direct_builds;value.direct_hits=cache.direct_hits-before_cache.direct_hits;
                 value.direct_encoded_calls=cache.direct_encoded_calls-before_cache.direct_encoded_calls;value.direct_binding_bytes=cache.unique_retained_binding_bytes;
                 value.direct_binding_limit=cache.retained_binding_limit_bytes;value.direct_binding_work_bytes=cache.charged_logical_binding_bytes-before_cache.charged_logical_binding_bytes;
@@ -331,6 +336,12 @@ static void actualManyCohortBankCosts()
                 CHECK(budget.scene_publications_in_flight==0);CHECK(budget.scene_bytes_in_flight==0);
                 if(mode<2){CHECK(value.requested==0);CHECK(value.bound==0);CHECK(value.executions==0);}
                 if(mode==0){CHECK(value.captured_groups==0);CHECK(value.raw_draws==U64(visible_draws)*views);}
+                if(gated&&mode&&group_count==64&&!loading&&!warmup)
+                {
+                    CHECK(value.captured_groups==U64(visible_groups)*views);CHECK(value.captured_draws==U64(visible_draws)*views);
+                    CHECK(value.compile_stability_deferred==0);CHECK(value.compile_admitted==0);CHECK(value.compile_denied==0);CHECK(value.compile_bytes==0);
+                    CHECK(compilation.requested_bytes==before_compile.requested_bytes);
+                }
                 // PPD218: all64groups fit the unchanged native caches. After
                 // the declared warmups, unrelated row publications must not
                 // keep invalidating their exact table/membership proofs.
@@ -368,7 +379,7 @@ static void actualManyCohortBankCosts()
                     if constexpr(heavier_mesh)CHECK(std::any_of(pixels[mode][view].depth.begin(),pixels[mode][view].depth.end(),[](F32 depth){return depth<1.f;}));
                 }
                 const auto& geometry=arm.geometry_prefix[visible_groups];
-                std::cout<<(heavier_mesh?"NATIVE_MANY_DIRECT_BOUND_COHORT_MESH_RAW groups=":include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_RAW groups=":"NATIVE_MANY_COHORT_RAW groups=")<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
+                std::cout<<(gated?"NATIVE_MANY_STABLE_DIRECT_BOUND_COHORT_RAW groups=":heavier_mesh?"NATIVE_MANY_DIRECT_BOUND_COHORT_MESH_RAW groups=":include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_RAW groups=":"NATIVE_MANY_COHORT_RAW groups=")<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
                     <<" legacy_groups="<<visible_groups/2<<" pbr_groups="<<visible_groups/2<<" views="<<views<<" queries_per_view="<<visible_groups
                     <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
                     <<" candidate_vertices="<<geometry[0]<<" candidate_indices="<<geometry[1]
@@ -383,6 +394,7 @@ static void actualManyCohortBankCosts()
                     <<" producer_resource_descriptors="<<Inputs::ALScenePublicationNative::resource_source_publications-before_descriptors
                     <<" source_getters="<<reads[0]-before_reads[0]<<" dependency_walks="<<reads[1]-before_reads[1]<<" image_getters="<<reads[2]-before_reads[2]
                     <<" compile_admitted="<<value.compile_admitted<<" compile_denied="<<value.compile_denied
+                    <<" compile_stability_deferred="<<value.compile_stability_deferred<<" require_stable_revision="<<(gated&&mode!=0)
                     <<" compile_duplicate_views="<<compilation.duplicate_views-before_compile.duplicate_views
                     <<" compile_logical_work_bytes="<<compilation.admitted_bytes-before_compile.admitted_bytes<<" same_view_replacements="<<value.replacements
                     <<" captured_cohort_groups="<<value.captured_groups<<" captured_cohort_draws="<<value.captured_draws<<" accepted_cohort_draws="<<value.accepted_draws
@@ -437,9 +449,11 @@ static void actualManyCohortBankCosts()
             for(U32 sample=0;sample<measured_frames;++sample)
             {
                 const auto& value=measured[mode][sample];cpu[sample]=value.cpu;encode[sample]=value.encode;complete[sample]=value.complete;gpu[sample]=value.gpu;
+                totals.raw_draws+=value.raw_draws;totals.captured_draws+=value.captured_draws;
                 totals.requested+=value.requested;totals.bound+=value.bound;totals.fallback+=value.fallback;totals.executions+=value.executions;
                 totals.hits+=value.hits;totals.builds+=value.builds;totals.evictions+=value.evictions;
                 totals.compile_admitted+=value.compile_admitted;totals.compile_denied+=value.compile_denied;
+                totals.compile_stability_deferred+=value.compile_stability_deferred;
                 totals.page_hits+=value.page_hits;totals.page_builds+=value.page_builds;totals.page_failures+=value.page_failures;
                 totals.direct_builds+=value.direct_builds;totals.direct_hits+=value.direct_hits;totals.direct_encoded_calls+=value.direct_encoded_calls;
                 totals.direct_slot_allocations+=value.direct_slot_allocations;totals.direct_slot_hits+=value.direct_slot_hits;
@@ -448,7 +462,7 @@ static void actualManyCohortBankCosts()
                 totals.direct_binding_bytes=std::max(totals.direct_binding_bytes,value.direct_binding_bytes);
                 totals.live_direct_slot_bytes=std::max(totals.live_direct_slot_bytes,value.live_direct_slot_bytes);
             }
-            std::cout<<(heavier_mesh?"NATIVE_MANY_DIRECT_BOUND_COHORT_MESH_COST groups=":include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_COST groups=":"NATIVE_MANY_COHORT_COST groups=")<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
+            std::cout<<(gated?"NATIVE_MANY_STABLE_DIRECT_BOUND_COHORT_COST groups=":heavier_mesh?"NATIVE_MANY_DIRECT_BOUND_COHORT_MESH_COST groups=":include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_COST groups=":"NATIVE_MANY_COHORT_COST groups=")<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
                 <<" legacy_groups="<<group_count/2<<" pbr_groups="<<group_count/2<<" views="<<views<<" queries_per_view="<<group_count
                 <<" vertices_per_source="<<indices_per_source<<" indices_per_source="<<indices_per_source
                 <<" vertices_per_view="<<arms[mode].geometry_prefix.back()[0]<<" indices_per_view="<<arms[mode].geometry_prefix.back()[1]
@@ -460,10 +474,12 @@ static void actualManyCohortBankCosts()
                 <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
                 <<" completion_and_query_settle_median_ms="<<median(complete)<<" completion_and_query_settle_max_ms="<<*std::max_element(complete.begin(),complete.end())
                 <<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())
+                <<" measured_required_raw_draws="<<totals.raw_draws<<" measured_captured_cohort_draws="<<totals.captured_draws
                 <<" measured_bank_requested="<<totals.requested<<" measured_bank_draws="<<totals.bound<<" measured_fallback="<<totals.fallback
                 <<" measured_execute_calls="<<totals.executions<<" measured_bank_hits="<<totals.hits<<" measured_bank_builds="<<totals.builds
                 <<" measured_bank_evictions="<<totals.evictions<<" measured_page_hits="<<totals.page_hits<<" measured_page_builds="<<totals.page_builds
                 <<" measured_page_failures="<<totals.page_failures<<" measured_compile_admitted="<<totals.compile_admitted<<" measured_compile_denied="<<totals.compile_denied
+                <<" measured_compile_stability_deferred="<<totals.compile_stability_deferred<<" require_stable_revision="<<(gated&&mode!=0)
                 <<" measured_direct_bank_builds="<<totals.direct_builds<<" measured_direct_bank_hits="<<totals.direct_hits
                 <<" measured_direct_encoded_calls="<<totals.direct_encoded_calls<<" measured_direct_slot_allocations="<<totals.direct_slot_allocations
                 <<" measured_direct_charged_logical_binding_bytes="<<totals.direct_binding_work_bytes
@@ -494,3 +510,7 @@ TEST_CASE("Actual many small mixed cohorts compare ordinary direct pointer-bank 
 TEST_CASE("Actual many small mixed heavy mesh cohorts compare ordinary direct pointer-bank and direct-bound costs",
           "[almetal][.native-many-direct-bound-cohort-mesh-cost]")
 {actualManyCohortBankCosts<true,true>();}
+
+TEST_CASE("Actual many small stable mixed cohorts compare ordinary direct pointer-bank and direct-bound costs",
+          "[almetal][.native-many-stable-direct-bound-cohort-cost]")
+{actualManyCohortBankCosts<true,false,true>();}
