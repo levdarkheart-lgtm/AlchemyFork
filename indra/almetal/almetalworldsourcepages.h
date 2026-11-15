@@ -43,6 +43,10 @@ struct ALMetalWorldSourceIndexedCall
     ALMetalIndexType index_type=ALMetalIndexType::uint16;
     std::uint32_t row_id=0,row_generation=0;
 };
+struct ALMetalWorldSourceCohortRange
+{
+    std::size_t logical_begin=0,first=0,count=0;
+};
 struct ALMetalWorldSourceCommandRun
 {
     std::size_t first=0,count=0;
@@ -88,6 +92,8 @@ struct ALMetalWorldSourcePageLimits
 {
     std::size_t maximum_rows = alMetalWorldSourceMaximumRows;
     std::uint64_t maximum_metadata_bytes = 32ULL * 1024 * 1024;
+    // Cache entries are ordered compositions; total retained calls/metadata
+    // still bound the underlying cohort references and reverse-row nodes.
     std::size_t maximum_cached_cohorts=128,maximum_cached_cohort_rows=8192;
     std::size_t maximum_cached_cohort_metadata_bytes=8*1024*1024;
     // Zero resolves to the existing hardware-derived source-working-set cap.
@@ -96,7 +102,7 @@ struct ALMetalWorldSourcePageLimits
 struct ALMetalWorldSourcePageStats
 {
     std::uint64_t requests=0,hits=0,row_publications=0,failures=0;
-    std::uint64_t encoded_row_bytes=0,copied_page_bytes=0,copied_bank_bytes=0;
+    std::uint64_t encoded_row_bytes=0,encoded_mapping_bytes=0,copied_page_bytes=0,copied_bank_bytes=0;
     std::uint64_t page_allocations=0,bank_allocations=0,view_bytes=0,binds=0;
     // Actual padded CPU copies into FrameData; arena physical pages remain
     // in FrameData accounting, separate from the standalone view buffers.
@@ -108,7 +114,7 @@ struct ALMetalWorldSourcePageStats
     std::uint64_t device_checks=0,device_proof_hits=0,device_rejections=0;
     std::size_t device_proof_entries=0;
     std::uint64_t cohort_requests=0,cohort_hits=0,cohort_builds=0,cohort_failures=0;
-    std::size_t cached_cohorts=0,cached_cohort_rows=0,cached_cohort_metadata_bytes=0;
+    std::size_t cached_compositions=0,cached_cohorts=0,cached_cohort_rows=0,cached_cohort_metadata_bytes=0;
     // Gross unique root texture allocations held by this idle cache; overlaps
     // other active owners and must not be added to a physical memory total.
     std::uint64_t cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
@@ -117,10 +123,11 @@ struct ALMetalWorldSourcePageStats
 // Logical encoder ranges and exact CPU copy/zero operations are separate
 // quantities. Their checked sum is the publication-work admission unit, not
 // unique physical RAM or measured driver/GPU memory traffic. Allocation bytes
-// exclude required per-view region/global/map buffers and are not added twice.
+// include retained composition-map allocations, exclude required per-view
+// camera/global/ephemeral-map buffers, and are not added to the work sum twice.
 struct ALMetalWorldSourcePublicationWork
 {
-    std::uint64_t encoded_row_bytes=0,encoded_table_bytes=0,encoded_bank_range_bytes=0;
+    std::uint64_t encoded_row_bytes=0,encoded_table_bytes=0,encoded_bank_range_bytes=0,encoded_mapping_bytes=0;
     std::uint64_t copied_page_bytes=0,copied_bank_bytes=0,zeroed_page_bytes=0,zeroed_bank_bytes=0;
     std::uint64_t allocation_bytes=0;
     std::uint64_t chargedBytes() const noexcept;
@@ -134,6 +141,8 @@ public:
     std::uint32_t rowId(std::size_t request_index) const noexcept;
     std::uint32_t allocationGeneration(std::size_t request_index) const noexcept;
     std::shared_ptr<const ALMetalWorldSourceCommandMembership> commandMembership() const noexcept;
+    // Cumulative native call offsets, retaining original logical gaps/order.
+    std::span<const ALMetalWorldSourceCohortRange> cohortRanges() const noexcept;
     // Includes the exact index generation whose native device freeze proved.
     bool matchesSourceCommand(std::size_t request_index,const ALMetalWorldSourceKey&,
                               const ALMetalBuffer& indices) const noexcept;
@@ -178,6 +187,12 @@ public:
     // retains the standalone immutable-buffer lifetime.
     std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohortForCommand(
         ALMetalCommandBuffer&,const ALMetalWorldSourceCohortView&,
+        const ALMetalWorldSourceGlobals&,std::string* error=nullptr,ALMetalWorldFrameData* frame_data=nullptr);
+    // Homogeneous ordered pass. Only cold publication expands static sources;
+    // warm qualification visits cohort owners/views. Equal region identities
+    // require equal176B transforms; a source row cannot select two regions.
+    std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohortsForCommand(
+        ALMetalCommandBuffer&,std::span<const ALMetalWorldSourceCohortView>,
         const ALMetalWorldSourceGlobals&,std::string* error=nullptr,ALMetalWorldFrameData* frame_data=nullptr);
     // Product owner injection only; generic/native fixtures default to no
     // policy. Dirty standalone freeze refuses an active policy (no command

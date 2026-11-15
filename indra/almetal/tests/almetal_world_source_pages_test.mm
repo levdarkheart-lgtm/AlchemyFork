@@ -5,6 +5,7 @@
  */
 #include "almetal_world_source_pages_fixture.h"
 #include "../almetalworldcohort.h"
+#include "../almetalworldsourcecommands.h"
 #include <cstdlib>
 #include <filesystem>
 #include <unordered_set>
@@ -903,5 +904,320 @@ TEST_CASE("almetal: bounded many small Legacy and PBR cohorts converge without s
         }
         pages->clear();CHECK(pages->stats().cached_cohorts==0);CHECK(pages->stats().cached_cohort_rows==0);
         CHECK(pages->stats().cached_cohort_metadata_bytes==0);
+    }
+}
+
+namespace
+{
+PageFixture::Encoded encodeOrderedPass(CohortPageFixture& f,
+    std::span<const std::shared_ptr<const ALMetalWorldSourceFrameView>> frames,
+    std::span<const ALMetalWorldSimpleBatch* const> sources,
+    std::unique_ptr<ALMetalCommandBuffer> command,
+    std::shared_ptr<const ALMetalBuffer>& queries,ALMetalWorldSourceCommands* commands=nullptr,
+    const ALMetalWorldSourceCommands::Batch* bank=nullptr)
+{
+    REQUIRE(command);REQUIRE_FALSE(frames.empty());REQUIRE_FALSE(sources.empty());
+    const bool aggregate=frames.size()==1;const auto ranges=aggregate?frames[0]->cohortRanges():std::span<const ALMetalWorldSourceCohortRange>{};
+    const auto count=aggregate?ranges.size():frames.size();REQUIRE(count==sources.size());
+    ALMetalRenderPipelineDescriptor pd;pd.library=f.library.get();pd.support_indirect_commands=true;
+    const bool pbr=sources[0]->pbr_slot_count!=0;
+    pd.vertex_function=pbr?"almetal_world_pbr_source_rows_vertex":"almetal_world_material_source_rows_vertex";
+    pd.fragment_function=pbr?"almetal_world_pbr_source_rows_fragment":"almetal_world_material_source_rows_fragment";
+    pd.color_attachment_count=4;for(unsigned slot=0;slot<4;++slot)pd.colors[slot].format=ALMetalPixelFormat::rgba8_unorm;
+    pd.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
+    auto pipeline=ALMetalRenderPipeline::create(*f.device,pd,&f.error);REQUIRE(pipeline);
+    ALMetalRenderTargetDescriptor td;td.width=td.height=side;td.color_attachment_count=4;
+    for(unsigned slot=0;slot<4;++slot)td.colors[slot].format=ALMetalPixelFormat::rgba8_unorm;
+    td.depth_stencil_format=pd.depth_stencil_format;PageFixture::Encoded output;
+    output.target=ALMetalRenderTarget::create(*f.device,td,&f.error);REQUIRE(output.target);output.command=std::move(command);
+    ALMetalBufferDescriptor q;q.length=count*sizeof(std::uint64_t);q.storage=ALMetalStorageMode::shared;
+    queries=ALMetalBuffer::create(*f.device,q,&f.error);REQUIRE(queries);std::memset(queries->mappedBytes(),0,q.length);
+    ALMetalRenderPassConfig config;config.depth_store=config.stencil_store=ALMetalStoreAction::store;
+    auto pass=output.target->makeRenderPass(config,&f.error);REQUIRE(pass);
+    ((__bridge MTLRenderPassDescriptor*)pass->nativeHandle()).visibilityResultBuffer=(__bridge id<MTLBuffer>)queries->nativeHandle();
+    auto encoder=ALMetalRenderEncoder::begin(*output.command,*pass,"Ordered source pass query boundaries",&f.error);REQUIRE(encoder);
+    ALMetalDepthStencilDescriptor dd;auto depth=ALMetalDepthStencilState::create(*f.device,dd,&f.error);REQUIRE(depth);
+    REQUIRE(encoder->setPipeline(*pipeline,&f.error));REQUIRE(encoder->setDepthStencilState(depth.get(),&f.error));
+    REQUIRE(encoder->setViewport({0,0,side,side,0,1},&f.error));REQUIRE(encoder->setScissor({0,0,side,side},&f.error));
+    REQUIRE(encoder->setCullMode(ALMetalCullMode::none,&f.error));
+    for(std::size_t group=0;group<count;++group)
+    {
+        REQUIRE(encoder->setVisibilityResultMode(ALMetalVisibilityResultMode::counting,group*sizeof(std::uint64_t),&f.error));
+        const auto& frame=*frames[aggregate?0:group];
+        if(commands && bank)REQUIRE(commands->executeRange(*encoder,*output.command,*bank,ranges[group].first,ranges[group].count,&f.error));
+        else
+        {
+            REQUIRE(frame.bind(*encoder,*output.command,&f.error));const auto& source=*sources[group];
+            const auto first=aggregate?ranges[group].first:0,draws=aggregate?ranges[group].count:frame.size();
+            for(std::size_t draw=0;draw<draws;++draw)
+                REQUIRE(encoder->drawIndexedWithBaseInstance(ALMetalPrimitiveType::triangle,source.index_count,source.index_type,
+                    *source.indices,source.index_offset,frame.rowId(first+draw),&f.error));
+        }
+    }
+    REQUIRE(encoder->setVisibilityResultMode(ALMetalVisibilityResultMode::disabled,0,&f.error));REQUIRE(encoder->end(&f.error));return output;
+}
+std::vector<std::uint64_t> passQueries(const ALMetalBuffer& buffer)
+{
+    std::vector<std::uint64_t> values(buffer.length()/sizeof(std::uint64_t));
+    std::memcpy(values.data(),buffer.mappedBytes(),buffer.length());return values;
+}
+}
+
+TEST_CASE("almetal: ordered native passes share mixed-region publication and unchanged command ranges with exact query output",
+          "[almetal][world-source-pages][world-cohort][world-source-pass]")
+{
+    @autoreleasepool
+    {
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);CohortPageFixture f(family,2);auto pages=f.pages();
+            std::array<ALMetalWorldSourceCohortView,2> groups;
+            for(unsigned group=0;group<2;++group)
+            {
+                groups[group]=f.cohortView();groups[group].cohort=ALMetalWorldSourceCohort::seal(
+                    std::span(f.descriptions->keys).subspan(group,1),f.descriptions,f.resources,7+group,&f.error,&CohortPageFixture::resolve);
+                REQUIRE(groups[group].cohort);groups[group].logical_begin=3+group*4;
+                groups[group].view.modelview_projection[12]=group?.4f:-.4f;
+            }
+            auto reference_command=f.device->makeCommandBuffer("Separate regional view reference",&f.error);REQUIRE(reference_command);
+            std::array<std::shared_ptr<const ALMetalWorldSourceFrameView>,2> separate;
+            for(unsigned group=0;group<2;++group)
+            {separate[group]=pages->freezeCohortForCommand(*reference_command,groups[group],f.globals,&f.error);REQUIRE(separate[group]);}
+            const std::array<const ALMetalWorldSimpleBatch*,2> sources{&f.descriptions->sources[0],&f.descriptions->sources[1]};
+            std::shared_ptr<const ALMetalBuffer> expected_queries;
+            auto reference=encodeOrderedPass(f,separate,sources,std::move(reference_command),expected_queries);
+            REQUIRE(reference.command->commitAndWait(&f.error));const auto expected=f.read(*reference.target);
+            const auto counts=passQueries(*expected_queries);REQUIRE(counts[0]>0);REQUIRE(counts[1]>0);
+            auto arena=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(arena);arena->beginFrame(1);
+            auto command=f.device->makeCommandBuffer("One mixed-region ordered native pass",&f.error);REQUIRE(command);
+            const auto before=arena->stats();auto frame=pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error,arena.get());INFO(f.error);REQUIRE(frame);
+            REQUIRE(frame->size()==2);REQUIRE(frame->cohortRanges().size()==2);
+            CHECK(frame->cohortRanges()[0].logical_begin==3);CHECK(frame->cohortRanges()[1].logical_begin==7);
+            CHECK(frame->cohortRanges()[0].first==0);CHECK(frame->cohortRanges()[1].first==1);
+            CHECK(arena->stats().published_bytes-before.published_bytes==544); //2*176, aligned globals512+32
+            auto commands=ALMetalWorldSourceCommands::create(*f.device,{},&f.error);REQUIRE(commands);
+            auto bank=commands->prepareCohortForCommand(*command,frame,&f.error);INFO(f.error);REQUIRE(bank);CHECK(bank->size()==2);
+            const std::array<std::shared_ptr<const ALMetalWorldSourceFrameView>,1> aggregate{frame};
+            std::shared_ptr<const ALMetalBuffer> actual_queries;
+            auto actual=encodeOrderedPass(f,aggregate,sources,std::move(command),actual_queries,commands.get(),bank.get());
+            REQUIRE(actual.command->commitAndWait(&f.error));CHECK(f.read(*actual.target)==expected);CHECK(passQueries(*actual_queries)==counts);
+            const auto old=pages->stats();const auto membership=frame->commandMembership();
+            for(auto& group:groups)group.view.modelview_projection[13]=.125f;
+            auto next=f.device->makeCommandBuffer("Warm pass other camera",&f.error);REQUIRE(next);
+            auto warm=pages->freezeCohortsForCommand(*next,groups,f.globals,&f.error,arena.get());REQUIRE(warm);
+            CHECK(warm->commandMembership()==membership);CHECK(pages->stats().requests==old.requests);
+            CHECK(pages->stats().row_publications==old.row_publications);CHECK(pages->stats().arena_views==old.arena_views+1);
+            auto reused=commands->prepareCohortForCommand(*next,warm,&f.error);REQUIRE(reused);CHECK(commands->stats().hits==1);
+        }
+    }
+}
+
+TEST_CASE("almetal: sixty-four and256 cohort compositions share one view without per-source warm expansion",
+          "[almetal][world-source-pages][world-cohort][world-source-pass]")
+{
+    @autoreleasepool
+    {
+        for(unsigned count:{64u,256u})
+        {
+            CAPTURE(count);CohortPageFixture f;auto pages=f.pages();
+            std::vector<std::shared_ptr<PageCohortCpu>> owners;
+            std::vector<ALMetalWorldSourceCohortView> groups;
+            for(unsigned group=0;group<count;++group)
+            {
+                auto cpu=std::make_shared<PageCohortCpu>();cpu->sources.assign(2,f.descriptions->sources[0]);
+                for(unsigned row=0;row<2;++row)cpu->keys.push_back({{100+group*2+row,1,1},&cpu->sources[row]});
+                auto selected=f.cohortView();selected.cpu_owner=cpu;selected.logical_begin=group*2;
+                selected.cohort=ALMetalWorldSourceCohort::seal(cpu->keys,cpu,f.resources,7,&f.error,&CohortPageFixture::resolve);REQUIRE(selected.cohort);
+                owners.push_back(std::move(cpu));groups.push_back(std::move(selected));
+            }
+            auto arena=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(arena);arena->beginFrame(1);
+            auto command=f.device->makeCommandBuffer("Cold large ordered cohort composition",&f.error);REQUIRE(command);
+            auto cold=pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error,arena.get());INFO(f.error);REQUIRE(cold);
+            const auto first=pages->stats();CHECK(first.cached_compositions==1);CHECK(first.cached_cohorts==count);
+            CHECK(first.cached_cohort_rows==count*2);CHECK(first.cached_cohort_metadata_bytes<=8*1024*1024);
+            CHECK(first.arena_views==1);CHECK(first.arena_view_bytes==288);CHECK(cold->cohortRanges().size()==count);
+            const auto before=arena->stats();const auto allocated=alMetalResourceAllocationStats();
+            auto next=f.device->makeCommandBuffer("Warm large ordered cohort composition",&f.error);REQUIRE(next);
+            auto warm=pages->freezeCohortsForCommand(*next,groups,f.globals,&f.error,arena.get());REQUIRE(warm);
+            CHECK(warm->commandMembership()==cold->commandMembership());CHECK(pages->stats().requests==first.requests);
+            CHECK(pages->stats().row_publications==first.row_publications);CHECK(pages->stats().admission_requests==first.admission_requests);
+            CHECK(pages->stats().arena_views==first.arena_views+1);CHECK(arena->stats().published_bytes-before.published_bytes==288);
+            CHECK(alMetalResourceAllocationStats().buffers_created==allocated.buffers_created);
+            for(unsigned group=0;group<count;++group)
+            {CHECK(warm->cohortRanges()[group].first==group*2);CHECK(warm->cohortRanges()[group].count==2);}
+            // Failure after staging the composition/watch array must not evict
+            // this usable membership; a reordered set is valid but uncached.
+            auto reordered=groups;std::reverse(reordered.begin(),reordered.end());
+            for(unsigned group=0;group<count;++group)reordered[group].logical_begin=group*2;
+            pages->failNextCohortCacheInsertionForTesting();auto retry=f.device->makeCommandBuffer("Composition cache OOM",&f.error);REQUIRE(retry);
+            auto uncached=pages->freezeCohortsForCommand(*retry,reordered,f.globals,&f.error,arena.get());REQUIRE(uncached);
+            CHECK(pages->stats().cached_compositions==1);CHECK(uncached->commandMembership()!=cold->commandMembership());
+            auto again=f.device->makeCommandBuffer("Original pass remains warm after optional cache OOM",&f.error);REQUIRE(again);
+            auto stable=pages->freezeCohortsForCommand(*again,groups,f.globals,&f.error,arena.get());REQUIRE(stable);
+            CHECK(stable->commandMembership()==cold->commandMembership());
+        }
+    }
+}
+
+TEST_CASE("almetal: ordered pass transform ambiguity and malformed membership fail before native row writes",
+          "[almetal][world-source-pages][world-cohort][world-source-pass]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pages=f.pages();auto first=f.cohortView();
+        first.cohort=ALMetalWorldSourceCohort::seal(std::span(f.descriptions->keys).first(1),f.descriptions,f.resources,7,&f.error,&CohortPageFixture::resolve);REQUIRE(first.cohort);
+        auto second=first;second.logical_begin=1;second.view.modelview_projection[12]=.25f;
+        std::array groups{first,second};auto command=f.device->makeCommandBuffer("Reject incompatible pass regional mapping",&f.error);REQUIRE(command);
+        CHECK_FALSE(pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error));CHECK(pages->stats().row_publications==0);
+        // A repeated row under different region identities is equally
+        // ambiguous for the shader's one rowID->region mapping.
+        groups[1].cohort=ALMetalWorldSourceCohort::seal(std::span(f.descriptions->keys).first(1),f.descriptions,f.resources,8,&f.error,&CohortPageFixture::resolve);
+        REQUIRE(groups[1].cohort);CHECK_FALSE(pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error));
+        CHECK(pages->stats().row_publications==0);CHECK(pages->stats().page_allocations==0);
+        groups[1]=first;groups[1].logical_begin=0;CHECK_FALSE(pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error));
+        groups[1]=first;groups[1].logical_begin=1;groups[1].native_owner=std::make_shared<unsigned>(1);
+        CHECK_FALSE(pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error));CHECK(pages->stats().cached_compositions==0);
+    }
+}
+
+TEST_CASE("almetal: ordered pass generations preserve pending pixels and retire every native tuple without CPU graphs",
+          "[almetal][world-source-pages][world-cohort][world-source-pass]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pages=f.pages();
+        std::array<std::shared_ptr<PageCohortCpu>,2> owners;
+        std::array<std::shared_ptr<Resources>,2> native;
+        std::array<ALMetalWorldSourceCohortView,2> groups;
+        std::array<const ALMetalWorldSimpleBatch*,2> sources;
+        for(unsigned group=0;group<2;++group)
+        {
+            owners[group]=std::make_shared<PageCohortCpu>();owners[group]->sources.push_back(f.descriptions->sources[group]);
+            owners[group]->keys.push_back({{group+1,1,1},&owners[group]->sources[0]});native[group]=std::make_shared<Resources>(*f.resources);
+            groups[group]=f.cohortView();groups[group].cpu_owner=owners[group];groups[group].native_owner=native[group];
+            groups[group].cohort=ALMetalWorldSourceCohort::seal(owners[group]->keys,owners[group],native[group],7+group,&f.error,&CohortPageFixture::resolve);
+            REQUIRE(groups[group].cohort);groups[group].logical_begin=group;groups[group].view.modelview_projection[12]=group?.4f:-.4f;
+            sources[group]=&owners[group]->sources[0];
+        }
+        auto reference_command=f.device->makeCommandBuffer("Original ordered pass reference",&f.error);REQUIRE(reference_command);
+        std::array<std::shared_ptr<const ALMetalWorldSourceFrameView>,2> separate;
+        for(unsigned group=0;group<2;++group)
+        {separate[group]=pages->freezeCohortForCommand(*reference_command,groups[group],f.globals,&f.error);REQUIRE(separate[group]);}
+        std::shared_ptr<const ALMetalBuffer> reference_queries;
+        auto reference=encodeOrderedPass(f,separate,sources,std::move(reference_command),reference_queries);
+        REQUIRE(reference.command->commitAndWait(&f.error));const auto expected=f.read(*reference.target);separate={};
+        auto arena=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(arena);arena->beginFrame(1);
+        auto command=f.device->makeCommandBuffer("Old ordered native pass remains uncommitted",&f.error);REQUIRE(command);
+        auto old=pages->freezeCohortsForCommand(*command,groups,f.globals,&f.error,arena.get());REQUIRE(old);
+        const auto old_membership=old->commandMembership();std::shared_ptr<const ALMetalBuffer> old_queries;
+        auto pending=encodeOrderedPass(f,std::span(&old,1),sources,std::move(command),old_queries);
+        // New immutable CPU/native owners for just B; old tuple contents and
+        // private snapshots remain untouched while its command is queued.
+        auto changed_cpu=std::make_shared<PageCohortCpu>();changed_cpu->sources.push_back(owners[1]->sources[0]);
+        changed_cpu->sources[0].materialSlots()[0].env_intensity=.9f;
+        REQUIRE(ALMetalWorldMaterialSource::publish(*f.device,changed_cpu->sources[0],f.cache,&f.error));
+        auto changed_native=std::make_shared<Resources>(*native[1]);
+        changed_native->buffers.push_back(changed_cpu->sources[0].native_material_source->materialLease());
+        changed_cpu->keys.push_back({{2,1,2},&changed_cpu->sources[0]});auto changed=groups;
+        changed[1].cpu_owner=changed_cpu;changed[1].native_owner=changed_native;
+        changed[1].cohort=ALMetalWorldSourceCohort::seal(changed_cpu->keys,changed_cpu,changed_native,8,&f.error,&CohortPageFixture::resolve);REQUIRE(changed[1].cohort);
+        unsigned denials=0;pages->setPublicationAdmission([&](const auto&)->std::shared_ptr<const void>{++denials;return {};});
+        const auto before=pages->stats();auto denied=f.device->makeCommandBuffer("Denied changed pass",&f.error);REQUIRE(denied);
+        CHECK_FALSE(pages->freezeCohortsForCommand(*denied,changed,f.globals,&f.error,arena.get()));CHECK(denials==1);
+        CHECK(pages->stats().row_publications==before.row_publications);
+        auto unchanged=f.device->makeCommandBuffer("Original pass survives denied work",&f.error);REQUIRE(unchanged);
+        auto warm=pages->freezeCohortsForCommand(*unchanged,groups,f.globals,&f.error,arena.get());REQUIRE(warm);
+        CHECK(warm->commandMembership()==old_membership);CHECK(denials==1);warm.reset();unchanged.reset();
+        pages->setPublicationAdmission({});auto next=f.device->makeCommandBuffer("Publish changed B with old pass readers",&f.error);REQUIRE(next);
+        auto current=pages->freezeCohortsForCommand(*next,changed,f.globals,&f.error,arena.get());REQUIRE(current);
+        CHECK(current->commandMembership()!=old_membership);CHECK(current->rowId(0)==old->rowId(0));
+        CHECK(current->allocationGeneration(0)==old->allocationGeneration(0));CHECK(pages->stats().copied_page_bytes>before.copied_page_bytes);
+        auto changed_sources=sources;changed_sources[1]=&changed_cpu->sources[0];std::shared_ptr<const ALMetalBuffer> changed_queries;
+        auto replacement=encodeOrderedPass(f,std::span(&current,1),changed_sources,std::move(next),changed_queries);
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate {id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold both pass generations",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        REQUIRE(pending.command->commit(&f.error));REQUIRE(replacement.command->commit(&f.error));
+        std::array<std::weak_ptr<PageCohortCpu>,2> cpu_weak{owners[0],owners[1]};
+        std::array<std::weak_ptr<Resources>,2> native_weak{native[0],native[1]};
+        std::weak_ptr<PageCohortCpu> changed_cpu_weak=changed_cpu;std::weak_ptr<Resources> changed_native_weak=changed_native;
+        groups={};changed={};owners={};native={};changed_cpu.reset();changed_native.reset();old.reset();current.reset();
+        CHECK(cpu_weak[0].expired());CHECK(cpu_weak[1].expired());CHECK(changed_cpu_weak.expired());
+        CHECK_FALSE(native_weak[0].expired());CHECK_FALSE(native_weak[1].expired());CHECK_FALSE(changed_native_weak.expired());
+        pages->trimUnusedCohorts();CHECK(pages->stats().cached_compositions==0);
+        arena.reset();gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));
+        CHECK(f.read(*pending.target)==expected);CHECK_FALSE(f.read(*replacement.target)==expected);
+        waitPageResources(native_weak[0]);waitPageResources(native_weak[1]);waitPageResources(changed_native_weak);
+    }
+}
+
+TEST_CASE("almetal: mapping-only cold pass publication is admitted before allocation and owned by its actual command",
+          "[almetal][world-source-pages][world-cohort][world-source-pass][world-source-admission]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pages=f.pages();std::array<ALMetalWorldSourceCohortView,2> groups;
+        for(unsigned group=0;group<2;++group)
+        {
+            groups[group]=f.cohortView();groups[group].logical_begin=group;
+            groups[group].view.modelview_projection[12]=group?.4f:-.4f;
+            groups[group].cohort=ALMetalWorldSourceCohort::seal(std::span(f.descriptions->keys).subspan(group,1),
+                f.descriptions,f.resources,7+group,&f.error,&CohortPageFixture::resolve);REQUIRE(groups[group].cohort);
+        }
+        auto original_command=f.device->makeCommandBuffer("Original warm rows and tables for mapping admission",&f.error);REQUIRE(original_command);
+        auto original=pages->freezeCohortsForCommand(*original_command,groups,f.globals,&f.error);REQUIRE(original);
+        const auto membership=original->commandMembership();const auto native_rows=pages->stats().row_publications;
+        const auto anotherComposition=[&]
+        {
+            auto result=groups;
+            result[0].cohort=ALMetalWorldSourceCohort::seal(std::span(f.descriptions->keys).first(1),f.descriptions,
+                f.resources,7,&f.error,&CohortPageFixture::resolve);REQUIRE(result[0].cohort);return result;
+        };
+        auto incoming=anotherComposition();ALMetalWorldSourcePublicationWork observed;unsigned calls=0;
+        pages->setPublicationAdmission([&](const auto& work)->std::shared_ptr<const void>{++calls;observed=work;return {};});
+        const auto before=pages->stats();const auto allocations=alMetalResourceAllocationStats();
+        auto denied=f.device->makeCommandBuffer("Deny mapping-only composition",&f.error);REQUIRE(denied);
+        CHECK_FALSE(pages->freezeCohortsForCommand(*denied,incoming,f.globals,&f.error));REQUIRE(calls==1);
+        CHECK(observed.encoded_mapping_bytes==2*sizeof(std::uint32_t));CHECK(observed.chargedBytes()==observed.encoded_mapping_bytes);
+        CHECK(observed.allocation_bytes==observed.encoded_mapping_bytes);
+        CHECK(observed.encoded_row_bytes==0);CHECK(observed.encoded_table_bytes==0);CHECK(observed.encoded_bank_range_bytes==0);
+        CHECK(observed.copied_page_bytes==0);CHECK(observed.copied_bank_bytes==0);CHECK(observed.zeroed_page_bytes==0);CHECK(observed.zeroed_bank_bytes==0);
+        CHECK(alMetalResourceAllocationStats().buffers_created==allocations.buffers_created);
+        CHECK(pages->stats().encoded_mapping_bytes==before.encoded_mapping_bytes);CHECK(pages->stats().row_publications==native_rows);
+        CHECK(pages->stats().cached_compositions==1);
+        auto warm_command=f.device->makeCommandBuffer("Warm old composition bypasses denied publication",&f.error);REQUIRE(warm_command);
+        auto warm=pages->freezeCohortsForCommand(*warm_command,groups,f.globals,&f.error);REQUIRE(warm);
+        CHECK(warm->commandMembership()==membership);CHECK(calls==1);
+        ALNativeFrameBudget budget;ALNativeFrameBudget::FrameInputs input;input.frame=1;budget.beginFrame(input);
+        pages->setPublicationAdmission([&](const auto& work)->std::shared_ptr<const void>
+        {++calls;observed=work;return budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,work.chargedBytes(),1).credit;});
+        const auto waitCredit=[&]
+        {
+            const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+            while(budget.snapshot().scene_publications_in_flight&&std::chrono::steady_clock::now()<end)std::this_thread::yield();
+            REQUIRE(budget.snapshot().scene_publications_in_flight==0);CHECK(budget.snapshot().scene_bytes_in_flight==0);
+        };
+        auto abandoned=f.device->makeCommandBuffer("Abandon admitted mapping-only work",&f.error);REQUIRE(abandoned);
+        auto held=pages->freezeCohortsForCommand(*abandoned,incoming,f.globals,&f.error);REQUIRE(held);
+        CHECK(observed.chargedBytes()==2*sizeof(std::uint32_t));CHECK(budget.snapshot().scene_bytes_in_flight==observed.chargedBytes());
+        CHECK(pages->stats().encoded_mapping_bytes-before.encoded_mapping_bytes==observed.encoded_mapping_bytes);
+        CHECK(pages->stats().row_publications==native_rows);abandoned.reset();waitCredit();REQUIRE(held);
+        // A second fresh certificate still needs a new retained map, even
+        // though all rows, tables and their GPU argument addresses are reused.
+        input.frame=2;budget.beginFrame(input);auto next_groups=anotherComposition();
+        auto command=f.device->makeCommandBuffer("Commit admitted mapping-only work",&f.error);REQUIRE(command);
+        auto frame=pages->freezeCohortsForCommand(*command,next_groups,f.globals,&f.error);REQUIRE(frame);
+        CHECK(observed.chargedBytes()==observed.encoded_mapping_bytes);REQUIRE(budget.snapshot().scene_publications_in_flight==1);
+        const std::array<const ALMetalWorldSimpleBatch*,2> sources{&f.descriptions->sources[0],&f.descriptions->sources[1]};
+        std::shared_ptr<const ALMetalBuffer> queries;auto encoded=encodeOrderedPass(f,std::span(&frame,1),sources,std::move(command),queries);
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate {id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold map publication receipt",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        REQUIRE(encoded.command->commit(&f.error));CHECK(budget.snapshot().scene_bytes_in_flight==observed.encoded_mapping_bytes);
+        gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));waitCredit();REQUIRE(frame);
+        const auto counts=passQueries(*queries);CHECK(counts[0]>0);CHECK(counts[1]>0);
+        CHECK(budget.snapshot().uploads_in_flight==0);CHECK(budget.snapshot().optional_views_in_flight==0);
     }
 }

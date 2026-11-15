@@ -180,7 +180,7 @@ bool sameInput(const SourceInput& a,const SourceInput& b)
 std::uint64_t ALMetalWorldSourcePublicationWork::chargedBytes()const noexcept
 {
     std::uint64_t total=0;
-    for(auto bytes:{encoded_row_bytes,encoded_table_bytes,encoded_bank_range_bytes,copied_page_bytes,copied_bank_bytes,zeroed_page_bytes,zeroed_bank_bytes})
+    for(auto bytes:{encoded_row_bytes,encoded_table_bytes,encoded_bank_range_bytes,encoded_mapping_bytes,copied_page_bytes,copied_bank_bytes,zeroed_page_bytes,zeroed_bank_bytes})
     {if(bytes>std::numeric_limits<std::uint64_t>::max()-total)return std::numeric_limits<std::uint64_t>::max();total+=bytes;}
     return total;
 }
@@ -207,6 +207,7 @@ struct CohortBinding
     std::shared_ptr<const ALMetalWorldSourceCommandMembership> membership;
     std::vector<PageProof> pages;
     std::vector<void*> geometry,numeric;
+    std::vector<std::uint32_t> native_owner_indices;
     std::vector<Asset> assets;
     bool asset_footprint_known=true;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
@@ -225,7 +226,6 @@ struct ALMetalWorldSourceFrameView::Impl
     };
     std::shared_ptr<Context> context;
     std::shared_ptr<const CohortBinding> cohort;
-    std::shared_ptr<const void> cohort_native_owner;
     std::shared_ptr<BankReader> bank;
     std::vector<std::shared_ptr<PageReader>> pages;
     std::shared_ptr<Buffer> regions,globals,mapping;
@@ -239,20 +239,24 @@ struct ALMetalWorldSourceFrameView::Impl
     {
         if(frame_data)
         {
-            if(!command || values.size()!=1)return false;
+            if(!command || values.empty() || values.size()>alMetalWorldSourceMaximumRows)return false;
             auto origin=command->completionToken();
             if(!origin || origin->isComplete())return false;
-            std::array<std::byte,288> bytes{};
-            std::memcpy(bytes.data(),values.data(),sizeof(ALMetalWorldSourceRegion));
-            std::memcpy(bytes.data()+256,&flags,sizeof(flags));
+            const auto globals_offset=(values.size_bytes()+255)&~std::size_t(255);
+            const auto length=globals_offset+sizeof(flags);
+            std::array<std::byte,288> small{};std::vector<std::byte> large;
+            if(length>small.size())large.resize(length);
+            auto* bytes=length<=small.size()?small.data():large.data();
+            std::memcpy(bytes,values.data(),values.size_bytes());
+            std::memcpy(bytes+globals_offset,&flags,sizeof(flags));
             ALMetalWorldDataSlice slice;
-            if(!frame_data->publish(*command,bytes.data(),bytes.size(),slice,error,false))return false;
-            if(!slice.buffer || slice.offset%256 || slice.length!=bytes.size() ||
-               slice.offset>slice.buffer->length() || bytes.size()>slice.buffer->length()-slice.offset)
+            if(!frame_data->publish(*command,bytes,length,slice,error,false))return false;
+            if(!slice.buffer || slice.offset%256 || slice.length!=length ||
+               slice.offset>slice.buffer->length() || length>slice.buffer->length()-slice.offset)
             {fail(error,"Native cohort arena publication returned an invalid range");return false;}
             arena_buffer=(__bridge id<MTLBuffer>)slice.buffer->nativeHandle();
             if(!arena_buffer){fail(error,"Native cohort arena publication has no native buffer");return false;}
-            arena_region_offset=slice.offset;arena_globals_offset=slice.offset+256;arena_command=origin;
+            arena_region_offset=slice.offset;arena_globals_offset=slice.offset+globals_offset;arena_command=origin;
             return true;
         }
         regions=makeBuffer(context,values.size_bytes(),"Alchemy source regional view matrices",error);
@@ -262,6 +266,7 @@ struct ALMetalWorldSourceFrameView::Impl
         std::memcpy(globals->value->mappedBytes(),&flags,sizeof(flags));return true;
     }
     std::vector<std::uint32_t> rows,generations;
+    std::vector<ALMetalWorldSourceCohortRange> ranges;
     std::vector<CommandSource> commands;
     std::vector<std::shared_ptr<const void>> native_owners;
     std::vector<std::shared_ptr<const ALMetalBuffer>> buffers;
@@ -274,6 +279,7 @@ ALMetalWorldSourceFrameView::ALMetalWorldSourceFrameView(std::unique_ptr<Impl> i
 ALMetalWorldSourceFrameView::~ALMetalWorldSourceFrameView()=default;
 std::size_t ALMetalWorldSourceFrameView::size()const noexcept
 {return mImpl->cohort?mImpl->cohort->membership->calls().size():mImpl->rows.size();}
+std::span<const ALMetalWorldSourceCohortRange> ALMetalWorldSourceFrameView::cohortRanges()const noexcept{return mImpl->ranges;}
 std::shared_ptr<const ALMetalWorldSourceCommandMembership> ALMetalWorldSourceFrameView::commandMembership()const noexcept
 {return mImpl->cohort?mImpl->cohort->membership:nullptr;}
 std::uint32_t ALMetalWorldSourceFrameView::rowId(std::size_t index)const noexcept
@@ -383,9 +389,14 @@ struct ALMetalWorldSourcePages::Impl
     std::shared_ptr<Buffer> cohort_mapping;
     struct CohortEntry
     {
-        std::weak_ptr<const ALMetalWorldSourceCohort> cohort;
-        std::weak_ptr<const void> native;
-        const void* native_pointer=nullptr;
+        struct Owner
+        {
+            std::weak_ptr<const ALMetalWorldSourceCohort> cohort;
+            std::weak_ptr<const void> cpu,native;
+            const void* cpu_pointer=nullptr;const void* native_pointer=nullptr;
+        };
+        std::vector<Owner> owners;
+        std::size_t hash=0;
         std::shared_ptr<const CohortBinding> binding;
         CohortValidity validity;
         // Exactly one node per numeric call, bounded by cached_cohort_rows.
@@ -395,7 +406,7 @@ struct ALMetalWorldSourcePages::Impl
     // Declared after fixed rows: node destructors always see live Row heads,
     // including ordinary Impl destruction and failed staging/clear paths.
     std::list<CohortEntry> cohorts;
-    std::size_t cohort_rows=0,cohort_metadata=0;
+    std::size_t cohort_rows=0,cohort_metadata=0,cohort_references=0;
     struct AssetRef {std::uint64_t bytes;std::size_t references=0;bool staged=false;};
     std::unordered_map<void*,AssetRef> cohort_assets;
     std::uint64_t cohort_asset_bytes=0;
@@ -427,13 +438,16 @@ struct ALMetalWorldSourcePages::Impl
                 if(!found->second.staged){released+=found->second.bytes;cohort_assets.erase(found);}
             }
         }
-        cohort_rows-=entry->binding->membership->calls().size();cohort_metadata-=entry->binding->metadata;cohorts.erase(entry);
+        cohort_rows-=entry->binding->membership->calls().size();cohort_metadata-=entry->binding->metadata;
+        cohort_references-=entry->owners.size();cohorts.erase(entry);
         return released;
     }
     void pruneCohorts()noexcept
     {
         for(auto it=cohorts.begin();it!=cohorts.end();)
-            if(it->cohort.expired()||it->native.expired()||!current(*it)){auto old=it++;eraseCohort(old);}else ++it;
+            if(!current(*it)||std::any_of(it->owners.begin(),it->owners.end(),[](const auto& owner)
+                {return owner.cohort.expired()||owner.cpu.expired()||owner.native.expired();}))
+                {auto old=it++;eraseCohort(old);}else ++it;
     }
     bool proveDevice(const ALMetalBuffer& buffer,std::string* error)
     {
@@ -582,41 +596,79 @@ std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::free
 {return freezeInternal(&command,requests,regions,globals,error);}
 std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeCohortForCommand(
     ALMetalCommandBuffer& command,const ALMetalWorldSourceCohortView& supplied,
+    const ALMetalWorldSourceGlobals& globals,std::string* error,ALMetalWorldFrameData* frame_data)
+{return freezeCohortsForCommand(command,std::span(&supplied,1),globals,error,frame_data);}
+std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeCohortsForCommand(
+    ALMetalCommandBuffer& command,std::span<const ALMetalWorldSourceCohortView> supplied,
     const ALMetalWorldSourceGlobals& supplied_globals,std::string* error,ALMetalWorldFrameData* frame_data)
 try
 {
     auto& state=*mImpl;++state.statistics.cohort_requests;
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldSourceFrameView>
     {++state.statistics.cohort_failures;fail(error,message);return {};};
-    // Snapshot once on the owner. An admission callback cannot substitute the
-    // caller's cohort, owners, or view after the immutable plan is captured.
-    const auto selected=supplied;const auto globals=supplied_globals;
+    const auto globals=supplied_globals;
     if(!state.supported || command.isCommitted() || command.nativeDevice()!=(__bridge void*)state.context->native ||
-       !selected.cohort || !selected.cohort->matchesOwners(selected.cpu_owner,selected.native_owner) ||
-       !ALMetalWorldSourceCohort::validView(selected.view) || selected.cohort->family()<1 || selected.cohort->family()>2 ||
-       !selected.cohort->size() || selected.cohort->size()>state.limits.maximum_rows ||
-       !finite(globals.mirror_clip_plane,4)||globals.flags[0]>1||globals.flags[1]>1||globals.flags[2]>1||globals.flags[3])
-        return reject("Native cohort publication requires exact completed ordinary material ownership");
+       supplied.empty() || supplied.size()>state.limits.maximum_rows || !finite(globals.mirror_clip_plane,4) ||
+       globals.flags[0]>1||globals.flags[1]>1||globals.flags[2]>1||globals.flags[3])
+        return reject("Native ordered cohort pass shape or command is invalid");
     if(state.force_failure){state.force_failure=false;return reject("Forced native cohort publication failure");}
-    ALMetalWorldSourceRegion region;
-    std::memcpy(region.modelview_projection,selected.view.modelview_projection,64);
-    std::memcpy(region.modelview,selected.view.modelview,64);
-    std::memcpy(region.normal_matrix,selected.view.normal_matrix,48);
-    state.pruneCohorts();
+    struct Selection
+    {
+        std::shared_ptr<const ALMetalWorldSourceCohort> cohort;
+        std::shared_ptr<const void> cpu,native;
+        std::uint32_t region=0;
+    };
+    std::vector<Selection> selections;selections.reserve(supplied.size());
+    std::vector<ALMetalWorldSourceCohortRange> ranges;ranges.reserve(supplied.size());
+    std::vector<ALMetalWorldSourceRegion> regions;
+    std::unordered_map<std::uint64_t,std::uint32_t> region_slots;
+    std::size_t total=0,previous_end=0,composition_hash=1469598103934665603ULL;std::uint32_t family=0;
+    for(const auto& selected:supplied)
+    {
+        if(!selected.cohort || !selected.cohort->matchesOwners(selected.cpu_owner,selected.native_owner) ||
+           !ALMetalWorldSourceCohort::validView(selected.view) || !selected.cohort->size() ||
+           selected.cohort->size()>state.limits.maximum_rows-total || selected.cohort->family()<1 || selected.cohort->family()>2 ||
+           (family && family!=selected.cohort->family()) || (!selections.empty()&&selected.logical_begin<previous_end) ||
+           selected.logical_begin>std::numeric_limits<std::size_t>::max()-selected.cohort->size())
+            return reject("Native ordered cohort pass has incompatible owners, family or logical order");
+        family=selected.cohort->family();
+        ALMetalWorldSourceRegion region;
+        std::memcpy(region.modelview_projection,selected.view.modelview_projection,64);
+        std::memcpy(region.modelview,selected.view.modelview,64);std::memcpy(region.normal_matrix,selected.view.normal_matrix,48);
+        const auto identity=selected.cohort->regionIdentity();
+        const auto [slot,inserted]=region_slots.try_emplace(identity,static_cast<std::uint32_t>(regions.size()));
+        if(inserted)regions.push_back(region);
+        else if(std::memcmp(&regions[slot->second],&region,sizeof(region)))
+            return reject("Native cohort region identity has conflicting per-view transforms");
+        selections.push_back({selected.cohort,selected.cpu_owner,selected.native_owner,slot->second});
+        ranges.push_back({selected.logical_begin,total,selected.cohort->size()});
+        total+=selected.cohort->size();previous_end=selected.logical_begin+selected.cohort->size();
+        for(const auto pointer:{static_cast<const void*>(selected.cohort.get()),selected.native_owner.get()})
+            composition_hash=(composition_hash^std::hash<const void*>{}(pointer))*1099511628211ULL;
+    }
+    // Exact weak control blocks follow the cheap hash. A warm composition
+    // visits G owner/view records and cached physical pages, never N sources.
+    // Expired unrelated compositions are handled by the explicit frame-owner
+    // trim boundary or the cold path, not scanned per source/group here.
     for(auto entry=state.cohorts.begin();entry!=state.cohorts.end();++entry)
     {
-        if(entry->cohort.lock()!=selected.cohort || entry->cohort.owner_before(selected.cohort)||selected.cohort.owner_before(entry->cohort) ||
-           entry->native_pointer!=selected.native_owner.get() ||
-           entry->native.owner_before(selected.native_owner)||selected.native_owner.owner_before(entry->native))continue;
-        // Only writes to a member row invalidate this private cache entry.
-        // Co-resident row writes may COW its physical page; acquire CURRENT
-        // pages/bank below, whose copied member rows retain these exact tables.
-        if(!state.current(*entry))continue;
+        if(!state.current(*entry)||entry->hash!=composition_hash||entry->owners.size()!=selections.size())continue;
+        bool matches=true;
+        for(std::size_t group=0;group<selections.size();++group)
+        {
+            const auto& proof=entry->owners[group];const auto& selected=selections[group];
+            if(proof.cohort.lock()!=selected.cohort || proof.cohort.owner_before(selected.cohort)||selected.cohort.owner_before(proof.cohort) ||
+               proof.cpu_pointer!=selected.cpu.get() || proof.cpu.owner_before(selected.cpu)||selected.cpu.owner_before(proof.cpu) ||
+               proof.native_pointer!=selected.native.get() || proof.native.owner_before(selected.native)||selected.native.owner_before(proof.native))
+            {matches=false;break;}
+        }
+        if(!matches)continue;
         auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;
-        view->cohort=entry->binding;view->cohort_native_owner=selected.native_owner;view->mapping=entry->binding->mapping;
-        if(!view->publishView(&command,frame_data,std::span(&region,1),globals,error))
-            return reject("Native cohort per-view publication failed");
-        if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=288;}
+        view->cohort=entry->binding;view->mapping=entry->binding->mapping;view->ranges=std::move(ranges);
+        view->native_owners.reserve(entry->binding->native_owner_indices.size());
+        for(auto owner:entry->binding->native_owner_indices)view->native_owners.push_back(selections[owner].native);
+        if(!view->publishView(&command,frame_data,regions,globals,error))return reject("Native cohort pass per-view publication failed");
+        if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=((regions.size()*sizeof(ALMetalWorldSourceRegion)+255)&~std::size_t(255))+sizeof(globals);}
         for(const auto& proof:entry->binding->pages)
         {
             auto& page=state.pages[proof.page];auto reader=page->reader.lock();
@@ -626,71 +678,69 @@ try
         view->bank=state.bank->reader.lock();
         if(!view->bank){view->bank=std::make_shared<BankReader>();view->bank->bank=state.bank;state.bank->reader=view->bank;}
         state.cohorts.splice(state.cohorts.end(),state.cohorts,entry);
-        ++state.statistics.cohort_hits;if(!frame_data)state.statistics.view_bytes+=sizeof(region)+sizeof(globals);
+        ++state.statistics.cohort_hits;if(!frame_data)state.statistics.view_bytes+=regions.size()*sizeof(ALMetalWorldSourceRegion)+sizeof(globals);
         return std::shared_ptr<const ALMetalWorldSourceFrameView>(new ALMetalWorldSourceFrameView(std::move(view)));
     }
-    // This is the cold boundary only. Descriptor-free direct publications are
-    // left unchanged; optional GPU tables are certified from original typed
-    // texture control blocks supplied by their completed native producer.
-    std::vector<ALMetalWorldSourceRequest> requests;requests.reserve(selected.cohort->size());
-    std::vector<std::shared_ptr<const ALMetalWorldResourceSource>> resources;resources.reserve(selected.cohort->size());
-    std::unordered_map<const ALMetalTexture*,std::shared_ptr<const ALMetalTexture>> exact_textures;
-    for(std::size_t index=0;index<selected.cohort->size();++index)
+    state.pruneCohorts();
+    // The only N expansion is cold publication from completed private static
+    // records. Descriptor-free direct sources remain unchanged.
+    std::vector<ALMetalWorldSourceRequest> requests;requests.reserve(total);
+    std::vector<std::shared_ptr<const ALMetalWorldResourceSource>> resources;resources.reserve(total);
+    for(const auto& selected:selections)
     {
-        const auto& source=selected.cohort->source(index);
-        auto descriptor=source.native_resource_source;
-        if(!descriptor)
+        std::unordered_map<const ALMetalTexture*,std::shared_ptr<const ALMetalTexture>> exact_textures;
+        for(std::size_t index=0;index<selected.cohort->size();++index)
         {
-            std::vector<std::shared_ptr<const ALMetalTexture>> leases;
-            const auto add=[&](const ALMetalTexture* texture)
+            const auto& source=selected.cohort->source(index);auto descriptor=source.native_resource_source;
+            if(!descriptor)
             {
-                if(!texture)return false;
-                auto found=exact_textures.find(texture);
-                if(found==exact_textures.end())
+                std::vector<std::shared_ptr<const ALMetalTexture>> leases;
+                const auto add=[&](const ALMetalTexture* texture)
                 {
-                    auto lease=selected.cohort->resolveNativeTexture(selected.native_owner,texture);
-                    if(!lease)return false;
-                    found=exact_textures.emplace(texture,std::move(lease)).first;
-                }
-                if(std::none_of(leases.begin(),leases.end(),[&](const auto& lease){return lease.get()==texture;}))leases.push_back(found->second);
-                return true;
-            };
-            for(std::size_t slot=0;slot<source.texture_count;++slot)
-            {
-                if(!add(source.diffuse_textures[slot]))return reject("Native cohort diffuse generation proof is unavailable");
-                if(source.pbr_slot_count)
+                    if(!texture)return false;
+                    auto found=exact_textures.find(texture);
+                    if(found==exact_textures.end())
+                    {
+                        auto lease=selected.cohort->resolveNativeTexture(selected.native,texture);
+                        if(!lease)return false;
+                        found=exact_textures.emplace(texture,std::move(lease)).first;
+                    }
+                    if(std::none_of(leases.begin(),leases.end(),[&](const auto& lease){return lease.get()==texture;}))leases.push_back(found->second);
+                    return true;
+                };
+                for(std::size_t slot=0;slot<source.texture_count;++slot)
                 {
-                    const auto& material=source.pbrSlots()[slot];
-                    if(!add(material.normal_texture)||!add(material.orm_texture)||!add(material.emissive_texture))
-                        return reject("Native cohort PBR generation proof is unavailable");
+                    if(!add(source.diffuse_textures[slot]))return reject("Native cohort diffuse generation proof is unavailable");
+                    if(source.pbr_slot_count)
+                    {
+                        const auto& material=source.pbrSlots()[slot];
+                        if(!add(material.normal_texture)||!add(material.orm_texture)||!add(material.emissive_texture))
+                            return reject("Native cohort PBR generation proof is unavailable");
+                    }
+                    else
+                    {
+                        const auto& material=source.materialSlots()[slot];
+                        if((material.normal_texture&&!add(material.normal_texture))||(material.specular_texture&&!add(material.specular_texture)))
+                            return reject("Native cohort Legacy generation proof is unavailable");
+                    }
                 }
-                else
-                {
-                    const auto& material=source.materialSlots()[slot];
-                    if((material.normal_texture&&!add(material.normal_texture))||
-                       (material.specular_texture&&!add(material.specular_texture)))
-                        return reject("Native cohort Legacy generation proof is unavailable");
-                }
+                auto prototype=source;descriptor=ALMetalWorldResourceSource::publish(*state.context->device,prototype,leases,error);
+                if(!descriptor)return reject("Native cohort optional resource certification failed");
             }
-            auto prototype=source;
-            descriptor=ALMetalWorldResourceSource::publish(*state.context->device,prototype,leases,error);
-            if(!descriptor)return reject("Native cohort optional resource certification failed");
+            resources.push_back(std::move(descriptor));ALMetalWorldSourceRequest request;
+            request.key=selected.cohort->key(index);request.source=&source;request.region=selected.region;
+            request.cpu_owner=selected.cpu;request.native.owner=selected.native;requests.push_back(std::move(request));
         }
-        resources.push_back(std::move(descriptor));
-        ALMetalWorldSourceRequest request;request.key=selected.cohort->key(index);request.source=&source;
-        request.cpu_owner=selected.cpu_owner;request.native.owner=selected.native_owner;requests.push_back(std::move(request));
     }
-    auto frozen=freezeInternal(&command,requests,std::span(&region,1),globals,error,resources,true,frame_data);
+    auto frozen=freezeInternal(&command,requests,regions,globals,error,resources,true,frame_data);
     if(!frozen){++state.statistics.cohort_failures;return {};}
-    // Immutable command records are issued only after exact native publication
-    // succeeded. They contain values/native identities, never source pointers.
     auto membership=std::make_unique<ALMetalWorldSourceCommandMembership::Impl>();
     membership->device=(__bridge void*)state.context->native;membership->calls.reserve(requests.size());
     for(std::size_t index=0;index<requests.size();++index)
     {
-        const auto& source=selected.cohort->source(index);
+        const auto& source=*requests[index].source;
         if(source.index_count>std::numeric_limits<std::uint32_t>::max())return reject("Native cohort indexed count overflows");
-        membership->calls.push_back({selected.cohort->key(index),source.indices->nativeHandle(),source.index_offset,
+        membership->calls.push_back({requests[index].key,source.indices->nativeHandle(),source.index_offset,
             static_cast<std::uint32_t>(source.index_count),source.index_type,frozen->rowId(index),frozen->allocationGeneration(index)});
         if(membership->runs.empty()||membership->runs.back().double_sided!=source.double_sided)
             membership->runs.push_back({index,1,source.double_sided});
@@ -698,6 +748,9 @@ try
     }
     auto binding=std::make_shared<CohortBinding>();
     binding->membership=std::shared_ptr<const ALMetalWorldSourceCommandMembership>(new ALMetalWorldSourceCommandMembership(std::move(membership)));
+    std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> unique_native_owners;
+    for(std::size_t owner=0;owner<selections.size();++owner)
+        if(unique_native_owners.insert(selections[owner].native).second)binding->native_owner_indices.push_back(static_cast<std::uint32_t>(owner));
     auto& view=*frozen->mImpl;binding->mapping=view.mapping;binding->tables=std::move(view.tables);binding->geometry=std::move(view.geometry);
     binding->pages.reserve(view.pages.size());
     for(std::size_t page=0;page<state.pages.size();++page)
@@ -721,12 +774,13 @@ try
         binding->membership->mImpl->calls.capacity()*sizeof(ALMetalWorldSourceIndexedCall)+binding->membership->mImpl->runs.capacity()*sizeof(ALMetalWorldSourceCommandRun)+
         binding->pages.capacity()*sizeof(CohortBinding::PageProof)+(binding->geometry.capacity()+binding->numeric.capacity())*sizeof(void*)+
         binding->tables.capacity()*sizeof(binding->tables[0])+sizeof(Impl::CohortEntry)+2*sizeof(void*)+
+        selections.size()*sizeof(Impl::CohortEntry::Owner)+binding->native_owner_indices.capacity()*sizeof(std::uint32_t)+
         binding->membership->calls().size()*sizeof(CohortRowWatch)+
         binding->assets.capacity()*sizeof(CohortBinding::Asset)+binding->assets.size()*(sizeof(void*)+sizeof(Impl::AssetRef)+2*sizeof(void*));
     // Actual command views retain only the completed native tuple and native
     // metadata. Private CPU certificates/prototypes can die after encode.
-    view.cohort=binding;view.cohort_native_owner=selected.native_owner;
-    decltype(view.native_owners){}.swap(view.native_owners);decltype(view.buffers){}.swap(view.buffers);
+    view.cohort=binding;view.ranges=std::move(ranges);
+    decltype(view.buffers){}.swap(view.buffers);
     decltype(view.textures){}.swap(view.textures);decltype(view.rows){}.swap(view.rows);
     decltype(view.generations){}.swap(view.generations);decltype(view.commands){}.swap(view.commands);
     std::uint64_t own_asset_bytes=0;
@@ -753,8 +807,16 @@ try
             // Complete every fallible cache-node/accounting allocation before
             // evicting anything. Optional cache OOM preserves this valid view
             // and all older usable warm entries (PPD209).
-            staged.push_back({selected.cohort,selected.native_owner,selected.native_owner.get(),binding,{}, {}});
-            staged.back().watches=std::make_unique<CohortRowWatch[]>(binding->membership->calls().size());
+            staged.emplace_back();auto& candidate=staged.back();candidate.hash=composition_hash;candidate.binding=binding;
+            candidate.owners.reserve(selections.size());
+            for(const auto& selection:selections)
+                candidate.owners.push_back({selection.cohort,selection.cpu,selection.native,selection.cpu.get(),selection.native.get()});
+            // Account the actual retained vector capacity, including an
+            // implementation that reserves more than the requested G slots.
+            binding->metadata+=(candidate.owners.capacity()-selections.size())*sizeof(Impl::CohortEntry::Owner);
+            if(binding->metadata>state.limits.maximum_cached_cohort_metadata_bytes)
+            {++state.statistics.cohort_builds;return frozen;}
+            candidate.watches=std::make_unique<CohortRowWatch[]>(binding->membership->calls().size());
             // A partially staged array remains unregistered on failure.
             if(state.force_cache_failure){state.force_cache_failure=false;throw std::bad_alloc();}
             state.cohort_assets.reserve(state.cohort_assets.size()+binding->assets.size());
@@ -794,7 +856,7 @@ try
             head=&watch;
         }
         state.cohorts.splice(state.cohorts.end(),staged);
-        state.cohort_rows+=requests.size();state.cohort_metadata+=binding->metadata;
+        state.cohort_rows+=requests.size();state.cohort_metadata+=binding->metadata;state.cohort_references+=selections.size();
     }
     ++state.statistics.cohort_builds;return frozen;
 }
@@ -815,7 +877,7 @@ try
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldSourceFrameView>
     {++state.statistics.failures;fail(error,message);return {};};
     const auto commandValid=[&]{return !command||(!command->isCommitted()&&command->nativeDevice()==(__bridge void*)state.context->native);};
-    if((frame_data&&(!certified_cohort||regions.size()!=1))||(!overrides.empty()&&overrides.size()!=requests.size())||!state.supported||requests.empty()||requests.size()>alMetalWorldSourceMaximumRows||regions.empty()||
+    if((frame_data&&!certified_cohort)||(!overrides.empty()&&overrides.size()!=requests.size())||!state.supported||requests.empty()||requests.size()>alMetalWorldSourceMaximumRows||regions.empty()||
        regions.size()>alMetalWorldSourceMaximumRows||!finite(globals.mirror_clip_plane,4)||
        globals.flags[0]>1||globals.flags[1]>1||globals.flags[2]>1||globals.flags[3]||!commandValid())
         return reject("Native source view shape or command is invalid");
@@ -946,9 +1008,16 @@ try
         }
     }
     mapping.resize(std::size_t(highest_slot)+1);
-    const auto mapping_bytes=certified_cohort?(state.cohort_mapping?0:state.limits.maximum_rows*sizeof(std::uint32_t)):mapping.size()*sizeof(std::uint32_t);
+    const bool zero_map=certified_cohort&&regions.size()==1;
+    const auto mapping_bytes=zero_map?(state.cohort_mapping?0:state.limits.maximum_rows*sizeof(std::uint32_t)):mapping.size()*sizeof(std::uint32_t);
+    // A cold certified composition retains its mapping in the native cache.
+    // Charge that publication even when every row/table already matches. The
+    // generic ephemeral map and required per-view camera data stay excluded.
+    if(certified_cohort && mapping_bytes)
+    {work.encoded_mapping_bytes=mapping_bytes;work.allocation_bytes+=mapping_bytes;}
     const auto view_bytes=(frame_data?0:regions.size_bytes()+sizeof(globals))+mapping_bytes;
-    const auto page_allocation=work.allocation_bytes-work.encoded_table_bytes;
+    // Mapping capacity is already included exactly once in view_bytes.
+    const auto page_allocation=work.allocation_bytes-work.encoded_table_bytes-work.encoded_mapping_bytes;
     const auto live=state.context->budget->bytes.load(std::memory_order_relaxed);
     if(live>state.context->budget->limit||page_allocation>state.context->budget->limit-live||
        view_bytes>state.context->budget->limit-live-page_allocation)return reject("Native source metadata capacity is exhausted");
@@ -1040,8 +1109,8 @@ try
     }
     auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;view->tables=std::move(prepared_tables);
     if(!view->publishView(command,frame_data,regions,globals,error)){++state.statistics.failures;return {};}
-    if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=288;}
-    if(certified_cohort)
+    if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=((regions.size_bytes()+255)&~std::size_t(255))+sizeof(globals);}
+    if(zero_map)
     {
         if(!state.cohort_mapping)
         {
@@ -1053,7 +1122,8 @@ try
     }
     else view->mapping=makeBuffer(state.context,mapping.size()*sizeof(std::uint32_t),"Alchemy source to view region map",error);
     if(!view->mapping){++state.statistics.failures;return {};}
-    if(!certified_cohort)std::memcpy(view->mapping->value->mappedBytes(),mapping.data(),mapping.size()*sizeof(std::uint32_t));
+    if(!zero_map)std::memcpy(view->mapping->value->mappedBytes(),mapping.data(),mapping.size()*sizeof(std::uint32_t));
+    state.statistics.encoded_mapping_bytes+=work.encoded_mapping_bytes;
     std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> owners;
     std::unordered_set<const ALMetalBuffer*> buffers;std::unordered_set<const ALMetalTexture*> textures;std::unordered_set<void*> geometry;
     view->rows.reserve(requests.size());view->generations.reserve(requests.size());view->commands.reserve(requests.size());
@@ -1111,7 +1181,7 @@ void ALMetalWorldSourcePages::withdraw(std::uint64_t identity)noexcept
 void ALMetalWorldSourcePages::clear()noexcept
 {
     ++mImpl->epoch;
-    mImpl->cohorts.clear();mImpl->cohort_rows=mImpl->cohort_metadata=0;mImpl->cohort_assets.clear();mImpl->cohort_asset_bytes=0;
+    mImpl->cohorts.clear();mImpl->cohort_rows=mImpl->cohort_metadata=mImpl->cohort_references=0;mImpl->cohort_assets.clear();mImpl->cohort_asset_bytes=0;
     mImpl->lookup.clear();mImpl->identities.clear();mImpl->free.clear();
     for(std::size_t slot=mImpl->rows.size();slot>0;--slot)
     {auto& row=mImpl->rows[slot-1];row.valid=false;row.allocated=false;row.revision=0;row.minimum_revision=0;
@@ -1126,7 +1196,7 @@ ALMetalWorldSourcePageStats ALMetalWorldSourcePages::stats()const noexcept
     result.device_proof_entries=mImpl->device_proofs.size();
     result.cached_cohort_native_asset_bytes=mImpl->cohort_asset_bytes;
     result.cached_cohort_native_asset_limit=mImpl->limits.maximum_cached_cohort_native_asset_bytes;
-    result.cached_cohorts=mImpl->cohorts.size();result.cached_cohort_rows=mImpl->cohort_rows;result.cached_cohort_metadata_bytes=mImpl->cohort_metadata;
+    result.cached_compositions=mImpl->cohorts.size();result.cached_cohorts=mImpl->cohort_references;result.cached_cohort_rows=mImpl->cohort_rows;result.cached_cohort_metadata_bytes=mImpl->cohort_metadata;
     result.live_metadata_bytes=mImpl->context->budget->bytes.load(std::memory_order_relaxed)+mImpl->context->resources->stats().live_buffer_bytes;
     return result;
 }
