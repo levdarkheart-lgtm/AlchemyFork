@@ -42,6 +42,43 @@ ALNativeFrameBudget& ALNativeFrameBudget::instance()
     return budget;
 }
 
+void ALNativeCohortCompilationAdmission::notePending(Frame frame) noexcept
+{
+    if (!mPendingSince) mPendingSince = frame;
+}
+
+ALNativeCohortCompilationAdmission::Priority
+ALNativeCohortCompilationAdmission::priority(std::uint64_t stable_tie) const noexcept
+{
+    return {mPendingSince
+        ? std::max(*mPendingSince, mLastAdmitted.value_or(0))
+        : std::numeric_limits<Frame>::max(), stable_tie};
+}
+
+ALNativeFrameBudget::Decision ALNativeCohortCompilationAdmission::tryAcquire(
+    ALNativeFrameBudget& budget, std::uint64_t logical_bytes)
+{
+    const auto frame = budget.snapshot().frame;
+    notePending(frame);
+    // Main/probe recursion cannot reconsider even a failed or denied owner.
+    // Refuse older frame domains too; callers must not reuse this state with
+    // an unrelated budget whose serial restarts below its previous service.
+    if (mLastConsidered && frame <= *mLastConsidered)
+        return {{}, ALNativeFrameBudget::Reason::frame_work};
+    mLastConsidered = frame;
+    if (logical_bytes == ALNativeFrameBudget::unknown_bytes)
+        return {{}, ALNativeFrameBudget::Reason::frame_work};
+    auto decision = budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,
+        logical_bytes, *mPendingSince);
+    if (decision) mLastAdmitted = frame;
+    return decision;
+}
+
+void ALNativeCohortCompilationAdmission::publicationCompleted() noexcept
+{
+    mPendingSince.reset();
+}
+
 void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
 {
     std::lock_guard lock(mState->mutex);

@@ -402,7 +402,21 @@ try
             { ++statistics.declined; return {}; }
             ALScenePublicationNative::WorldFlavor flavor;
             flavor.indexed_textures = true;flavor.cohort_source = true;
-            auto source = ALScenePublicationNative::world(*info, flavor, working_set, source_serial, frame);
+            ALScenePublicationNative::WorldLease source;
+            if (!producer->publication() && info->mMetalShadowSource)
+            {
+                // A real raw reader can outlive its rejected child cache.
+                // Reuse that exact revision's immutable data without turning
+                // it into a newly admitted child publisher merely to add proof.
+                auto transient = ALScenePublicationNative::current(*info);
+                if (transient && transient->producer_revision == producer->revision())
+                {
+                    auto normalized = flavor;normalized.indexed_textures = info->mTextureList.size() > 1;
+                    if (const auto* prototype = ALScenePublicationNative::findWorld(*transient, normalized.key()))
+                        source = {std::move(transient), prototype, nullptr, true};
+                }
+            }
+            if (!source) source = ALScenePublicationNative::world(*info, flavor, working_set, source_serial, frame);
             if (!source || !cpuOnlySimple(*source.prototype))
             { ++statistics.failures; return {}; }
             auto next = std::make_shared<Source>();
@@ -412,6 +426,12 @@ try
             for (const auto& variant : source.owner->worlds)
                 if (&variant.prototype == source.prototype)
                 { next->simple_proof = variant.cohort_source;next->flavor_key = variant.key;break; }
+            if (!next->simple_proof && ALScenePublicationNative::completeWorldResources(*source.owner, *source.prototype))
+            {
+                next->simple_proof = ALMetalWorldCohortSource::seal(
+                    {{next->identity, next->flavor_key, next->revision}, source.prototype});
+                if (next->simple_proof) ++ALScenePublicationNative::cohort_source_publications;
+            }
             if (!next->simple_proof || next->simple_proof->family() != 0 || !cpuOnlySimple(next->simple_proof->source()))
             { ++statistics.failures;return {}; }
             next->resources.reserve(source.owner->resources.size());

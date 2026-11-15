@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-200 -->
+<!-- next-defect-id: PPD-202 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -4919,3 +4919,39 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before correcting the three new conditional assertion sites.
+
+
+## PPD-200 — Plain cohort transient retry fails after invalidation and eviction
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex plain immutable group restoration
+- Discovered: 2026-11-15
+- Original reference: A valid completed source must survive cache-only withdrawal through real transient readers and permit the established native retry, without manufacturing an unbudgeted publisher or pinning idle native generations.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Clean3a3c0cd3f0 required22/static69054 pass. Actual native producer suite passes48/50cases,10361/10363 assertions; existing invalidation/eviction/destruction/transient-retry case fails REQUIRE(retry) at2337 after the SIMPLE transport extension. Cohort1763/7 and earlier native renderer/resource-policy gates pass. Cause is not yet attributed to the fixture or production restoration.
+- Next action: Trace the exact lost generation/proof and model identity through the executed retry case, preserve real-reader and byte accounting checks, repair the earliest incorrect boundary, and rerun. Keep activationOFF.
+- Verification: Executed failed retry, source attribution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before investigating or changing the retry path; failed22 evidence retained.
+
+
+## PPD-201 — Expanded cohort fixture routes a plain pass through material range admission
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex mixed plain/material fixture
+- Discovered: 2026-11-15
+- Original reference: PASS_SIMPLE uses the native simple range API; material range admission deliberately rejects that pass index.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Actual native22 discovery-bypass case now iterates family0 but still unconditionally calls pushNativeMaterialRange. The helper correctly rejects type0; no renderer failure is established by that assertion.
+- Next action: Select the existing SIMPLE range API for family0 and retain material admission for families1/2; preserve matrix/owner/discovery assertions and rerun.
+- Verification: Executed fixture route failure, separate from PPD200 transient retry.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting the expanded fixture route.

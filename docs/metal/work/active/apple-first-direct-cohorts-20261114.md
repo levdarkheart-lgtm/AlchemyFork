@@ -265,3 +265,45 @@ descriptors; explicit resource/table/SourceRows tests retain their own setup.
 Root next commits/integrates and executes required21, focused native correctness,
 separate cost cases and compilation attribution. No performance acceptance or
 default activation follows from this authored freeze. Next global defect199.
+
+## Executed descriptor-free/plain checkpoint
+
+Required21 at3af1013468 fails63.043s at three Catch ternary assertions (PPD199),
+doctor/configure0. Test-only3a3c0cd3f0 required22 passes135.660s, static69054
+passes. Native cohort1763/7, direct renderer764/1+prior286/1 and earlier bank/
+budget/admission/library/region gates pass. Actual producer48/50cases,
+10361/10363 assertions: PPD201 fixture routes plain type0 to material admission;
+PPD200 plain retry loses valid source after child cache withdrawal. All other
+new descriptor-free role/ownership tests pass. The remaining22 native backend
+tail (rows7354/9, compact1990/8, resources12379/7 and old/missing libraries) passes.
+
+Material cost22 passes92880/48: all16warm CPU comparisons improve; warm512
+61.78–63.22%lower. All16cold cases still2.62–40.53%higher and13/16churn
+comparisons slower. Threeview512churn27.88–33.07%lower; oneview512churn
+21.80–22.71%higher. PBR512/oneviewchurn GPU median0.175→0.245ms is an outlier
+(+40.4%) retained with prior raw evidence; no GPU-equivalence claim.
+Plain cost22 passes46440/24: warm51267.09–69.96%lower, threeview512churn
+38.30%lower; oneview512cold48.26%higher andchurn13.04%higher. Sevenof8warm
+comparisons improve; a tiny-source case is1.26%higher. These results do not
+waive the failed transient case or establish viewer FPS.
+
+No-render compile-stage attribution22 passes115236/1: at512 sources, ordinary
+source CPU medians Legacy1.090/PBR2.793ms; resource-only promotion1.033/1.259ms;
+record-only promotion0.693/0.757ms; group from completed records0.893/0.913ms.
+Separate promotions copy their parent twice; do not sum these as full-path cost
+or assign all record/group time to copies without further evidence.
+
+PPD200 repair now frozen: SIMPLE's existing weak-transient source can create its
+missing owner-free CPU proof at the group boundary without child publication.
+Original retry assertions (no child publisher, one group residency entry, real
+reader/byte/dependency ownership) remain unchanged. PPD195 exact publication/
+revision guards are preserved. PPD201 selects the proper simple API, preserving
+matrix/owner/discovery checks. Root next required23/retests.
+
+Pure ALNativeCohortCompilationAdmission owner policy and five tests are also
+frozen in llcommon: original pending age, once-per-frame consideration, last
+admitted service priority, completed-publication reset and CPU-local credits.
+It creates no scheduler and is NOT YET integrated into postSort. Caller must
+warm-check, sort eligible owners deterministically and charge checked logical
+work bytes; logical byte caps are not wall-clock latency guarantees. Original
+whole-engine goal remains ACTIVE; source/ICB experiments and GroupSourcesOFF.

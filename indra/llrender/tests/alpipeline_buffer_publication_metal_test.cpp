@@ -1456,7 +1456,8 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
         for(U32 view=0;view<3;++view)
         {
             CAPTURE(view);REQUIRE(f.currentMaterial()==packet);Inputs::LLCullResult cull;
-            REQUIRE(cull.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()));
+            REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()):
+                cull.pushNativeSimpleRange(packet,3,f.region.snapshot())));
             CHECK(cull.getRenderMapSize(f.type)==3);CHECK(cull.beginRenderMap(f.type)==cull.endRenderMap(f.type));
             Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
             const auto matrices=Inputs::matrix_builds;{CullScope scope(cull);f.capture(pipeline);}
@@ -1481,7 +1482,8 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
         const auto geometry_packet=packet;const auto old_model=f.region.snapshot();
         REQUIRE(f.region.update(f.model,LLVector3(.25f,-.5f,0.f)));
         CHECK(f.currentMaterial()==geometry_packet);CHECK(f.region.snapshot().revision==old_model.revision+1);
-        Inputs::LLCullResult rebased;REQUIRE(rebased.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()));
+        Inputs::LLCullResult rebased;REQUIRE((family?rebased.pushNativeMaterialRange(f.type,packet,3,f.region.snapshot()):
+            rebased.pushNativeSimpleRange(packet,3,f.region.snapshot())));
         Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture);
         {CullScope scope(rebased);f.capture(pipeline);}REQUIRE(capture.complete);
         CHECK(capture.source_cohorts[0].view.modelview[12]==.25f);

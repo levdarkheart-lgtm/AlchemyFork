@@ -6,6 +6,8 @@
 #include "linden_common.h"
 #include "../alnativeframebudget.h"
 #include <catch2/catch_test_macros.hpp>
+#include <algorithm>
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -381,4 +383,171 @@ TEST_CASE("Scene credits survive policy destruction and draining admits no new s
     }
     command_owner.reset();
     SUCCEED("Actual command credit retires without borrowing the destroyed policy owner");
+}
+
+TEST_CASE("Cohort compilation is considered once across main and probe and owns no idle credit",
+          "[native-frame-budget][cohort-compilation]")
+{
+    Budget budget(smallScene());budget.beginFrame(frame(0));
+    ALNativeCohortCompilationAdmission owner;
+    owner.notePending(0);
+    REQUIRE(owner.pendingSince());CHECK(*owner.pendingSince() == 0);
+    {
+        auto main = owner.tryAcquire(budget, 8);REQUIRE(main);
+        CHECK(main.credit->work() == Budget::Work::scene_publication);
+        CHECK(budget.snapshot().scene_bytes_in_flight == 8);
+        // A failed compile retires its local CPU credit, not its pending age.
+    }
+    CHECK(budget.snapshot().scene_publications_in_flight == 0);
+    CHECK(owner.pending());CHECK(owner.lastAdmittedFrame() == 0);
+    const auto after_main = budget.snapshot();
+    CHECK_FALSE(owner.tryAcquire(budget, 8)); // ordinary/hero probe, same outer frame
+    CHECK(budget.snapshot().admitted == after_main.admitted);
+    CHECK(budget.snapshot().deferred == after_main.deferred);
+    CHECK(budget.snapshot().scene_publications_this_frame == 1);
+
+    budget.beginFrame(frame(1));owner.notePending(1); // another dirty revision
+    CHECK(owner.pendingSince() == 0);
+    {
+        auto retry = owner.tryAcquire(budget, 8);REQUIRE(retry);
+        owner.publicationCompleted();
+        CHECK_FALSE(owner.pending());
+        CHECK(budget.snapshot().scene_publications_in_flight == 1);
+    }
+    CHECK(budget.snapshot().scene_publications_in_flight == 0);
+    CHECK(owner.lastAdmittedFrame() == 1);
+    CHECK(owner.lastConsideredFrame() == 1);
+    // Caller warm lookup does not enqueue or request admission at all.
+    for (Budget::Frame id = 2; id <= 4; ++id)
+    {
+        budget.beginFrame(frame(id));
+        if (owner.pending()) FAIL("Completed warm owner must not request compilation");
+        CHECK(budget.snapshot().scene_publications_this_frame == 0);
+        CHECK(budget.snapshot().admitted == after_main.admitted + 1);
+    }
+    owner.notePending(4);
+    CHECK(owner.pendingSince() == 4);
+    { auto changed = owner.tryAcquire(budget, 8);REQUIRE(changed);owner.publicationCompleted(); }
+    // Even successful publication followed by another same-frame change is
+    // not a second compilation opportunity for the other view.
+    owner.notePending(4);
+    CHECK_FALSE(owner.tryAcquire(budget, 8));
+    CHECK(budget.snapshot().scene_publications_this_frame == 1);
+}
+
+TEST_CASE("Failed cohort publication requeues behind older unserved owners with stable ties",
+          "[native-frame-budget][cohort-compilation]")
+{
+    auto limits = smallScene();limits.scene_publications_per_frame = 1;
+    Budget budget(limits);
+    std::array<ALNativeCohortCompilationAdmission, 3> owners;
+    const std::array<std::uint64_t, 3> identities{30, 10, 20};
+    for (auto& owner : owners) owner.notePending(1);
+    const std::array<std::size_t, 6> expected{1, 2, 0, 1, 2, 0};
+    for (std::size_t iteration = 0; iteration < expected.size(); ++iteration)
+    {
+        budget.beginFrame(frame(10 + iteration));
+        std::array<std::size_t, 3> order{0, 1, 2};
+        std::sort(order.begin(), order.end(), [&](auto a, auto b)
+        { return owners[a].priority(identities[a]) < owners[b].priority(identities[b]); });
+        CHECK(order.front() == expected[iteration]);
+        unsigned admitted = 0;
+        for (const auto index : order)
+        {
+            const auto old_service = owners[index].lastAdmittedFrame();
+            auto decision = owners[index].tryAcquire(budget, 8);
+            if (decision)
+            {
+                ++admitted;CHECK(index == expected[iteration]);
+                CHECK(owners[index].lastAdmittedFrame() == 10 + iteration);
+                // Deliberately fail every publication. Never clear pending.
+            }
+            else CHECK(owners[index].lastAdmittedFrame() == old_service);
+        }
+        CHECK(admitted == 1);
+        CHECK(budget.snapshot().scene_publications_this_frame == 1);
+        CHECK(budget.snapshot().scene_publications_in_flight == 0);
+        for (const auto& owner : owners) CHECK(owner.pendingSince() == 1);
+    }
+}
+
+TEST_CASE("Aged cohort owners use the existing pressure progress lane without starvation by failed service",
+          "[native-frame-budget][cohort-compilation]")
+{
+    Budget budget(smallScene());
+    std::array<ALNativeCohortCompilationAdmission, 2> owners;
+    owners[0].notePending(1);owners[1].notePending(2);
+    for (Budget::Frame id = 3; id <= 5; ++id)
+    {
+        auto input = frame(id);input.required_main_cpu_ns = 45'000'000;
+        budget.beginFrame(input);
+        std::array<std::size_t, 2> order{0, 1};
+        std::sort(order.begin(), order.end(), [&](auto a, auto b)
+        { return owners[a].priority(a) < owners[b].priority(b); });
+        unsigned admitted = 0;
+        for (const auto index : order)
+        {
+            auto decision = owners[index].tryAcquire(budget, 8);
+            if (!decision) continue;
+            ++admitted;CHECK(decision.reason == Budget::Reason::progress);
+            CHECK(index == (id == 4 ? 0 : 1));
+        }
+        CHECK(admitted == (id == 3 ? 0 : 1));
+    }
+    CHECK(owners[0].pendingSince() == 1);CHECK(owners[1].pendingSince() == 2);
+    CHECK(owners[0].lastAdmittedFrame() == 4);CHECK(owners[1].lastAdmittedFrame() == 5);
+}
+
+TEST_CASE("Hard cohort denial leaves service priority intact and cannot retry in a later view",
+          "[native-frame-budget][cohort-compilation]")
+{
+    Budget budget(smallScene());budget.beginFrame(frame(5));
+    ALNativeCohortCompilationAdmission large, other;
+    large.notePending(1);other.notePending(2);
+    auto rejected = large.tryAcquire(budget, 33);
+    CHECK_FALSE(rejected);CHECK(rejected.reason == Budget::Reason::in_flight);
+    CHECK_FALSE(large.lastAdmittedFrame());
+    CHECK(large.priority(4).unserved_since == 1);
+    CHECK(budget.snapshot().scene_publications_this_frame == 0);
+    { auto unaffected = other.tryAcquire(budget, 8);REQUIRE(unaffected); }
+    CHECK_FALSE(large.tryAcquire(budget, 8));
+    CHECK_FALSE(large.lastAdmittedFrame());
+    large.notePending(5);CHECK(large.pendingSince() == 1);
+    budget.beginFrame(frame(6));
+    {
+        auto sole_large = large.tryAcquire(budget, 24);REQUIRE(sole_large);
+        CHECK(sole_large.reason == Budget::Reason::progress);
+        CHECK(budget.snapshot().scene_bytes_in_flight == 24);
+    }
+    CHECK(large.pendingSince() == 1);CHECK(large.lastAdmittedFrame() == 6);
+    CHECK(budget.snapshot().scene_bytes_in_flight == 0);
+    budget.beginDrain();budget.beginFrame(frame(7));
+    CHECK(large.tryAcquire(budget, 8).reason == Budget::Reason::draining);
+    CHECK(large.lastAdmittedFrame() == 6);CHECK(large.pendingSince() == 1);
+}
+
+TEST_CASE("Saturated cohort work is rejected before admission and aggregate byte overflow stays bounded",
+          "[native-frame-budget][cohort-compilation]")
+{
+    auto limits = smallScene();
+    limits.scene_bytes_per_frame = limits.scene_bytes_in_flight = Budget::unknown_bytes;
+    Budget budget(limits);budget.beginFrame(frame(7));
+    ALNativeCohortCompilationAdmission overflow, remainder;
+    overflow.notePending(1);
+    CHECK_FALSE(overflow.tryAcquire(budget, Budget::unknown_bytes));
+    CHECK_FALSE(overflow.lastAdmittedFrame());CHECK(overflow.pendingSince() == 1);
+    CHECK(budget.snapshot().admitted == 0);CHECK(budget.snapshot().scene_bytes_in_flight == 0);
+    CHECK_FALSE(overflow.tryAcquire(budget, 1));
+    budget.beginFrame(frame(8));
+    {
+        auto maximum = overflow.tryAcquire(budget, Budget::unknown_bytes - 1);REQUIRE(maximum);
+        CHECK(budget.snapshot().scene_bytes_in_flight == Budget::unknown_bytes - 1);
+        CHECK(remainder.tryAcquire(budget, 2).reason == Budget::Reason::in_flight);
+        CHECK_FALSE(remainder.lastAdmittedFrame());
+    }
+    CHECK(budget.snapshot().scene_bytes_in_flight == 0);
+    CHECK(budget.snapshot().scene_bytes_this_frame == Budget::unknown_bytes - 1);
+    budget.beginFrame(frame(9));
+    { auto recovered = remainder.tryAcquire(budget, 2);REQUIRE(recovered); }
+    CHECK(remainder.pendingSince() == 8);CHECK(remainder.lastAdmittedFrame() == 9);
 }

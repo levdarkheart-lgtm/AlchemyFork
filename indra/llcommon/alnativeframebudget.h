@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 
 // A native viewer policy, not a task executor. The main owner publishes one
 // plan per outer frame. Worker/GPU owners retain credits through their actual
@@ -127,4 +128,54 @@ public:
     void beginDrain();
 private:
     std::shared_ptr<State> mState;
+};
+
+// Scene-owner state for OPTIONAL synchronous cohort compilation. The caller
+// checks the immutable warm publication first, then orders pending owners by
+// priority() before calling tryAcquire(). This is neither a queue nor an
+// executor. One state belongs to one owner in one frame-budget domain; it
+// stores no credit, native resource, producer publication or viewer pointer.
+class ALNativeCohortCompilationAdmission final
+{
+public:
+    using Frame = ALNativeFrameBudget::Frame;
+    struct Priority
+    {
+        Frame unserved_since = 0;
+        std::uint64_t stable_tie = 0;
+        bool operator<(const Priority& other) const noexcept
+        {
+            return unserved_since < other.unserved_since ||
+                (unserved_since == other.unserved_since && stable_tie < other.stable_tie);
+        }
+    };
+
+    // Repeated dirty revisions do not restart pending age. Frame zero is a
+    // valid startup frame, distinct from an owner with no pending work.
+    void notePending(Frame) noexcept;
+    bool pending() const noexcept { return mPendingSince.has_value(); }
+    std::optional<Frame> pendingSince() const noexcept { return mPendingSince; }
+    std::optional<Frame> lastConsideredFrame() const noexcept { return mLastConsidered; }
+    std::optional<Frame> lastAdmittedFrame() const noexcept { return mLastAdmitted; }
+    // Pending owners use max(original pending age, last ADMITTED service).
+    // Thus failed compilation rejoins behind older unserved work; budget
+    // denial changes no service priority. Nonpending owners sort last and
+    // must be filtered by the caller. stable_tie must be stable and unique
+    // among that caller's candidates (for example, publication identity).
+    Priority priority(std::uint64_t stable_tie) const noexcept;
+    // At most one consideration per owner/outer frame, including denial or
+    // failure. logical_bytes is checked compilation/copy/proof work, not
+    // resident geometry/texture size or a wall-clock bound. unknown_bytes is
+    // reserved for saturated/overflowed work and rejected without admission.
+    // The returned credit is local to synchronous compile + publication;
+    // never put it in idle publications or on later required GPU commands.
+    ALNativeFrameBudget::Decision tryAcquire(ALNativeFrameBudget&, std::uint64_t logical_bytes);
+    // Call ONLY after the complete immutable publication actually succeeds.
+    // Admission alone, failure, or a new dirty revision does not reset age.
+    // Per-frame consideration/service history intentionally survives reset.
+    void publicationCompleted() noexcept;
+private:
+    std::optional<Frame> mPendingSince;
+    std::optional<Frame> mLastConsidered;
+    std::optional<Frame> mLastAdmitted;
 };
