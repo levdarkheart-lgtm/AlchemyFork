@@ -1901,3 +1901,11 @@ GroupSources+StabilityON, otherexperimentalcontrolsOFF; neverexecutedbyagent.
 No all-goals-complete/FPSclaim, existing69085/69065 unchanged. Allroottooljobs
 terminal. Nextactualcachelifetime reproduction assignedindependenttestauthor;
 remainingfullscopeunchanged, originalgoalactive. Next271.
+
+
+Active next author: residency_diagnostics, exclusiveNEW
+indra/llrender/tests/alpipeline_source_cache_lifetime_native.inl in
+/private/tmp/alchemy-apple-first-cache-lifetime-69102 (branchcodex/apple-first-cache-lifetime-69102,
+base71341f9fab). Rootowns existingCPP/EOF/register/build andintegration. Sameouterframe
+main/probe/probe, sufficientvsboundedcache, native-onlyvsCPUreader controls; no policy
+change orruntimecausalclaim authorized. No rootGPU/buildjobsrunning at handoff.
