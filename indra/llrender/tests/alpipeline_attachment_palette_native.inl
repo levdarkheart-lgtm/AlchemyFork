@@ -23,12 +23,13 @@ struct AttachmentPalettePublication : MaterialGroupPublication
         for(U32 at=0;at<draws;++at)
         {
             auto& info=materialDraw();
-            info.mVertexBuffer=buffer(true,LLVertexBuffer::MAP_WEIGHT4|(family==2?LLVertexBuffer::MAP_TANGENT:0));
+            info.mVertexBuffer=buffer(true,LLVertexBuffer::MAP_WEIGHT4|(family==2?(LLVertexBuffer::MAP_TANGENT|LLVertexBuffer::MAP_EMISSIVE):0));
             LLStrider<LLVector4> weights;REQUIRE(info.mVertexBuffer->getWeight4Strider(weights));
             for(U32 vertex=0;vertex<3;++vertex)weights[vertex].set(F32(joints-1)+.5f,0.f,0.f,0.f);
             if(family==2)
             {LLStrider<LLVector4a> tangents;REQUIRE(info.mVertexBuffer->getTangentStrider(tangents));
-             for(U32 vertex=0;vertex<3;++vertex)tangents[vertex].set(1.f,0.f,0.f,1.f);}
+             LLStrider<LLColor4U> emissive;REQUIRE(info.mVertexBuffer->getEmissiveStrider(emissive));
+             for(U32 vertex=0;vertex<3;++vertex){tangents[vertex].set(1.f,0.f,0.f,1.f);emissive[vertex].set(0,0,0,255);}}
             info.mVertexBuffer->unmapBuffer();
             info.mAvatar=avatars[unique?at:0].get();info.mSkinInfo=info.mAvatar;
         }

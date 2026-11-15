@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-248 -->
+<!-- next-defect-id: PPD-249 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5958,3 +5958,25 @@ The renderer implementation is not implicated by this compile failure.
 ### History
 
 - 2026-11-15 required44build fails exit1; exact commands/logs remain private in frozen-source-build-44.json and its build log. Registered before changing the fixture. Source69085 staged app remains intact.
+
+
+## PPD-248 — Rigged PBR glow fixture omits its required emissive vertex stream
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Existing PBR glow producer requires TYPE_EMISSIVE and uses its offset; existing actual post-water PBR-glow fixture publishes that stream. No original shader or validation rule changes.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Allocate/populate/publish the emissive stream in the new PBR attachment fixture. Rebuild and rerun actual cases and the remaining native scopes; preserve the fail-closed production guard.
+- Verification: Source45 build/static/strict pass; first14native scopes pass. Actual publisher67cases has66pass/1fail,17756/17757assertions. Family2 forward/glow test fails capture.complete because its buffer only has weight/tangent, while pbr_glow requires TYPE_EMISSIVE. Costs did not execute.
+- Owner verification: pending
+- Push approval: not_granted
+
+The failure is a malformed test producer: requesting PBR glow without its authored
+emissive attribute. The real source guard correctly rejects the incomplete draw.
+No viewer crash or production rendering repair is attributed to this test failure.
+
+### History
+
+- 2026-11-15 native-correctness-45 actual publisher exits42; receipt/log retained. Register before correcting the fixture. Neither native tail nor costs ran after failure; no all-pass source45 claim.
