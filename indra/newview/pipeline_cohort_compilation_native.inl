@@ -23,9 +23,15 @@ inline Statistics statistics;
 inline U64 workBytes(std::size_t rows, U32 family) noexcept
 {
     constexpr U64 base=sizeof(ALSceneGroupPublicationNative::Payload)+sizeof(ALSceneGroupPublicationNative::Layout);
-    constexpr U64 row=sizeof(ALSceneGroupPublicationNative::Source)+2*sizeof(ALMetalWorldSimpleBatch)+
+    const U64 restore=family==0?0:sizeof(ALSceneGroupPublicationNative::StaticRestoreTuple)+
+        ALMetalWorldSimpleBatch::max_diffuse_textures*sizeof(const ALMetalTexture*)+
+        ALMetalWorldSimpleBatch::max_material_slots*(family==1?sizeof(ALMetalWorldMaterialSlot):sizeof(ALMetalWorldPBRSlot));
+    // Source no longer embeds a full batch. Charge the actual compact
+    // descriptor/active-value worst case, keeping the old batch-sized floor
+    // rather than silently refunding optional compilation admission work.
+    const U64 row=sizeof(ALSceneGroupPublicationNative::Source)+2*sizeof(ALMetalWorldSimpleBatch)+
         sizeof(ALSceneGroupPublicationNative::SourceLease)+sizeof(ALMetalWorldKeyedSource)+
-        sizeof(std::shared_ptr<const ALMetalWorldCohortSource>);
+        sizeof(std::shared_ptr<const ALMetalWorldCohortSource>)+std::max<U64>(sizeof(ALMetalWorldSimpleBatch),restore);
     constexpr U64 tuple=2*sizeof(ALSceneGroupPublicationNative::WeakResource)+
         2*sizeof(ALNativeSourceWorkingSet::Resource)+sizeof(std::weak_ptr<const ALMetalTexture>);
     const U64 roles=family==0?ALMetalWorldSimpleBatch::max_diffuse_textures+2:

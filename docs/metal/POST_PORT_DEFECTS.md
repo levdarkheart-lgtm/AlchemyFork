@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-258 -->
+<!-- next-defect-id: PPD-261 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5841,7 +5841,7 @@ freshness defect, not evidence of stale rendered terrain or the owner incident.
 
 ## PPD-243 — Main/probe attachment preparation discards immutable palette identity
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -5864,6 +5864,8 @@ copy/finite-validation path; no shader, quality, pose or culling change is inten
 - 2026-11-15 registered before implementation after independent source audits. Backend and actual-capture owners assigned disjoint files in isolated world-palette-publication tree; no viewer/profiling/push. Source69085 remains immutable and unaffected.
 
 - 2026-11-15 Backend/capture bridge integrated including forward alpha/glow/impostor paths and manual Bump/LegacyGlow capture. Batch grows one borrowed record pointer; adoption pins real shared record, GPU commands retain native arena bytes. Static cohort/page/group families explicitly reject the attachment-only field. Correctness/lifetime and96paired complete-cost cases authored and independently source-reviewed, execution pending. No shader or flags changed; equal-byte distinct-identity tradeoff remains measured, not concealed.
+
+- 2026-11-15 observed verification: Source50 identity/lifetime paths retain successful22source48 scopes with exact production diff proof. Attachment complete costs225024assertions pass; CPU84/96wins, all48large110jointswins (median15.65% lower). Overall GPU/completion results mixed; no FPS claim. Owner verification remains pending; push not granted.
 
 ## PPD-244 — Pending-palette fixture creates a renderer behind its own queue gate
 
@@ -5984,7 +5986,7 @@ No viewer crash or production rendering repair is attributed to this test failur
 
 ## PPD-249 — Probe pass fixture counts borrowed wrappers as pooled acquisitions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6004,9 +6006,11 @@ proof that eligible tile lighting replaces two render passes with one.
 - 2026-11-15 author reports the attribution error; root inspects actual pool acquisition code and records before repair. This WIP assertion is not in staged69085 or the source46 viewer under validation.
 
 
+- 2026-11-15 observed verification: Source50 probe native7562/4 passes, including exact output/depth, one-vs-two physical passes and owned target acquisitions. Pool wrapper accounting agrees with implementation. Owner verification remains pending; push not granted.
+
 ## PPD-250 — Empty local/projector lists still submit accumulation render passes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6025,9 +6029,11 @@ inputs and must not alter any nonempty light, projector cookie, shadow or filter
 
 - 2026-11-15 registered before implementation after original/current source audit. This is avoided work, not proof of a measured FPS regression or dominant GPU shader cost.
 
+- 2026-11-15 observed verification: Source50 empty native465/2 and complete-chain2948/1 pass: authored target preserved, invalid input rejected, no empty pass/submission; nonempty local/projector chain retained. Costs are same-source workloads, not a before/after timing claim. Owner verification remains pending; push not granted.
+
 ## PPD-251 — World attachment identities duplicate equal palette uploads
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6049,9 +6055,11 @@ last active page after content interning; retain the exact matched page.
 - 2026-11-15 adverse case was deliberately included before measurement. Source46 reveals the expected tradeoff; registered before repair. Preserve successful parity/lifetime evidence and raw costs, rather than declaring unconditional performance success.
 
 
+- 2026-11-15 observed verification: Source50 full palette costs pass. Worst logical publication ratio record/raw is1.0 across96conditions. Original110joint/64draw/equal-record case falls from4077888bytes at46 to74112bytes at50, equal to raw74112;50paired CPU0.200458→0.169063ms and complete0.547208→0.514375ms. Native earlier-page alias and queued-lifetime tests passed48 and are explicitly reused. No physical-residency or viewer-FPS claim. Owner verification remains pending; push not granted.
+
 ## PPD-252 — Empty-light cost assertion omits the idle-barrier command
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6066,9 +6074,11 @@ last active page after content interning; retain the exact matched page.
 
 - 2026-11-15 registered before fixture-only correction. The accounting change must preserve exact settlement inside the cost scope.
 
+- 2026-11-15 observed verification: Source50 complete empty/nonempty cost suite2948/1 passes with one explicitly labeled settlement barrier included; no command debt excluded. Owner verification remains pending; push not granted.
+
 ## PPD-253 — Combined lighting fixture includes expose ambiguous helper names
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6084,9 +6094,11 @@ last active page after content interning; retain the exact matched page.
 - 2026-11-15 registered before the narrow combined-fixture correction. Production pass logic and staged69085/69089 are not implicated.
 
 
+- 2026-11-15 observed verification: Required48/49/50 compile successfully; combined native probe and empty-light suites pass50. No broad using-directive workaround or production change. Owner verification remains pending; push not granted.
+
 ## PPD-254 — Old-library probe fixture passes unique ownership to a shared API
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6102,9 +6114,11 @@ last active page after content interning; retain the exact matched page.
 - 2026-11-15 compile failure retained in frozen-source-build-47 receipt/log. Registered before the ownership-type repair. Shader compilation and earlier compilation tasks are not whole-build success; source69085/69089 staged/evidence remain intact.
 
 
+- 2026-11-15 observed verification: Explicit shared const library owner builds48/49/50; source50 preserved old-library native65/1 passes and selects the original separate passes. Owner verification remains pending; push not granted.
+
 ## PPD-255 — Probe tile light-map draw binds a nil depth/stencil state
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6123,6 +6137,8 @@ is always-compare, no depth writes and no stencil writes.
 
 - 2026-11-15 native-correctness-48 probe scope exitsSIGABRT(-6) under API/GPU validation; exact private log retained. Registered before repair. Earlier successful scopes remain valid evidence, not an all48pass claim.
 
+
+- 2026-11-15 observed verification: Source49 explicit always-pass/no-write state eliminates API abort; source50 probe native7562/4 passes under Metal API/GPU validation, exact sky/geometry/depth parity retained. Owner verification remains pending; push not granted.
 
 ## PPD-256 — Retained static restoration stores an unused multipurpose batch
 
@@ -6150,7 +6166,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-257 — Probe sky fixture omits the actual HDRI G-buffer marker
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-15
@@ -6164,3 +6180,61 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before fixture correction. Source48 API abort repaired by source49; source49 failure is distinct fixture input. Retain both failed receipts; no product sky defect or successful cost claim.
+
+
+- 2026-11-15 observed verification: Source50 synthetic HDRI marker correction passes probe native7562/4, including exact parity and both nonzero sky checks. Production source unchanged. Owner verification remains pending; push not granted.
+
+## PPD-258 — Compact-restoration fixture indexes a retired layout
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / compact-restoration author
+- Discovered: 2026-11-15
+- Original reference: CpuLayoutResidency clears the superseded layout source vector when a successful reseal replaces it. Independently retained immutable source rows remain valid.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: In the new allocation-failure fixture, use its retained immutable row for the later expired-generation check, preserving all production and failure-retry behavior.
+- Verification: Author source self-review finds old layout.sources[0] read after successful replacement; no affected build/test has executed. This is fixture authoring, not an observed viewer fault.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow fixture repair. PPD256 implementation and complete-path costs remain pending; no performance or test pass claim.
+
+
+## PPD-259 — Private probe cost driver selects the CPU publisher test binary
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Native probe and empty-light appendices are registered in almetal_tests; llrender_tests contains the separate producer/palette cost fixtures.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Point only private probe/empty-light cost drivers at the registered native app. Preserve source50 build, failed receipt and binary-hash guard; run under new retry labels without rebuilding production.
+- Verification: Source50 required/static/strict and allfourtargetednative scopes pass. First probe cost command selects llrender_tests and exits2 without matching tests after0.025s; no cost samples ran. Subsequent costs did not execute.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before private driver correction. Production code/native correctness unaffected. Failed actual-probe-lighting-fusion-costs-50 receipt remains immutable; no successful cost claim.
+
+
+- 2026-11-15 observed verification: Private drivers corrected to registered almetal_tests; source50 retry1 probe2448/1 and empty2948/1 costs pass. Failed no-test receipt retained; no production rebuild for driver-only repair. Owner verification remains pending; push not granted.
+
+## PPD-260 — Compact-restoration fixture assumes completion handlers retired synchronously
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / compact-restoration author
+- Discovered: 2026-11-15
+- Original reference: Metal Completed status permits subsequent completed-handler execution. Existing native source-owner fixtures wait for weak lease retirement separately.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: In the new fixture, wait with a bounded deadline for actual native lease retirement before asserting weak geometry expiry and stale-generation rejection. Preserve the final assertions and production lifetime behavior.
+- Verification: Independent source review finds render/readback followed by eviction and immediate weak expiry assertion without a retirement token. No affected test has executed; transient failure is a source-confirmed test race, not an observed product fault.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before fixture retirement gate. Keep completion ownership strong until the real callback retires; do not shorten production lifetimes to satisfy this test.

@@ -1521,8 +1521,8 @@ TEST_CASE("Actual material cohorts bypass draw-info discovery and share each vie
                 CHECK(capture.source_cohorts[0].cohort->source(row).vertices==packet->sources[row].prototype->vertices);
                 CHECK(capture.source_cohorts[0].cohort->source(row).index_offset==packet->sources[row].prototype->index_offset);
                 CHECK(capture.source_cohorts[0].cohort->key(row).identity==packet->sources[row].owner->identity);
-                CHECK_FALSE(packet->sources[row].owner->prototype.native_material_source);
-                CHECK_FALSE(packet->sources[row].owner->prototype.native_resource_source);
+                if(family)REQUIRE(packet->sources[row].owner->restoration);
+                else CHECK_FALSE(packet->sources[row].owner->restoration);
             }
             CHECK(f.reads()==reads);CHECK(Inputs::sNativeSceneSerial==serial);
         }
@@ -1639,7 +1639,8 @@ TEST_CASE("Actual material cohort churn restores weak cached rows without redisc
         // The raw getter records a new frame reader. Observe the retained
         // CPU layout's non-owning identity instead when testing cache-only
         // retirement; a genuine raw reader correctly requires orphaning.
-        const auto* original=old_rows[1]->prototype.vertices;
+        REQUIRE(old_rows[1]->restoration);
+        const auto* original=old_rows[1]->restoration->vertices;
         const auto uploads=LLVertexBuffer::metalUploadStats();
         const std::array<LLColor4U,3> green{LLColor4U(0,255,0,255),LLColor4U(0,255,0,255),LLColor4U(0,255,0,255)};
         dirty.mVertexBuffer->setColorData(green.data());dirty.mVertexBuffer->unmapBuffer();
@@ -3975,7 +3976,8 @@ TEST_CASE("Actual Legacy and PBR source rows include capture publication encodin
 
 #include "alpipeline_source_command_cost_native.inl"
 
-static void actualDirectCohortCosts(std::initializer_list<U32> families)
+static void actualDirectCohortCosts(std::initializer_list<U32> families,
+    std::initializer_list<U32> counts={1u,4u,16u,512u},bool restoration_census=false)
 {
     constexpr U32 samples=12,warmups=2;
     const auto cpu_ns=[] {timespec value{};REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0);
@@ -3989,6 +3991,7 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
         U64 cohort_draws=0,cpu_pins=0,native_pins=0,gpu_ready=0;
         U64 accepted_views=0,accepted_groups=0,accepted_draws=0,static_source_records=0,same_view_replacements=0,resource_sources=0;
         U64 compile_admitted=0,compile_denied=0,compile_duplicates=0,compile_bytes=0;
+        U64 restore_tuple_builds=0,restore_tuple_expansions=0,restore_proof_reuses=0,restore_value_bytes=0,restore_owned_bytes=0;
     };
     for(U32 family:families)
     {
@@ -4000,7 +4003,7 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
         INFO(f.error);REQUIRE(main);REQUIRE(probes);main->setFrameData(data);probes->setFrameData(data);
         U64 native_epoch=0;
         struct Arm {Inputs::LLPipeline pipeline;std::vector<Inputs::LLDrawInfo*> sources;std::vector<ALMetalWorldVisibilityQuery> queries;ALNativeFrameBudget budget;};
-        for(U32 count:{1u,4u,16u,512u})
+        for(U32 count:counts)
         {
             std::array<Arm,2> arms;
             for(auto& arm:arms)for(U32 source=0;source<count;++source)arm.sources.push_back(&f.materialDraw());
@@ -4151,6 +4154,12 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
                         const auto after_reads=f.reads();const auto after_stats=Inputs::ALSceneGroupPublicationNative::statistics;
                         value.publications=Inputs::sNativeSceneSerial-before_serial;value.group_builds=after_stats.builds-before_stats.builds;
                         value.source_builds=after_stats.cpu_source_builds-before_stats.cpu_source_builds;value.restores=after_stats.material_restores-before_stats.material_restores;
+                        value.restore_tuple_builds=after_stats.restore_tuple_builds-before_stats.restore_tuple_builds;
+                        value.restore_tuple_expansions=after_stats.restore_tuple_expansions-before_stats.restore_tuple_expansions;
+                        value.restore_proof_reuses=after_stats.restore_live_proof_reuses-before_stats.restore_live_proof_reuses;
+                        value.restore_value_bytes=after_stats.restore_tuple_value_bytes-before_stats.restore_tuple_value_bytes;
+                        if(restoration_census && mode && f.group_layout)
+                            for(const auto& row:f.group_layout->sources)if(row->restoration)value.restore_owned_bytes+=row->restoration->ownedBytes();
                         value.getters=after_reads[0]-before_reads[0];value.dependencies=after_reads[1]-before_reads[1];value.images=after_reads[2]-before_reads[2];
                         value.native_bytes=data->stats().published_bytes-before_native;
                         value.static_source_records=Inputs::ALScenePublicationNative::cohort_source_publications-before_records;
@@ -4194,6 +4203,9 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
                             <<" compile_duplicate_views="<<value.compile_duplicates<<" compile_logical_work_bytes="<<value.compile_bytes
                             <<" same_view_replacements="<<value.same_view_replacements
                             <<" source_getters="<<value.getters<<" dependency_walks="<<value.dependencies<<" image_getters="<<value.images
+                            <<" static_restore_tuple_builds="<<value.restore_tuple_builds<<" static_restore_expansions="<<value.restore_tuple_expansions
+                            <<" static_restore_live_proof_reuses="<<value.restore_proof_reuses<<" static_restore_logical_copied_bytes="<<value.restore_value_bytes
+                            <<" static_restore_owned_capacity_bytes="<<value.restore_owned_bytes
                             <<" direct_cohort_draws="<<value.cohort_draws<<" raw_value_bytes="<<value.raw_bytes<<" reference_value_bytes="<<value.ref_bytes
                             <<" accepted_cohort_views="<<value.accepted_views<<" accepted_cohort_groups="<<value.accepted_groups<<" accepted_cohort_draws="<<value.accepted_draws
                             <<" order_value_bytes="<<value.order_bytes<<" cohort_value_bytes="<<value.cohort_bytes<<" dirty_certificate_bytes="<<value.cert_bytes
@@ -4217,6 +4229,12 @@ static void actualDirectCohortCosts(std::initializer_list<U32> families)
                         <<" dirty_view_raw_admission_before_seal=1 same_view_verified_replacement=1 source_rows=0 command_banks=0 resource_table_flag=0"
                         <<" cpu_compile_admission=1 synthetic_idle_budget_inputs=1 denied_frames_retained=1"
                         <<" geometry_texture_drawinfo_creation_excluded=1 viewer_dependency_frontier=typed_native_signals whole_viewer_fps_claim=0\n";
+                    if(restoration_census)std::cout<<"NATIVE_STATIC_RESTORATION_LAYOUT family="<<family<<" sources="<<count<<" views="<<views<<" condition="<<condition<<" mode="<<mode
+                        <<" batch_inline_bytes="<<sizeof(ALMetalWorldSimpleBatch)<<" layout_source_inline_bytes="<<sizeof(Inputs::ALSceneGroupPublicationNative::Source)
+                        <<" static_tuple_inline_bytes="<<sizeof(Inputs::ALSceneGroupPublicationNative::StaticRestoreTuple)
+                        <<" material_slot_bytes="<<sizeof(ALMetalWorldMaterialSlot)<<" pbr_slot_bytes="<<sizeof(ALMetalWorldPBRSlot)
+                        <<" cpu_layout_cap_bytes="<<Inputs::ALSceneGroupPublicationNative::cpu_layouts.limits().maximum_bytes
+                        <<" conservative_shared_certificate_accounting_unchanged=1\n";
                 }
             }
         }
@@ -4276,3 +4294,4 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_terrain_preflight_native.inl"
 #include "alpipeline_attachment_palette_native.inl"
 #include "alpipeline_source_miss_census_native.inl"
+#include "alpipeline_static_restoration_native.inl"

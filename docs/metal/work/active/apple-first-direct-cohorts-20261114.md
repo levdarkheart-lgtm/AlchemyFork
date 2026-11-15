@@ -1693,3 +1693,34 @@ production source. Remaining native/cost suites did not execute. Next50 targeted
 retest with exact unchanged-production22-scope reuse proof. PPD256 compact static
 restoration remains independently implementing; owner whole-engine goal active.
 Next258. Owner69085/69065 remain unchanged; no viewer launch/profile/push.
+
+
+Source50 **05f223c34e /26.4.0.69093** required doctor/configure/build0
+(build27.845s),static/strictPASS. Fourtargetednative scopesPASS: probe7562/4,
+oldprobe65/1,empty465/2,deferredlocal27016/1 underAPI/GPUvalidation.
+Twenty-twosuccessful48scopes184809assertions explicitlyreused via exact source
+proof; these were not allrerun50. CorrectedHDRImarker fixes257; depthfix255holds.
+Privatecostdriver selectedllrenderfornativeprobe, exit2/no tests(PPD259); failed
+receiptretained. Correcteddriver retry1probe2448/1,empty2948/1,palette225024/1,
+ordinary4arm219988/1,many4arm2645160/1 allPASS. No viewer launched/profiled.
+
+Probe8pairedconfigurations (256/512,1/3views,with/withoutshadows),8warmsamples
+perarm: encodewallduration lower8/8,median−8.31%;GPUenvelope lower8/8,median−28.39%;
+completewait lower7/8,median−4.87%,one512/1view/no-shadow+3.18%. Coldsingle-sample
+GPU/settlement mixed; do not generalize percentages to frameFPS. Exact1vs2render
+pass,depthandpixelchecks pass; independent oldlibraryseparatepathretained.
+
+Palette logicalbyteamplification251removed: maxrecord/raw1.0 across96cases,
+originalequal110jointcase74112vs74112bytes ratherthan4077888vs74112at46.
+CPU84/96wins,all48largepaletteswin(median−15.65%); total57/96wins andGPU47/96,
+so broaderbenefitpartial. Existingbanks remainOFF: fresh4armcosts stillmixed/worse.
+Evidence rollup: artifacts/metal/apple-first-persistent-native-scene-20261114/
+architecture-batch-validation-50.json andper-suite/summaries. Owner69085unchanged.
+
+IntegratedPPD256fivefrozenpeer-reviewedfiles: owner-freestaticrestorationtuple,
+SIMPLEusesexistingproof; nativegenerations weak-locked beforeexpansion; warmchild/
+prooftransportunchanged,dirtyexpiredproofexpands intoownedvariant. Truecapacity
+chargedandoldadmissionfloorretained; capsunchanged. Newactual3cases/smallcomplete
+costunexecuted. PPD258retained-row and260boundedcompletion-retirement fixturefixes
+included; no productionlifetime shortening. Next51requiredbuild/actualpublication/
+small-restorationcosts. Originalwhole-enginegoalactive; next261.

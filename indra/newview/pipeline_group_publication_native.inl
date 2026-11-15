@@ -8,6 +8,7 @@
  * it has no LLDrawInfo/LLSpatialGroup/region or mutable matrix pointers.
  */
 #include <map>
+#include <algorithm>
 #include <iterator>
 #include <list>
 #include <unordered_map>
@@ -32,12 +33,13 @@ struct WeakResource
     std::weak_ptr<const void> allocation;
     U64 bytes = 0;
 };
+#include "pipeline_group_restore_tuple_native.inl"
 // Persistent owner-side CPU data has no strong native resource or viewer
 // owner. A withdrawn publisher therefore releases its GPU leases before COW,
 // while unchanged rows remain available for the next dirty publication.
 struct Source
 {
-    ALMetalWorldSimpleBatch prototype;
+    std::unique_ptr<const StaticRestoreTuple> restoration;
     std::weak_ptr<ALNativePublication::State> producer;
     U64 identity = 0, revision = 0;
     U64 flavor_key = 0;
@@ -65,7 +67,7 @@ struct SourceLease
     {
         return owner && prototype && (world_owner
             ? ALScenePublicationNative::findWorld(*world_owner, owner->flavor_key) == prototype
-            : prototype == &owner->prototype);
+            : owner->simple_proof && prototype == &owner->simple_proof->source());
     }
 };
 struct Layout
@@ -133,6 +135,7 @@ struct Statistics
     U64 admitted_groups = 0, admitted_draws = 0, captured_groups = 0, captured_draws = 0;
     U64 cpu_source_builds = 0, cpu_source_reuses = 0, resource_union_builds = 0;
     U64 material_builds = 0, material_restores = 0;
+    U64 restore_tuple_builds=0,restore_tuple_expansions=0,restore_live_proof_reuses=0,restore_tuple_value_bytes=0;
     U64 material_admitted_groups = 0, material_admitted_draws = 0;
     U64 material_captured_groups = 0, material_captured_draws = 0;
     std::array<U64, static_cast<std::size_t>(FailureStage::count)> failure_stages{};
@@ -281,8 +284,7 @@ public:
         {
             bytes += sizeof(Source) + U64(source->resources.capacity()) * sizeof(WeakResource) +
                 U64(source->textures.capacity()) * sizeof(std::weak_ptr<const ALMetalTexture>);
-            if (source->prototype.material_slot_count) bytes += sizeof(ALMetalWorldSimpleBatch::MaterialSlots);
-            if (source->prototype.pbr_slot_count) bytes += sizeof(ALMetalWorldSimpleBatch::PBRSlots);
+            if (source->restoration) bytes += source->restoration->ownedBytes();
             if (source->simple_proof) bytes += source->simple_proof->ownedBytes();
         }
         // Material packets can share source descriptions with their child
@@ -483,7 +485,6 @@ try
             if (!source || !cpuOnlySimple(*source.prototype))
             { recordFailure(FailureStage::source_record); return {}; }
             auto next = std::make_shared<Source>();
-            next->prototype = *source.prototype;
             next->producer = producer; next->identity = producer->identity();
             next->revision = source.owner->producer_revision;
             for (const auto& variant : source.owner->worlds)
@@ -508,8 +509,8 @@ try
             refreshed.push_back(std::move(source));
             ++statistics.cpu_source_builds;
         }
-        value->index_count += record->prototype.index_count;
-        value->sources.push_back({record, &record->prototype, reuse});
+        value->index_count += record->simple_proof->source().index_count;
+        value->sources.push_back({record, &record->simple_proof->source(), reuse});
         value->keyed_sources.push_back({record->simple_proof->key(), &record->simple_proof->source()});
         proofs.push_back(record->simple_proof);
     }
@@ -697,8 +698,10 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
         cached = std::static_pointer_cast<const ALScenePublicationNative::Payload>(publication);
         if (auto result = usable(cached)) return result;
     }
+    if(!source.restoration)return {};
+    const auto& restore=*source.restoration;
     auto vertices = source.vertices.lock(), indices = source.indices.lock();
-    if (!vertices || !indices || vertices.get() != source.prototype.vertices || indices.get() != source.prototype.indices)
+    if (!vertices || !indices || vertices.get() != restore.vertices || indices.get() != restore.indices)
         return {};
     std::vector<std::shared_ptr<const ALMetalTexture>> textures;
     textures.reserve(source.textures.size());
@@ -714,7 +717,20 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
     value->bounds = source.bounds;value->bounds_attempted = source.bounds_attempted;
     value->vertices = std::move(vertices);value->indices = std::move(indices);
     std::erase_if(value->worlds, [&](const auto& variant) { return variant.key == source.flavor_key; });
-    auto& variant = value->worlds.emplace_back();variant.key = source.flavor_key;variant.prototype = source.prototype;
+    auto& variant = value->worlds.emplace_back();variant.key = source.flavor_key;
+    auto proof=source.cohort_source.lock();
+    if(proof && ordinaryMaterial(proof->source()) && proof->source().vertices==restore.vertices && proof->source().indices==restore.indices &&
+       sourceProofMatches(proof,source.identity,source.flavor_key,source.revision,proof->source()))
+    {
+        // Keep the exact sealed CPU slot identities when an immutable source
+        // certificate outlives its child lookup entry. No value repacking.
+        variant.prototype=proof->source();++statistics.restore_live_proof_reuses;
+    }
+    else
+    {
+        if(staticRestorationAllocationForTesting)staticRestorationAllocationForTesting();
+        restore.expand(variant.prototype);++statistics.restore_tuple_expansions;
+    }
     auto& prototype = variant.prototype;
     prototype.native_material_source = source.material_source.lock();
     prototype.native_resource_source = source.resource_source.lock();
@@ -728,7 +744,7 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
     if (prototype.native_resource_source && !prototype.native_resource_source->matches(prototype))
         prototype.native_resource_source.reset();
     if (!ordinaryMaterial(prototype)) return {};
-    variant.cohort_source = source.cohort_source.lock();
+    variant.cohort_source = std::move(proof);
     if (!sourceProofMatches(variant.cohort_source, source.identity, source.flavor_key, source.revision, prototype))
         variant.cohort_source.reset();
     const auto buffer = [&](const std::shared_ptr<const ALMetalBuffer>& allocation)
@@ -800,8 +816,10 @@ try
             row_flavor.indexed_materials = flavor.family == Family::legacy ? info->mMaterialSlotList.size() > 1 : info->mGLTFMaterialList.size() > 1;
             source = ALScenePublicationNative::world(*info, row_flavor, working_set, source_serial, frame);
             if (!source || !ordinaryMaterial(*source.prototype)) { recordFailure(FailureStage::source_record);return {}; }
-            auto next = std::make_shared<Source>();next->prototype = *source.prototype;
-            next->prototype.native_material_source.reset();next->prototype.native_resource_source.reset();
+            auto next = std::make_shared<Source>();
+            if(staticRestorationAllocationForTesting)staticRestorationAllocationForTesting();
+            next->restoration=std::make_unique<const StaticRestoreTuple>(*source.prototype);
+            ++statistics.restore_tuple_builds;statistics.restore_tuple_value_bytes+=next->restoration->valueBytes();
             next->producer = producer;next->identity = producer->identity();next->revision = source.owner->producer_revision;
             next->flavor_key = row_flavor.key();next->world_owner = source.owner;
             next->bounds = source.owner->bounds;next->bounds_attempted = source.owner->bounds_attempted;

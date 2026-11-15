@@ -6,36 +6,35 @@ This is the short current checklist; detailed source and retained evidence are i
 
 The owner-tested preview is **69085 / 6af308d165**. Its five-minute recording
 covers301.686seconds and reports13.998FPS; it is not a controlled before/after
-speedup result. That staged app remains unchanged. The current built source is **da8c24dbca / 69092**. Required build,
-static bundle and strict source gates pass. Twenty-two native scopes passed at
-source48; their unchanged paths are explicitly reused. The new probe scope passes
-exact geometry/depth parity but two nonzero synthetic sky assertions fail because
-the fixture omitted the actual HDRI marker (PPD257). That fixture is corrected;
-source50 rebuild and targeted retest are next. No cost run is claimed for this
-combined source yet.
+speedup result. That staged app remains unchanged. The current built source is **05f223c34e / 69093**. Required build,
+static bundle and strict source gates pass. Four targeted native suites and five
+cost suites pass; twenty-two successful source48 native scopes are explicitly
+reused because their production paths did not change. Probe tile lighting now
+preserves sky, geometry and depth. The next source integrates compact static
+restoration (PPD256), which is reviewed but awaits build, correctness and costs.
 
 | Required boundary | Implemented and observed | Remaining work |
 |---|---|---|
 | Immutable scene/resource publication across main, shadows and probes | Shared producer generations, material/resource tuples, dirty notifications, native leases and retained static Legacy/PBR groups. Group route is active in the69085 launcher. | Complete sharing through specialized animated/terrain/tree capture boundaries; remove remaining repeated preparation without treating view-dependent culling, ordering or transforms as static. |
-| Animated data ownership | Existing body pose and attachment records; shadows already consume immutable attachment identity. The next source preserves that identity through main/probe adoption, validation and GBuffer/forward alpha/glow/impostor binding. | Parity and queued-reader lifetime checks pass. Rerun complete costs after the equal-byte upload repair. Preserve view-dependent system-body palette composition. Conservative animated GPU bounds remain unqualified and fail visible. |
+| Animated data ownership | Existing body pose and attachment records; shadows already consume immutable attachment identity. The next source preserves that identity through main/probe adoption, validation and GBuffer/forward alpha/glow/impostor binding. | Parity and queued-reader lifetime checks pass. Equal-byte amplification is removed; CPU improves84/96containedcases, all48largepalettes. Whole-engine performance remains unproved. Preserve view-dependent system-body palette composition. Conservative animated GPU bounds remain unqualified and fail visible. |
 | Bounded CPU preparation | Owned immutable view packets, shared frame credits, joined shadow preparation and a world preparation implementation. | World worker path remains disabled because prior complete-path costs regressed. Finish a useful preparation boundary for actual workloads; do not count unused worker infrastructure as performance success. |
 | Native visibility and command preparation | Retained bounds, batched GPU frustum preparation, ordered compositions and two native command-bank variants are implemented and tested experimentally. | They remain disabled in the primary trial because total-time/GPU results are mixed or worse. Establish a useful measured selection/path for the small groups present in SL scenes. |
 | Frame-wide work and Apple unified-memory lifetime | Frame budget, bounded decode/upload admission, native generation COW, CPU packet retirement and command-completion native-resource leases. | Resolve publication/residency churn and admission interactions across views. New typed diagnostics identify the failed stage and configured cap; raising caps without that evidence is not a repair. |
-| Pass ownership and probe work | Main/probe/shadow ownership is explicit; existing lighting, projector, query and reflection behavior is retained. | Native experiment underway: keep an eligible unblurred probe light-map intermediate in tile memory and consume it in the same render pass. HardwareRG8 conversion, shadow filtering, HDR and reverse-Z parity pass. Correct the synthetic sky input and finish physical-pass, old-library and complete-cost checks. |
+| Pass ownership and probe work | Main/probe/shadow ownership is explicit; existing lighting, projector, query and reflection behavior is retained. | Native experiment underway: keep an eligible unblurred probe light-map intermediate in tile memory and consume it in the same render pass. HardwareRG8, shadows, HDR, reverse-Z, sky, depth, physical-pass and old-library checks pass. Warm encode/GPU costs improve8/8; completion7/8. Measure the integrated viewer as a whole. |
 | Combined product validation |69085 builds, native checks and static gates passed; owner runtime and full-duration profile exist. New code is integrated locally. | Finish combined builds/parity/lifetime/cost checks, resolve demonstrated regressions, stage one verified combined candidate and assess it as a whole. Core feature/stability and performance acceptance remain partial. |
 
 ## Current implementation queue
 
-1. **Done at source46:** build and native correctness for attachment sharing and
+1. **Done through source50:** build and native correctness for attachment sharing and
    typed diagnostics. Fixture repairs PPD247/248 retain the failed evidence.
-2. **Doing:** equal-byte upload amplification repair passes native checks; rerun the
-   complete costs. Source46 CPU improved85/96 cases, but that alone does not
-   accept the publication regression or establish an FPS gain.
-3. **Doing:** native probe tile-lighting and validated empty-light no-op owners
-   are implemented/integrated. Execute pixel/depth parity, physical pass counts,
-   old-library behavior and complete costs before accepting activation.
+2. **Done at source50:** equal-byte upload amplification repair passes native
+   checks and complete costs. Logical published bytes never exceed raw in the
+   measured96cases. CPU improves84/96; this is not an FPS claim.
+3. **Done at source50:** native probe tile lighting and validated empty-light
+   owners pass parity/lifetime/pass checks and complete costs. Probe warm encoding
+   and GPU improve8/8configurations, completion7/8. Cold timings remain mixed.
 4. **Next:** use typed publication/capture reasons and the saved whole-engine
-   profile to resolve probe/source churn, and remove unused retained restoration metadata (PPD256), then finish the useful CPU/GPU
+   profile to resolve probe/source churn, and validate the integrated compact restoration (PPD256), then finish the useful CPU/GPU
    preparation boundaries above. Continue through remaining source gaps.
 5. **Acceptance:** deliver the combined candidate with exact settings/source and
    evidence for owner whole-engine assessment. No percentage-complete or FPS
