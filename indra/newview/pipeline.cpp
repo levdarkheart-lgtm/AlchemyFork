@@ -3145,10 +3145,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", cached_cohort_native_asset_bytes/cap=" << stats.pages.cached_cohort_native_asset_bytes
                     << '/' << stats.pages.cached_cohort_native_asset_limit
                     << ", cohort_arena_views/copied_bytes=" << stats.pages.arena_views << '/' << stats.pages.arena_view_bytes
+                    << ", direct_policy_logical_bytes=" << stats.pages.direct_policy_bytes
+                    << ", direct_slot_allocations/hits/view_copy_bytes=" << stats.pages.direct_slot_allocations << '/' << stats.pages.direct_slot_hits << '/' << stats.pages.direct_view_bytes
+                    << ", live_direct_slots/native_allocated_bytes=" << stats.pages.live_direct_slots << '/' << stats.pages.live_direct_slot_bytes
                     << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
                 const auto banks=renderer->worldSourceCommandStats();
                 LL_INFOS("MetalScene") << "Native source command banks: view=" << owner
                     << ", enabled=" << gSavedSettings.getBOOL("RenderMetalSourceCommandBanks")
+                    << ", direct_bindings_requested=" << gSavedSettings.getBOOL("RenderMetalSourceDirectCommandBanks")
                     << ", accepted_requested_candidates=" << banks.requested_draws
                     << ", accepted_bank_logical_draws=" << banks.bank_draws
                     << ", accepted_fallback_candidates=" << banks.fallback_draws
@@ -3160,6 +3164,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", cache_encoded_execute_calls/logical_draws=" << banks.cache.executions << '/' << banks.cache.logical_draws
                     << ", publication_admission_requests/denials=" << banks.cache.admission_requests << '/' << banks.cache.admission_denials
                     << ", charged_logical_indexed_argument_bytes=" << banks.cache.charged_logical_argument_bytes
+                    << ", charged_logical_buffer_binding_bytes=" << banks.cache.charged_logical_binding_bytes
+                    << ", direct_bank_builds/hits/encoded_calls=" << banks.cache.direct_builds << '/' << banks.cache.direct_hits << '/' << banks.cache.direct_encoded_calls
+                    << ", gross_retained_binding_bytes/cap=" << banks.cache.unique_retained_binding_bytes << '/' << banks.cache.retained_binding_limit_bytes
                     << ", live_icb_allocated_bytes=" << banks.cache.live_icb_allocated_bytes
                     << ", unique_retained_existing_index_bytes=" << banks.cache.unique_retained_index_bytes
                     << ", cached/live_banks=" << banks.cache.cached_banks << '/' << banks.cache.live_banks
@@ -16234,8 +16241,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.cpu_source_owner = capture.cpu_sources;
     scene.source_rows = capture.source_rows;
     static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
+    static LLCachedControl<bool> direct_source_banks(gSavedSettings, "RenderMetalSourceDirectCommandBanks", false);
     static LLCachedControl<S32> source_bank_minimum(gSavedSettings, "RenderMetalSourceCommandMinimumRun", 2);
     scene.source_command_banks = source_banks() && !impostor_bake;
+    scene.source_direct_command_banks = scene.source_command_banks && direct_source_banks();
     scene.source_command_minimum_run = static_cast<U32>(llclamp(source_bank_minimum(), 2, 4096));
     scene.references = capture.source_references.data();
     scene.reference_count = capture.source_references.size();

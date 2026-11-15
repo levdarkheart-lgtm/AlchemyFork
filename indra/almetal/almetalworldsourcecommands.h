@@ -33,9 +33,16 @@ struct ALMetalWorldSourceCommandStats
 {
     std::uint64_t requests=0,hits=0,builds=0,executions=0,logical_draws=0,evictions=0;
     std::uint64_t admission_requests=0,admission_denials=0,charged_logical_argument_bytes=0;
+    std::uint64_t charged_logical_binding_bytes=0;
     // Unique existing index footprint, not a new allocation or another GPU
     // memory total. Both native quantities include still-pending retired banks.
     std::uint64_t live_icb_allocated_bytes=0,unique_retained_index_bytes=0;
+    // Additional gross native binding/asset footprint uses SourcePages' resolved
+    // hardware-derived asset limit, separate from the unchanged ICB/index cap.
+    // Each scope deduplicates allocation identity. A legal combined allocation
+    // used in both roles overlaps these gross scopes; do not add them as RAM.
+    std::uint64_t unique_retained_binding_bytes=0,retained_binding_limit_bytes=0;
+    std::uint64_t direct_builds=0,direct_hits=0,direct_encoded_calls=0;
     std::size_t cached_banks=0,live_banks=0;
     std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> failures{};
     ALMetalWorldSourceCommandFailure last_failure=ALMetalWorldSourceCommandFailure::none;
@@ -82,6 +89,7 @@ public:
     bool executeRange(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
         std::size_t first,std::size_t count,std::string* error=nullptr);
     void clear() noexcept;
+    void trimUnusedBanks() noexcept;
     ALMetalWorldSourceCommandStats stats() const noexcept;
     void failNextPublicationForTesting() noexcept;
     // One-shot CPU-owner fault seam; disabled unless explicitly armed. Fail

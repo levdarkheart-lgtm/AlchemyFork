@@ -1221,3 +1221,99 @@ TEST_CASE("almetal: mapping-only cold pass publication is admitted before alloca
         CHECK(budget.snapshot().uploads_in_flight==0);CHECK(budget.snapshot().optional_views_in_flight==0);
     }
 }
+
+TEST_CASE("almetal: direct cohort slots preserve exact per-command cameras and reuse only retired readers",
+          "[almetal][world-source-pages][world-cohort][world-direct-bindings]")
+{
+    @autoreleasepool
+    {
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);CohortPageFixture f(family,4);auto pages=f.pages();auto cohort=f.cohortView();
+            auto command=f.device->makeCommandBuffer("First fixed direct cohort view",&f.error);REQUIRE(command);
+            auto first=pages->freezeCohortsForCommand(*command,std::span(&cohort,1),f.globals,&f.error,nullptr,true);INFO(f.error);REQUIRE(first);
+            REQUIRE(first->directBindings());auto original=first->directBindingSlot();REQUIRE(original);
+            const auto membership=first->commandMembership();REQUIRE(membership);REQUIRE(membership->directBindings().size()==4);
+            const auto cold=pages->stats();CHECK(cold.direct_policy_bytes==4*96);CHECK(cold.direct_slot_allocations==1);
+            auto copy=cohort;copy.view.modelview_projection[12]=.25f;auto flags=f.globals;flags.flags[2]=1;
+            auto other=f.device->makeCommandBuffer("Second incomplete direct cohort view",&f.error);REQUIRE(other);
+            auto second=pages->freezeCohortsForCommand(*other,std::span(&copy,1),flags,&f.error,nullptr,true);INFO(f.error);REQUIRE(second);
+            CHECK(second->commandMembership()==membership);CHECK(second->directBindingSlot()!=original);CHECK(second->directNormalHDR());
+            CHECK(pages->stats().direct_policy_bytes==cold.direct_policy_bytes);CHECK(pages->stats().row_publications==cold.row_publications);
+            const auto* old_matrix=static_cast<const ALMetalWorldSourceRegion*>([(__bridge id<MTLBuffer>)original->nativeBuffer() contents]);
+            const auto* new_matrix=static_cast<const ALMetalWorldSourceRegion*>([(__bridge id<MTLBuffer>)second->directBindingSlot()->nativeBuffer() contents]);
+            REQUIRE(old_matrix);REQUIRE(new_matrix);CHECK(old_matrix->modelview_projection[12]==0);CHECK(new_matrix->modelview_projection[12]==.25f);
+            const std::weak_ptr<const ALMetalWorldSourceFrameView> weak=first;
+            REQUIRE(command->retainUntilCompletion(first,&f.error));first.reset();CHECK_FALSE(weak.expired());
+            auto completion=command->completionToken();command.reset();CHECK(completion->isComplete());CHECK(weak.expired());
+            // Keeping slot STORAGE (as a cached ICB does) is not a reader.
+            auto recovered=f.device->makeCommandBuffer("Recycled fixed direct cohort view",&f.error);REQUIRE(recovered);
+            auto third=pages->freezeCohortsForCommand(*recovered,std::span(&copy,1),flags,&f.error,nullptr,true);REQUIRE(third);
+            CHECK(third->directBindingSlot()==original);CHECK(pages->stats().direct_slot_allocations==2);
+            CHECK(pages->stats().direct_slot_hits==1);CHECK(pages->stats().direct_policy_bytes==4*96);
+            CHECK(pages->stats().direct_view_bytes==3*(sizeof(ALMetalWorldSourceRegion)+sizeof(ALMetalWorldSourceGlobals)));
+            for(const auto& source:f.descriptions->sources)CHECK_FALSE(source.native_resource_source);
+        }
+    }
+}
+
+TEST_CASE("almetal: direct cohort fixed-slot pressure protects uncommitted and GPU readers without waits",
+          "[almetal][world-source-pages][world-cohort][world-direct-bindings]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pages=f.pages();auto cohort=f.cohortView();
+        std::vector<std::unique_ptr<ALMetalCommandBuffer>> commands;
+        std::vector<std::shared_ptr<const ALMetalWorldSourceFrameView>> frames;
+        for(unsigned index=0;index<128;++index)
+        {
+            auto command=f.device->makeCommandBuffer("Live fixed-address direct slot",&f.error);REQUIRE(command);
+            auto frame=pages->freezeCohortsForCommand(*command,std::span(&cohort,1),f.globals,&f.error,nullptr,true);INFO(f.error);REQUIRE(frame);
+            REQUIRE(command->retainUntilCompletion(frame,&f.error));commands.push_back(std::move(command));frames.push_back(std::move(frame));
+        }
+        const auto full=pages->stats();CHECK(full.live_direct_slots==128);CHECK(full.direct_policy_bytes==2*96);
+        auto denied=f.device->makeCommandBuffer("Direct slot pressure has required fallback",&f.error);REQUIRE(denied);
+        CHECK_FALSE(pages->freezeCohortsForCommand(*denied,std::span(&cohort,1),f.globals,&f.error,nullptr,true));
+        CHECK(pages->stats().direct_slot_allocations==128);CHECK(pages->stats().live_direct_slot_bytes==full.live_direct_slot_bytes);
+        auto storage=frames[0]->directBindingSlot();auto completion=commands[0]->completionToken();commands[0].reset();CHECK(completion->isComplete());
+        CHECK_FALSE(pages->freezeCohortsForCommand(*denied,std::span(&cohort,1),f.globals,&f.error,nullptr,true)); // CPU reader remains.
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate{id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Retain a direct slot through actual GPU completion",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        REQUIRE(commands[1]->commit(&f.error));frames[1].reset();CHECK_FALSE(commands[1]->completionToken()->isComplete());
+        frames[0].reset();auto recovered=pages->freezeCohortsForCommand(*denied,std::span(&cohort,1),f.globals,&f.error,nullptr,true);REQUIRE(recovered);
+        CHECK(recovered->directBindingSlot()==storage);CHECK(pages->stats().direct_slot_allocations==128);
+        CHECK(pages->stats().direct_policy_bytes==full.direct_policy_bytes);
+        gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));
+    }
+}
+
+TEST_CASE("almetal: cold direct UV policy is admitted separately from reused row tables and warm view writes",
+          "[almetal][world-source-pages][world-cohort][world-direct-bindings][world-source-admission]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;for(auto& source:f.descriptions->sources)
+            REQUIRE(ALMetalWorldResourceSource::publish(*f.device,source,f.resources->textures,&f.error));
+        f.seal();auto pages=f.pages();auto cohort=f.cohortView();
+        auto control_command=f.device->makeCommandBuffer("Old row-mode tables stay reusable",&f.error);REQUIRE(control_command);
+        auto control=pages->freezeCohortForCommand(*control_command,cohort,f.globals,&f.error);REQUIRE(control);
+        ALNativeFrameBudget budget;ALNativeFrameBudget::FrameInputs input;input.frame=1;budget.beginFrame(input);
+        ALMetalWorldSourcePublicationWork observed;bool allow=false;unsigned callbacks=0;
+        pages->setPublicationAdmission([&](const auto& work)->std::shared_ptr<const void>
+        {++callbacks;observed=work;return allow?budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,work.chargedBytes(),1).credit:nullptr;});
+        auto command=f.device->makeCommandBuffer("Deny cold immutable direct policy",&f.error);REQUIRE(command);
+        const auto before=pages->stats();const auto allocations=alMetalResourceAllocationStats();
+        CHECK_FALSE(pages->freezeCohortsForCommand(*command,std::span(&cohort,1),f.globals,&f.error,nullptr,true));
+        CHECK(callbacks==1);CHECK(observed.encoded_row_bytes==2*96);CHECK(observed.chargedBytes()==2*96);
+        CHECK(pages->stats().direct_policy_bytes==0);CHECK(pages->stats().direct_slot_allocations==0);
+        CHECK(pages->stats().row_publications==before.row_publications);CHECK(alMetalResourceAllocationStats().buffers_created==allocations.buffers_created);
+        allow=true;auto admitted=pages->freezeCohortsForCommand(*command,std::span(&cohort,1),f.globals,&f.error,nullptr,true);INFO(f.error);REQUIRE(admitted);
+        CHECK(callbacks==2);CHECK(budget.snapshot().scene_bytes_in_flight==2*96);CHECK(pages->stats().direct_policy_bytes==2*96);
+        auto token=command->completionToken();command.reset();CHECK(token->isComplete());CHECK(budget.snapshot().scene_bytes_in_flight==0);
+        admitted.reset();auto warm_command=f.device->makeCommandBuffer("Warm fixed-address direct view",&f.error);REQUIRE(warm_command);
+        auto warm=pages->freezeCohortsForCommand(*warm_command,std::span(&cohort,1),f.globals,&f.error,nullptr,true);REQUIRE(warm);
+        CHECK(callbacks==2);CHECK(pages->stats().direct_slot_allocations==1);CHECK(pages->stats().row_publications==before.row_publications);
+    }
+}

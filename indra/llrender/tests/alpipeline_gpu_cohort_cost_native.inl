@@ -5,10 +5,10 @@
  * Included after the actual production capture/producer fixtures.
  */
 
-TEST_CASE("Actual retained cohorts compare ordinary direct and native bank complete costs",
-          "[almetal][.native-gpu-cohort-cost]")
+template<bool include_direct_bound>
+static void actualNativeCohortBankCosts()
 {
-    constexpr U32 samples=12,warmups=2;
+    constexpr U32 samples=12,warmups=2,modes=include_direct_bound?4:3;
     const auto cpu_ns=[]
     {timespec value{};REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0);return U64(value.tv_sec)*1'000'000'000ULL+value.tv_nsec;};
     const auto median=[](auto values)
@@ -28,6 +28,8 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
         U64 icb_live_bytes=0,index_retained_bytes=0,cached_banks=0,live_banks=0,page_live_bytes=0,cached_cohort_rows=0,cached_cohort_bytes=0;
         U64 cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
         U64 all_scene_admitted=0,all_scene_deferred=0,all_scene_bytes=0;
+        U64 direct_builds=0,direct_hits=0,direct_encoded_calls=0,direct_binding_bytes=0,direct_binding_limit=0,direct_binding_work_bytes=0;
+        U64 direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0,live_direct_slots=0,live_direct_slot_bytes=0;
     };
     struct Arm
     {
@@ -61,7 +63,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
         auto library=library_data->builtinLibrary(&f.error);INFO(f.error);REQUIRE(library);
         for(U32 count:{1u,4u,16u,512u})
         {
-            std::array<Arm,3> arms;
+            std::array<Arm,modes> arms;
             for(auto& arm:arms)
             {
                 for(U32 source=0;source<count;++source)arm.sources.push_back(&f.materialDraw());
@@ -86,17 +88,17 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                 CAPTURE(family,count,views,condition);
                 for(auto& arm:arms)
                 {arm.group->invalidate();arm.layout.reset();arm.dependencies.reset();for(auto* source:arm.sources)source->state->invalidate();}
-                std::array<std::array<Sample,samples>,3> costs{};
+                std::array<std::array<Sample,samples>,modes> costs{};
                 for(U32 sample=0;sample<samples+warmups;++sample)
                 {
                     ++Inputs::gFrameCount;
                     for(auto& arm:arms)
                     {ALNativeFrameBudget::FrameInputs input;input.frame=Inputs::gFrameCount;arm.budget.beginFrame(input);}
-                    std::array<std::array<GroupPublication::Image,3>,3> pixels;
-                    std::array<std::array<std::array<std::uint64_t,2>,3>,3> query_counts{};
-                    for(U32 position=0;position<3;++position)
+                    std::array<std::array<GroupPublication::Image,3>,modes> pixels;
+                    std::array<std::array<std::array<std::uint64_t,2>,3>,modes> query_counts{};
+                    for(U32 position=0;position<modes;++position)
                     {
-                        const U32 mode=(sample+position)%3;auto& arm=arms[mode];CAPTURE(mode,sample);
+                        const U32 mode=(sample+position)%modes;auto& arm=arms[mode];CAPTURE(mode,sample);
                         MaterialCacheScope material_scope(arm);
                         auto& capture=*arm.pipeline.mMetalWorldSimpleCapture;
                         const auto before_reads=f.reads();const auto before_serial=Inputs::sNativeSceneSerial;
@@ -209,7 +211,8 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                                 q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.08f;q.batch_offset=query?count:count/2;q.fan=7;q.count_samples=1;
                             }
                             auto scene=f.scene(capture);scene.visibility_queries=arm.queries.data();scene.visibility_query_count=arm.queries.size();
-                            scene.material_argument_buffers=false;scene.source_command_banks=mode==2;scene.source_command_minimum_run=2;
+                            scene.material_argument_buffers=false;scene.source_command_banks=mode>=2;
+                            scene.source_direct_command_banks=mode==3;scene.source_command_minimum_run=2;
                             auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),std::move(capture.source_references),
                                 std::move(capture.draw_order),std::move(capture.source_cohorts),std::move(arm.queries),
                                 std::move(capture.cpu_sources),capture.world_resources,arm.native_epoch,&f.error);INFO(f.error);REQUIRE(inputs);scene={};
@@ -274,23 +277,31 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                         value.cached_cohort_native_asset_limit=pages.cached_cohort_native_asset_limit;
                         value.all_scene_admitted=budget.scene_publications_this_frame-before_budget.scene_publications_this_frame;
                         value.all_scene_deferred=budget.deferred-before_budget.deferred;value.all_scene_bytes=budget.scene_bytes_this_frame-before_budget.scene_bytes_this_frame;
+                        value.direct_builds=cache.direct_builds-before_cache.direct_builds;value.direct_hits=cache.direct_hits-before_cache.direct_hits;
+                        value.direct_encoded_calls=cache.direct_encoded_calls-before_cache.direct_encoded_calls;value.direct_binding_bytes=cache.unique_retained_binding_bytes;
+                        value.direct_binding_limit=cache.retained_binding_limit_bytes;value.direct_binding_work_bytes=cache.charged_logical_binding_bytes-before_cache.charged_logical_binding_bytes;
+                        value.direct_policy_bytes=pages.direct_policy_bytes-before_pages.direct_policy_bytes;
+                        value.direct_slot_allocations=pages.direct_slot_allocations-before_pages.direct_slot_allocations;
+                        value.direct_slot_hits=pages.direct_slot_hits-before_pages.direct_slot_hits;value.direct_view_bytes=pages.direct_view_bytes-before_pages.direct_view_bytes;
+                        value.live_direct_slots=pages.live_direct_slots;value.live_direct_slot_bytes=pages.live_direct_slot_bytes;
                         CHECK(value.accepted_cohort_draws==value.cohort_draws);
                         CHECK(value.bank_draws+value.bank_fallback==value.bank_requested);
+                        if(mode==3&&value.bank_draws)CHECK(value.direct_builds+value.direct_hits>0);
                         CHECK(budget.scene_publications_in_flight==0);CHECK(budget.scene_bytes_in_flight==0);
-                        if(mode!=2){CHECK(value.bank_requested==0);CHECK(value.bank_draws==0);CHECK(value.execute_calls==0);}
-                        if(mode==2&&value.cohort_draws==U64(count)*views)
+                        if(mode<2){CHECK(value.bank_requested==0);CHECK(value.bank_draws==0);CHECK(value.execute_calls==0);}
+                        if(mode>=2&&value.cohort_draws==U64(count)*views)
                         {
                             CHECK(value.bank_requested==U64(count)*views);
                             if(count==1){CHECK(value.bank_draws==0);CHECK(value.bank_fallback==views);CHECK(value.execute_calls==0);}
                             else if(!value.page_admission_denials&&!value.bank_admission_denials)
                             {CHECK(value.bank_draws==U64(count)*views);CHECK(value.execute_calls==2*views);
-                             CHECK(value.page_arena_views==views);CHECK(value.page_arena_bytes==U64(288)*views);}
+                             if(mode==2){CHECK(value.page_arena_views==views);CHECK(value.page_arena_bytes==U64(288)*views);}}
                         }
                         if(sample>=warmups&&mode&&condition==1&&value.cohort_draws==U64(count)*views)
                         {CHECK(value.getters==0);CHECK(value.dependencies==0);CHECK(value.images==0);CHECK(value.compile_admitted==0);}
                         if(sample>=warmups)costs[mode][sample-warmups]=value;
                         if(sample==warmups-1)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
-                        std::cout<<"NATIVE_GPU_COHORT_RAW family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        std::cout<<(include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_RAW family=":"NATIVE_GPU_COHORT_RAW family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
                             <<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
                             <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
                             <<" gpu_sum_ms="<<value.gpu<<" gpu_ready_commands="<<value.gpu_ready
@@ -317,32 +328,61 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             <<" all_scene_admitted="<<value.all_scene_admitted<<" all_scene_deferred="<<value.all_scene_deferred<<" all_scene_logical_bytes="<<value.all_scene_bytes
                             <<" raw_value_bytes="<<value.raw_bytes<<" reference_value_bytes="<<value.reference_bytes<<" order_value_bytes="<<value.order_bytes
                             <<" cohort_value_bytes="<<value.cohort_bytes<<" expanded_candidate_bytes="<<value.candidate_bytes<<" sourceview_regional_bytes="<<value.regional_bytes
-                            <<" native_frame_bytes="<<value.native_frame_bytes<<" cpu_description_pins="<<value.cpu_pins<<" native_generation_pins="<<value.native_pins<<'\n';
+                            <<" native_frame_bytes="<<value.native_frame_bytes<<" cpu_description_pins="<<value.cpu_pins<<" native_generation_pins="<<value.native_pins
+                            <<" direct_bound_mode="<<(mode==3)<<" direct_bank_builds="<<value.direct_builds<<" direct_bank_hits="<<value.direct_hits
+                            <<" direct_encoded_calls="<<value.direct_encoded_calls<<" unique_retained_binding_bytes="<<value.direct_binding_bytes
+                            <<" retained_binding_limit_bytes="<<value.direct_binding_limit<<" direct_charged_logical_binding_bytes="<<value.direct_binding_work_bytes
+                            <<" direct_policy_published_bytes="<<value.direct_policy_bytes<<" direct_slot_allocations="<<value.direct_slot_allocations
+                            <<" direct_slot_hits="<<value.direct_slot_hits<<" direct_view_copy_bytes="<<value.direct_view_bytes
+                            <<" live_direct_slots="<<value.live_direct_slots<<" live_direct_slot_bytes="<<value.live_direct_slot_bytes<<'\n';
                     }
                     for(U32 view=0;view<views;++view)
-                    {CHECK(query_counts[0][view]==query_counts[1][view]);CHECK(query_counts[0][view]==query_counts[2][view]);
-                     if(sample==warmups-1){CHECK(pixels[0][view]==pixels[1][view]);CHECK(pixels[0][view]==pixels[2][view]);}}
+                        for(U32 mode=1;mode<modes;++mode)
+                        {CHECK(query_counts[0][view]==query_counts[mode][view]);
+                         if(sample==warmups-1)CHECK(pixels[0][view]==pixels[mode][view]);}
                 }
-                for(U32 mode=0;mode<3;++mode)
+                for(U32 mode=0;mode<modes;++mode)
                 {
-                    std::array<double,samples> cpu{},encode{},complete{},gpu{};
+                    std::array<double,samples> cpu{},encode{},complete{},gpu{};Sample direct_totals;
                     for(U32 sample=0;sample<samples;++sample)
-                    {const auto& value=costs[mode][sample];cpu[sample]=value.cpu;encode[sample]=value.encode;complete[sample]=value.complete;gpu[sample]=value.gpu;}
-                    std::cout<<"NATIVE_GPU_COHORT_COST family="<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
-                        <<" condition="<<(condition==0?"cold":condition==1?"warm":"churn")<<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":"gpu_cohort")
+                    {
+                        const auto& value=costs[mode][sample];cpu[sample]=value.cpu;encode[sample]=value.encode;complete[sample]=value.complete;gpu[sample]=value.gpu;
+                        direct_totals.direct_builds+=value.direct_builds;direct_totals.direct_hits+=value.direct_hits;direct_totals.direct_encoded_calls+=value.direct_encoded_calls;
+                        direct_totals.direct_slot_allocations+=value.direct_slot_allocations;direct_totals.direct_slot_hits+=value.direct_slot_hits;
+                        direct_totals.direct_binding_work_bytes+=value.direct_binding_work_bytes;
+                        direct_totals.direct_policy_bytes+=value.direct_policy_bytes;direct_totals.direct_view_bytes+=value.direct_view_bytes;
+                        direct_totals.direct_binding_bytes=std::max(direct_totals.direct_binding_bytes,value.direct_binding_bytes);
+                        direct_totals.live_direct_slot_bytes=std::max(direct_totals.live_direct_slot_bytes,value.live_direct_slot_bytes);
+                    }
+                    std::cout<<(include_direct_bound?"NATIVE_DIRECT_BOUND_COHORT_COST family=":"NATIVE_GPU_COHORT_COST family=")<<(family==1?"legacy":"pbr")<<" draws_per_view="<<count<<" views="<<views
+                        <<" condition="<<(condition==0?"cold":condition==1?"warm":"churn")<<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":mode==2?"gpu_cohort":"direct_bound_cohort")
                         <<" samples="<<samples<<" warmups="<<warmups<<" owner_cpu_median_ms="<<median(cpu)<<" owner_cpu_max_ms="<<*std::max_element(cpu.begin(),cpu.end())
                         <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
                         <<" completion_and_query_settle_median_ms="<<median(complete)<<" completion_and_query_settle_max_ms="<<*std::max_element(complete.begin(),complete.end())
                         <<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())
+                        <<" measured_direct_bank_builds="<<direct_totals.direct_builds<<" measured_direct_bank_hits="<<direct_totals.direct_hits
+                        <<" measured_direct_encoded_calls="<<direct_totals.direct_encoded_calls<<" measured_direct_slot_allocations="<<direct_totals.direct_slot_allocations
+                        <<" measured_direct_charged_logical_binding_bytes="<<direct_totals.direct_binding_work_bytes
+                        <<" measured_direct_slot_hits="<<direct_totals.direct_slot_hits<<" measured_direct_policy_bytes="<<direct_totals.direct_policy_bytes
+                        <<" measured_direct_view_copy_bytes="<<direct_totals.direct_view_bytes<<" max_unique_retained_binding_bytes="<<direct_totals.direct_binding_bytes
+                        <<" max_live_direct_slot_bytes="<<direct_totals.live_direct_slot_bytes
                         <<" page_bank_hit_unit=ordered_composition implicit_scalar_source_rows=0"
                         <<" update_stride=16 independent_group_source_admission=1 independent_framedata_renderers_material_cache=1 paired_logical_frame=1"
                         <<" native_epoch_once_per_arm_frame=1 shared_exact_library=1 distinct_view_matrix_payloads=1 typed_identity_camera_frontier=1"
                         <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 synthetic_idle_budget_inputs=1"
                         <<" count1_short_run_fallback_retained=1 denied_frames_retained=1 shared_context_counters_observed_once=1"
-                        <<" retained_native_index_footprint_not_new_allocation=1"
+                        <<" retained_native_index_footprint_not_new_allocation=1 binding_slot_footprints_overlap_do_not_sum=1"
                         <<" geometry_texture_drawinfo_creation_excluded=1 whole_viewer_fps_claim=0\n";
                 }
             }
         }
     }
 }
+
+TEST_CASE("Actual retained cohorts compare ordinary direct and native bank complete costs",
+          "[almetal][.native-gpu-cohort-cost]")
+{actualNativeCohortBankCosts<false>();}
+
+TEST_CASE("Actual retained cohorts compare ordinary direct pointer-bank and direct-bound bank complete costs",
+          "[almetal][.native-direct-bound-cohort-cost]")
+{actualNativeCohortBankCosts<true>();}

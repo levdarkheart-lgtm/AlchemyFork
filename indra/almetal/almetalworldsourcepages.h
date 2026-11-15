@@ -52,6 +52,37 @@ struct ALMetalWorldSourceCommandRun
     std::size_t first=0,count=0;
     bool double_sided=false;
 };
+struct ALMetalWorldSourceDirectBinding
+{
+    std::array<void*,7> geometry{};
+    std::array<std::size_t,7> offsets{};
+    void* legacy_numeric=nullptr;
+    void* pbr_ldr=nullptr;
+    void* pbr_hdr=nullptr;
+    void* resource_table=nullptr;
+    std::size_t policy_offset=0;
+    std::uint32_t region=0;
+};
+struct ALMetalWorldSourceNativeFootprint
+{
+    void* allocation=nullptr;
+    std::uint64_t bytes=0;
+};
+// Fixed-address native storage. Cached commands may retain this storage;
+// only an actual FrameView holds its separate overwrite-prevention token.
+class ALMetalWorldSourceDirectSlot final
+{
+public:
+    ~ALMetalWorldSourceDirectSlot();
+    void* nativeBuffer() const noexcept;
+    std::size_t regionOffset(std::uint32_t) const noexcept;
+    std::size_t globalsOffset() const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldSourceDirectSlot(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldSourcePages;
+};
 
 // Issued only by successful native publication. Immutable numeric metadata,
 // never a CPU cohort, C++ source generation or actual reader-token owner.
@@ -62,6 +93,9 @@ public:
     std::span<const ALMetalWorldSourceIndexedCall> calls() const noexcept;
     std::span<const ALMetalWorldSourceCommandRun> runs() const noexcept;
     void* nativeDevice() const noexcept;
+    std::span<const ALMetalWorldSourceDirectBinding> directBindings() const noexcept;
+    std::span<const ALMetalWorldSourceNativeFootprint> directAssets() const noexcept;
+    void* directPolicyBuffer() const noexcept;
 private:
     struct Impl;
     explicit ALMetalWorldSourceCommandMembership(std::unique_ptr<Impl>);
@@ -118,6 +152,8 @@ struct ALMetalWorldSourcePageStats
     // Gross unique root texture allocations held by this idle cache; overlaps
     // other active owners and must not be added to a physical memory total.
     std::uint64_t cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
+    std::uint64_t direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0;
+    std::size_t live_direct_slots=0,live_direct_slot_bytes=0;
 };
 
 // Logical encoder ranges and exact CPU copy/zero operations are separate
@@ -143,6 +179,11 @@ public:
     std::shared_ptr<const ALMetalWorldSourceCommandMembership> commandMembership() const noexcept;
     // Cumulative native call offsets, retaining original logical gaps/order.
     std::span<const ALMetalWorldSourceCohortRange> cohortRanges() const noexcept;
+    bool directBindings() const noexcept;
+    bool directNormalHDR() const noexcept;
+    std::uint64_t directBindingAssetLimit() const noexcept;
+    std::shared_ptr<const ALMetalWorldSourceDirectSlot> directBindingSlot() const noexcept;
+    std::span<const std::shared_ptr<const ALMetalWorldResourceTable>> directBindingTables() const noexcept;
     // Includes the exact index generation whose native device freeze proved.
     bool matchesSourceCommand(std::size_t request_index,const ALMetalWorldSourceKey&,
                               const ALMetalBuffer& indices) const noexcept;
@@ -157,6 +198,8 @@ private:
     explicit ALMetalWorldSourceFrameView(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;
     friend class ALMetalWorldSourcePages;
+    friend class ALMetalWorldSourceCommands;
+    bool matchesDirectCommand(const ALMetalCommandBuffer&) const noexcept;
 };
 
 // Publication owner only. Persistent rows contain weak C++ generation proofs;
@@ -193,7 +236,8 @@ public:
     // require equal176B transforms; a source row cannot select two regions.
     std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohortsForCommand(
         ALMetalCommandBuffer&,std::span<const ALMetalWorldSourceCohortView>,
-        const ALMetalWorldSourceGlobals&,std::string* error=nullptr,ALMetalWorldFrameData* frame_data=nullptr);
+        const ALMetalWorldSourceGlobals&,std::string* error=nullptr,ALMetalWorldFrameData* frame_data=nullptr,
+        bool direct_bindings=false);
     // Product owner injection only; generic/native fixtures default to no
     // policy. Dirty standalone freeze refuses an active policy (no command
     // can own its credit); fully reused standalone views remain legal.
@@ -214,7 +258,7 @@ private:
         ALMetalCommandBuffer*, std::span<const ALMetalWorldSourceRequest>,
         std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
         std::string*, std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides={},
-        bool certified_cohort=false,ALMetalWorldFrameData* frame_data=nullptr);
+        bool certified_cohort=false,ALMetalWorldFrameData* frame_data=nullptr,std::size_t direct_policy_bytes=0);
     struct Impl;
     explicit ALMetalWorldSourcePages(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;

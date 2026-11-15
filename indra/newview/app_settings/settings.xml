@@ -8049,6 +8049,13 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalSourceDirectCommandBanks</key>
+  <map>
+    <key>Comment</key><string>Diagnostic direct buffer bindings for retained cohort command banks. Requires GroupSources and SourceCommandBanks; disabled until complete-path correctness and cost gates pass.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalSourceCommandMinimumRun</key>
   <map>
     <key>Comment</key><string>Diagnostic minimum contiguous eligible draw count for a native source command bank, clamped to 2 through 4096.</string>

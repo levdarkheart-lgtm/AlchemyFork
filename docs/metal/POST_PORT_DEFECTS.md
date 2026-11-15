@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-235 -->
+<!-- next-defect-id: PPD-238 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5650,3 +5650,63 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before correcting WIP admission scope. Source39 and original bank mode remain unchanged; next235.
 
 - 2026-11-15: Backend author separates extra binding-asset retention from unchanged64MiB ICB/index scope, reusing exact resolved SourcePages asset limit via FrameView; pending/idle scope and independent eviction predicates authored. Native separation/denial/retirement tests pending; no raised existing cap or duplicate policy.
+
+
+## PPD-235 — New direct-bank many-group cost gate omits strict warm-reuse acceptance
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct-bound actual-cost fixture
+- Discovered: 2026-11-15
+- Original reference: Fitting64group native-bank scenarios must prove complete accepted work and zero warm N-command reencoding, new policy/slot allocation, admission, eviction or fallback; logging alone is weaker than this mechanism gate.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Before first direct-bank build, new many-cost mode3 checks requested/bound/fallback only. Its new counters are emitted, while old mode2 additionally requires hits and zero builds/evictions/page failures/admission denials. A mode3 rebuilding every warm frame could still pass the new gate. No executed failure or performance outcome is attributed.
+- Next action: Extend only fitting64group measured warm mode3 checks with exact composition hits, zero bank builds/direct encoded calls, zero policy/slot allocations/binding work and unchanged admission/eviction/page counters. Preserve loading and256pressure rows without assuming their warm success.
+- Verification: Root pre-build fixture review; narrow strengthened assertions and execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before unfreezing only the new mode3 assertion hunk. Next236.
+
+
+- 2026-11-15: Narrow fitting64 measured direct-mode assertions now require exact2compositions/view cache/page/direct/slot hits, zero bank/page builds/evictions/failures/denials and zero direct encoded calls/policy/slot allocation/binding charge. Loading and256pressure unchanged; source40 execution pending.
+
+## PPD-236 — Failed direct-bank staging permanently changes a shared buffer accounting role
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex direct-bound native accounting
+- Discovered: 2026-11-15
+- Original reference: Failed optional preparation must preserve existing valid native owners and their budget accounting. A native buffer may legally serve both geometry and indices; actual active leases determine scope.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Post-freeze source review finds Commands::markIndex reclassifies an existing binding-only shared native lease before new admission/capacity success. BankA can bind allocationX as geometry, then denied BankB stages X as indices. A still owns X but accounting remains in the index role, changing live scope after failed work. LLVB commonly separates allocations, but the helper accepts legal aliasing; no runtime incident or source39 regression is claimed.
+- Next action: Remove destructive role promotion. Track/deduplicate actual index and binding leases by role with transactional staging, retaining support for native aliases. Scope counters may overlap for a dual-role allocation and must not be summed as unique physical RAM. Preserve all existing limits, old valid bank reuse and native completion/abandon retirement; add denied-alias regression coverage.
+- Verification: Source author reports before repair; executed gates pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered after initial source freeze but before any direct feature build. Only command accounting/header comments and its native fixture unfreeze for this repair. Next237.
+
+
+- 2026-11-15: Immutable allocation+role registry repair and actual legal combined-buffer Ageometry/Bindex denial/retirement/recovery fixture are frozen. Independent gross scopes may overlap and are not summed as physical RAM; native execution pending.
+
+## PPD-237 — Generic inherited-bank API accepts a direct-binding view
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native command ABI validation
+- Discovered: 2026-11-15
+- Original reference: A frozen view must be consumed with its actual native binding ABI. Direct-bound views declare resources and rely on non-inherited per-command buffers; they cannot supply the old inherited source-row state.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Root pre-build review finds generic prepareForCommand validates source/index rows but does not reject frame.directBindings(). matchesSourceCommand accepts private cohort membership, so a valid direct frame can reach generic inherited ICB construction. Direct FrameView::bind declares native resources without binding the old row/view arrays. Production renderer uses prepareCohortForCommand correctly; no runtime incident is attributed.
+- Next action: Reject direct-binding frames at the generic inherited API entry before staging/admission. Add valid-direct-frame wrong-API rejection followed by proper direct preparation/output recovery, retaining ordinary/generic compatibility.
+- Verification: Source-confirmed consumer ABI mismatch before first feature build; correction/test pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Root registers before narrowly unfreezing Commands implementation/native fixture. Next238.
+
+- 2026-11-15: Generic inherited entry guard now rejects direct frames before staging/admission. Test supplies matching nonempty certified descriptors, checks callback0/unchanged cache/native/copy debt then proper cohort Legacy/PBR output/query recovery. Source40 execution pending.

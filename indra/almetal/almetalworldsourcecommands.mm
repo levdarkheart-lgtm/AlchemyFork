@@ -24,20 +24,30 @@ namespace
 {
 struct Accounting
 {
-    std::atomic<std::uint64_t> icb_bytes{0},index_bytes{0};
+    std::atomic<std::uint64_t> icb_bytes{0},index_bytes{0},binding_bytes{0};
     std::atomic<std::size_t> banks{0};
 };
 struct IndexLease
 {
-    id<MTLBuffer> native=nil;
+    id<MTLResource> native=nil;
     std::shared_ptr<Accounting> accounting;
     std::uint64_t bytes=0;
+    bool index_role=true;
     ~IndexLease()
     {
         native=nil;
-        if(accounting)accounting->index_bytes.fetch_sub(bytes,std::memory_order_relaxed);
+        if(accounting)(index_role?accounting->index_bytes:accounting->binding_bytes).fetch_sub(bytes,std::memory_order_relaxed);
     }
 };
+struct ResourceKey
+{
+    void* allocation=nullptr;
+    bool index_role=true;
+    bool operator==(const ResourceKey&)const=default;
+};
+struct ResourceKeyHash
+{std::size_t operator()(const ResourceKey& key)const noexcept{return std::hash<void*>{}(key.allocation)^(std::size_t(key.index_role)<<1);}};
+using ResourceRegistry=std::unordered_map<ResourceKey,std::weak_ptr<IndexLease>,ResourceKeyHash>;
 struct Key
 {
     std::uint64_t identity,flavor,revision,index_address,index_offset;
@@ -54,6 +64,10 @@ struct Bank
     std::weak_ptr<const ALMetalWorldSourceCommandMembership> membership;
     const ALMetalWorldSourceCommandMembership* membership_pointer=nullptr;
     std::size_t count=0;
+    std::shared_ptr<const ALMetalWorldSourceDirectSlot> direct_slot;
+    bool direct_normal_hdr=false;
+    std::uint64_t binding_limit=0;
+    std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> direct_tables;
     std::vector<std::shared_ptr<IndexLease>> indices;
     std::shared_ptr<Accounting> accounting;
     std::uint64_t bytes=0,hash=0;
@@ -61,7 +75,7 @@ struct Bank
     {
         if(accounting)
         {
-            native=nil;indices.clear();
+            native=nil;direct_tables.clear();direct_slot.reset();indices.clear();
             accounting->icb_bytes.fetch_sub(bytes,std::memory_order_relaxed);
             accounting->banks.fetch_sub(1,std::memory_order_relaxed);
         }
@@ -70,7 +84,7 @@ struct Bank
 struct BankPublication
 {
     std::list<std::shared_ptr<const Bank>> addition;
-    std::unordered_map<void*,std::weak_ptr<IndexLease>> indices;
+    ResourceRegistry indices;
     std::size_t evictions=0;
 };
 bool retainPublication(ALMetalCommandBuffer& command,
@@ -100,12 +114,13 @@ struct ALMetalWorldSourceCommands::Impl
     bool supported=false,force_failure=false,preparing=false;
     std::optional<std::size_t> execution_failure_after;
     std::uint64_t epoch=1;
+    std::uint64_t binding_limit=0;
     ALMetalWorldSourceCommandLimits limits;
     ALMetalWorldSourceCommandStats statistics;
     std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> admission;
     std::shared_ptr<Accounting> accounting=std::make_shared<Accounting>();
     std::list<std::shared_ptr<const Bank>> cache;
-    std::unordered_map<void*,std::weak_ptr<IndexLease>> indices;
+    ResourceRegistry indices;
     void fail(ALMetalWorldSourceCommandFailure reason,ALMetalWorldSourceCommandFailure* out,
               std::string* error,const char* message)
     {
@@ -116,7 +131,9 @@ struct ALMetalWorldSourceCommands::Impl
     {
         const auto icb=accounting->icb_bytes.load(std::memory_order_relaxed);
         const auto index=accounting->index_bytes.load(std::memory_order_relaxed);
+        const auto bindings=accounting->binding_bytes.load(std::memory_order_relaxed);
         return icb>limits.maximum_live_native_bytes || index>limits.maximum_live_native_bytes-icb ||
+            bindings>binding_limit ||
             accounting->banks.load(std::memory_order_relaxed)>limits.maximum_live_banks;
     }
     bool planPublication(const std::shared_ptr<const Bank>& bank,BankPublication& plan)
@@ -126,16 +143,20 @@ struct ALMetalWorldSourceCommands::Impl
         // therefore leave every prior warm bank available (PPD207).
         plan.indices=indices;
         std::erase_if(plan.indices,[](const auto& entry){return entry.second.expired();});
-        for(const auto& lease:bank->indices)plan.indices[(__bridge void*)lease->native]=lease;
+        for(const auto& lease:bank->indices)plan.indices[{(__bridge void*)lease->native,lease->index_role}]=lease;
         auto live=accounting->banks.load(std::memory_order_relaxed);
         auto icb=accounting->icb_bytes.load(std::memory_order_relaxed);
         auto index_bytes=accounting->index_bytes.load(std::memory_order_relaxed);
+        auto binding_bytes=accounting->binding_bytes.load(std::memory_order_relaxed);
+        const auto asset_limit=bank->direct_slot?bank->binding_limit:binding_limit;
         auto cached=cache.size()+std::size_t(limits.maximum_cached_banks!=0);
         const auto fits=[&]
         {
             return live<=limits.maximum_live_banks&&icb<=limits.maximum_live_native_bytes&&
                 index_bytes<=limits.maximum_live_native_bytes-icb&&
-                cached<=limits.maximum_cached_banks&&plan.indices.size()<=limits.maximum_unique_index_buffers;
+                binding_bytes<=asset_limit&&
+                cached<=limits.maximum_cached_banks&&
+                std::count_if(plan.indices.begin(),plan.indices.end(),[](const auto& item){auto lease=item.second.lock();return lease&&lease->index_role;})<=limits.maximum_unique_index_buffers;
         };
         std::unordered_map<const IndexLease*,std::size_t> removed_index_references;
         for(auto it=cache.rbegin();!fits()&&it!=cache.rend();++it)
@@ -149,7 +170,7 @@ struct ALMetalWorldSourceCommands::Impl
             const auto& victim=**it;--live;icb-=victim.bytes;
             for(const auto& lease:victim.indices)
                 if(++removed_index_references[lease.get()]==static_cast<std::size_t>(lease.use_count()))
-                {index_bytes-=lease->bytes;plan.indices.erase((__bridge void*)lease->native);}
+                {(lease->index_role?index_bytes:binding_bytes)-=lease->bytes;plan.indices.erase({(__bridge void*)lease->native,lease->index_role});}
         }
         if(!fits())return false;
         if(limits.maximum_cached_banks)plan.addition.push_front(bank);
@@ -192,6 +213,13 @@ void ALMetalWorldSourceCommands::setPublicationAdmission(ALMetalWorldSourcePages
 }
 void ALMetalWorldSourceCommands::clear()noexcept
 {++mImpl->epoch;mImpl->cache.clear();std::erase_if(mImpl->indices,[](const auto& value){return value.second.expired();});}
+void ALMetalWorldSourceCommands::trimUnusedBanks()noexcept
+{
+    for(auto it=mImpl->cache.begin();it!=mImpl->cache.end();)
+        if((*it)->membership_pointer&&(*it)->membership.expired()){it=mImpl->cache.erase(it);++mImpl->statistics.evictions;}
+        else ++it;
+    std::erase_if(mImpl->indices,[](const auto& value){return value.second.expired();});
+}
 void ALMetalWorldSourceCommands::failNextPublicationForTesting()noexcept{mImpl->force_failure=true;}
 void ALMetalWorldSourceCommands::failExecutionAfterForTesting(std::size_t successful_ranges)noexcept
 {mImpl->execution_failure_after=successful_ranges;}
@@ -200,7 +228,9 @@ ALMetalWorldSourceCommandStats ALMetalWorldSourceCommands::stats()const noexcept
     auto result=mImpl->statistics;result.cached_banks=mImpl->cache.size();
     result.live_banks=mImpl->accounting->banks.load(std::memory_order_relaxed);
     result.live_icb_allocated_bytes=mImpl->accounting->icb_bytes.load(std::memory_order_relaxed);
-    result.unique_retained_index_bytes=mImpl->accounting->index_bytes.load(std::memory_order_relaxed);return result;
+    result.unique_retained_index_bytes=mImpl->accounting->index_bytes.load(std::memory_order_relaxed);
+    result.unique_retained_binding_bytes=mImpl->accounting->binding_bytes.load(std::memory_order_relaxed);
+    result.retained_binding_limit_bytes=mImpl->binding_limit;return result;
 }
 std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareForCommand(
     ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
@@ -213,7 +243,7 @@ try
     struct PreparationGuard{bool& active;~PreparationGuard(){active=false;}} guard{state.preparing};
     state.preparing=true;
     if(!state.supported)return reject(ALMetalWorldSourceCommandFailure::unsupported,"Native source command banks are unsupported");
-    if(command.isCommitted()||command.nativeDevice()!=(__bridge void*)state.device||!frame||draws.empty()||draws.size()>alMetalWorldSourceMaximumRows)
+    if(command.isCommitted()||command.nativeDevice()!=(__bridge void*)state.device||!frame||frame->directBindings()||draws.empty()||draws.size()>alMetalWorldSourceMaximumRows)
         return reject(ALMetalWorldSourceCommandFailure::validation,"Native source command bank input is invalid");
     std::vector<Key> keys;keys.reserve(draws.size());std::uint64_t hash=1469598103934665603ULL;
     for(const auto& draw:draws)
@@ -263,8 +293,8 @@ try
         {
             void* identity=draw.indices->nativeHandle();std::shared_ptr<IndexLease> lease;
             if(const auto prior=std::find_if(bank->indices.begin(),bank->indices.end(),
-                    [&](const auto& value){return (__bridge void*)value->native==identity;});prior!=bank->indices.end())lease=*prior;
-            else if(const auto found=state.indices.find(identity);found!=state.indices.end())lease=found->second.lock();
+                    [&](const auto& value){return value->index_role&&(__bridge void*)value->native==identity;});prior!=bank->indices.end())lease=*prior;
+            else if(const auto found=state.indices.find({identity,true});found!=state.indices.end())lease=found->second.lock();
             if(!lease)
             {
                 lease=std::make_shared<IndexLease>();lease->native=(__bridge id<MTLBuffer>)identity;
@@ -336,13 +366,18 @@ try
     const auto membership=frame?frame->commandMembership():nullptr;
     if(command.isCommitted()||command.nativeDevice()!=(__bridge void*)state.device||!membership||
        membership->nativeDevice()!=(__bridge void*)state.device||membership->calls().empty()||
-       membership->calls().size()>alMetalWorldSourceMaximumRows||frame->size()!=membership->calls().size())
+       membership->calls().size()>alMetalWorldSourceMaximumRows||frame->size()!=membership->calls().size()||!frame->matchesDirectCommand(command))
         return reject(ALMetalWorldSourceCommandFailure::validation,"Native cohort command membership or device is invalid");
+    const bool direct=frame->directBindings();const auto slot=frame->directBindingSlot();
+    const auto bindings=membership->directBindings();
+    if(direct&&(!slot||!slot->nativeBuffer()||bindings.size()!=membership->calls().size()||!membership->directPolicyBuffer()))
+        return reject(ALMetalWorldSourceCommandFailure::validation,"Native direct command binding membership is incomplete");
 
     std::shared_ptr<const Bank> selected;
     std::optional<BankPublication> publication;
     std::shared_ptr<const void> publication_credit;
     std::uint64_t charged_arguments=0;
+    std::uint64_t charged_bindings=0;
     for(auto it=state.cache.begin();it!=state.cache.end();)
     {
         const auto& bank=*it;
@@ -352,18 +387,21 @@ try
         // Pointer AND control-block identity prevent metadata-address reuse
         // from certifying a different generation. No per-source scan occurs.
         if(bank->membership_pointer==membership.get()&&!bank->membership.owner_before(membership)&&
-           !membership.owner_before(bank->membership))
-        {selected=bank;state.cache.splice(state.cache.begin(),state.cache,it);++state.statistics.hits;break;}
+           !membership.owner_before(bank->membership)&&bank->direct_slot==slot&&
+           (!direct||bank->direct_normal_hdr==frame->directNormalHDR()))
+        {selected=bank;state.cache.splice(state.cache.begin(),state.cache,it);++state.statistics.hits;if(direct)++state.statistics.direct_hits;break;}
         ++it;
     }
     if(!selected)
     {
         if(std::exchange(state.force_failure,false))return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Forced native source command publication failure");
         auto bank=std::make_shared<Bank>();bank->membership=membership;bank->membership_pointer=membership.get();
+        bank->direct_slot=slot;bank->direct_normal_hdr=frame->directNormalHDR();
+        bank->binding_limit=direct?frame->directBindingAssetLimit():0;
         const auto calls=membership->calls();bank->count=calls.size();
         auto descriptor=[MTLIndirectCommandBufferDescriptor new];
-        descriptor.commandTypes=MTLIndirectCommandTypeDrawIndexed;descriptor.inheritPipelineState=YES;descriptor.inheritBuffers=YES;
-        descriptor.maxVertexBufferBindCount=0;descriptor.maxFragmentBufferBindCount=0;
+        descriptor.commandTypes=MTLIndirectCommandTypeDrawIndexed;descriptor.inheritPipelineState=YES;descriptor.inheritBuffers=!direct;
+        descriptor.maxVertexBufferBindCount=direct?12:0;descriptor.maxFragmentBufferBindCount=direct?2:0;
         bank->native=[state.device newIndirectCommandBufferWithDescriptor:descriptor maxCommandCount:bank->count options:MTLResourceStorageModeShared];
         if(!bank->native)return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Could not allocate a native cohort command bank");
         bank->bytes=bank->native.allocatedSize;bank->accounting=state.accounting;
@@ -381,8 +419,8 @@ try
                 return reject(ALMetalWorldSourceCommandFailure::validation,"Native cohort indexed call is invalid");
             std::shared_ptr<IndexLease> lease;
             if(const auto prior=std::find_if(bank->indices.begin(),bank->indices.end(),
-                    [&](const auto& value){return (__bridge void*)value->native==call.native_indices;});prior!=bank->indices.end())lease=*prior;
-            else if(const auto found=state.indices.find(call.native_indices);found!=state.indices.end())lease=found->second.lock();
+                    [&](const auto& value){return value->index_role&&(__bridge void*)value->native==call.native_indices;});prior!=bank->indices.end())lease=*prior;
+            else if(const auto found=state.indices.find({call.native_indices,true});found!=state.indices.end())lease=found->second.lock();
             if(!lease)
             {
                 lease=std::make_shared<IndexLease>();lease->native=indices;
@@ -393,17 +431,54 @@ try
             }
             if(std::find(bank->indices.begin(),bank->indices.end(),lease)==bank->indices.end())bank->indices.push_back(std::move(lease));
         }
+        if(direct)
+        {
+            std::unordered_map<void*,std::shared_ptr<IndexLease>> unique;
+            unique.reserve(bank->indices.size()+bindings.size()*4);
+            const auto retain=[&](void* identity,std::uint64_t expected=0)
+            {
+                if(!identity)return false;
+                if(unique.contains(identity))return true;
+                std::shared_ptr<IndexLease> lease;
+                if(auto found=state.indices.find({identity,false});found!=state.indices.end())lease=found->second.lock();
+                if(!lease)
+                {
+                    lease=std::make_shared<IndexLease>();lease->native=(__bridge id<MTLResource>)identity;lease->index_role=false;
+                    if(lease->native.device!=state.device)return false;
+                    lease->bytes=lease->native.allocatedSize;
+                    if(!lease->bytes||(expected&&lease->bytes!=expected))return false;
+                    lease->accounting=state.accounting;state.accounting->binding_bytes.fetch_add(lease->bytes,std::memory_order_relaxed);
+                }
+                if(expected&&lease->bytes!=expected)return false;
+                unique.emplace(identity,lease);bank->indices.push_back(std::move(lease));return true;
+            };
+            if(!retain(slot->nativeBuffer())||!retain(membership->directPolicyBuffer()))
+                return reject(ALMetalWorldSourceCommandFailure::validation,"Native direct command view/policy ownership is invalid");
+            for(const auto& binding:bindings)
+            {
+                for(auto geometry:binding.geometry)if(!retain(geometry))return reject(ALMetalWorldSourceCommandFailure::validation,"Native direct geometry ownership is invalid");
+                void* numeric=binding.legacy_numeric?binding.legacy_numeric:(frame->directNormalHDR()?binding.pbr_hdr:binding.pbr_ldr);
+                if(!retain(numeric)||!retain(binding.resource_table))return reject(ALMetalWorldSourceCommandFailure::validation,"Native direct material ownership is invalid");
+            }
+            for(const auto& asset:membership->directAssets())if(!retain(asset.allocation,asset.bytes))
+                return reject(ALMetalWorldSourceCommandFailure::validation,"Native direct texture footprint is invalid");
+            const auto tables=frame->directBindingTables();bank->direct_tables.assign(tables.begin(),tables.end());
+        }
         if(state.admission)
         {
             const auto epoch=state.epoch;auto admission=state.admission;
             ALMetalWorldSourcePublicationWork work;
-            work.encoded_bank_range_bytes=bank->count*(6*sizeof(std::uint32_t)+2*sizeof(std::uint64_t));
+            const auto argument_bytes=bank->count*(6*sizeof(std::uint32_t)+2*sizeof(std::uint64_t));
+            std::uint64_t binding_bytes=0;
+            if(direct)for(const auto& binding:bindings)
+                binding_bytes+=(binding.legacy_numeric?12u:13u)*(2*sizeof(std::uint64_t));
+            work.encoded_bank_range_bytes=argument_bytes+binding_bytes;
             work.allocation_bytes=bank->bytes;++state.statistics.admission_requests;
             publication_credit=(*admission)(work);
             if(epoch!=state.epoch||command.isCommitted()||command.nativeDevice()!=(__bridge void*)state.device)
                 return reject(ALMetalWorldSourceCommandFailure::admission,"Native cohort command publication changed during admission");
             if(!publication_credit){++state.statistics.admission_denials;return reject(ALMetalWorldSourceCommandFailure::admission,"Native source command publication was deferred");}
-            charged_arguments=work.encoded_bank_range_bytes;
+            charged_arguments=argument_bytes;charged_bindings=binding_bytes;
         }
         // Membership is privately immutable numeric storage, kept alive by
         // this local lease through callbacks. It contains no borrowed Draw
@@ -413,6 +488,20 @@ try
             id<MTLIndirectRenderCommand> native=[bank->native indirectRenderCommandAtIndex:index];
             if(!native)return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Native source indirect command proxy is unavailable");
             const auto& call=calls[index];
+            if(direct)
+            {
+                const auto& binding=bindings[index];constexpr unsigned slots[]{0,1,2,3,8,9,10};
+                for(unsigned attribute=0;attribute<7;++attribute)
+                    [native setVertexBuffer:(__bridge id<MTLBuffer>)binding.geometry[attribute] offset:binding.offsets[attribute] atIndex:slots[attribute]];
+                id<MTLBuffer> view=(__bridge id<MTLBuffer>)slot->nativeBuffer();
+                [native setVertexBuffer:view offset:slot->regionOffset(binding.region) atIndex:4];
+                [native setVertexBuffer:view offset:slot->globalsOffset() atIndex:5];
+                [native setVertexBuffer:(__bridge id<MTLBuffer>)membership->directPolicyBuffer() offset:binding.policy_offset atIndex:6];
+                void* numeric=binding.legacy_numeric?binding.legacy_numeric:(bank->direct_normal_hdr?binding.pbr_hdr:binding.pbr_ldr);
+                if(!binding.legacy_numeric)[native setVertexBuffer:(__bridge id<MTLBuffer>)numeric offset:0 atIndex:11];
+                [native setFragmentBuffer:(__bridge id<MTLBuffer>)numeric offset:0 atIndex:0];
+                [native setFragmentBuffer:(__bridge id<MTLBuffer>)binding.resource_table offset:0 atIndex:1];
+            }
             [native drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:call.index_count
                 indexType:call.index_type==ALMetalIndexType::uint16?MTLIndexTypeUInt16:MTLIndexTypeUInt32
                 indexBuffer:(__bridge id<MTLBuffer>)call.native_indices indexBufferOffset:call.index_offset
@@ -426,7 +515,10 @@ try
     impl->command=(__bridge id<MTLCommandBuffer>)command.nativeHandle();impl->device=state.device;
     auto result=std::shared_ptr<const Batch>(new Batch(std::move(impl)));
     if(!retainPublication(command,result,std::move(publication_credit),error))return reject(ALMetalWorldSourceCommandFailure::retention,"Native source command lease retention failed");
-    if(publication){state.commitPublication(*publication);state.statistics.charged_logical_argument_bytes+=charged_arguments;}
+    if(publication){state.commitPublication(*publication);state.statistics.charged_logical_argument_bytes+=charged_arguments;
+        state.statistics.charged_logical_binding_bytes+=charged_bindings;
+        if(direct)state.binding_limit=result->mImpl->frame->directBindingAssetLimit();
+        if(direct){++state.statistics.direct_builds;state.statistics.direct_encoded_calls+=result->size();}}
     state.statistics.last_failure=ALMetalWorldSourceCommandFailure::none;return result;
 }
 catch(const std::bad_alloc&)
@@ -460,6 +552,8 @@ bool ALMetalWorldSourceCommands::executeRange(ALMetalRenderEncoder& encoder,ALMe
     [native executeCommandsInBuffer:prepared.bank->native withRange:NSMakeRange(first,count)];
     encoder.recordIndirectSubmission(static_cast<std::uint32_t>(count));
     if(mImpl->execution_failure_after)--*mImpl->execution_failure_after;
-    // inheritBuffers=YES leaves bindings unchanged; bridge flushes scalar joins.
+    // Direct banks own their buffer binds. Subsequent ordinary bridge calls
+    // must restore their slots even if its prior cached pointer was equal.
+    if(prepared.bank->direct_slot)encoder.invalidateIndirectBufferBindings();
     ++mImpl->statistics.executions;mImpl->statistics.logical_draws+=count;return true;
 }

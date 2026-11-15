@@ -1214,3 +1214,71 @@ strict/native and new ordinary/direct/old-bank/new-bank cost gates. All new
 experiment execution is pending. Original full route (GPU work before repeated
 CPU discovery, animated conservative bounds, broader detached/pass/memory work)
 and owner whole-engine performance remain partial/ACTIVE; no goal shrink.
+
+PPD235 records missing strict warm-reuse assertions in fitting64group direct
+mode before first build. Keep all loading/256adverse cases and require actual
+zero measured rebuild/reencode/allocation/admission work in fitting warm cases.
+
+PPD236 post-freeze review finds destructive native buffer role promotion before
+cold admission. Hold source40 build; unfreeze only Commands accounting/comments
+and native alias regression. Prefer per-role deduped leases, with overlap labeled
+and no physical-total addition, preserving legal combined buffer support.
+
+Source40integration has hash-checked15frozen source/settings files in root;
+only236Commands accounting/test delta must be recopied after repair/review.
+No40build exists yet. Root added explicit direct policy/slot/work/retained-asset
+census, additive verifier40(eightOFFnonpersistentcontrols/newcompiledmarkers),
+private new4arm cost wrappers and summary parser. No claimed execution follows
+syntax-only preparation. Existing canonical owner/release apps remain untouched.
+
+PPD237 pre-build consumer review requires generic inherited-bank preparation to
+reject direct-binding FrameViews. Row identity alone does not certify binding
+ABI; production cohort consumer is correct. Narrow guard/native rejection test
+must land before source40 freeze, with proper API recovery preserved.
+
+
+## Source40 direct-bound ICB freeze
+
+All15source/settings files are frozen, hash-checked and copied to root. Root
+reviewed actual old SourceRows/math/resource fragment contracts and the new
+split96/176/32B ABI; opaque reviewed shader/world and architecture now reviews
+final backend lifecycle/caps read-only. This native binding mechanism has no
+original GL equivalent: original1eb44bbd materialV matrix/normal/UV/color and
+same Legacy/PBR fragments remain the output contract. No source-row shaders,
+material arithmetic, alpha/order/query/cull behavior is intentionally changed.
+
+Direct mode uses cold explicit policy data and stable native view slots. Cache
+keys exact immutable membership/control block+slot storage+normalHDR (region
+layout/offsets fixed by that composition). Only real FrameView/command reader
+prevents overwrite; storage cached by an idle bank is not a reader. Native
+geometry/numeric/table/slot/texture closure survives actual GPU completion,
+not CPU source descriptions or mutable geometry generation leases.
+
+PPD234 separates existing64MiB ICB/index debt from gross additional binding
+asset debt under exact SourcePages resolved hardware cap. PPD236 removes
+permanent role promotion: allocation+immutable role leases deduplicate within
+each independent scope; dual-role overlap is explicitly not physical-total RAM.
+Denied cold aliases preserve older cache/debt, verified by authored native
+Ageometry/Bindex shared-buffer denial/retirement/recovery tests. PPD237 blocks
+generic inherited API consuming direct FrameViews; descriptors are independently
+proved otherwise valid, and proper cohort API output recovery is included.
+
+Cold command admission retains existing40B canonical indexed-call descriptor
+(not the separate20B Metal indirect-argument ABI) and adds actual12Legacy/
+13PBR handle+64-bit-offset logical binds,192/208B per call. Allocated GPU bytes
+and gross retained asset bytes remain separate. Warm hits have zero tickets,
+policy copies, Ncommand encoding and new slot allocation. PPD235 strict64group
+measured checks require those counters, exact composition hits and zero failures;
+loading/256pressure rows remain unfiltered. New hidden tags comparefour
+independent ordinary/direct/current-bank/direct-bound arms (192/32summary rows),
+while originalthree-arm tags remain available as controls. No heavy-bank mesh
+extension or GPU speedup claim is included in this freeze.
+
+Root adds defaultOFF/nonpersistent RenderMetalSourceDirectCommandBanks in common
+main/probe capture and separate logical-work/slot/allocation/gross-retention
+census. Additive private verifier40 requires the eighthOFFcontrol, direct slot/
+trim symbols and new shader/census markers. Private4arm cost wrappers/summary
+parser are authored, not executed. Next required40/build/static/strict/all21
+native scopes, oldcontrols and bothnew4arm cost matrices; preserve failures.
+Source39app69080/owner69065preview remain untouched until required integration;
+no viewer launch/login/profile/push and no full-goal acceptance occurred.

@@ -195,22 +195,28 @@ struct BankFixture : Fixture
         auto library=data->builtinLibrary(&error);REQUIRE(library);
         cohort_pages=data->worldSourcePages(*library,1,&error);INFO(error);REQUIRE(cohort_pages);
     }
-    std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohort(ALMetalCommandBuffer& command)
+    std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohort(ALMetalCommandBuffer& command,bool direct=false)
     {
         ALMetalWorldSourceGlobals globals;
-        auto result=cohort_pages->freezeCohortForCommand(command,cohort_view,globals,&error);
+        auto result=direct?cohort_pages->freezeCohortsForCommand(command,std::span(&cohort_view,1),globals,&error,nullptr,true):
+            cohort_pages->freezeCohortForCommand(command,cohort_view,globals,&error);
         INFO(error);REQUIRE(result);REQUIRE(result->commandMembership());return result;
     }
     std::unique_ptr<ALMetalRenderTarget> encodeBank(ALMetalWorldSourceCommands& helper,
         const ALMetalWorldSourceCommands::Batch& bank,ALMetalCommandBuffer& command,
         std::span<const std::array<std::size_t,2>> ranges={},
-        std::shared_ptr<const ALMetalBuffer>* queries=nullptr,bool check_rejections=false)
+        std::shared_ptr<const ALMetalBuffer>* queries=nullptr,bool check_rejections=false,bool direct=false)
     {
         auto library=data->builtinLibrary(&error);REQUIRE(library);
         ALMetalRenderPipelineDescriptor pd;pd.library=library.get();pd.support_indirect_commands=true;
         const bool pbr=!draws.empty()&&draws.front().pbr_slot_count;
         pd.vertex_function=pbr?"almetal_world_pbr_source_rows_vertex":"almetal_world_material_source_rows_vertex";
         pd.fragment_function=pbr?"almetal_world_pbr_source_rows_fragment":"almetal_world_material_source_rows_fragment";pd.color_attachment_count=4;
+        if(direct)
+        {
+            pd.vertex_function=pbr?"almetal_world_pbr_direct_bound_vertex":"almetal_world_material_direct_bound_vertex";
+            pd.fragment_function=pbr?"almetal_world_pbr_resources_fragment":"almetal_world_material_resources_fragment";
+        }
         for(unsigned i=0;i<4;++i)pd.colors[i].format=ALMetalPixelFormat::rgba8_unorm;
         pd.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
         auto pipeline=ALMetalRenderPipeline::create(*device,pd,&error);REQUIRE(pipeline);
@@ -764,5 +770,191 @@ TEST_CASE("almetal: denied or capacity-rejected bank publication preserves an ex
             bank_b.reset();frame_b.reset();command_b.reset();helper->clear();
             CHECK(helper->stats().unique_retained_index_bytes==0);CHECK(helper->stats().live_banks==0);
         }
+    }
+}
+
+TEST_CASE("almetal: direct-bound cohort banks preserve original pixels queries and warm immutable commands",
+          "[almetal][world-source-commands][world-cohort-commands][world-direct-bindings]")
+{
+    @autoreleasepool
+    {
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);BankFixture f;f.makeCohort(family);
+            auto helper=ALMetalWorldSourceCommands::create(*f.device,{},&f.error);REQUIRE(helper);
+            constexpr std::array<std::array<std::size_t,2>,2> ranges{{{0,4},{4,4}}};
+            auto reference=f.device->makeCommandBuffer("Inherited source-row command control",&f.error);REQUIRE(reference);
+            auto reference_frame=f.freezeCohort(*reference);auto reference_bank=helper->prepareCohortForCommand(*reference,reference_frame,&f.error);REQUIRE(reference_bank);
+            std::shared_ptr<const ALMetalBuffer> reference_queries;
+            auto reference_target=f.encodeBank(*helper,*reference_bank,*reference,ranges,&reference_queries);
+            REQUIRE(reference->commitAndWait(&f.error));const auto expected=f.read(*reference_target);
+            std::array<std::uint64_t,2> expected_queries{};REQUIRE(reference_queries->read(0,expected_queries.data(),sizeof(expected_queries),&f.error));
+            CHECK(expected_queries[0]>0);CHECK(expected_queries[1]>0);
+            unsigned callbacks=0;std::weak_ptr<unsigned> credit;
+            helper->setPublicationAdmission([&](const auto& work)->std::shared_ptr<const void>
+            {
+                ++callbacks;CHECK(work.encoded_bank_range_bytes==BankFixture::source_count*(40+(family==1?192:208)));
+                auto value=std::make_shared<unsigned>(1);credit=value;return value;
+            });
+            auto command=f.device->makeCommandBuffer("Direct bound native cohort commands",&f.error);REQUIRE(command);
+            auto frame=f.freezeCohort(*command,true);const auto slot=frame->directBindingSlot();REQUIRE(slot);
+            // PPD237: these are otherwise valid keys/index ranges for this
+            // privately frozen frame. The generic inherited-buffer API must
+            // reject its incompatible direct ABI before any staging/credit.
+            const auto wrong_draws=f.commandDraws();const auto before_wrong=helper->stats();
+            REQUIRE_FALSE(wrong_draws.empty());REQUIRE(wrong_draws.size()==frame->size());
+            for(const auto& draw:wrong_draws)
+            {
+                REQUIRE(draw.indices);REQUIRE(frame->matchesSourceCommand(draw.view_index,draw.key,*draw.indices));
+                const auto& certified=frame->commandMembership()->calls()[draw.view_index];
+                REQUIRE(draw.index_count==certified.index_count);REQUIRE(draw.index_offset==certified.index_offset);
+                REQUIRE(draw.index_type==certified.index_type);
+            }
+            const auto before_allocations=alMetalResourceAllocationStats();ALMetalWorldSourceCommandFailure wrong_reason{};
+            CHECK_FALSE(helper->prepareForCommand(*command,frame,wrong_draws,&f.error,&wrong_reason));
+            CHECK(wrong_reason==ALMetalWorldSourceCommandFailure::validation);CHECK(callbacks==0);
+            const auto rejected=helper->stats();CHECK(rejected.builds==before_wrong.builds);CHECK(rejected.direct_encoded_calls==before_wrong.direct_encoded_calls);
+            CHECK(rejected.cached_banks==before_wrong.cached_banks);CHECK(rejected.evictions==before_wrong.evictions);
+            CHECK(rejected.live_icb_allocated_bytes==before_wrong.live_icb_allocated_bytes);
+            CHECK(rejected.unique_retained_index_bytes==before_wrong.unique_retained_index_bytes);
+            CHECK(rejected.unique_retained_binding_bytes==before_wrong.unique_retained_binding_bytes);
+            CHECK(rejected.charged_logical_argument_bytes==before_wrong.charged_logical_argument_bytes);
+            CHECK(rejected.charged_logical_binding_bytes==before_wrong.charged_logical_binding_bytes);
+            CHECK(alMetalResourceAllocationStats().buffers_created==before_allocations.buffers_created);
+            auto bank=helper->prepareCohortForCommand(*command,frame,&f.error);INFO(f.error);REQUIRE(bank);CHECK(callbacks==1);CHECK_FALSE(credit.expired());
+            std::shared_ptr<const ALMetalBuffer> query_buffer;
+            auto target=f.encodeBank(*helper,*bank,*command,ranges,&query_buffer,false,true);
+            REQUIRE(command->commitAndWait(&f.error));CHECK(f.read(*target)==expected);
+            std::array<std::uint64_t,2> actual_queries{};REQUIRE(query_buffer->read(0,actual_queries.data(),sizeof(actual_queries),&f.error));
+            CHECK(actual_queries==expected_queries);
+            const auto cold=helper->stats();CHECK(cold.direct_builds==1);CHECK(cold.direct_encoded_calls==BankFixture::source_count);
+            CHECK(cold.charged_logical_argument_bytes==40*BankFixture::source_count);
+            CHECK(cold.charged_logical_binding_bytes==BankFixture::source_count*(family==1?192:208));
+            CHECK(cold.unique_retained_binding_bytes>0);CHECK(cold.retained_binding_limit_bytes==frame->directBindingAssetLimit());
+            const auto policy=f.cohort_pages->stats().direct_policy_bytes;const auto allocations=f.cohort_pages->stats().direct_slot_allocations;
+            std::weak_ptr<const ALMetalWorldSourceFrameView> weak_frame=frame;bank.reset();frame.reset();command.reset();
+            const auto retire=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+            while(!weak_frame.expired()&&std::chrono::steady_clock::now()<retire)std::this_thread::yield();
+            REQUIRE(weak_frame.expired());CHECK(credit.expired());
+            auto warm_command=f.device->makeCommandBuffer("Reuse fixed direct binding slot and bank",&f.error);REQUIRE(warm_command);
+            auto warm_frame=f.freezeCohort(*warm_command,true);CHECK(warm_frame->directBindingSlot()==slot);
+            auto warm=helper->prepareCohortForCommand(*warm_command,warm_frame,&f.error);INFO(f.error);REQUIRE(warm);
+            CHECK(callbacks==1);CHECK(helper->stats().direct_hits==1);CHECK(helper->stats().direct_encoded_calls==cold.direct_encoded_calls);
+            CHECK(f.cohort_pages->stats().direct_policy_bytes==policy);CHECK(f.cohort_pages->stats().direct_slot_allocations==allocations);
+            auto wrong=f.device->makeCommandBuffer("Direct bank may not adopt another command's slot",&f.error);REQUIRE(wrong);
+            ALMetalWorldSourceCommandFailure reason{};CHECK_FALSE(helper->prepareCohortForCommand(*wrong,warm_frame,&f.error,&reason));
+            CHECK(reason==ALMetalWorldSourceCommandFailure::validation);
+            auto warm_target=f.encodeBank(*helper,*warm,*warm_command,{},nullptr,false,true);
+            REQUIRE(warm_command->commitAndWait(&f.error));CHECK(f.read(*warm_target)==expected);
+        }
+    }
+}
+
+TEST_CASE("almetal: direct bank denial preserves old commands and extra binding assets use a separate cap",
+          "[almetal][world-source-commands][world-cohort-commands][world-direct-bindings]")
+{
+    @autoreleasepool
+    {
+        BankFixture f;f.makeCohort(1);
+        // Legal small draw in a larger native geometry allocation. Its gross
+        // binding footprint must not be folded into the ICB/index-only cap.
+        ALMetalBufferDescriptor descriptor;descriptor.length=4*1024*1024;descriptor.storage=ALMetalStorageMode::shared;
+        auto authored=ALMetalBuffer::create(*f.device,descriptor,&f.error);REQUIRE(authored);
+        REQUIRE(authored->write(0,f.mesh->mappedBytes(),f.mesh->length(),&f.error));
+        std::shared_ptr<const ALMetalBuffer> large=std::move(authored);
+        f.resources->buffers.push_back(large);
+        for(auto& source:f.cohort_cpu->values)source.vertices=large.get();
+        for(auto& key:f.cohort_cpu->keys)key.key.revision=2;
+        f.cohort_view.cohort=ALMetalWorldSourceCohort::seal(f.cohort_cpu->keys,f.cohort_cpu,f.resources,7,&f.error,&BankFixture::cohortTexture);REQUIRE(f.cohort_view.cohort);
+        auto command=f.device->makeCommandBuffer("Direct binding asset-scope control",&f.error);REQUIRE(command);
+        auto frame=f.freezeCohort(*command,true);
+        auto sizing=ALMetalWorldSourceCommands::create(*f.device,{},&f.error);REQUIRE(sizing);
+        auto first=sizing->prepareCohortForCommand(*command,frame,&f.error);REQUIRE(first);const auto measured=sizing->stats();
+        ALMetalWorldSourceCommandLimits limits;limits.maximum_live_native_bytes=measured.live_icb_allocated_bytes+measured.unique_retained_index_bytes;
+        REQUIRE(measured.unique_retained_binding_bytes>limits.maximum_live_native_bytes);
+        auto helper=ALMetalWorldSourceCommands::create(*f.device,limits,&f.error);REQUIRE(helper);
+        ALMetalWorldSourceCommandFailure reason{};bool allow=false;std::weak_ptr<unsigned> ticket;
+        helper->setPublicationAdmission([&](const auto&)->std::shared_ptr<const void>
+        {if(!allow)return {};auto value=std::make_shared<unsigned>(1);ticket=value;return value;});
+        CHECK_FALSE(helper->prepareCohortForCommand(*command,frame,&f.error,&reason));CHECK(reason==ALMetalWorldSourceCommandFailure::admission);
+        CHECK(helper->stats().direct_builds==0);CHECK(helper->stats().unique_retained_binding_bytes==0);
+        allow=true;auto accepted=helper->prepareCohortForCommand(*command,frame,&f.error,&reason);INFO(f.error);REQUIRE(accepted);
+        CHECK(helper->stats().live_icb_allocated_bytes+helper->stats().unique_retained_index_bytes<=limits.maximum_live_native_bytes);
+        CHECK(helper->stats().unique_retained_binding_bytes>limits.maximum_live_native_bytes);
+        CHECK(helper->stats().unique_retained_binding_bytes<=helper->stats().retained_binding_limit_bytes);CHECK_FALSE(ticket.expired());
+        // The same completed geometry exceeds an explicit SMALL asset budget,
+        // even though its indexed-call storage still fits the old cap.
+        auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);ALMetalWorldSourcePageLimits small;
+        small.maximum_cached_cohort_native_asset_bytes=2*1024*1024;
+        auto small_pages=ALMetalWorldSourcePages::create(*f.device,*library,1,small,&f.error);REQUIRE(small_pages);
+        auto small_command=f.device->makeCommandBuffer("Independent direct binding asset limit",&f.error);REQUIRE(small_command);
+        ALMetalWorldSourceGlobals globals;
+        auto small_frame=small_pages->freezeCohortsForCommand(*small_command,std::span(&f.cohort_view,1),globals,&f.error,nullptr,true);REQUIRE(small_frame);
+        auto bounded=ALMetalWorldSourceCommands::create(*f.device,limits,&f.error);REQUIRE(bounded);
+        CHECK_FALSE(bounded->prepareCohortForCommand(*small_command,small_frame,&f.error,&reason));CHECK(reason==ALMetalWorldSourceCommandFailure::capacity);
+        CHECK(bounded->stats().live_icb_allocated_bytes==0);CHECK(bounded->stats().unique_retained_binding_bytes==0);
+        accepted.reset();auto completion=command->completionToken();command.reset();CHECK(completion->isComplete());CHECK(ticket.expired());
+        first.reset();frame.reset();f.cohort_pages->clear();helper->trimUnusedBanks();sizing->trimUnusedBanks();
+        CHECK(helper->stats().cached_banks==0);CHECK(helper->stats().unique_retained_binding_bytes==0);
+    }
+}
+
+TEST_CASE("almetal: combined native index and geometry roles retain independent denial and retirement debt",
+          "[almetal][world-source-commands][world-cohort-commands][world-direct-bindings]")
+{
+    @autoreleasepool
+    {
+        BankFixture f;f.makeCohort(1);const auto index_offset=f.mesh->length();
+        ALMetalBufferDescriptor descriptor;descriptor.length=index_offset+f.index_buffer->length();descriptor.storage=ALMetalStorageMode::shared;
+        auto authored=ALMetalBuffer::create(*f.device,descriptor,&f.error);REQUIRE(authored);
+        REQUIRE(authored->write(0,f.mesh->mappedBytes(),f.mesh->length(),&f.error));
+        REQUIRE(authored->write(index_offset,f.index_buffer->mappedBytes(),f.index_buffer->length(),&f.error));
+        std::shared_ptr<const ALMetalBuffer> combined=std::move(authored);f.resources->buffers.push_back(combined);
+        for(auto& source:f.cohort_cpu->values)source.vertices=combined.get();
+        f.cohort_view.cohort=ALMetalWorldSourceCohort::seal(f.cohort_cpu->keys,f.cohort_cpu,f.resources,7,&f.error,&BankFixture::cohortTexture);REQUIRE(f.cohort_view.cohort);
+        auto helper=ALMetalWorldSourceCommands::create(*f.device,{},&f.error);REQUIRE(helper);
+        auto command_a=f.device->makeCommandBuffer("A binds combined storage as geometry only",&f.error);REQUIRE(command_a);
+        auto frame_a=f.freezeCohort(*command_a,true);auto bank_a=helper->prepareCohortForCommand(*command_a,frame_a,&f.error);REQUIRE(bank_a);
+        const auto before=helper->stats();REQUIRE(before.unique_retained_binding_bytes>0);
+        auto target_a=f.encodeBank(*helper,*bank_a,*command_a,{},nullptr,false,true);
+        auto cpu_b=std::make_shared<BankFixture::CohortCpu>();cpu_b->values=f.cohort_cpu->values;
+        for(std::size_t index=0;index<cpu_b->values.size();++index)
+        {
+            cpu_b->values[index].indices=combined.get();cpu_b->values[index].index_offset=index_offset;
+            cpu_b->keys.push_back({{100+index,1,2},&cpu_b->values[index]});f.cohort_pages->invalidate(100+index,2);
+        }
+        auto cohort_b=f.cohort_view;cohort_b.cpu_owner=cpu_b;
+        cohort_b.cohort=ALMetalWorldSourceCohort::seal(cpu_b->keys,cpu_b,f.resources,7,&f.error,&BankFixture::cohortTexture);REQUIRE(cohort_b.cohort);
+        auto command_b=f.device->makeCommandBuffer("B also addresses combined storage as indices",&f.error);REQUIRE(command_b);
+        ALMetalWorldSourceGlobals globals;
+        auto frame_b=f.cohort_pages->freezeCohortsForCommand(*command_b,std::span(&cohort_b,1),globals,&f.error,nullptr,true);REQUIRE(frame_b);
+        bool allow=false;unsigned callbacks=0;
+        const auto combined_bytes=[(__bridge id<MTLBuffer>)combined->nativeHandle() allocatedSize];
+        helper->setPublicationAdmission([&](const auto&)->std::shared_ptr<const void>
+        {
+            ++callbacks;CHECK(helper->stats().unique_retained_index_bytes==before.unique_retained_index_bytes+combined_bytes);
+            return allow?std::make_shared<unsigned>(1):nullptr;
+        });
+        ALMetalWorldSourceCommandFailure reason{};
+        CHECK_FALSE(helper->prepareCohortForCommand(*command_b,frame_b,&f.error,&reason));CHECK(reason==ALMetalWorldSourceCommandFailure::admission);
+        CHECK(callbacks==1);CHECK(helper->stats().unique_retained_index_bytes==before.unique_retained_index_bytes);
+        CHECK(helper->stats().unique_retained_binding_bytes==before.unique_retained_binding_bytes);
+        CHECK(helper->stats().cached_banks==before.cached_banks);CHECK(helper->stats().evictions==before.evictions);
+        auto warm_a=helper->prepareCohortForCommand(*command_a,frame_a,&f.error);REQUIRE(warm_a);CHECK(callbacks==1);
+        allow=true;auto bank_b=helper->prepareCohortForCommand(*command_b,frame_b,&f.error);INFO(f.error);REQUIRE(bank_b);
+        CHECK(helper->stats().unique_retained_index_bytes==before.unique_retained_index_bytes+combined_bytes);
+        BankQueueGate gate(f);REQUIRE(command_a->commit(&f.error));CHECK_FALSE(command_a->completionToken()->isComplete());
+        // B's uncommitted command and its cache entry may retire while A's
+        // real GPU reader still needs X as geometry. No category transfer or
+        // permanent index promotion may remain after the last index user.
+        bank_b.reset();frame_b.reset();command_b.reset();f.cohort_pages->clear();helper->trimUnusedBanks();
+        CHECK(helper->stats().unique_retained_index_bytes==before.unique_retained_index_bytes);
+        CHECK(helper->stats().unique_retained_binding_bytes==before.unique_retained_binding_bytes);
+        CHECK(helper->stats().cached_banks==1);
+        auto retry=f.device->makeCommandBuffer("Combined-role publication recovers",&f.error);REQUIRE(retry);
+        auto recovered_frame=f.cohort_pages->freezeCohortsForCommand(*retry,std::span(&cohort_b,1),globals,&f.error,nullptr,true);REQUIRE(recovered_frame);
+        auto recovered=helper->prepareCohortForCommand(*retry,recovered_frame,&f.error);REQUIRE(recovered);
+        auto target_b=f.encodeBank(*helper,*recovered,*retry,{},nullptr,false,true);REQUIRE(retry->commit(&f.error));
+        gate.release(f);CHECK(f.read(*target_b)==f.read(*target_a));
     }
 }

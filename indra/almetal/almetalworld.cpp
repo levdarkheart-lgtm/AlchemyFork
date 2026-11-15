@@ -1602,6 +1602,7 @@ void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
     mImpl->initialized = true;
     mImpl->generation = generation;
     if (mImpl->shadow_materials) mImpl->shadow_materials->beginFrame(generation);
+    if (mImpl->source_commands) mImpl->source_commands->trimUnusedBanks();
     // This owner maintenance also runs while optional source banks are OFF.
     // Idle weak cohort proofs must not retain native texture generations
     // after their CPU/native publishers die; submitted views remain readers.
@@ -2344,6 +2345,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> resource_pbr_pipelines;
     std::array<NormalPipelines, 2> source_material_pipelines, source_pbr_pipelines;
     std::array<NormalPipelines, 2> source_bank_material_pipelines, source_bank_pbr_pipelines;
+    std::array<NormalPipelines, 2> direct_bank_material_pipelines, direct_bank_pbr_pipelines;
     std::shared_ptr<ALMetalWorldSourcePages> source_pages;
     std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
     ALMetalWorldSourceDrawStats source_draw_stats;
@@ -2679,11 +2681,13 @@ struct ALMetalWorldGBufferRenderer::Impl
     }
 
     ALMetalRenderPipeline* sourcePipeline(bool hdr, bool normal_hdr, bool pbr, std::string* error,
-                                        bool command_bank = false)
+                                        bool command_bank = false, bool direct_bound = false)
     {
-        auto& variants = command_bank
-            ? (pbr ? source_bank_pbr_pipelines : source_bank_material_pipelines)
-            : (pbr ? source_pbr_pipelines : source_material_pipelines);
+        auto& variants = direct_bound
+            ? (pbr ? direct_bank_pbr_pipelines : direct_bank_material_pipelines)
+            : (command_bank
+                ? (pbr ? source_bank_pbr_pipelines : source_bank_material_pipelines)
+                : (pbr ? source_pbr_pipelines : source_material_pipelines));
         auto& result = variants[hdr][normal_hdr];
         if (!result)
         {
@@ -2691,9 +2695,19 @@ struct ALMetalWorldGBufferRenderer::Impl
             if (!original) return nullptr;
             auto descriptor = original->descriptor();
             descriptor.library = library.get();
-            descriptor.vertex_function = pbr ? "almetal_world_pbr_source_rows_vertex" : "almetal_world_material_source_rows_vertex";
-            descriptor.fragment_function = pbr ? "almetal_world_pbr_source_rows_fragment" : "almetal_world_material_source_rows_fragment";
-            descriptor.label = "Alchemy native GPU source-row G-buffer pipeline";
+            descriptor.vertex_function = direct_bound
+                ? (pbr ? "almetal_world_pbr_direct_bound_vertex" : "almetal_world_material_direct_bound_vertex")
+                : (pbr ? "almetal_world_pbr_source_rows_vertex" : "almetal_world_material_source_rows_vertex");
+            descriptor.fragment_function = direct_bound
+                ? (pbr ? "almetal_world_pbr_resources_fragment" : "almetal_world_material_resources_fragment")
+                : (pbr ? "almetal_world_pbr_source_rows_fragment" : "almetal_world_material_source_rows_fragment");
+            // An older optional library can still render the entire required
+            // scene directly. Reject this private mode before freezing a view.
+            if (direct_bound && (!library->hasFunction(descriptor.vertex_function) ||
+                                 !library->hasFunction(descriptor.fragment_function)))
+                return nullptr;
+            descriptor.label = direct_bound ? "Alchemy direct-bound cohort G-buffer pipeline"
+                                            : "Alchemy native GPU source-row G-buffer pipeline";
             descriptor.support_indirect_commands = command_bank;
             result = ALMetalRenderPipeline::create(*device, descriptor, error);
         }
@@ -3007,7 +3021,9 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
         !rebuild_diagnostic(mImpl->source_material_pipelines, next.source_material_pipelines) ||
         !rebuild_diagnostic(mImpl->source_pbr_pipelines, next.source_pbr_pipelines) ||
         !rebuild_diagnostic(mImpl->source_bank_material_pipelines, next.source_bank_material_pipelines) ||
-        !rebuild_diagnostic(mImpl->source_bank_pbr_pipelines, next.source_bank_pbr_pipelines)) return {};
+        !rebuild_diagnostic(mImpl->source_bank_pbr_pipelines, next.source_bank_pbr_pipelines) ||
+        !rebuild_diagnostic(mImpl->direct_bank_material_pipelines, next.direct_bank_material_pipelines) ||
+        !rebuild_diagnostic(mImpl->direct_bank_pbr_pipelines, next.direct_bank_pbr_pipelines)) return {};
     for (const auto& entry : mImpl->custom_pre_water_alpha_pipelines)
     {
         std::unique_ptr<ALMetalRenderPipeline> pipeline;
@@ -9954,6 +9970,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         setError(error, "Metal world G-buffer renderer is unavailable");
         return nullptr;
     }
+    if (scene.source_direct_command_banks && !scene.source_command_banks)
+    {
+        setError(error, "Direct-bound cohort commands require source command banks");
+        return nullptr;
+    }
     if (prepared && !prepared->isCurrent())
     {
         setError(error, "Prepared world view epoch was cancelled");
@@ -10488,7 +10509,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if (count<std::max<std::uint32_t>(2,scene.source_command_minimum_run))
                 {fallback(ALMetalWorldSourceCommandFailure::short_run,count);at=end;continue;}
                 std::string optional_error;
-                const auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,family==2,&optional_error,true);
+                const auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,family==2,&optional_error,true,
+                                                          scene.source_direct_command_banks);
                 if (!pipeline) {fallback(ALMetalWorldSourceCommandFailure::pipeline,count);at=end;continue;}
                 mImpl->source_draw_stats.requested+=count;rows_requested=true;requested_count=count;
                 if (!mImpl->source_pages)
@@ -10497,7 +10519,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         : ALMetalWorldSourcePages::create(*mImpl->device,*mImpl->library,mImpl->max_anisotropy,{},&optional_error);
                 const auto selection=std::span(scene.cohorts+at,end-at);
                 auto frame=mImpl->source_pages
-                    ? mImpl->source_pages->freezeCohortsForCommand(*command,selection,globals,&optional_error,mImpl->frame_data.get()) : nullptr;
+                    ? mImpl->source_pages->freezeCohortsForCommand(*command,selection,globals,&optional_error,mImpl->frame_data.get(),
+                                                                 scene.source_direct_command_banks) : nullptr;
                 if (!frame)
                 {
                     ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=count;
@@ -10505,7 +10528,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     fallback(ALMetalWorldSourceCommandFailure::source_setup,count);at=end;continue;
                 }
                 const auto membership=frame->commandMembership();const auto ranges=frame->cohortRanges();
-                bool valid=membership && frame->size()==count && membership->calls().size()==count && ranges.size()==selection.size();
+                bool valid=membership && frame->size()==count && membership->calls().size()==count && ranges.size()==selection.size() &&
+                    frame->directBindings()==scene.source_direct_command_banks &&
+                    (!scene.source_direct_command_banks ||
+                        (frame->directNormalHDR()==scene.normal_hdr && frame->directBindingSlot()));
                 std::size_t next=0;
                 // The private membership already certified every static call
                 // and raster run cold. Warm work checks only G dynamic ranges.

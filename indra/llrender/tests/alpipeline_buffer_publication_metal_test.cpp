@@ -1983,9 +1983,9 @@ TEST_CASE("Actual optional visibility metadata failure preserves required raw re
 TEST_CASE("Actual group-bank denial leaves mixed raw fallback on ordinary native shaders",
           "[almetal][pipeline-buffer-publication][native-material-group][PPD-228]")
 {
-    for(U32 family:{1u,2u})
+    for(bool direct_bound:{false,true})for(U32 family:{1u,2u})
     {
-        CAPTURE(family);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_resources=false;
+        CAPTURE(family,direct_bound);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_resources=false;
         Inputs::gSavedSettings.native_groups=true;
         auto& raw=f.materialDraw();auto& a=f.materialDraw();auto& b=f.materialDraw(true);
         auto& cold_a=f.materialDraw();auto& cold_b=f.materialDraw();
@@ -2029,13 +2029,14 @@ TEST_CASE("Actual group-bank denial leaves mixed raw fallback on ordinary native
         renderer->setFrameData(data);auto scene=f.scene(capture);scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
         std::shared_ptr<ALMetalVisibilityResultBatch> expected_queries,actual_queries;
         auto direct=renderer->render(scene,&f.error,&expected_queries);INFO(f.error);REQUIRE(direct);REQUIRE(expected_queries);
-        const auto expected=f.read(*direct);scene.source_command_banks=true;
+        const auto expected=f.read(*direct);scene.source_command_banks=true;scene.source_direct_command_banks=direct_bound;
         auto target=renderer->render(scene,&f.error,&actual_queries);INFO(f.error);REQUIRE(target);REQUIRE(actual_queries);
         CHECK(f.read(*target)==expected);
         for(U32 i=0;i<queries.size();++i)
         {U64 before=0,after=0;REQUIRE(expected_queries->wait(i,before,&f.error));REQUIRE(actual_queries->wait(i,after,&f.error));CHECK(before==after);}
         const auto commands=renderer->worldSourceCommandStats();CHECK(commands.requested_draws==2);CHECK(commands.bank_draws==0);CHECK(commands.fallback_draws==2);
         const auto sources=renderer->worldSourceStats();CHECK(sources.bound==0);CHECK(sources.pages.admission_denials==1);
+        if(direct_bound){CHECK(sources.pages.direct_policy_bytes==0);CHECK(sources.pages.direct_slot_allocations==0);}
         CHECK(budget.snapshot().scene_publications_in_flight==0);CHECK(budget.snapshot().scene_bytes_in_flight==0);
     }
 }

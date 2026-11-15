@@ -25,11 +25,13 @@ namespace
 {
 void fail(std::string* error,const char* message){if(error)*error=message;}
 struct Budget {std::atomic<std::size_t> bytes{0};std::size_t limit=0;};
+struct DirectSlotAccounting {std::atomic<std::size_t> count{0},bytes{0};};
 struct Buffer
 {
     std::shared_ptr<const ALMetalBuffer> value;
     std::shared_ptr<Budget> budget;
-    ~Buffer(){if(value)budget->bytes.fetch_sub(value->length(),std::memory_order_relaxed);}
+    std::size_t charged_bytes=0;
+    ~Buffer(){if(value&&budget)budget->bytes.fetch_sub(charged_bytes,std::memory_order_relaxed);}
 };
 struct Page;
 struct PageReader {std::shared_ptr<const Page> page;};
@@ -99,7 +101,9 @@ struct Context
     std::shared_ptr<Budget> budget=std::make_shared<Budget>();
     std::size_t stride=0,bank_length=0;
     std::uint32_t anisotropy=1;
+    std::uint64_t direct_asset_limit=0;
     std::atomic<std::uint64_t> binds{0};
+    std::shared_ptr<DirectSlotAccounting> direct_slots=std::make_shared<DirectSlotAccounting>();
 };
 std::shared_ptr<Buffer> makeBuffer(const std::shared_ptr<Context>& context,std::size_t length,
                                   const char* label,std::string* error)
@@ -113,9 +117,20 @@ std::shared_ptr<Buffer> makeBuffer(const std::shared_ptr<Context>& context,std::
     ALMetalBufferDescriptor descriptor;descriptor.length=length;descriptor.storage=ALMetalStorageMode::shared;descriptor.label=label;
     result->value=ALMetalBuffer::create(*context->device,descriptor,error);
     if(!result->value)return {};
-    result->budget=context->budget;
+    result->budget=context->budget;result->charged_bytes=length;
     context->budget->bytes.fetch_add(length,std::memory_order_relaxed);
     return result;
+}
+std::shared_ptr<Buffer> makePhysicalBuffer(const std::shared_ptr<Context>& context,std::size_t length,
+    const char* label,std::string* error)
+{
+    if(length>std::numeric_limits<std::size_t>::max()-4095)return {};
+    auto buffer=makeBuffer(context,(length+4095)&~std::size_t(4095),label,error);if(!buffer)return {};
+    const auto actual=[(__bridge id<MTLBuffer>)buffer->value->nativeHandle() allocatedSize];
+    if(!actual||actual<buffer->charged_bytes)return {};
+    const auto extra=actual-buffer->charged_bytes,live=context->budget->bytes.load(std::memory_order_relaxed);
+    if(live>context->budget->limit||extra>context->budget->limit-live)return {};
+    context->budget->bytes.fetch_add(extra,std::memory_order_relaxed);buffer->charged_bytes=actual;return buffer;
 }
 bool finite(const float* values,std::size_t count)
 {for(std::size_t i=0;i<count;++i)if(!std::isfinite(values[i]))return false;return true;}
@@ -190,12 +205,32 @@ struct ALMetalWorldSourceCommandMembership::Impl
     void* device=nullptr;
     std::vector<ALMetalWorldSourceIndexedCall> calls;
     std::vector<ALMetalWorldSourceCommandRun> runs;
+    std::vector<ALMetalWorldSourceDirectBinding> bindings;
+    std::vector<ALMetalWorldSourceNativeFootprint> assets;
+    void* policy=nullptr;
 };
 ALMetalWorldSourceCommandMembership::ALMetalWorldSourceCommandMembership(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceCommandMembership::~ALMetalWorldSourceCommandMembership()=default;
 std::span<const ALMetalWorldSourceIndexedCall> ALMetalWorldSourceCommandMembership::calls()const noexcept{return mImpl->calls;}
 std::span<const ALMetalWorldSourceCommandRun> ALMetalWorldSourceCommandMembership::runs()const noexcept{return mImpl->runs;}
 void* ALMetalWorldSourceCommandMembership::nativeDevice()const noexcept{return mImpl->device;}
+std::span<const ALMetalWorldSourceDirectBinding> ALMetalWorldSourceCommandMembership::directBindings()const noexcept{return mImpl->bindings;}
+std::span<const ALMetalWorldSourceNativeFootprint> ALMetalWorldSourceCommandMembership::directAssets()const noexcept{return mImpl->assets;}
+void* ALMetalWorldSourceCommandMembership::directPolicyBuffer()const noexcept{return mImpl->policy;}
+namespace {struct DirectSlotReader{std::shared_ptr<const ALMetalWorldSourceDirectSlot> slot;};}
+struct ALMetalWorldSourceDirectSlot::Impl
+{
+    std::shared_ptr<Buffer> buffer;
+    std::weak_ptr<DirectSlotReader> reader;
+    std::shared_ptr<DirectSlotAccounting> accounting;
+    std::size_t regions=0,native_bytes=0;
+    ~Impl(){if(accounting){accounting->count.fetch_sub(1,std::memory_order_relaxed);accounting->bytes.fetch_sub(native_bytes,std::memory_order_relaxed);}}
+};
+ALMetalWorldSourceDirectSlot::ALMetalWorldSourceDirectSlot(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
+ALMetalWorldSourceDirectSlot::~ALMetalWorldSourceDirectSlot()=default;
+void* ALMetalWorldSourceDirectSlot::nativeBuffer()const noexcept{return mImpl->buffer->value->nativeHandle();}
+std::size_t ALMetalWorldSourceDirectSlot::regionOffset(std::uint32_t index)const noexcept{return std::size_t(index)*256;}
+std::size_t ALMetalWorldSourceDirectSlot::globalsOffset()const noexcept{return mImpl->regions*256;}
 namespace
 {
 // This cache closure is native-only. In particular it does not keep a cohort,
@@ -212,6 +247,8 @@ struct CohortBinding
     bool asset_footprint_known=true;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
     std::shared_ptr<Buffer> mapping;
+    std::shared_ptr<Buffer> direct_policy;
+    mutable std::vector<std::shared_ptr<ALMetalWorldSourceDirectSlot>> direct_slots;
     std::size_t metadata=0;
 };
 }
@@ -228,6 +265,9 @@ struct ALMetalWorldSourceFrameView::Impl
     std::shared_ptr<const CohortBinding> cohort;
     std::shared_ptr<BankReader> bank;
     std::vector<std::shared_ptr<PageReader>> pages;
+    std::shared_ptr<DirectSlotReader> direct_reader;
+    bool direct_normal_hdr=false;
+    void* direct_command=nullptr;
     std::shared_ptr<Buffer> regions,globals,mapping;
     // Retain only the native resource. FrameData owns/recycles its C++ wrapper
     // and may die independently; no raw slice pointer escapes publication.
@@ -280,6 +320,19 @@ ALMetalWorldSourceFrameView::~ALMetalWorldSourceFrameView()=default;
 std::size_t ALMetalWorldSourceFrameView::size()const noexcept
 {return mImpl->cohort?mImpl->cohort->membership->calls().size():mImpl->rows.size();}
 std::span<const ALMetalWorldSourceCohortRange> ALMetalWorldSourceFrameView::cohortRanges()const noexcept{return mImpl->ranges;}
+bool ALMetalWorldSourceFrameView::directBindings()const noexcept{return bool(mImpl->direct_reader);}
+bool ALMetalWorldSourceFrameView::directNormalHDR()const noexcept{return mImpl->direct_normal_hdr;}
+std::uint64_t ALMetalWorldSourceFrameView::directBindingAssetLimit()const noexcept{return mImpl->context->direct_asset_limit;}
+bool ALMetalWorldSourceFrameView::matchesDirectCommand(const ALMetalCommandBuffer& command)const noexcept
+{
+    if(!mImpl->direct_reader)return true;
+    auto origin=mImpl->arena_command.lock();
+    return origin&&!origin->isComplete()&&!command.isCommitted()&&command.nativeHandle()==mImpl->direct_command;
+}
+std::shared_ptr<const ALMetalWorldSourceDirectSlot> ALMetalWorldSourceFrameView::directBindingSlot()const noexcept
+{return mImpl->direct_reader?mImpl->direct_reader->slot:nullptr;}
+std::span<const std::shared_ptr<const ALMetalWorldResourceTable>> ALMetalWorldSourceFrameView::directBindingTables()const noexcept
+{return mImpl->cohort?std::span(mImpl->cohort->tables):std::span<const std::shared_ptr<const ALMetalWorldResourceTable>>{};}
 std::shared_ptr<const ALMetalWorldSourceCommandMembership> ALMetalWorldSourceFrameView::commandMembership()const noexcept
 {return mImpl->cohort?mImpl->cohort->membership:nullptr;}
 std::uint32_t ALMetalWorldSourceFrameView::rowId(std::size_t index)const noexcept
@@ -313,7 +366,7 @@ try
     if(command.isCommitted()||command.nativeDevice()!=(__bridge void*)view.context->native ||
        encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
     {fail(error,"Native source view requires its exact uncommitted device command");return false;}
-    if(view.arena_buffer)
+    if(view.arena_buffer||view.direct_reader)
     {
         const auto origin=view.arena_command.lock();const auto current=command.completionToken();
         if(!origin || origin->isComplete() || !current || origin.get()!=current.get() ||
@@ -327,8 +380,16 @@ try
     if(view.declared_encoder!=native)
     {
         if(!command.retainUntilCompletion(shared_from_this(),error))return false;
-        declare(*view.bank->bank->buffer->value,MTLRenderStageVertex|MTLRenderStageFragment);
-        for(const auto& page:view.pages)declare(*page->page->buffer->value,MTLRenderStageVertex|MTLRenderStageFragment);
+        if(!view.direct_reader)
+        {
+            declare(*view.bank->bank->buffer->value,MTLRenderStageVertex|MTLRenderStageFragment);
+            for(const auto& page:view.pages)declare(*page->page->buffer->value,MTLRenderStageVertex|MTLRenderStageFragment);
+        }
+        else
+        {
+            [native useResource:(__bridge id<MTLBuffer>)view.direct_reader->slot->nativeBuffer() usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+            declare(*view.cohort->direct_policy->value,MTLRenderStageVertex);
+        }
         for(const auto& buffer:view.buffers)declare(*buffer,MTLRenderStageVertex|MTLRenderStageFragment);
         const auto& geometry_handles=view.cohort?view.cohort->geometry:view.geometry;
         if(!geometry_handles.empty())
@@ -345,6 +406,7 @@ try
             if(!view.context->resources->declareResources(encoder,command,table,error))return false;
         view.declared_encoder=native;
     }
+    if(view.direct_reader){view.context->binds.fetch_add(1,std::memory_order_relaxed);return true;}
     if(view.arena_buffer)
     {
         // Flush any queued direct draw before native binding changes, and
@@ -535,6 +597,7 @@ try
         limits.maximum_cached_cohort_native_asset_bytes=std::clamp<std::uint64_t>(device.info().recommended_working_set_size/16,
             256ULL*1024*1024,4ULL*1024*1024*1024);
     impl->limits=limits;context.device=&device;context.native=(__bridge id<MTLDevice>)device.nativeHandle();
+    context.direct_asset_limit=limits.maximum_cached_cohort_native_asset_bytes;
     context.library=(__bridge id<MTLLibrary>)library.nativeHandle();context.anisotropy=anisotropy;
     if(context.library.device!=context.native || context.native.argumentBuffersSupport!=MTLArgumentBuffersTier2)
     {fail(error,"Native source rows require an exact Tier2 shader context");return {};}
@@ -600,7 +663,7 @@ std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::free
 {return freezeCohortsForCommand(command,std::span(&supplied,1),globals,error,frame_data);}
 std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeCohortsForCommand(
     ALMetalCommandBuffer& command,std::span<const ALMetalWorldSourceCohortView> supplied,
-    const ALMetalWorldSourceGlobals& supplied_globals,std::string* error,ALMetalWorldFrameData* frame_data)
+    const ALMetalWorldSourceGlobals& supplied_globals,std::string* error,ALMetalWorldFrameData* frame_data,bool direct_bindings)
 try
 {
     auto& state=*mImpl;++state.statistics.cohort_requests;
@@ -646,13 +709,51 @@ try
         for(const auto pointer:{static_cast<const void*>(selected.cohort.get()),selected.native_owner.get()})
             composition_hash=(composition_hash^std::hash<const void*>{}(pointer))*1099511628211ULL;
     }
+    const auto publishDirect=[&](ALMetalWorldSourceFrameView::Impl& view,const std::shared_ptr<const CohortBinding>& binding)
+    {
+        auto origin=command.completionToken();if(!origin||origin->isComplete())return false;
+        std::shared_ptr<ALMetalWorldSourceDirectSlot> slot;
+        for(const auto& candidate:binding->direct_slots)
+            if(candidate->mImpl->reader.expired()){slot=candidate;++state.statistics.direct_slot_hits;break;}
+        if(!slot)
+        {
+            if(state.context->direct_slots->count.load(std::memory_order_relaxed)>=128)
+            {fail(error,"Native direct binding slot capacity is exhausted");return false;}
+            auto storage=std::make_unique<ALMetalWorldSourceDirectSlot::Impl>();storage->regions=regions.size();
+            storage->buffer=makePhysicalBuffer(state.context,regions.size()*256+sizeof(globals),"Alchemy fixed-address direct cohort view",error);
+            if(!storage->buffer)return false;
+            // Stage reader/vector allocations before publishing or charging
+            // the new storage. Cached banks never hold this actual reader.
+            binding->direct_slots.reserve(binding->direct_slots.size()+1);
+            storage->native_bytes=storage->buffer->charged_bytes;
+            const auto metadata=sizeof(ALMetalWorldSourceDirectSlot)+sizeof(ALMetalWorldSourceDirectSlot::Impl)+
+                sizeof(DirectSlotReader)+8*sizeof(void*)+sizeof(binding->direct_slots[0]);
+            const auto used=state.context->budget->bytes.load(std::memory_order_relaxed);
+            if(used>state.context->budget->limit||metadata>state.context->budget->limit-used)return false;
+            state.context->budget->bytes.fetch_add(metadata,std::memory_order_relaxed);storage->buffer->charged_bytes+=metadata;
+            storage->accounting=state.context->direct_slots;
+            storage->accounting->count.fetch_add(1,std::memory_order_relaxed);
+            storage->accounting->bytes.fetch_add(storage->native_bytes,std::memory_order_relaxed);
+            slot=std::shared_ptr<ALMetalWorldSourceDirectSlot>(new ALMetalWorldSourceDirectSlot(std::move(storage)));
+            binding->direct_slots.push_back(slot);++state.statistics.direct_slot_allocations;
+        }
+        auto reader=std::make_shared<DirectSlotReader>();reader->slot=slot;
+        auto* mapped=static_cast<std::byte*>(slot->mImpl->buffer->value->mappedBytes());if(!mapped)return false;
+        for(std::size_t region=0;region<regions.size();++region)
+            std::memcpy(mapped+slot->regionOffset(static_cast<std::uint32_t>(region)),&regions[region],sizeof(regions[region]));
+        std::memcpy(mapped+slot->globalsOffset(),&globals,sizeof(globals));
+        slot->mImpl->reader=reader;view.direct_reader=std::move(reader);view.direct_normal_hdr=globals.flags[2];view.arena_command=origin;
+        view.direct_command=command.nativeHandle();
+        state.statistics.direct_view_bytes+=regions.size()*sizeof(ALMetalWorldSourceRegion)+sizeof(globals);return true;
+    };
     // Exact weak control blocks follow the cheap hash. A warm composition
     // visits G owner/view records and cached physical pages, never N sources.
     // Expired unrelated compositions are handled by the explicit frame-owner
     // trim boundary or the cold path, not scanned per source/group here.
     for(auto entry=state.cohorts.begin();entry!=state.cohorts.end();++entry)
     {
-        if(!state.current(*entry)||entry->hash!=composition_hash||entry->owners.size()!=selections.size())continue;
+        if(!state.current(*entry)||entry->hash!=composition_hash||entry->owners.size()!=selections.size()||
+           bool(entry->binding->direct_policy)!=direct_bindings)continue;
         bool matches=true;
         for(std::size_t group=0;group<selections.size();++group)
         {
@@ -667,18 +768,23 @@ try
         view->cohort=entry->binding;view->mapping=entry->binding->mapping;view->ranges=std::move(ranges);
         view->native_owners.reserve(entry->binding->native_owner_indices.size());
         for(auto owner:entry->binding->native_owner_indices)view->native_owners.push_back(selections[owner].native);
-        if(!view->publishView(&command,frame_data,regions,globals,error))return reject("Native cohort pass per-view publication failed");
-        if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=((regions.size()*sizeof(ALMetalWorldSourceRegion)+255)&~std::size_t(255))+sizeof(globals);}
-        for(const auto& proof:entry->binding->pages)
+        if(direct_bindings)
+        {if(!publishDirect(*view,entry->binding))return reject("Native direct cohort slot publication failed");}
+        else if(!view->publishView(&command,frame_data,regions,globals,error))return reject("Native cohort pass per-view publication failed");
+        if(frame_data&&!direct_bindings){++state.statistics.arena_views;state.statistics.arena_view_bytes+=((regions.size()*sizeof(ALMetalWorldSourceRegion)+255)&~std::size_t(255))+sizeof(globals);}
+        if(!direct_bindings)for(const auto& proof:entry->binding->pages)
         {
             auto& page=state.pages[proof.page];auto reader=page->reader.lock();
             if(!reader){reader=std::make_shared<PageReader>();reader->page=page;page->reader=reader;}
             view->pages.push_back(std::move(reader));
         }
-        view->bank=state.bank->reader.lock();
-        if(!view->bank){view->bank=std::make_shared<BankReader>();view->bank->bank=state.bank;state.bank->reader=view->bank;}
+        if(!direct_bindings)
+        {
+            view->bank=state.bank->reader.lock();
+            if(!view->bank){view->bank=std::make_shared<BankReader>();view->bank->bank=state.bank;state.bank->reader=view->bank;}
+        }
         state.cohorts.splice(state.cohorts.end(),state.cohorts,entry);
-        ++state.statistics.cohort_hits;if(!frame_data)state.statistics.view_bytes+=regions.size()*sizeof(ALMetalWorldSourceRegion)+sizeof(globals);
+        ++state.statistics.cohort_hits;if(!frame_data&&!direct_bindings)state.statistics.view_bytes+=regions.size()*sizeof(ALMetalWorldSourceRegion)+sizeof(globals);
         return std::shared_ptr<const ALMetalWorldSourceFrameView>(new ALMetalWorldSourceFrameView(std::move(view)));
     }
     state.pruneCohorts();
@@ -732,7 +838,8 @@ try
             request.cpu_owner=selected.cpu;request.native.owner=selected.native;requests.push_back(std::move(request));
         }
     }
-    auto frozen=freezeInternal(&command,requests,regions,globals,error,resources,true,frame_data);
+    const auto policy_bytes=direct_bindings?requests.size()*96:0;
+    auto frozen=freezeInternal(&command,requests,regions,globals,error,resources,true,frame_data,policy_bytes);
     if(!frozen){++state.statistics.cohort_failures;return {};}
     auto membership=std::make_unique<ALMetalWorldSourceCommandMembership::Impl>();
     membership->device=(__bridge void*)state.context->native;membership->calls.reserve(requests.size());
@@ -747,6 +854,23 @@ try
         else ++membership->runs.back().count;
     }
     auto binding=std::make_shared<CohortBinding>();
+    if(direct_bindings)
+    {
+        binding->direct_policy=makePhysicalBuffer(state.context,policy_bytes,"Alchemy immutable direct UV and material policy",error);
+        if(!binding->direct_policy)return reject("Native direct cohort policy publication failed");
+        auto* mapped=static_cast<std::byte*>(binding->direct_policy->value->mappedBytes());if(!mapped)return reject("Native direct policy is not mapped");
+        membership->bindings.reserve(requests.size());membership->policy=binding->direct_policy->value->nativeHandle();
+        for(std::size_t index=0;index<requests.size();++index)
+        {
+            const auto& signature=state.rows[frozen->rowId(index)].signature;
+            ALMetalWorldSourceDirectBinding direct;
+            std::copy_n(signature.handles.begin(),7,direct.geometry.begin());direct.offsets=signature.offsets;
+            direct.legacy_numeric=signature.handles[7];direct.pbr_ldr=signature.handles[8];direct.pbr_hdr=signature.handles[9];
+            direct.resource_table=signature.handles[family==2?11:10];direct.region=requests[index].region;direct.policy_offset=index*96;
+            std::memcpy(mapped+direct.policy_offset,signature.values.data(),96);membership->bindings.push_back(direct);
+        }
+        state.statistics.direct_policy_bytes+=policy_bytes;
+    }
     binding->membership=std::shared_ptr<const ALMetalWorldSourceCommandMembership>(new ALMetalWorldSourceCommandMembership(std::move(membership)));
     std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> unique_native_owners;
     for(std::size_t owner=0;owner<selections.size();++owner)
@@ -770,6 +894,14 @@ try
         void* identity=(__bridge void*)root;
         if(allocations.insert(identity).second)binding->assets.push_back({identity,root.allocatedSize});
     }
+    if(direct_bindings)
+    {
+        auto& direct=*binding->membership->mImpl;
+        if(!binding->asset_footprint_known)return reject("Native direct cohort asset footprint is unknown");
+        for(const auto& asset:binding->assets)direct.assets.push_back({asset.allocation,asset.bytes});
+        if(!publishDirect(view,binding))return reject("Native direct cohort slot publication failed");
+        view.arena_buffer=nil;view.regions.reset();view.globals.reset();view.pages.clear();view.bank.reset();
+    }
     binding->metadata=sizeof(CohortBinding)+sizeof(ALMetalWorldSourceCommandMembership)+sizeof(ALMetalWorldSourceCommandMembership::Impl)+
         binding->membership->mImpl->calls.capacity()*sizeof(ALMetalWorldSourceIndexedCall)+binding->membership->mImpl->runs.capacity()*sizeof(ALMetalWorldSourceCommandRun)+
         binding->pages.capacity()*sizeof(CohortBinding::PageProof)+(binding->geometry.capacity()+binding->numeric.capacity())*sizeof(void*)+
@@ -777,6 +909,8 @@ try
         selections.size()*sizeof(Impl::CohortEntry::Owner)+binding->native_owner_indices.capacity()*sizeof(std::uint32_t)+
         binding->membership->calls().size()*sizeof(CohortRowWatch)+
         binding->assets.capacity()*sizeof(CohortBinding::Asset)+binding->assets.size()*(sizeof(void*)+sizeof(Impl::AssetRef)+2*sizeof(void*));
+    binding->metadata+=binding->membership->mImpl->bindings.capacity()*sizeof(ALMetalWorldSourceDirectBinding)+
+        binding->membership->mImpl->assets.capacity()*sizeof(ALMetalWorldSourceNativeFootprint);
     // Actual command views retain only the completed native tuple and native
     // metadata. Private CPU certificates/prototypes can die after encode.
     view.cohort=binding;view.ranges=std::move(ranges);
@@ -870,7 +1004,8 @@ void ALMetalWorldSourcePages::setPublicationAdmission(PublicationAdmission admis
 std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeInternal(
     ALMetalCommandBuffer* command,std::span<const ALMetalWorldSourceRequest> requests,
     std::span<const ALMetalWorldSourceRegion> regions,const ALMetalWorldSourceGlobals& globals,std::string* error,
-    std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides,bool certified_cohort,ALMetalWorldFrameData* frame_data)
+    std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides,bool certified_cohort,ALMetalWorldFrameData* frame_data,
+    std::size_t direct_policy_bytes)
 try
 {
     auto& state=*mImpl;
@@ -908,6 +1043,8 @@ try
     std::array<std::shared_ptr<PageReader>,alMetalWorldSourceMaximumRows/alMetalWorldSourceRowsPerPage> old_readers{};
     std::shared_ptr<BankReader> old_bank_reader;
     ALMetalWorldSourcePublicationWork work;
+    work.encoded_row_bytes=direct_policy_bytes;
+    if(direct_policy_bytes)work.allocation_bytes=(direct_policy_bytes+4095)&~std::size_t(4095);
     rows.reserve(requests.size());request_rows.reserve(requests.size());selected.reserve(requests.size());
     const auto epoch=state.epoch;
     std::uint32_t highest_slot=0;
@@ -1015,7 +1152,7 @@ try
     // generic ephemeral map and required per-view camera data stay excluded.
     if(certified_cohort && mapping_bytes)
     {work.encoded_mapping_bytes=mapping_bytes;work.allocation_bytes+=mapping_bytes;}
-    const auto view_bytes=(frame_data?0:regions.size_bytes()+sizeof(globals))+mapping_bytes;
+    const auto view_bytes=(frame_data||direct_policy_bytes?0:regions.size_bytes()+sizeof(globals))+mapping_bytes;
     // Mapping capacity is already included exactly once in view_bytes.
     const auto page_allocation=work.allocation_bytes-work.encoded_table_bytes-work.encoded_mapping_bytes;
     const auto live=state.context->budget->bytes.load(std::memory_order_relaxed);
@@ -1108,8 +1245,8 @@ try
         row.last_use=state.serial;state.lru.splice(state.lru.end(),state.lru,row.lru);
     }
     auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;view->tables=std::move(prepared_tables);
-    if(!view->publishView(command,frame_data,regions,globals,error)){++state.statistics.failures;return {};}
-    if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=((regions.size_bytes()+255)&~std::size_t(255))+sizeof(globals);}
+    if(!direct_policy_bytes && !view->publishView(command,frame_data,regions,globals,error)){++state.statistics.failures;return {};}
+    if(frame_data&&!direct_policy_bytes){++state.statistics.arena_views;state.statistics.arena_view_bytes+=((regions.size_bytes()+255)&~std::size_t(255))+sizeof(globals);}
     if(zero_map)
     {
         if(!state.cohort_mapping)
@@ -1194,6 +1331,8 @@ ALMetalWorldSourcePageStats ALMetalWorldSourcePages::stats()const noexcept
 {
     auto result=mImpl->statistics;result.rows=mImpl->lookup.size();result.binds=mImpl->context->binds.load(std::memory_order_relaxed);
     result.device_proof_entries=mImpl->device_proofs.size();
+    result.live_direct_slots=mImpl->context->direct_slots->count.load(std::memory_order_relaxed);
+    result.live_direct_slot_bytes=mImpl->context->direct_slots->bytes.load(std::memory_order_relaxed);
     result.cached_cohort_native_asset_bytes=mImpl->cohort_asset_bytes;
     result.cached_cohort_native_asset_limit=mImpl->limits.maximum_cached_cohort_native_asset_bytes;
     result.cached_compositions=mImpl->cohorts.size();result.cached_cohorts=mImpl->cohort_references;result.cached_cohort_rows=mImpl->cohort_rows;result.cached_cohort_metadata_bytes=mImpl->cohort_metadata;

@@ -5,10 +5,10 @@
  * Included after alpipeline_buffer_publication_metal_test.cpp's fixtures.
  */
 
-TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure costs",
-          "[almetal][.native-many-cohort-cost]")
+template<bool include_direct_bound>
+static void actualManyCohortBankCosts()
 {
-    constexpr U32 loading_frames=8,warmup_frames=64,measured_frames=12;
+    constexpr U32 loading_frames=8,warmup_frames=64,measured_frames=12,modes=include_direct_bound?4:3;
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::minutes(10);
     const auto cpu_ns=[]
     {timespec value{};REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)==0);return U64(value.tv_sec)*1'000'000'000ULL+value.tv_nsec;};
@@ -20,6 +20,8 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
         U64 captured_groups=0,captured_draws=0,accepted_draws=0,raw_draws=0,replacements=0;
         U64 requested=0,bound=0,fallback=0,executions=0,hits=0,builds=0,evictions=0;
         U64 compile_admitted=0,compile_denied=0,page_hits=0,page_builds=0,page_failures=0;
+        U64 direct_builds=0,direct_hits=0,direct_encoded_calls=0,direct_binding_bytes=0,direct_binding_limit=0,direct_binding_work_bytes=0;
+        U64 direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0,live_direct_slots=0,live_direct_slot_bytes=0;
     };
     struct Group
     {
@@ -65,7 +67,7 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
         {f.flavor=flavors[family-1];f.type=family==1?Inputs::LLRenderPass::PASS_MATERIAL:Inputs::LLRenderPass::PASS_GLTF_PBR;};
         auto library_data=ALMetalWorldFrameData::create(*f.device,&f.error);INFO(f.error);REQUIRE(library_data);
         auto library=library_data->builtinLibrary(&f.error);INFO(f.error);REQUIRE(library);
-        std::array<Arm,3> arms;
+        std::array<Arm,modes> arms;
         for(auto& arm:arms)
         {
             // Independent producer identities and LLDrawInfo owners prevent
@@ -95,7 +97,7 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
             REQUIRE(arm.main->shaderLibrary()==library);REQUIRE(arm.probe->shaderLibrary()==library);
             arm.main->setFrameData(arm.data);arm.probe->setFrameData(arm.data);
         }
-        std::array<std::array<Sample,measured_frames>,3> measured{};
+        std::array<std::array<Sample,measured_frames>,modes> measured{};
         for(U32 frame=0;frame<loading_frames+warmup_frames+measured_frames;++frame)
         {
             const bool loading=frame<loading_frames;
@@ -106,13 +108,13 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
             ++Inputs::gFrameCount;
             for(auto& arm:arms)
             {ALNativeFrameBudget::FrameInputs input;input.frame=Inputs::gFrameCount;arm.budget.beginFrame(input);}
-            std::array<std::array<GroupPublication::Image,3>,3> pixels;
-            std::array<std::array<std::vector<std::uint64_t>,3>,3> query_counts;
-            for(U32 position=0;position<3;++position)
+            std::array<std::array<GroupPublication::Image,3>,modes> pixels;
+            std::array<std::array<std::vector<std::uint64_t>,3>,modes> query_counts;
+            for(U32 position=0;position<modes;++position)
             {
                 INFO("Bounded many-cohort fixture exceeded its ten-minute workload cap");
                 REQUIRE(std::chrono::steady_clock::now()<deadline);
-                const U32 mode=(frame+position)%3;auto& arm=arms[mode];CAPTURE(mode,frame,visible_groups);
+                const U32 mode=(frame+position)%modes;auto& arm=arms[mode];CAPTURE(mode,frame,visible_groups);
                 MaterialCacheScope material_scope(arm);auto& capture=*arm.pipeline.mMetalWorldSimpleCapture;
                 const auto before_reads=f.reads();const auto before_serial=Inputs::sNativeSceneSerial;
                 const auto before_groups=Inputs::ALSceneGroupPublicationNative::statistics;
@@ -258,7 +260,8 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                         q.batch_offset=(query+1)*sources_per_group;q.fan=7;q.count_samples=1;
                     }
                     auto scene=f.scene(capture);scene.visibility_queries=arm.queries.data();scene.visibility_query_count=arm.queries.size();
-                    scene.material_argument_buffers=false;scene.source_command_banks=mode==2;scene.source_command_minimum_run=2;
+                    scene.material_argument_buffers=false;scene.source_command_banks=mode>=2;
+                    scene.source_direct_command_banks=mode==3;scene.source_command_minimum_run=2;
                     auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),std::move(capture.source_references),
                         std::move(capture.draw_order),std::move(capture.source_cohorts),std::move(arm.queries),std::move(capture.cpu_sources),
                         capture.world_resources,arm.native_epoch,&f.error);INFO(f.error);REQUIRE(inputs);scene={};
@@ -300,9 +303,17 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 value.page_hits=pages.cohort_hits-before_pages.cohort_hits;value.page_builds=pages.cohort_builds-before_pages.cohort_builds;
                 value.page_failures=pages.cohort_failures-before_pages.cohort_failures;
                 value.compile_admitted=compilation.admitted-before_compile.admitted;value.compile_denied=compilation.denied-before_compile.denied;
+                value.direct_builds=cache.direct_builds-before_cache.direct_builds;value.direct_hits=cache.direct_hits-before_cache.direct_hits;
+                value.direct_encoded_calls=cache.direct_encoded_calls-before_cache.direct_encoded_calls;value.direct_binding_bytes=cache.unique_retained_binding_bytes;
+                value.direct_binding_limit=cache.retained_binding_limit_bytes;value.direct_binding_work_bytes=cache.charged_logical_binding_bytes-before_cache.charged_logical_binding_bytes;
+                value.direct_policy_bytes=pages.direct_policy_bytes-before_pages.direct_policy_bytes;
+                value.direct_slot_allocations=pages.direct_slot_allocations-before_pages.direct_slot_allocations;
+                value.direct_slot_hits=pages.direct_slot_hits-before_pages.direct_slot_hits;value.direct_view_bytes=pages.direct_view_bytes-before_pages.direct_view_bytes;
+                value.live_direct_slots=pages.live_direct_slots;value.live_direct_slot_bytes=pages.live_direct_slot_bytes;
                 CHECK(value.accepted_draws==value.captured_draws);CHECK(value.bound+value.fallback==value.requested);
+                if(mode==3&&value.bound)CHECK(value.direct_builds+value.direct_hits>0);
                 CHECK(budget.scene_publications_in_flight==0);CHECK(budget.scene_bytes_in_flight==0);
-                if(mode!=2){CHECK(value.requested==0);CHECK(value.bound==0);CHECK(value.executions==0);}
+                if(mode<2){CHECK(value.requested==0);CHECK(value.bound==0);CHECK(value.executions==0);}
                 if(mode==0){CHECK(value.captured_groups==0);CHECK(value.raw_draws==U64(visible_draws)*views);}
                 // PPD218: all64groups fit the unchanged native caches. After
                 // the declared warmups, unrelated row publications must not
@@ -318,11 +329,25 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                     CHECK(cache.admission_denials==before_cache.admission_denials);
                     CHECK(pages.admission_denials==before_pages.admission_denials);
                 }
+                if(mode==3&&group_count==64&&!loading&&!warmup)
+                {
+                    CHECK(value.requested==U64(visible_draws)*views);
+                    CHECK(value.bound==value.requested);CHECK(value.fallback==0);
+                    CHECK(value.hits==U64(2)*views);CHECK(value.builds==0);CHECK(value.evictions==0);
+                    CHECK(value.page_hits==U64(2)*views);CHECK(value.page_builds==0);CHECK(value.page_failures==0);
+                    CHECK(value.compile_denied==0);
+                    CHECK(cache.admission_denials==before_cache.admission_denials);
+                    CHECK(pages.admission_denials==before_pages.admission_denials);
+                    CHECK(value.direct_hits==U64(2)*views);CHECK(value.direct_builds==0);
+                    CHECK(value.direct_encoded_calls==0);CHECK(value.direct_policy_bytes==0);
+                    CHECK(value.direct_slot_allocations==0);CHECK(value.direct_binding_work_bytes==0);
+                    CHECK(value.direct_slot_hits==U64(2)*views);
+                }
                 // The256group distribution can exceed the unchanged caps;
                 // retain every actual rebuild, denial and direct fallback.
                 if(!loading&&!warmup)measured[mode][frame-loading_frames-warmup_frames]=value;
                 if(compare_pixels)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
-                std::cout<<"NATIVE_MANY_COHORT_RAW groups="<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
+                std::cout<<(include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_RAW groups=":"NATIVE_MANY_COHORT_RAW groups=")<<group_count<<" visible_groups="<<visible_groups<<" sources_per_group="<<sources_per_group
                     <<" legacy_groups="<<visible_groups/2<<" pbr_groups="<<visible_groups/2<<" views="<<views<<" queries_per_view="<<visible_groups
                     <<" phase="<<(loading?"loading":warmup?"warmup":"measured")<<" frame="<<frame<<" mode="<<mode
                     <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" completion_and_query_settle_ms="<<value.complete
@@ -360,7 +385,12 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                     <<" all_scene_deferred="<<budget.deferred-before_budget.deferred<<" all_scene_logical_bytes="<<budget.scene_bytes_this_frame-before_budget.scene_bytes_this_frame
                     <<" raw_value_bytes="<<raw_bytes<<" reference_value_bytes="<<reference_bytes<<" order_value_bytes="<<order_bytes<<" cohort_value_bytes="<<cohort_bytes
                     <<" expanded_candidate_bytes="<<candidate_bytes<<" sourceview_regional_bytes="<<regional_bytes<<" cpu_description_pins="<<cpu_pins
-                    <<" native_generation_pins="<<native_pins;
+                    <<" native_generation_pins="<<native_pins<<" direct_bound_mode="<<(mode==3)
+                    <<" direct_bank_builds="<<value.direct_builds<<" direct_bank_hits="<<value.direct_hits<<" direct_encoded_calls="<<value.direct_encoded_calls
+                    <<" unique_retained_binding_bytes="<<value.direct_binding_bytes<<" direct_policy_published_bytes="<<value.direct_policy_bytes
+                    <<" retained_binding_limit_bytes="<<value.direct_binding_limit<<" direct_charged_logical_binding_bytes="<<value.direct_binding_work_bytes
+                    <<" direct_slot_allocations="<<value.direct_slot_allocations<<" direct_slot_hits="<<value.direct_slot_hits
+                    <<" direct_view_copy_bytes="<<value.direct_view_bytes<<" live_direct_slots="<<value.live_direct_slots<<" live_direct_slot_bytes="<<value.live_direct_slot_bytes;
                 for(std::size_t reason=0;reason<cache.failures.size();++reason)
                 {
                     U64 fallback=0;for(U32 owner=0;owner<2;++owner)
@@ -372,10 +402,11 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 std::cout<<'\n';
             }
             for(U32 view=0;view<views;++view)
-            {CHECK(query_counts[0][view]==query_counts[1][view]);CHECK(query_counts[0][view]==query_counts[2][view]);
-             if(compare_pixels){CHECK(pixels[0][view]==pixels[1][view]);CHECK(pixels[0][view]==pixels[2][view]);}}
+                for(U32 mode=1;mode<modes;++mode)
+                {CHECK(query_counts[0][view]==query_counts[mode][view]);
+                 if(compare_pixels)CHECK(pixels[0][view]==pixels[mode][view]);}
         }
-        for(U32 mode=0;mode<3;++mode)
+        for(U32 mode=0;mode<modes;++mode)
         {
             std::array<double,measured_frames> cpu{},encode{},complete{},gpu{};Sample totals;
             for(U32 sample=0;sample<measured_frames;++sample)
@@ -385,10 +416,16 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 totals.hits+=value.hits;totals.builds+=value.builds;totals.evictions+=value.evictions;
                 totals.compile_admitted+=value.compile_admitted;totals.compile_denied+=value.compile_denied;
                 totals.page_hits+=value.page_hits;totals.page_builds+=value.page_builds;totals.page_failures+=value.page_failures;
+                totals.direct_builds+=value.direct_builds;totals.direct_hits+=value.direct_hits;totals.direct_encoded_calls+=value.direct_encoded_calls;
+                totals.direct_slot_allocations+=value.direct_slot_allocations;totals.direct_slot_hits+=value.direct_slot_hits;
+                totals.direct_binding_work_bytes+=value.direct_binding_work_bytes;
+                totals.direct_policy_bytes+=value.direct_policy_bytes;totals.direct_view_bytes+=value.direct_view_bytes;
+                totals.direct_binding_bytes=std::max(totals.direct_binding_bytes,value.direct_binding_bytes);
+                totals.live_direct_slot_bytes=std::max(totals.live_direct_slot_bytes,value.live_direct_slot_bytes);
             }
-            std::cout<<"NATIVE_MANY_COHORT_COST groups="<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
+            std::cout<<(include_direct_bound?"NATIVE_MANY_DIRECT_BOUND_COHORT_COST groups=":"NATIVE_MANY_COHORT_COST groups=")<<group_count<<" sources_per_group="<<sources_per_group<<" draws_per_view="<<group_count*sources_per_group
                 <<" legacy_groups="<<group_count/2<<" pbr_groups="<<group_count/2<<" views="<<views<<" queries_per_view="<<group_count
-                <<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":"gpu_cohort")<<" loading_frames="<<loading_frames
+                <<" mode="<<(mode==0?"ordinary_native":mode==1?"direct_cohort":mode==2?"gpu_cohort":"direct_bound_cohort")<<" loading_frames="<<loading_frames
                 <<" warmup_frames="<<warmup_frames<<" measured_frames="<<measured_frames
                 <<" owner_cpu_median_ms="<<median(cpu)<<" owner_cpu_max_ms="<<*std::max_element(cpu.begin(),cpu.end())
                 <<" capture_adopt_encode_reclaim_median_ms="<<median(encode)<<" capture_adopt_encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
@@ -398,13 +435,27 @@ TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure cos
                 <<" measured_execute_calls="<<totals.executions<<" measured_bank_hits="<<totals.hits<<" measured_bank_builds="<<totals.builds
                 <<" measured_bank_evictions="<<totals.evictions<<" measured_page_hits="<<totals.page_hits<<" measured_page_builds="<<totals.page_builds
                 <<" measured_page_failures="<<totals.page_failures<<" measured_compile_admitted="<<totals.compile_admitted<<" measured_compile_denied="<<totals.compile_denied
+                <<" measured_direct_bank_builds="<<totals.direct_builds<<" measured_direct_bank_hits="<<totals.direct_hits
+                <<" measured_direct_encoded_calls="<<totals.direct_encoded_calls<<" measured_direct_slot_allocations="<<totals.direct_slot_allocations
+                <<" measured_direct_charged_logical_binding_bytes="<<totals.direct_binding_work_bytes
+                <<" measured_direct_slot_hits="<<totals.direct_slot_hits<<" measured_direct_policy_bytes="<<totals.direct_policy_bytes
+                <<" measured_direct_view_copy_bytes="<<totals.direct_view_bytes<<" max_unique_retained_binding_bytes="<<totals.direct_binding_bytes
+                <<" max_live_direct_slot_bytes="<<totals.live_direct_slot_bytes
                 <<" progressive_loading_eighths=1 loading_warmup_denials_retained=1 query_at_each_group_boundary=1 pass_order_legacy_then_pbr=1"
                 <<" page_bank_hit_unit=ordered_composition cached_cohorts_unit=weak_group_references implicit_scalar_source_rows=0"
                 <<" cache_limits_unchanged=1 all_banks_warm_assumption=0 independent_group_source_admission=1 independent_framedata_renderers_material_cache=1"
                 <<" paired_logical_frame=1 native_epoch_once_per_arm_frame=1 shared_exact_library=1 distinct_view_matrix_payloads=1 typed_identity_camera_frontier=1"
                 <<" dirty_raw_admission_before_seal=1 same_view_verified_replacement=1 cpu_and_gpu_scene_admission=1 synthetic_idle_budget_inputs=1"
-                <<" shared_context_counters_observed_once=1 retained_native_index_footprint_not_new_allocation=1"
+                <<" shared_context_counters_observed_once=1 retained_native_index_footprint_not_new_allocation=1 binding_slot_footprints_overlap_do_not_sum=1"
                 <<" geometry_texture_drawinfo_creation_excluded=1 loading_means_first_native_publication_not_asset_download=1 whole_viewer_fps_claim=0\n";
         }
     }
 }
+
+TEST_CASE("Actual many small mixed cohorts retain loading and cache pressure costs",
+          "[almetal][.native-many-cohort-cost]")
+{actualManyCohortBankCosts<false>();}
+
+TEST_CASE("Actual many small mixed cohorts compare ordinary direct pointer-bank and direct-bound costs",
+          "[almetal][.native-many-direct-bound-cohort-cost]")
+{actualManyCohortBankCosts<true>();}

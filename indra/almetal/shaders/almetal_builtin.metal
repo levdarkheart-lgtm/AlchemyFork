@@ -7438,6 +7438,112 @@ struct ALMetalWorldSourceGlobals
 static_assert(sizeof(ALMetalWorldSourceRegion) == 176, "Source region ABI");
 static_assert(sizeof(ALMetalWorldSourceGlobals) == 32, "Source view globals ABI");
 
+// The direct-bound ICB experiment uses the same immutable source/view values
+// as source rows, with each buffer selected by the command itself. This block
+// contains no GPU pointers and is published only when source facts change.
+struct ALMetalWorldDirectPolicy
+{
+    float4x4 fixed_texture_matrix;
+    float4 material_policy;
+    uint4 source_policy;
+};
+static_assert(sizeof(ALMetalWorldDirectPolicy) == 96, "Direct source policy ABI");
+
+vertex ALMetalWorldSimpleVaryings almetal_world_material_direct_bound_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* uv0 [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSourceRegion& region [[buffer(4)]],
+    constant ALMetalWorldSourceGlobals& globals [[buffer(5)]],
+    constant ALMetalWorldDirectPolicy& source [[buffer(6)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* uv1 [[buffer(9)]],
+    const device float2* uv2 [[buffer(10)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalWorldSimpleVaryings output;
+    const float4 object_position = float4(positions[vertex_id].xyz, 1.0);
+    const float4 eye_position = region.modelview * object_position;
+    float4 clip_position = region.modelview_projection * object_position;
+    clip_position.y = -clip_position.y;
+    output.position = globals.flags.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = globals.flags.y != 0u
+        ? dot(eye_position, globals.mirror_clip_plane) : 1.0;
+    const float3x3 normal_matrix = float3x3(
+        region.normal_matrix[0].xyz,
+        region.normal_matrix[1].xyz,
+        region.normal_matrix[2].xyz);
+    output.normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    output.tangent = normalize(normal_matrix * tangents[vertex_id].xyz);
+    output.bitangent = tangents[vertex_id].w * cross(output.normal, output.tangent);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    output.color = float4(almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (source.fixed_texture_matrix * float4(uv0[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (source.fixed_texture_matrix * float4(uv1[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord2 = (source.fixed_texture_matrix * float4(uv2[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = source.source_policy.x > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = source.source_policy.x;
+    output.alpha_cutoff = source.material_policy.x;
+    output.material_flags = uint3(source.material_policy.y != 0.0,
+                                  source.material_policy.z != 0.0,
+                                  source.material_policy.w != 0.0);
+    return output;
+}
+
+vertex ALMetalWorldPBRVaryings almetal_world_pbr_direct_bound_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* uv0 [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSourceRegion& region [[buffer(4)]],
+    constant ALMetalWorldSourceGlobals& globals [[buffer(5)]],
+    constant ALMetalWorldDirectPolicy& source [[buffer(6)]],
+    const device float4* tangents [[buffer(8)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float3x3 normal_matrix = float3x3(
+        region.normal_matrix[0].xyz,
+        region.normal_matrix[1].xyz,
+        region.normal_matrix[2].xyz);
+    const uint material_index = source.source_policy.x > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    const float4 eye_position = region.modelview * float4(positions[vertex_id].xyz, 1.0);
+    float4 clip_position = region.modelview_projection * float4(positions[vertex_id].xyz, 1.0);
+    const float3 normal = normal_matrix * normals[vertex_id].xyz;
+    const float4 tangent = float4(normal_matrix * tangents[vertex_id].xyz, tangents[vertex_id].w);
+    ALMetalWorldPBRVaryings output;
+    clip_position.y = -clip_position.y;
+    output.position = globals.flags.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = globals.flags.y != 0u
+        ? dot(eye_position, globals.mirror_clip_plane) : 1.0;
+    output.eye_position = eye_position.xyz;
+    output.normal = normalize(normal);
+    const uint slot = min(material_index, max(pbr.config.x, 1u) - 1u);
+    constant ALMetalWorldPBRSlotConstants& material = pbr.slots[min(slot, 7u)];
+    const float4 adjusted_tangent = almetal_world_pbr_tangent(
+        float4(normalize(tangent.xyz), tangent.w), output.normal,
+        source.fixed_texture_matrix, material.texture_transform[1]);
+    output.tangent = normalize(adjusted_tangent.xyz);
+    output.bitangent = adjusted_tangent.w * cross(output.normal, output.tangent);
+    const float4 color = float4(colors[vertex_id]) / 255.0;
+    output.color = float4(almetal_srgb_to_linear(color.rgb), color.a);
+    output.base_color_texcoord = almetal_world_pbr_texcoord(
+        uv0[vertex_id], source.fixed_texture_matrix, material.texture_transform[0]);
+    output.normal_texcoord = almetal_world_pbr_texcoord(
+        uv0[vertex_id], source.fixed_texture_matrix, material.texture_transform[1]);
+    output.orm_texcoord = almetal_world_pbr_texcoord(
+        uv0[vertex_id], source.fixed_texture_matrix, material.texture_transform[2]);
+    output.emissive_texcoord = almetal_world_pbr_texcoord(
+        uv0[vertex_id], source.fixed_texture_matrix, material.texture_transform[3]);
+    output.material_index = slot;
+    return output;
+}
+
 struct ALMetalWorldSourceLegacyVaryings
 {
     float4 position [[position]];
