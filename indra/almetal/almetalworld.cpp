@@ -2125,6 +2125,17 @@ struct ALMetalWorldGBufferRenderer::Impl
             encoder.setVertexBuffer(index, *slice.buffer, slice.offset, error);
     }
 
+    bool setWorldPalette(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
+                         std::uint32_t index,const ALMetalWorldDraw& draw,std::string* error)
+    {
+        if(!draw.animatedReference())return setWorldPalette(encoder,command,index,draw.source(),error);
+        if(!frame_data)return setVertexData(encoder,command,index,draw.skinPalette(),
+            draw.skinPaletteFloatCount()*sizeof(float),error,true);
+        ALMetalWorldDataSlice slice;
+        return frame_data->publishPaletteRecord(command,draw.skinPaletteRecord(),slice,error,true) &&
+            encoder.setVertexBuffer(index,*slice.buffer,slice.offset,error);
+    }
+
     bool setShadowPalette(ALMetalRenderEncoder& encoder,
                           ALMetalCommandBuffer& command, std::uint32_t index,
                           const ALMetalWorldSpotShadowBatch& batch,
@@ -9640,21 +9651,6 @@ bool validAnimatedReference(const ALMetalWorldSourceReference& reference) noexce
         ALMetalWorldSourceCohort::validView(reference.view) &&
         finiteValues(reference.view.texture_matrix,16);
 }
-ALMetalWorldSimpleBatch animatedFallback(const ALMetalWorldSourceReference& reference)
-{
-    auto batch=reference.animated_source->prototype();
-    batch.skin_palette_record=reference.animated_palette;
-    batch.skin_palette=reference.animated_palette->data();
-    batch.skin_palette_float_count=reference.animated_palette->size();
-    batch.skin_joint_count=reference.animated_palette->jointCount();
-    std::memcpy(batch.modelview_projection,reference.view.modelview_projection,64);
-    std::memcpy(batch.modelview,reference.view.modelview,64);
-    std::memcpy(batch.normal_matrix,reference.view.normal_matrix,48);
-    std::memcpy(batch.rigged_normal_matrix,reference.view.rigged_normal_matrix,48);
-    std::memcpy(batch.texture_matrix,reference.view.texture_matrix,64);
-    return batch;
-}
-
 bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
 {
     return !batch.normal_texture && !batch.skin_palette_record && !batch.body_palette_record && !batch.skin_palette &&
@@ -10252,10 +10248,7 @@ bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_
         setError(error, "Prepared world draw storage index is invalid");
         return false;
     }
-    const auto resolved = scene.draw(index);
-    std::optional<ALMetalWorldSimpleBatch> animated;
-    if(const auto* reference=resolved.animatedReference())animated=animatedFallback(*reference);
-    const auto draw=animated?ALMetalWorldDraw(*animated):resolved;
+    const auto draw=scene.draw(index);
     const auto* cohort = alMetalWorldCohortAt(scene,index);
     if (cohort)
     {
@@ -10283,12 +10276,14 @@ bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_
         return copy(record.offset,buildWorldTerrainConstants(scene,batch));
     }
     record.avatar = batch.avatar_rigid || batch.avatar_skinning;
-    record.rigged = batch.skin_palette != nullptr && !record.avatar;
+    record.rigged = draw.skinPalette() != nullptr && !record.avatar;
     record.bump = batch.normal_texture != nullptr;
     record.material = batch.material_slot_count != 0;
     record.pbr = isPBRBatch(batch);
-    record.material_normal_map = materialHasNormalMap(batch);
-    record.material_specular_map = materialHasSpecularMap(batch);
+    const auto* animated=draw.animatedReference();
+    const auto recipe=animated?animated->animated_source->scalarRecipe():ALMetalWorldScalarRecipe{};
+    record.material_normal_map = animated?recipe.normal_map:materialHasNormalMap(batch);
+    record.material_specular_map = animated?recipe.specular_map:materialHasSpecularMap(batch);
     record.avatar_variant = batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
     const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
     if ((!stable_tables && record.material && record.material_length != sizeof(WorldMaterialConstants)) ||
@@ -10425,25 +10420,25 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 cursor.advance(remaining);index+=remaining;continue;
             }
             const auto logical_index=index;
-            const auto& batch=cursor.draw().source();cursor.advance();++index;
-            if (batch.terrain || !batch.skin_palette ||
-                batch.skin_palette_float_count*sizeof(float)<=4096) continue;
+            const auto draw=cursor.draw();const auto& batch=draw.source();cursor.advance();++index;
+            if (batch.terrain || !draw.skinPalette() ||
+                draw.skinPaletteFloatCount()*sizeof(float)<=4096) continue;
             const ALMetalBuffer* shared=nullptr;
             for (const auto& [previous,palette] : palette_buffers)
             {
-                const auto& candidate=scene.draw(previous).source();
-                if (candidate.skin_palette==batch.skin_palette &&
-                    candidate.skin_palette_float_count==batch.skin_palette_float_count)
+                const auto candidate=scene.draw(previous);
+                if (candidate.skinPalette()==draw.skinPalette() &&
+                    candidate.skinPaletteFloatCount()==draw.skinPaletteFloatCount())
                 { shared=palette;break; }
             }
             if (shared) { palette_buffers.emplace(logical_index,shared);continue; }
             ALMetalBufferDescriptor descriptor;
-            descriptor.length=batch.skin_palette_float_count*sizeof(float);
+            descriptor.length=draw.skinPaletteFloatCount()*sizeof(float);
             descriptor.storage=ALMetalStorageMode::shared;
             descriptor.cpu_cache=ALMetalCpuCacheMode::write_combined;
             descriptor.label="Alchemy world skin palette";
             auto palette=ALMetalBuffer::create(*mImpl->device,descriptor,error);
-            if (!palette || !palette->write(0,batch.skin_palette,descriptor.length,error)) return nullptr;
+            if (!palette || !palette->write(0,draw.skinPalette(),descriptor.length,error)) return nullptr;
             palette_buffers.emplace(logical_index,palette.get());
             palette_storage.push_back(std::move(palette));
         }
@@ -10697,6 +10692,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if (alMetalWorldCohortAt(scene,candidate.draw_index))
                 { valid=false;break; }
                 const auto draw = scene.draw(candidate.draw_index);
+                if(draw.animatedReference()){valid=false;break;}
                 const auto& batch = draw.source();
                 const auto& region = metadata.regions[candidate.region];
                 if (std::memcmp(region.modelview_projection, draw.modelviewProjection(), sizeof(region.modelview_projection)) ||
@@ -10976,7 +10972,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if(const auto* reference=cursor.draw().animatedReference())
                 {
                     ++animated_stats.requested_draws;
-                    if(!prepared && !scene.wireframe && !scene.stamp_opaque_coverage &&
+                    if(!prepared && reference->animated_source->gpuReady() && !scene.wireframe && !scene.stamp_opaque_coverage &&
                        std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,64)==0)
                     {candidates.push_back(reference);logical.push_back(index);}
                 }
@@ -11210,7 +11206,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     // query, but only adjacent private cohort rows can omit CPU assembly.
     WorldSimpleConstants cohort_common_constants{};
     const ALMetalWorldSourceCohortView* scalar_common_cohort=nullptr;
-    std::size_t scalar_common_row=0;
+    const ALMetalWorldSourceReference* scalar_common_animated=nullptr;
+    std::size_t scalar_common_row=0,scalar_common_animated_index=0;
     std::uint64_t scalar_common_builds=0,scalar_recipe_reads=0,scalar_common_reuses=0;
     ALMetalWorldCpuVisibilityStats cpu_visibility_stats;
     const ALMetalWorldSourceCohortView* cpu_visibility_cohort=nullptr;
@@ -11248,7 +11245,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                             range.bank_first+index-range.first,count,&optional_error));
                 if(accepted)
                 {
-                    scalar_common_cohort=nullptr;have_previous_world_constants=false;animated_prefix_emitted=true;
+                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;
+                    have_previous_world_constants=false;animated_prefix_emitted=true;
                     animated_stats.gpu_draws+=count;++animated_stats.execute_calls;
                     if(scene.animated_gpu_visibility)for(std::size_t at=index;at<end;++at)
                     {
@@ -11313,7 +11311,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     // this skip, and the next offset bounds the skipped run.
                     const auto count=end-index;
                     cpu_visibility_stats.culled_draws+=count;
-                    scalar_common_cohort=nullptr;
+                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;
                     draw_cursor.advance(count-1);index+=count-1;continue;
                 }
                 ++cpu_visibility_stats.visible_draws;
@@ -11346,7 +11344,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     mImpl->source_commands->executeRange(*encoder,*command,*bank.bank,local,count,&optional_error);
                 if (executed)
                 {
-                    scalar_common_cohort=nullptr; // Never bridge a native-bank gap.
+                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr; // Never bridge a native-bank gap.
                     cohort_bank_prefix_emitted=true;source_bound_draws+=count;cohort_draws+=count;
                     source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
                     draw_cursor.advance(count-1);index+=count-1;continue;
@@ -11360,18 +11358,16 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;bank.bank.reset();
             }
         }
-        const auto resolved_draw=draw_cursor.draw();
-        const auto* animated_reference=resolved_draw.animatedReference();
-        std::optional<ALMetalWorldSimpleBatch> animated_fallback;
-        if(animated_reference)animated_fallback=animatedFallback(*animated_reference);
-        const auto draw=animated_fallback?ALMetalWorldDraw(*animated_fallback):resolved_draw;
+        const auto draw=draw_cursor.draw();
+        const auto* animated_reference=draw.animatedReference();
+        if(!animated_reference || prepared)scalar_common_animated=nullptr;
         const ALMetalWorldSimpleBatch& batch = draw.source();
         const bool join_static = scene.join_adjacent_static_draws &&
             scene.visibility_query_count == 0 && !scene.wireframe &&
             !scene.stamp_opaque_coverage && !batch.terrain && !batch.impostor &&
             !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth &&
-            !batch.avatar_alpha && !batch.skin_palette &&
-            batch.skin_palette_float_count == 0 && batch.skin_joint_count == 0 &&
+            !batch.avatar_alpha && !draw.skinPalette() &&
+            draw.skinPaletteFloatCount() == 0 && draw.skinJointCount() == 0 &&
             !batch.water_exclusion && !batch.water_haze && !batch.water_surface &&
             !batch.atmospheric_haze && !batch.pre_water_alpha &&
             !batch.post_water_alpha && !batch.post_water_depth_only &&
@@ -11624,12 +11620,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         std::optional<WorldSimpleConstants> owned_constants;
         ALMetalWorldScalarRecipe scalar_recipe;
-        const bool recipe_draw=!prepared && current_cohort;
+        const bool recipe_draw=!prepared && (current_cohort || animated_reference);
         bool known_common_equal=false;
         const void* constants_data=nullptr;
         if(prepared)constants_data=prepared_constants.data()+prepared_records[index].offset;
+        else if(animated_reference)
+        {
+            const auto& source=*animated_reference->animated_source;
+            scalar_recipe=source.scalarRecipe();++animated_stats.direct_recipe_reads;
+            known_common_equal=scalar_common_animated && index==scalar_common_animated_index+1 &&
+                source.sameScalarCommon(*scalar_common_animated->animated_source) &&
+                std::memcmp(&animated_reference->view,&scalar_common_animated->view,sizeof(ALMetalWorldViewMatrices))==0;
+            if(known_common_equal)
+            {++animated_stats.direct_common_reuses;++scalar_common_reuses;}
+            else
+            {cohort_common_constants=buildWorldSimpleConstants(scene,draw);
+             ++animated_stats.direct_common_builds;++scalar_common_builds;}
+            scalar_common_animated=animated_reference;scalar_common_animated_index=index;
+            scalar_common_cohort=nullptr;constants_data=&cohort_common_constants;
+        }
         else if(recipe_draw)
         {
+            scalar_common_animated=nullptr;
             const auto row=index-current_cohort->logical_begin;
             scalar_recipe=current_cohort->cohort->scalarRecipe(row);++scalar_recipe_reads;
             known_common_equal=scalar_common_cohort==current_cohort && row==scalar_common_row+1 &&
@@ -11646,7 +11658,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             ++scalar_common_builds;constants_data=&*owned_constants;
         }
         const bool avatar = prepared ? prepared_records[index].avatar : !recipe_draw && (batch.avatar_rigid || batch.avatar_skinning);
-        const bool rigged = prepared ? prepared_records[index].rigged : !recipe_draw && batch.skin_palette != nullptr && !avatar;
+        const bool rigged = prepared ? prepared_records[index].rigged : animated_reference || (!recipe_draw && draw.skinPalette() != nullptr && !avatar);
         const bool bump = prepared ? prepared_records[index].bump : !recipe_draw && batch.normal_texture != nullptr;
         const bool material = prepared ? prepared_records[index].material : recipe_draw ? scalar_recipe.family==1 : batch.material_slot_count != 0;
         const bool pbr = prepared ? prepared_records[index].pbr : recipe_draw ? scalar_recipe.family==2 : isPBRBatch(batch);
@@ -11737,19 +11749,20 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             encoded = encoder->setVertexBuffer(
                 3, *batch.vertices, batch.color_offset, error);
         }
-        if (encoded && batch.skin_palette)
+        if (encoded && draw.skinPalette())
         {
+            const auto skin_joint_count=draw.skinJointCount();
             encoded =
-                ((mImpl->frame_data || batch.skin_palette_float_count*sizeof(float)<=4096)
+                ((mImpl->frame_data || draw.skinPaletteFloatCount()*sizeof(float)<=4096)
                      ? mImpl->setWorldPalette(*encoder, *command,
-                           5, batch, error)
+                           5, draw, error)
                      : encoder->setVertexBuffer(
                            5, *palette_buffers.at(index), 0, error)) &&
                 encoder->setVertexBuffer(
                     6, *batch.vertices, batch.weight_offset, error) &&
                 mImpl->setVertexData(*encoder, *command,
-                    7, &batch.skin_joint_count,
-                    sizeof(batch.skin_joint_count), error);
+                    7, &skin_joint_count,
+                    sizeof(skin_joint_count), error);
         }
         if (encoded && batch.avatar_cloth)
         {
@@ -11892,11 +11905,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             : encoder->drawIndexed(ALMetalPrimitiveType::triangle,
                 batch.index_count, batch.index_type, *batch.indices, batch.index_offset, 1, error));
         if (encoded && current_cohort) ++cohort_draws;
+        if (encoded && animated_reference) ++animated_stats.direct_draws;
         if (encoded && (material || pbr))
         {
             if (stable_tables) ++constant_stats.material_source_draws;
             else ++constant_stats.material_source_fallback_draws;
-            if (!current_cohort && scene.material_argument_buffers)
+            if (!current_cohort && !animated_reference && scene.material_argument_buffers)
             {
                 if (resource_bound) ++resource_stats.bound_draws;
                 else
@@ -11998,6 +12012,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->animated_stats.bounds_tests+=animated_stats.bounds_tests;
     mImpl->animated_stats.bounds_unknown+=animated_stats.bounds_unknown;
     mImpl->animated_stats.visibility_dispatches+=animated_stats.visibility_dispatches;
+    mImpl->animated_stats.direct_draws+=animated_stats.direct_draws;
+    mImpl->animated_stats.direct_recipe_reads+=animated_stats.direct_recipe_reads;
+    mImpl->animated_stats.direct_common_builds+=animated_stats.direct_common_builds;
+    mImpl->animated_stats.direct_common_reuses+=animated_stats.direct_common_reuses;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
     if(scene.cpu_cohort_visibility)

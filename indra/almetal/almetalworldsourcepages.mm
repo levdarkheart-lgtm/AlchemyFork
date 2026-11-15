@@ -1367,7 +1367,7 @@ try
     std::unordered_map<void*,std::uint64_t> new_assets;
     for(const auto* reference:references)
     {
-        if(!reference || !reference->animated_source || !reference->animated_palette ||
+        if(!reference || !reference->animated_source || !reference->animated_source->gpuReady() || !reference->animated_palette ||
            reference->source!=&reference->animated_source->prototype() ||
            !ALMetalWorldSourceCohort::validView(reference->view) ||
            std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,64))return false;

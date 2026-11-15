@@ -19,6 +19,15 @@ const float* ALMetalWorldDraw::riggedNormalMatrix() const noexcept
 const float* ALMetalWorldDraw::textureMatrix() const noexcept
 {return mFixedTextureMatrix?mFixedTextureMatrix:(mView?mView->texture_matrix:mSource->texture_matrix);}
 
+const ALMetalAttachmentPaletteRecord* ALMetalWorldDraw::skinPaletteRecord()const noexcept
+{return animatedReference()?mReference->animated_palette:mSource->skin_palette_record;}
+const float* ALMetalWorldDraw::skinPalette()const noexcept
+{return animatedReference()?mReference->animated_palette->data():mSource->skin_palette;}
+std::size_t ALMetalWorldDraw::skinPaletteFloatCount()const noexcept
+{return animatedReference()?mReference->animated_palette->size():mSource->skin_palette_float_count;}
+std::uint32_t ALMetalWorldDraw::skinJointCount()const noexcept
+{return animatedReference()?mReference->animated_palette->jointCount():mSource->skin_joint_count;}
+
 namespace
 {
 ALMetalWorldDraw baseDraw(const ALMetalWorldGBufferScene& scene,std::size_t index) noexcept

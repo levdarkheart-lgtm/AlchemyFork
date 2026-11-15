@@ -2303,3 +2303,45 @@ correctness+two explicit48costs. Source70 has no shader/common/frontend changes.
 Later sourcefact only: PoseView IDs1–3/9 are fixed perbank but stillwarmencoded;
 otherstaticbindings/Root alreadycold-only. Do notunfreeze70 for this beforecosts.
 No launch/profile/push, staged69102 remainsuntouched; engineeringgoalactive.
+
+
+## Source70 verified; source71 retained direct consumer integrated
+
+142390cc67/26.4.0.69120 required0/0/0 (172.444s), static70/strict pass.
+Native5193/5, actual23814/80, common5867/46, pages5914/25, directrenderer
+9394/9, commands4055/12, oldcommands84/1, resources12379/7, palette3150/18
+pass. Handles54044/58869 terminal0. Two48costs full95743/1 andvisibility
+90703/1 andboth1680-row parsers pass. Declared-once counter verifies1closure
+for2ranges; fullcount64warmCPU improves4.52%/1.53%(one/threeviews) while
+settlement12.77%/12.33% andGPU19.51%/16.34% remainworse. Noactivation.
+
+The nextconsumer preserves the sharedarchitecture and original direct shaders:
+latePalette Draw getters replace1720BscratchBatch construction, cachedprivate
+recipe flags and exactadjacent view/common proof avoid repeated400Bassembly
+whereequal; first/changedvalue rebuilds andslot4stillrebinds afterqueries.
+CPUcertificate seal omitsGPUdescriptor/bone/index work; gpuReady explicitly
+distinguishes notrequested from attempted-but-unknown bounds. GPUupgrade clones
+immutablePayload underexistingadmission/current/transientguards, oldreader stays
+valid. Direct-to-GPU failure canstillcaptureCPUreadyreference andrenderdirect.
+No shader, command, pipeline, common-policy orprepare.mm changes in71.
+
+Sixbackend+threefrontend+twoappendices copied byte-exact withcross-peerPASS.
+Root newRenderMetalAnimatedSourcesOFF/Persist0 usesbeginAnimatedSources
+(CPUenabled||GPUrequested,GPUrequested), logsCPUrecipe/commoncounters and
+sourcecapabilitypublications, andbypassesdiagnostic worldworker pathforselected
+sourceconsumer. GPUcontrols remainOFF. Five nativecases nowcoverdescriptor-free
+scalar/prepared, bothfamilies/masks/eightformats, dynamicUV/raw/body/clothmix,
+allfiveviewmatrix proofresets, pendingCPUexpiry/cancel andGPUupgrade/transient
+fallback. ExistingGPUscope/cap/lifetime coverage retained.
+
+48two-arm frontier remainsalladverse, routeonce/run via
+ALCHEMY_ANIMATED_GPU_COMMANDS(default0direct,1GPU) andoldGPU_VISIBILITY0/1.
+Three explicitruns direct/fullcount/visibility useidentical ordinaryraw baseline;
+newroute/counters logged andparserrejectsmixing. Updatedparser backwardparse
+of70 passes48pairs/1680rows to/tmp/animated-parser71-compatibility70.
+Savedclub data establishes onlyshadowrunlengths(max249), notmeshindexcounts;
+96indices/source remainsdeclared fixturelimitation, no inventedclubmeshclaim.
+
+Nextrequired71 builder +static71/strict, full34scopes justifiedbycoreDrawfacade
+changes, thenallthree48costruns. No71runtime orperformanceclaimyet. No viewer
+launch/login/liveprofile/push; ownerapps andstaged69102unchanged; goalactive.

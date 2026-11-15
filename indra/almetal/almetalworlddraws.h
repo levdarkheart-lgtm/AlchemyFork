@@ -74,6 +74,10 @@ public:
     const float* normalMatrix() const noexcept;
     const float* riggedNormalMatrix() const noexcept;
     const float* textureMatrix() const noexcept;
+    const ALMetalAttachmentPaletteRecord* skinPaletteRecord() const noexcept;
+    const float* skinPalette() const noexcept;
+    std::size_t skinPaletteFloatCount() const noexcept;
+    std::uint32_t skinJointCount() const noexcept;
 
 private:
     const ALMetalWorldSimpleBatch* mSource;

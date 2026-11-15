@@ -6,24 +6,29 @@
  */
 bool source_rows_active = false;
 std::shared_ptr<ALMetalWorldSourceView> source_rows;
-bool animated_gpu_records_active = false;
+bool animated_sources_active = false, animated_gpu_records_active = false;
 // Borrowed owner policy, never copied to a flavor, publication or GPU view.
 ALNativeFrameBudget* animated_compilation_budget = nullptr;
 struct AnimatedSourceCaptureStats
 {
     // Owner capture decisions, distinct from actual accepted GPU execution.
-    std::uint64_t enabled_views=0,requested_draws=0,captured_draws=0;
+    std::uint64_t enabled_views=0,gpu_requested_views=0,requested_draws=0,captured_draws=0;
+    std::uint64_t gpu_capability_missing_draws=0;
     std::uint64_t unsupported_skips=0,source_unavailable=0,owner_proof_skips=0,pose_unavailable=0;
     std::uint64_t capacity_fallbacks=0,allocation_fallbacks=0;
 } animated_source_stats;
 void clearAnimatedGpuRecords() noexcept
-{animated_gpu_records_active=false;animated_compilation_budget=nullptr;}
-void beginAnimatedGpuRecords(bool enabled,ALNativeFrameBudget* budget=nullptr) noexcept
+{animated_sources_active=animated_gpu_records_active=false;animated_compilation_budget=nullptr;}
+void beginAnimatedSources(bool enabled,bool gpu_requested,ALNativeFrameBudget* budget=nullptr) noexcept
 {
-    animated_gpu_records_active=enabled;
+    animated_sources_active=enabled;
+    animated_gpu_records_active=enabled&&gpu_requested;
     animated_compilation_budget=enabled?budget:nullptr;
     if(enabled)++animated_source_stats.enabled_views;
+    if(animated_gpu_records_active)++animated_source_stats.gpu_requested_views;
 }
+void beginAnimatedGpuRecords(bool enabled,ALNativeFrameBudget* budget=nullptr) noexcept
+{beginAnimatedSources(enabled,enabled,budget);}
 
 bool tryCaptureAnimatedSource(const LLDrawInfo& info,
     const ALScenePublicationNative::WorldLease& source,
@@ -32,7 +37,7 @@ bool tryCaptureAnimatedSource(const LLDrawInfo& info,
     const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& palette,bool eligible) noexcept
 try
 {
-    if(!animated_gpu_records_active)return false;
+    if(!animated_sources_active)return false;
     ++animated_source_stats.requested_draws;
     if(!eligible || !flavor.hasAnimatedConsumer() || info.mTextureMatrix || !info.mAvatar || !info.mSkinInfo)
     {++animated_source_stats.unsupported_skips;return false;}
@@ -71,6 +76,7 @@ try
     source_references.push_back(reference);
     draw_order.push_back(alMetalWorldDrawReferenceBit|index);
     ++animated_source_stats.captured_draws;
+    if(animated_gpu_records_active && !(*certificate)->gpuReady())++animated_source_stats.gpu_capability_missing_draws;
     return true;
 }
 catch(const std::bad_alloc&){++animated_source_stats.allocation_fallbacks;return false;}

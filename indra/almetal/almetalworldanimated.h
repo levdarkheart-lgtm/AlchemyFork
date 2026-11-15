@@ -5,6 +5,7 @@
  */
 #pragma once
 #include "almetalworldsourcepages.h"
+#include "almetalworldcohort.h"
 #include <memory>
 #include <span>
 
@@ -27,7 +28,7 @@ class ALMetalWorldAnimatedSource final
 public:
     static std::shared_ptr<const ALMetalWorldAnimatedSource> seal(
         ALMetalWorldSourceKey,const ALMetalWorldSimpleBatch& pose_free,
-        const ALMetalWorldSourceNativeScope&,std::string* error=nullptr);
+        const ALMetalWorldSourceNativeScope&,std::string* error=nullptr,bool require_gpu=true);
     ~ALMetalWorldAnimatedSource();
     const ALMetalWorldSimpleBatch& prototype() const noexcept;
     const ALMetalWorldSourceKey& key() const noexcept;
@@ -36,6 +37,11 @@ public:
     std::shared_ptr<const void> nativeLease() const noexcept;
     std::span<const ALMetalWorldAnimatedBoneBounds> boneBounds() const noexcept;
     bool boundsQualified() const noexcept;
+    // Distinguish an unrequested GPU capability from attempted unknown bounds.
+    bool gpuReady() const noexcept;
+    ALMetalWorldScalarRecipe scalarRecipe() const noexcept;
+    // Exact immutable common policy, excluding matrices supplied by Draw.
+    bool sameScalarCommon(const ALMetalWorldAnimatedSource&) const noexcept;
     std::size_t ownedBytes() const noexcept;
 private:
     struct Impl;
@@ -52,4 +58,8 @@ struct ALMetalWorldAnimatedStats
     // Actual compute dispatches in successfully encoded view transactions;
     // full-count mode performs no bounds work or visibility dispatch.
     std::uint64_t visibility_dispatches=0;
+    // Ordinary shader consumption of private rigged refs, including prepared
+    // and GPU-fallback draws. Recipe/build/reuse work is unprepared scalar only.
+    std::uint64_t direct_draws=0,direct_recipe_reads=0;
+    std::uint64_t direct_common_builds=0,direct_common_reuses=0;
 };

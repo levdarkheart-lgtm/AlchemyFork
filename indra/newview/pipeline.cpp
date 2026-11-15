@@ -3283,14 +3283,18 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 if(!source)return;
                 const auto& stats=source->animated_source_stats;
                 LL_INFOS("MetalScene") << "Native animated capture: view=" << owner
-                    << ", enabled=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuRecords")
+                    << ", source_capture_enabled=" << (gSavedSettings.getBOOL("RenderMetalAnimatedSources") || gSavedSettings.getBOOL("RenderMetalAnimatedGpuRecords"))
+                    << ", gpu_commands_requested=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuRecords")
                     << ", enabled_views/requested/captured=" << stats.enabled_views << '/' << stats.requested_draws << '/' << stats.captured_draws
+                    << ", gpu_requested_views/capability_missing_draws=" << stats.gpu_requested_views << '/' << stats.gpu_capability_missing_draws
                     << ", unsupported/source/owner/pose/capacity/allocation_fallbacks=" << stats.unsupported_skips << '/' << stats.source_unavailable
                     << '/' << stats.owner_proof_skips << '/' << stats.pose_unavailable << '/' << stats.capacity_fallbacks << '/' << stats.allocation_fallbacks << LL_ENDL;
                 if(!source->renderer)return;
                 const auto gpu=source->renderer->worldAnimatedStats();
                 LL_INFOS("MetalScene") << "Native animated submission: view=" << owner
                     << ", requested/accepted_gpu/fallback/execute_calls=" << gpu.requested_draws << '/' << gpu.gpu_draws << '/' << gpu.fallback_draws << '/' << gpu.execute_calls
+                    << ", direct_record_draws/cpu_recipe_reads/common_builds/common_reuses=" << gpu.direct_draws << '/' << gpu.direct_recipe_reads
+                    << '/' << gpu.direct_common_builds << '/' << gpu.direct_common_reuses
                     << ", current_pose/source_publications=" << gpu.current_pose_publications << '/' << gpu.source_publications
                     << ", encoded_visibility_dispatches=" << gpu.visibility_dispatches
                     << ", visibility_requested=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuVisibility")
@@ -3304,7 +3308,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << animated_compilation.requests << '/' << animated_compilation.admitted << '/' << animated_compilation.deferred << '/'
                 << animated_compilation.duplicate_views << '/' << animated_compilation.published << '/' << animated_compilation.failed
                 << ", requested/admitted_work_bytes/saturated=" << animated_compilation.requested_bytes << '/' << animated_compilation.admitted_bytes << '/' << animated_compilation.saturated
-                << ", sealed_sources/fallbacks=" << ALScenePublicationNative::animated_source_publications << '/' << ALScenePublicationNative::animated_source_fallbacks << LL_ENDL;
+                << ", sealed_sources/fallbacks=" << ALScenePublicationNative::animated_source_publications << '/' << ALScenePublicationNative::animated_source_fallbacks
+                << ", direct_only/gpu_ready_source_publications=" << ALScenePublicationNative::animated_direct_source_publications << '/' << ALScenePublicationNative::animated_gpu_source_publications << LL_ENDL;
             const auto log_terrain_preflight=[](const char* owner,const MetalWorldSimpleCapture* source)
             {
                 if(!source || !source->terrain_preflight_failures)return;
@@ -3743,7 +3748,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // scalar route is explicit, or belongs to standalone non-cohort banks.
     capture.beginSourceRows((source_rows() || (source_banks() && !group_sources())) && !capture.impostor_bake);
     static LLCachedControl<bool> animated_gpu_records(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
-    capture.beginAnimatedGpuRecords(animated_gpu_records() && !capture.impostor_bake);
+    static LLCachedControl<bool> animated_sources(gSavedSettings, "RenderMetalAnimatedSources", false);
+    capture.beginAnimatedSources((animated_sources() || animated_gpu_records()) && !capture.impostor_bake,
+        animated_gpu_records() && !capture.impostor_bake);
     capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
     if (capture.source_rows_active)
         for (const auto* region : LLWorld::getInstance()->getRegionList())
@@ -16716,7 +16723,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // Draw count alone did not predict a complete-path worker benefit; keep
     // this diagnostic explicit until its frame/CPU cost gate is established.
     static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
-    const bool prepare_world = inputs && prepare_world_inputs() && !scene.animated_gpu_records && !scene.source_rows && !scene.cohort_count &&
+    const bool prepare_world = inputs && prepare_world_inputs() && !capture.animated_sources_active && !scene.animated_gpu_records && !scene.source_rows && !scene.cohort_count &&
         inputs->scene().drawCount() >= MetalWorldSimpleCapture::parallel_world_minimum;
     bool credited_preparation = false;
     if (inputs) scene = inputs->scene();

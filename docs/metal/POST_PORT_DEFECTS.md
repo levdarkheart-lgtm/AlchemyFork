@@ -6808,6 +6808,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 source69/d2e8b6d9ca builds69119 (164.224s); static/strict, native5029/5, actual23778/80, common5867/46 and command/resource/old-library checks pass. Separate explicit48costs pass92487/1 full-count and87447/1 visibility; both parsed48pairs/1680raw rows. Full-count reduces overhead but still loses warm CPU4.61–15.46%, settlement2.67–16.33% atgroup means; kernel mode stillworse. KeepbothcontrolsOFF. Next source-confirmed overhead is all-bank resource declarations repeated perquery/raster range and identical finite/owned-reference rechecks; optimize once per exact active G-buffer encoder with command/Batch ownership and preserve standalone API safety/prefix failure. No FPS acceptance or cause attribution beyond this contained frontier.
 
+- 2026-11-15 source70/142390cc67 builds69120 and all relevant correctness passes (native5193/5, actual23814/80). Costs95743/1 fullcount and90703/1 visibility pass. Fullcount64 warm owner CPU improves4.52%/1.53% (one/three views), but settlement12.77%/12.33% and GPU19.51%/16.34% stillworse. Scopedclosurecount proves1declaration for2ranges; no performance activation. Next source-directed consumer keeps the same immutable SourceReference/pose/native tuple but uses original direct rigged shaders and bindings, avoids scratchBatch copies and conditionally reuses proved-equal400B constants. Split CPU certificate from optional GPU descriptor/bounds capability; default existing GPU seal remains superset, immutable promotion/fallback guards retained. This preserves shared architecture while selecting a faster M1 consumer, not a claim the unmeasured route is faster.
+
+- 2026-11-15 pre-build direct-facade review finds optional static SourceRows can see an animated reference pose-free prototype with valid weight_offset0 and no prototype palette, and bypass its late pose. Register before explicitly declining animatedReference candidates in that static-row optimization, retaining ordinary direct rendering. Normal LLVB weight offsets are nonzero; no runtime attribution or feature removal claimed.
+
+- 2026-11-15 pre-freeze direct-consumer review finds private animated references already excluded from material-argument-buffer requests/binds but still counted by a trailing resource fallback branch when that diagnostic flag is ON. Register before matching the final fallback guard to the same animated-reference exclusion. Preserve ordinary direct bindings and dedicated direct census; source-only accounting issue, no runtime performance attribution.
+
 ## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
 
 - Status: ready_for_owner
@@ -6842,6 +6848,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Repaired reverse-Z raw-query fixture passes allfour animated native cases67 (3434assertions); eight formats and positive query requirements retained. Earlier66 raw reference failure remains in evidence. Owner runtime acceptance pending.
 
+
+- 2026-11-15 pre-build direct-source fixture peer finds a ternary mixing float* matrices with float(*)[4] normal matrices. Register before flattening only the normal/rigged-normal branches with &matrix[0][0], retaining all five changed-matrix common-proof reset assertions. Test authoring issue only; no build/runtime failure or renderer cause claimed.
 
 ## PPD-289 — Optional animated promotion can reject a required reader after cache withdrawal
 

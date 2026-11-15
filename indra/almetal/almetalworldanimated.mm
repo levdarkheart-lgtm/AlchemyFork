@@ -26,7 +26,8 @@ struct ALMetalWorldAnimatedSource::Impl
     std::weak_ptr<const void> native;
     const void* native_pointer=nullptr;
     std::weak_ptr<const ALMetalWorldAnimatedSource> owner;
-    bool qualified=false;
+    ALMetalWorldScalarRecipe recipe;
+    bool qualified=false,gpu_ready=false;
 };
 ALMetalWorldAnimatedSource::ALMetalWorldAnimatedSource(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldAnimatedSource::~ALMetalWorldAnimatedSource()=default;
@@ -40,12 +41,24 @@ bool ALMetalWorldAnimatedSource::matchesNativeScope(const ALMetalWorldSourceNati
     (!scope.indices || scope.indices.get()==mImpl->prototype.indices);}
 std::span<const ALMetalWorldAnimatedBoneBounds> ALMetalWorldAnimatedSource::boneBounds() const noexcept{return mImpl->bounds;}
 bool ALMetalWorldAnimatedSource::boundsQualified() const noexcept{return mImpl->qualified;}
+bool ALMetalWorldAnimatedSource::gpuReady() const noexcept{return mImpl->gpu_ready;}
+ALMetalWorldScalarRecipe ALMetalWorldAnimatedSource::scalarRecipe() const noexcept{return mImpl->recipe;}
+bool ALMetalWorldAnimatedSource::sameScalarCommon(const ALMetalWorldAnimatedSource& other)const noexcept
+{
+    if(this==&other)return true;
+    const auto& a=mImpl->prototype;const auto& b=other.mImpl->prototype;
+    const auto equal=[](const auto& x,const auto& y){return std::memcmp(&x,&y,sizeof(x))==0;};
+    return equal(a.avatar_wind,b.avatar_wind) && equal(a.avatar_sin_wave,b.avatar_sin_wave) &&
+        equal(a.avatar_gravity,b.avatar_gravity) && equal(a.avatar_cloth_depth,b.avatar_cloth_depth) &&
+        equal(a.alpha_cutoff,b.alpha_cutoff) && a.use_vertex_color==b.use_vertex_color &&
+        a.alpha_cutoff_bias==b.alpha_cutoff_bias && a.alpha_mask==b.alpha_mask && a.texture_count==b.texture_count;
+}
 std::size_t ALMetalWorldAnimatedSource::ownedBytes() const noexcept
 {return sizeof(*this)+sizeof(Impl)+mImpl->bounds.capacity()*sizeof(ALMetalWorldAnimatedBoneBounds);}
 
 std::shared_ptr<const ALMetalWorldAnimatedSource> ALMetalWorldAnimatedSource::seal(
     ALMetalWorldSourceKey key,const ALMetalWorldSimpleBatch& source,
-    const ALMetalWorldSourceNativeScope& native,std::string* error)
+    const ALMetalWorldSourceNativeScope& native,std::string* error,bool require_gpu)
 try
 {
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldAnimatedSource>
@@ -63,7 +76,8 @@ try
        source.legacy_glow || source.pbr_glow || source.water_exclusion || source.water_haze || source.water_surface ||
        source.atmospheric_haze || source.impostor_fullbright || source.impostor_shiny || source.impostor_emboss ||
        !source.native_material_source || !source.native_material_source->matches(source) ||
-       !source.native_resource_source || !source.native_resource_source->matches(source))
+       (require_gpu && !source.native_resource_source) ||
+       (source.native_resource_source && !source.native_resource_source->matches(source)))
         return reject("Animated source requires completed regular rigged geometry/material generations");
 
     // Ordinary cold validation remains authoritative, using a canonical pose
@@ -84,6 +98,17 @@ try
     {scene.normal_hdr=hdr;if(!alMetalValidateWorldBatch(scene,ALMetalWorldDraw(validation),error))return {};}
     auto impl=std::make_unique<Impl>();impl->key=key;impl->prototype=source;
     impl->native=native.owner;impl->native_pointer=native.owner.get();
+    impl->recipe.family=pbr?2:1;
+    if(legacy)
+    {
+        impl->recipe.normal_map=source.materialSlots()[0].normal_texture!=nullptr;
+        impl->recipe.specular_map=source.materialSlots()[0].specular_texture!=nullptr;
+    }
+    if(!require_gpu)
+    {
+        auto result=std::shared_ptr<const ALMetalWorldAnimatedSource>(new ALMetalWorldAnimatedSource(std::move(impl)));
+        result->mImpl->owner=result;return result;
+    }
 
     // Cold scan over the exact indexed native generation, never LL objects.
     // Unreadable/unproved data is legal rendering input but cannot be culled.
@@ -126,6 +151,7 @@ try
     if(qualified)for(unsigned joint=0;joint<110;++joint)if(used[joint])
     {boxes[joint].config[0]=joint;impl->bounds.push_back(boxes[joint]);}
     impl->qualified=qualified && !impl->bounds.empty();
+    impl->gpu_ready=true;
     auto result=std::shared_ptr<const ALMetalWorldAnimatedSource>(new ALMetalWorldAnimatedSource(std::move(impl)));
     result->mImpl->owner=result;return result;
 }

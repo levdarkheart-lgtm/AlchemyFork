@@ -125,7 +125,8 @@ try
         !capture.impostor_bake && !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
         !capture.pbr_glow && !capture.impostor_fullbright && !capture.impostor_shiny && !capture.impostor_emboss &&
         !params.mTextureMatrix && flavor.hasAnimatedConsumer();
-    flavor.animated_source = capture.animated_gpu_records_active && ordinary_animated;
+    flavor.animated_source = capture.animated_sources_active && ordinary_animated;
+    flavor.animated_gpu_source = capture.animated_gpu_records_active && ordinary_animated;
     auto source = ALScenePublicationNative::world(params, flavor,
         sNativeSceneSources, sNativeSceneSerial, gFrameCount,capture.animated_compilation_budget);
     if (!source)
