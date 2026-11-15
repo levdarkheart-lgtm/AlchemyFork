@@ -6,7 +6,6 @@
 #include "almetalworldsourcecommands.h"
 #include "almetalworld.h"
 #include <cstring>
-#include <bit>
 #include <Metal/Metal.h>
 #include <algorithm>
 #include <atomic>
@@ -207,6 +206,7 @@ struct ALMetalWorldSourceCommands::Batch::Impl
     id<MTLCommandBuffer> command=nil;
     id<MTLDevice> device=nil;
     std::shared_ptr<const void> animated_reader;
+    std::weak_ptr<const void> declared_encoder_identity;
     std::vector<std::shared_ptr<const void>> animated_native;
     std::vector<ALMetalWorldDataSlice> animated_palettes;
 };
@@ -551,14 +551,42 @@ catch(...)
 bool ALMetalWorldSourceCommands::execute(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,const Batch& batch,std::string* error)
 {return executeRange(encoder,command,batch,0,batch.size(),error);}
 
+ALMetalWorldSourceCommands::DeclarationScope ALMetalWorldSourceCommands::makeDeclarationScope(
+    ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,std::string* error)
+try
+{
+    if(!encoder.nativeHandleForResources() || command.isCommitted() ||
+       encoder.nativeDeviceForIndirect()!=command.nativeDevice() ||
+       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
+    {if(error)*error="Native declaration scope requires its active command encoder";return {};}
+    return DeclarationScope(encoder.declarationIdentity(true));
+}
+catch(const std::bad_alloc&){if(error)error->clear();return {};}
+
 bool ALMetalWorldSourceCommands::executeRange(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
     const Batch& batch,std::size_t first,std::size_t count,std::string* error)
+{return executeRangeImpl(encoder,command,batch,first,count,nullptr,error);}
+
+bool ALMetalWorldSourceCommands::executeRange(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
+    const Batch& batch,std::size_t first,std::size_t count,const DeclarationScope& scope,std::string* error)
+{return executeRangeImpl(encoder,command,batch,first,count,&scope,error);}
+
+bool ALMetalWorldSourceCommands::executeRangeImpl(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
+    const Batch& batch,std::size_t first,std::size_t count,const DeclarationScope* scope,std::string* error)
 {
     const auto& prepared=*batch.mImpl;
     if(!count||first>prepared.bank->count||count>prepared.bank->count-first||
         !encoder.canExecuteIndirect()||encoder.nativeDeviceForIndirect()!=(__bridge void*)prepared.device||
         encoder.nativeCommandBufferForIndirect()!=(__bridge void*)prepared.command||command.nativeHandle()!=(__bridge void*)prepared.command||command.isCommitted())
     {mImpl->fail(ALMetalWorldSourceCommandFailure::execution,nullptr,error,"Native source bank requires its prepared command and compatible pipeline");return false;}
+    std::shared_ptr<const void> identity;
+    if(scope)
+    {
+        identity=encoder.declarationIdentity(false);
+        if(!identity || !scope->mIdentity || scope->mIdentity.get()!=identity.get() ||
+           scope->mIdentity.owner_before(identity) || identity.owner_before(scope->mIdentity))
+        {mImpl->fail(ALMetalWorldSourceCommandFailure::execution,nullptr,error,"Native declaration scope is stale or belongs to another encoder");return false;}
+    }
     if(mImpl->execution_failure_after&&*mImpl->execution_failure_after==0)
     {
         mImpl->execution_failure_after.reset();
@@ -568,18 +596,30 @@ bool ALMetalWorldSourceCommands::executeRange(ALMetalRenderEncoder& encoder,ALMe
     if(prepared.frame && !prepared.frame->bind(encoder,command,error))return false;
     if(prepared.bank->animated)
     {
-        for(const auto& source:prepared.bank->animated->sources)
-            if(!source->declareResources(encoder,command,error))return false;
-        auto declarations=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
-        if(!declarations)return false;
-        for(const auto& lease:prepared.bank->indices)
-            [declarations useResource:lease->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex|MTLRenderStageFragment];
-        for(const auto& slice:prepared.animated_palettes)
-            [declarations useResource:(__bridge id<MTLBuffer>)slice.buffer->nativeHandle() usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+        const auto& previous=prepared.declared_encoder_identity;
+        const bool declared=scope && !previous.owner_before(identity) && !identity.owner_before(previous);
+        if(!declared)
+        {
+            ++mImpl->statistics.declaration_calls;
+            for(const auto& source:prepared.bank->animated->sources)
+                if(!source->declareResources(encoder,command,error))return false;
+            auto declarations=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+            if(!declarations)return false;
+            for(const auto& lease:prepared.bank->indices)
+                [declarations useResource:lease->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex|MTLRenderStageFragment];
+            for(const auto& slice:prepared.animated_palettes)
+                [declarations useResource:(__bridge id<MTLBuffer>)slice.buffer->nativeHandle() usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+            [declarations useResource:prepared.bank->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+            // The actual Batch owns this exact native tuple and late palette
+            // slices. A new Batch over the same Bank starts with no proof.
+            // Weak identity assignment cannot allocate and follows ALL calls.
+            if(scope)batch.mImpl->declared_encoder_identity=identity;
+        }
     }
     id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForIndirect();
     if(!native)return false;
-    [native useResource:prepared.bank->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
+    if(!prepared.bank->animated)
+        [native useResource:prepared.bank->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
     // matchesSourceCommand proved each index belongs to this FrameView;
     // frame.bind declared its exact geometry/index union once per encoder.
     [native executeCommandsInBuffer:prepared.bank->native withRange:NSMakeRange(first,count)];
@@ -656,11 +696,8 @@ try
     // application callbacks; CPU records retire after synchronous encoding.
     for(const auto& view:inputs)
     {
-        bool finite=true;
-        for(const auto& row:view.view.rigged_normal_matrix)for(float value:row)
-            finite=finite&&((std::bit_cast<std::uint32_t>(value)&0x7f800000u)!=0x7f800000u);
         if(!view.source||!view.pose||!view.source->matchesNativeLease(view.native)||
-           !ALMetalWorldSourceCohort::validView(view.view)||!finite)
+           !ALMetalWorldSourceCohort::validView(view.view))
             return reject(ALMetalWorldSourceCommandFailure::validation,"Animated source, pose or native/view proof is invalid");
     }
     trimUnusedBanks();

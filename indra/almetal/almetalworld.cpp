@@ -9638,7 +9638,6 @@ bool validAnimatedReference(const ALMetalWorldSourceReference& reference) noexce
         reference.source==&reference.animated_source->prototype() &&
         reference.animated_source->nativeLease() &&
         ALMetalWorldSourceCohort::validView(reference.view) &&
-        finiteValues(&reference.view.rigged_normal_matrix[0][0],12) &&
         finiteValues(reference.view.texture_matrix,16);
 }
 ALMetalWorldSimpleBatch animatedFallback(const ALMetalWorldSourceReference& reference)
@@ -10368,7 +10367,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 cursor.advance(remaining);index+=remaining;
                 continue; // Static sources were validated by the private seal.
             }
-            if (!alMetalValidateWorldBatch(scene,cursor.draw(),error)) return nullptr;
+            const auto draw=cursor.draw();
+            if (!(validated_shape && draw.animatedReference()) &&
+                !alMetalValidateWorldBatch(scene,draw,error)) return nullptr;
             cursor.advance();++index;
         }
     }
@@ -11028,6 +11029,14 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         return nullptr;
     }
 
+    ALMetalWorldSourceCommands::DeclarationScope animated_declarations;
+    if(!animated_ranges.empty())
+    {
+        std::string optional_error;
+        animated_declarations=mImpl->source_commands->makeDeclarationScope(*encoder,*command,&optional_error);
+        // Empty on allocation failure: retain the safe self-declaring route.
+    }
+
     // A prepared view publishes its complete constant slab once. Per-draw
     // bindings reference immutable subranges; they never hash or republish it.
     const auto bind_prepared = [&](std::size_t offset, std::size_t length,
@@ -11232,8 +11241,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     encoder->setDepthBias(0.f,0.f,0.f,&optional_error) &&
                     encoder->setCullMode(range.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,&optional_error) &&
                     encoder->setPipeline(*range.pipeline,&optional_error) &&
-                    mImpl->source_commands->executeRange(*encoder,*command,*range.bank,
-                        range.bank_first+index-range.first,count,&optional_error);
+                    (animated_declarations
+                        ? mImpl->source_commands->executeRange(*encoder,*command,*range.bank,
+                            range.bank_first+index-range.first,count,animated_declarations,&optional_error)
+                        : mImpl->source_commands->executeRange(*encoder,*command,*range.bank,
+                            range.bank_first+index-range.first,count,&optional_error));
                 if(accepted)
                 {
                     scalar_common_cohort=nullptr;have_previous_world_constants=false;animated_prefix_emitted=true;

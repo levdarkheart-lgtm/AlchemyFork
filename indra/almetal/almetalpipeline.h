@@ -465,6 +465,9 @@ private:
     // Read-only encoder access for resource declarations, never command/state
     // emission. Actual binding changes retain the wrapper's join barriers.
     void* nativeHandleForResources() const noexcept;
+    // Inert active-encoder identity; never owns a native encoder/resource.
+    // Creation is lazy and private to the owned declaration scope.
+    std::shared_ptr<const void> declarationIdentity(bool create);
     void* nativeDeviceForIndirect() const noexcept;
     void* nativeCommandBufferForIndirect() const noexcept;
     bool canExecuteIndirect() const noexcept;

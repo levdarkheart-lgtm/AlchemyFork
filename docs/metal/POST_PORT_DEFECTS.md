@@ -6806,6 +6806,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 pre-freeze287 callback review finds public animated preparation snapshots views but continues reading caller-borrowed32B SourceGlobals after admission. A callback may mutate aliased flags/mirror data after bank-layout selection. Register before copying globals by value at owned entry before callbacks. Renderer-local globals are private and no viewer incident/performance cause is attributed.
 
+- 2026-11-15 source69/d2e8b6d9ca builds69119 (164.224s); static/strict, native5029/5, actual23778/80, common5867/46 and command/resource/old-library checks pass. Separate explicit48costs pass92487/1 full-count and87447/1 visibility; both parsed48pairs/1680raw rows. Full-count reduces overhead but still loses warm CPU4.61–15.46%, settlement2.67–16.33% atgroup means; kernel mode stillworse. KeepbothcontrolsOFF. Next source-confirmed overhead is all-bank resource declarations repeated perquery/raster range and identical finite/owned-reference rechecks; optimize once per exact active G-buffer encoder with command/Batch ownership and preserve standalone API safety/prefix failure. No FPS acceptance or cause attribution beyond this contained frontier.
+
 ## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
 
 - Status: ready_for_owner

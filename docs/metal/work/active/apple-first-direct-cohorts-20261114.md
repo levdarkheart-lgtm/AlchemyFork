@@ -2267,3 +2267,39 @@ source69 build/static69 verifier/strict, native/actual+relevant command/resource
 oldlibrary regressions, then separate complete48cost runs with env0 and1.
 Use /tmp/finish_architecture_validation_69.py after frozen69 builder; it records
 controls and excludes viewer/profiler interference. No viewer launch/profile/push.
+
+
+## Source69 two-mode results and source70 declaration reuse freeze
+
+Exactd2e8b6d9ca/26.4.0.69119 doctor/configure/build0/0/0 (164.224s), static69
+verifier and strict source audit pass. Native5029/5, actual23778/80,
+common5867/46, pages5914/25, directrenderer9394/9, commands4055/12, oldcommands
+84/1, resources12379/7, palette/preparation3150/18 all pass. Handles48592/88181
+terminal0. Explicit env0fullcount92487/1 andenv1visibility87447/1 cost runs pass;
+both summaries validate48pairs/1680raw rows with actual dispatch census.
+
+Fullcount improves mechanism cost, but warm group means remain CPU4.61–15.46%
+andsettlement2.67–16.33% worse than direct. Example64Legacy/oneview CPU
+0.086396→0.089479ms andGPU0.088771→0.107541ms; these tiny contained timings
+are not whole-viewer FPS. Both controls stayOFF. Visibility is stillworse.
+
+Source70 freezes seven peer-reviewed backend/testfiles: world4339fbe5,
+commands.h3d635821/.mmc4ecea9b, pipeline.h75eedec5/.mmd6e950b4,
+native3df2706e/actual46be6b42. Encoder-scoped declarations use inert lazy
+active-encoder identity, exact controlblock and actualBatch weak proof, no
+nativeEncoder cycle/globalpointer cache. New/ended/stale encoders cannotreuse
+proof; old API remains selfdeclaring. Recordmark follows ALL declarations and
+fault/prefix behavior is preserved. Existing typedowned animated references
+skip only their already-performed batchvalidation; public/borrowed/native
+callback checks remain. Identical extra12float scans removed.
+
+Positive tests exercise twoqueryranges/oneclosure, three real encoders, stale
+scope rejection, and legacyAPI selfdeclarations with completeoutputparity.
+Counters describe actual helper declaration attempts, sampledonce/sharedFD after
+timers; root adds periodichelper_declaration_attempts. No70executionclaimyet.
+Next /tmp/persistent_native_build_70.py then
+/tmp/finish_architecture_validation_70.py required/static/strict+relevant
+correctness+two explicit48costs. Source70 has no shader/common/frontend changes.
+Later sourcefact only: PoseView IDs1–3/9 are fixed perbank but stillwarmencoded;
+otherstaticbindings/Root alreadycold-only. Do notunfreeze70 for this beforecosts.
+No launch/profile/push, staged69102 remainsuntouched; engineeringgoalactive.

@@ -7,6 +7,7 @@
 #include "almetalworldsourcepages.h"
 #include <array>
 #include <vector>
+#include <utility>
 
 struct ALMetalWorldSourceCommandDraw
 {
@@ -32,6 +33,9 @@ struct ALMetalWorldSourceCommandLimits
 struct ALMetalWorldSourceCommandStats
 {
     std::uint64_t requests=0,hits=0,builds=0,executions=0,logical_draws=0,evictions=0;
+    // Actual animated closure-declaration attempts, including failed/abandoned
+    // transactions. Exact encoder-scope reuse does not add another call.
+    std::uint64_t declaration_calls=0;
     std::uint64_t admission_requests=0,admission_denials=0,charged_logical_argument_bytes=0;
     std::uint64_t charged_logical_binding_bytes=0;
     // Unique existing index footprint, not a new allocation or another GPU
@@ -64,6 +68,20 @@ public:
         std::unique_ptr<Impl> mImpl;
         friend class ALMetalWorldSourceCommands;
     };
+    class DeclarationScope final
+    {
+    public:
+        DeclarationScope()=default;
+        explicit operator bool() const noexcept {return bool(mIdentity);}
+    private:
+        explicit DeclarationScope(std::shared_ptr<const void> identity):mIdentity(std::move(identity)){}
+        std::shared_ptr<const void> mIdentity;
+        friend class ALMetalWorldSourceCommands;
+    };
+    // Create inside the active encoder lifetime, before its draws. Scope owns
+    // only an inert identity; ended/new encoders cannot reuse its proof. An
+    // allocation failure returns empty, allowing the self-declaring API below.
+    DeclarationScope makeDeclarationScope(ALMetalRenderEncoder&,ALMetalCommandBuffer&,std::string* error=nullptr);
     static std::shared_ptr<ALMetalWorldSourceCommands> create(const ALMetalDevice&,
         ALMetalWorldSourceCommandLimits={},std::string* error=nullptr);
     ~ALMetalWorldSourceCommands();
@@ -102,6 +120,8 @@ public:
     // range selection neither republishes the Bank nor retains CPU packets.
     bool executeRange(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
         std::size_t first,std::size_t count,std::string* error=nullptr);
+    bool executeRange(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
+        std::size_t first,std::size_t count,const DeclarationScope&,std::string* error=nullptr);
     void clear() noexcept;
     void trimUnusedBanks() noexcept;
     ALMetalWorldSourceCommandStats stats() const noexcept;
@@ -110,6 +130,8 @@ public:
     // before emitting the range after this many successful range submissions.
     void failExecutionAfterForTesting(std::size_t successful_ranges) noexcept;
 private:
+    bool executeRangeImpl(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
+        std::size_t first,std::size_t count,const DeclarationScope*,std::string* error);
     struct Impl;
     explicit ALMetalWorldSourceCommands(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;

@@ -133,12 +133,18 @@ TEST_CASE("Actual retained animated capture changes pose without rebuilding geom
                 if(step || !gpu_visibility){CHECK(Inputs::sNativeSceneSerial==serial);CHECK(Inputs::ALScenePublicationNative::animated_source_publications==source_builds);}
                 auto input=f.adoptArm(pipeline,step+2,mode,gpu_visibility);INFO(f.error);REQUIRE(input);
                 std::shared_ptr<ALMetalVisibilityResultBatch> results;const auto before=(mode?probe:main)->worldAnimatedStats();
+                const auto declarations_before=(mode?probe:main)->worldSourceCommandStats().cache.declaration_calls;
                 auto target=(mode?probe:main)->renderOwnedInputs(*input,&f.error,&results);INFO(f.error);REQUIRE(target);REQUIRE(results);
                 pixels[mode]=f.read(*target);for(U32 at=0;at<3;++at){REQUIRE(results->wait(at,queries[mode][at],&f.error));CHECK(queries[mode][at]>0);}
                 const auto after=(mode?probe:main)->worldAnimatedStats();
                 CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(mode && gpu_visibility));
                 CHECK(after.bounds_tests==before.bounds_tests+(mode && gpu_visibility?f.count:0));CHECK(after.bounds_unknown==before.bounds_unknown);
-                if(mode)CHECK(after.gpu_draws==before.gpu_draws+f.count);
+                if(mode)
+                {
+                    CHECK(after.gpu_draws==before.gpu_draws+f.count);
+                    CHECK(after.execute_calls==before.execute_calls+2); // Query at count/2 splits this one Bank.
+                }
+                CHECK((mode?probe:main)->worldSourceCommandStats().cache.declaration_calls==declarations_before+unsigned(mode));
                 f.reclaim(input,pipeline);
             }
             CHECK(pixels[0]==pixels[1]);CHECK(queries[0]==queries[1]);
@@ -205,7 +211,7 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
     struct Sample
     {
         double cpu=0,encode=0,settle=0,gpu=0;U64 gpu_ready=0,seals=0,source_builds=0,animated_builds=0;
-        U64 requested=0,gpu_draws=0,fallback=0,executes=0,poses=0,source_gpu=0,bounds=0,unknown=0,bytes=0,cpu_admitted=0,cpu_deferred=0,metadata_deferred=0,captured=0,visibility_dispatches=0;
+        U64 requested=0,gpu_draws=0,fallback=0,executes=0,poses=0,source_gpu=0,bounds=0,unknown=0,bytes=0,cpu_admitted=0,cpu_deferred=0,metadata_deferred=0,captured=0,visibility_dispatches=0,declaration_calls=0;
     };
     struct Arm
     {ALNativeFrameBudget budget;Inputs::LLPipeline pipeline;std::shared_ptr<ALMetalWorldFrameData> data;std::unique_ptr<ALMetalWorldGBufferRenderer> main,probe;U64 epoch=0;};
@@ -237,6 +243,7 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                     REQUIRE(std::chrono::steady_clock::now()<deadline);const U32 mode=(sample+position)%2;auto& arm=arms[mode];CAPTURE(sample,mode);
                     const auto before=arm.data->stats();const auto sealed=f.seals(),serial=Inputs::sNativeSceneSerial,compiled=Inputs::ALScenePublicationNative::animated_source_publications;
                     const auto before_compile=Inputs::ALScenePublicationNative::animated_compilation_stats;
+                    const auto declarations_before=arm.main->worldSourceCommandStats().cache.declaration_calls;
                     const std::array<ALMetalWorldAnimatedStats,2> old{arm.main->worldAnimatedStats(),arm.probe->worldAnimatedStats()};
                     std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;std::array<std::shared_ptr<ALMetalVisibilityResultBatch>,3> results;
                     std::array<std::shared_ptr<const ALMetalCommandCompletion>,3> completions;Sample value;
@@ -285,6 +292,11 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                     // native binding/asset scopes overlap and are not net RAM.
                     const auto pages=arm.main->worldSourceStats().pages;
                     const auto commands=arm.main->worldSourceCommandStats().cache;
+                    value.declaration_calls=commands.declaration_calls-declarations_before;
+                    if(sample>=warmups)measured[mode][sample-warmups].declaration_calls=value.declaration_calls;
+                    if(!mode)CHECK(value.declaration_calls==0);
+                    CHECK(value.declaration_calls<=views);
+                    if(value.gpu_draws==U64(count)*views)CHECK(value.declaration_calls==views);
                     const ALMetalWorldSourcePageLimits page_limits{};
                     const ALMetalWorldSourceCommandLimits command_limits{};
                     CHECK(pages.live_metadata_bytes<=page_limits.maximum_metadata_bytes);
@@ -298,7 +310,7 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
                         CHECK(commands.unique_retained_index_bytes<=command_limits.maximum_live_native_bytes-commands.live_icb_allocated_bytes);
                     if(sample==warmups-1||sample==samples+warmups-1)for(U32 view=0;view<views;++view)images[mode][view]=f.read(*targets[view]);
                     std::cout<<"NATIVE_ANIMATED_GPU_RAW family="<<family<<" sources="<<count<<" indices_per_source=96 views="<<views<<" condition="<<condition<<" mode="<<mode<<" sample="<<sample<<" warmup="<<(sample<warmups)
-                        <<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<value.visibility_dispatches
+                        <<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<value.visibility_dispatches<<" declaration_calls="<<value.declaration_calls
                         <<" owner_cpu_ms="<<value.cpu<<" capture_adopt_encode_reclaim_ms="<<value.encode<<" commit_query_settle_ms="<<value.settle<<" gpu_sum_ms="<<value.gpu<<" gpu_ready="<<value.gpu_ready
                         <<" pose_seals="<<value.seals<<" source_builds="<<value.source_builds<<" animated_builds="<<value.animated_builds<<" requested="<<value.requested<<" gpu_draws="<<value.gpu_draws<<" fallback="<<value.fallback
                         <<" execute_calls="<<value.executes<<" pose_publications="<<value.poses<<" source_gpu_publications="<<value.source_gpu<<" bounds_tests="<<value.bounds<<" bounds_unknown="<<value.unknown<<" arena_logical_bytes="<<value.bytes
@@ -318,10 +330,10 @@ TEST_CASE("Actual animated GPU complete costs retain small cold warm pose and re
             }
             for(U32 mode=0;mode<2;++mode)
             {
-                std::array<double,samples> cpu_values,encode,settle,gpu;U64 fallback=0,draws=0,visibility_dispatches=0;
-                for(U32 sample=0;sample<samples;++sample){const auto& value=measured[mode][sample];cpu_values[sample]=value.cpu;encode[sample]=value.encode;settle[sample]=value.settle;gpu[sample]=value.gpu;fallback+=value.fallback;draws+=value.gpu_draws;visibility_dispatches+=value.visibility_dispatches;}
+                std::array<double,samples> cpu_values,encode,settle,gpu;U64 fallback=0,draws=0,visibility_dispatches=0,declaration_calls=0;
+                for(U32 sample=0;sample<samples;++sample){const auto& value=measured[mode][sample];cpu_values[sample]=value.cpu;encode[sample]=value.encode;settle[sample]=value.settle;gpu[sample]=value.gpu;fallback+=value.fallback;draws+=value.gpu_draws;visibility_dispatches+=value.visibility_dispatches;declaration_calls+=value.declaration_calls;}
                 std::cout<<"NATIVE_ANIMATED_GPU_COST family="<<family<<" sources="<<count<<" indices_per_source=96 views="<<views<<" condition="<<condition<<" mode="<<mode<<" samples="<<samples<<" warmups="<<warmups
-                    <<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<visibility_dispatches
+                    <<" gpu_visibility="<<unsigned(gpu_visibility)<<" visibility_dispatches="<<visibility_dispatches<<" declaration_calls="<<declaration_calls
                     <<" owner_cpu_median_ms="<<median(cpu_values)<<" owner_cpu_max_ms="<<*std::max_element(cpu_values.begin(),cpu_values.end())<<" encode_reclaim_median_ms="<<median(encode)<<" encode_reclaim_max_ms="<<*std::max_element(encode.begin(),encode.end())
                     <<" settle_median_ms="<<median(settle)<<" settle_max_ms="<<*std::max_element(settle.begin(),settle.end())<<" gpu_sum_median_ms="<<median(gpu)<<" gpu_sum_max_ms="<<*std::max_element(gpu.begin(),gpu.end())<<" gpu_draws="<<draws<<" fallback_draws="<<fallback
                     <<" cold_and_adverse_cells_retained=1 geometry_texture_creation=excluded mutable_skeleton=typed_attachment_palette_input target_wrapper_retirement=outside_timer whole_viewer_fps_claim=0\n";

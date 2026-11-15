@@ -938,6 +938,7 @@ struct ALMetalRenderEncoder::Impl
     id<MTLDevice> device = nil;
     id<MTLRenderCommandEncoder> encoder = nil;
     std::unique_ptr<ALMetalStageTimingWindow::PreparedPass> timed_pass;
+    std::shared_ptr<const void> declaration_identity;
     void* command_buffer = nullptr;
     // The exact OpenGL renderer caches texture and sampler identity per slot.
     // Keep the narrower Metal equivalent per encoder so repeated material
@@ -1037,6 +1038,7 @@ ALMetalRenderEncoder::~ALMetalRenderEncoder()
         mImpl->publishCounts();
         mImpl->ended = true;
     }
+    if(mImpl)mImpl->declaration_identity.reset();
 }
 
 std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
@@ -1836,7 +1838,16 @@ bool ALMetalRenderEncoder::end(std::string* error)
     [mImpl->encoder endEncoding];
     mImpl->publishCounts();
     mImpl->ended = true;
+    mImpl->declaration_identity.reset();
     return true;
+}
+
+std::shared_ptr<const void> ALMetalRenderEncoder::declarationIdentity(bool create)
+{
+    if(!mImpl || mImpl->ended || !mImpl->encoder)return {};
+    if(create && !mImpl->declaration_identity)
+        mImpl->declaration_identity=std::make_shared<const std::uint8_t>(0);
+    return mImpl->declaration_identity;
 }
 
 void* ALMetalRenderEncoder::nativeHandleForResources() const noexcept

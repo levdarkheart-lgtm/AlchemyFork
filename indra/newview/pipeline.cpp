@@ -3245,6 +3245,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", cache_run_prepares/hits/bank_builds/evictions=" << banks.cache.requests << '/' << banks.cache.hits << '/'
                     << banks.cache.builds << '/' << banks.cache.evictions
                     << ", cache_encoded_execute_calls/logical_draws=" << banks.cache.executions << '/' << banks.cache.logical_draws
+                    << ", helper_declaration_attempts=" << banks.cache.declaration_calls
                     << ", publication_admission_requests/denials=" << banks.cache.admission_requests << '/' << banks.cache.admission_denials
                     << ", charged_logical_indexed_argument_bytes=" << banks.cache.charged_logical_argument_bytes
                     << ", charged_logical_buffer_binding_bytes=" << banks.cache.charged_logical_binding_bytes

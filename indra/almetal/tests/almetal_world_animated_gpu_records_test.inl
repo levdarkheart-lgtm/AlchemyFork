@@ -180,11 +180,14 @@ TEST_CASE("almetal: retained rigged material sources preserve late poses masks a
                 for(bool gpu_visibility:{false,true})
                 {
                     CAPTURE(gpu_visibility);scene.animated_gpu_visibility=gpu_visibility;
-                    const auto before=f.renderer->worldAnimatedStats();CHECK(render(f,scene,{},refs,owners)==expected);
+                    const auto before=f.renderer->worldAnimatedStats();
+                    const auto declarations=f.renderer->worldSourceCommandStats().cache.declaration_calls;
+                    CHECK(render(f,scene,{},refs,owners)==expected);
                     const auto after=f.renderer->worldAnimatedStats();
                     CHECK(after.requested_draws==before.requested_draws+raw.size());
                     CHECK(after.gpu_draws==before.gpu_draws+raw.size());CHECK(after.fallback_draws==before.fallback_draws);
-                    CHECK(after.execute_calls>before.execute_calls);
+                    CHECK(after.execute_calls==before.execute_calls+2); // Exact count/2 query split, same Bank and encoder.
+                    CHECK(f.renderer->worldSourceCommandStats().cache.declaration_calls==declarations+1);
                     CHECK(after.visibility_dispatches==before.visibility_dispatches+unsigned(gpu_visibility));
                     CHECK(after.bounds_tests==before.bounds_tests+(gpu_visibility?raw.size():0));
                     CHECK(after.bounds_unknown==before.bounds_unknown);
@@ -475,6 +478,82 @@ TEST_CASE("almetal: animated metadata and command byte caps preserve required dr
         const std::array<const ALMetalWorldSourceReference*,1> refs{&ref};
         const auto expected=render(f,f.scene(),{batch});
         auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);
+
+        // A declaration proof belongs to this prepared Batch and exact active
+        // encoder, while the unchanged standalone entry declares every call.
+        // Real animated pipelines/ranges keep this a native ABI/output proof.
+        {
+            auto scene=f.scene();scene.normal_hdr=false;
+            std::vector<ALMetalWorldSimpleBatch> raw(2,batch);
+            for(unsigned at=0;at<2;++at)
+            {raw[at].modelview_projection[0]=raw[at].modelview_projection[5]=.45f;raw[at].modelview_projection[12]=at?.45f:-.45f;}
+            const auto pixels=render(f,scene,raw).pixels;
+            auto left=reference(source,pose,matrices(raw[0])),right=reference(source,pose,matrices(raw[1]));
+            const std::array<const ALMetalWorldSourceReference*,2> split_refs{&left,&right};
+            auto scoped_pages=ALMetalWorldSourcePages::create(*f.device,*library,1,{},&f.error);REQUIRE(scoped_pages);
+            auto scoped_commands=ALMetalWorldSourceCommands::create(*f.device,{},&f.error);REQUIRE(scoped_commands);
+            ALMetalRenderPipelineDescriptor pd;pd.library=library.get();pd.support_indirect_commands=true;
+            pd.vertex_function="almetal_world_material_animated_vertex";pd.fragment_function="almetal_world_material_resources_fragment";
+            pd.color_attachment_count=4;pd.colors[0].format=ALMetalPixelFormat::rgba8_unorm_srgb;
+            pd.colors[1].format=pd.colors[3].format=ALMetalPixelFormat::rgba8_unorm;pd.colors[2].format=ALMetalPixelFormat::rgb10a2_unorm;
+            pd.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
+            auto pipeline=ALMetalRenderPipeline::create(*f.device,pd,&f.error);INFO(f.error);REQUIRE(pipeline);
+            ALMetalDepthStencilDescriptor dd;auto depth=ALMetalDepthStencilState::create(*f.device,dd,&f.error);REQUIRE(depth);
+            ALMetalRenderTargetDescriptor td;td.width=td.height=side;td.color_attachment_count=4;td.depth_stencil_format=pd.depth_stencil_format;
+            for(unsigned at=0;at<4;++at)td.colors[at].format=pd.colors[at].format;
+            std::array<std::unique_ptr<ALMetalRenderTarget>,3> targets;
+            for(auto& target:targets){target=ALMetalRenderTarget::create(*f.device,td,&f.error);REQUIRE(target);}
+            auto command=f.device->makeCommandBuffer("Exact animated encoder declaration scopes",&f.error);REQUIRE(command);
+            std::vector<ALMetalWorldAnimatedGpuView> gpu;ALMetalWorldSourceGlobals globals;
+            REQUIRE(scoped_pages->prepareAnimatedSourcesForCommand(*command,split_refs,gpu,&f.error));
+            auto bank=scoped_commands->prepareAnimatedForCommand(*command,*f.device,*library,std::move(gpu),globals,*f.data,&f.error,false);
+            INFO(f.error);REQUIRE(bank);REQUIRE(bank->size()==2);
+            ALMetalWorldSourceCommands::DeclarationScope first_scope;
+            const auto initial=scoped_commands->stats().declaration_calls;
+            for(unsigned at=0;at<targets.size();++at)
+            {
+                CAPTURE(at);ALMetalRenderPassConfig config;
+                for(unsigned color=0;color<4;++color)config.colors[color].clear={scene.clear_color[0],scene.clear_color[1],scene.clear_color[2],scene.clear_color[3]};
+                config.depth_store=config.stencil_store=ALMetalStoreAction::store;config.clear_depth=1;
+                auto pass=targets[at]->makeRenderPass(config,&f.error);REQUIRE(pass);
+                auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"Animated declaration scope encoder",&f.error);REQUIRE(encoder);
+                REQUIRE(encoder->setPipeline(*pipeline,&f.error));REQUIRE(encoder->setDepthStencilState(depth.get(),&f.error));
+                REQUIRE(encoder->setViewport({0,0,side,side,0,1},&f.error));REQUIRE(encoder->setScissor({0,0,side,side},&f.error));
+                REQUIRE(encoder->setCullMode(ALMetalCullMode::back,&f.error));
+                if(at<2)
+                {
+                    if(at==1)
+                    {
+                        const auto before=scoped_commands->stats();
+                        CHECK_FALSE(scoped_commands->executeRange(*encoder,*command,*bank,0,1,first_scope,&f.error));
+                        ALMetalWorldSourceCommands::DeclarationScope empty;
+                        CHECK_FALSE(scoped_commands->executeRange(*encoder,*command,*bank,0,1,empty,&f.error));
+                        CHECK(scoped_commands->stats().executions==before.executions);
+                        CHECK(scoped_commands->stats().declaration_calls==before.declaration_calls);f.error.clear();
+                    }
+                    auto scope=scoped_commands->makeDeclarationScope(*encoder,*command,&f.error);REQUIRE(scope);
+                    if(!at)first_scope=scope;
+                    REQUIRE(scoped_commands->executeRange(*encoder,*command,*bank,0,1,scope,&f.error));
+                    REQUIRE(scoped_commands->executeRange(*encoder,*command,*bank,1,1,scope,&f.error));
+                    CHECK(scoped_commands->stats().declaration_calls==initial+at+1);
+                }
+                else
+                {
+                    const auto before=scoped_commands->stats().declaration_calls;
+                    REQUIRE(scoped_commands->executeRange(*encoder,*command,*bank,0,1,&f.error));
+                    REQUIRE(scoped_commands->executeRange(*encoder,*command,*bank,1,1,&f.error));
+                    CHECK(scoped_commands->stats().declaration_calls==before+2);
+                }
+                REQUIRE(encoder->end(&f.error));
+                const auto before=scoped_commands->stats().declaration_calls;
+                CHECK_FALSE(scoped_commands->executeRange(*encoder,*command,*bank,0,1,first_scope,&f.error));
+                CHECK(scoped_commands->stats().declaration_calls==before);f.error.clear();
+            }
+            CHECK(scoped_commands->stats().executions==6);CHECK(scoped_commands->stats().declaration_calls==initial+4);
+            REQUIRE(command->commitAndWait(&f.error));
+            for(auto& target:targets)CHECK(f.read(*target)==pixels);
+        }
+
         ALNativeFrameBudget budget;ALNativeFrameBudget::FrameInputs frame;frame.frame=1;budget.beginFrame(frame);
         const auto admission=[&](const ALMetalWorldSourcePublicationWork& work)->std::shared_ptr<const void>
         {
