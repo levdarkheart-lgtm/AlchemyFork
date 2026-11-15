@@ -1794,3 +1794,9 @@ case (not merelywrongformat); all perpatchoriginalsourcepreflight/range/factors
 remainactualcode. No successclaimbeforeexecution. Fullnormalnative scope set
 rerun aftersharedworld/FrameData/sourcequalification changes; allcostssequential
 withvalidationlayersdisabledandno activeviewer/recorder.
+
+
+Required53 00a90f4177doctor/configure0,build1after58.152s. PPD266newrootactual
+helperfixtureconfusedf.image(viewerfacade)withf.white(realLLImageGL),fourcompile
+errors; source54usesrealowner. No53native/static/costexecuted. Required54next,
+sameproduction/correctnessassertions. Failedreceiptretained; next267.

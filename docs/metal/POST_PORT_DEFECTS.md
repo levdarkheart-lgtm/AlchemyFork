@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-266 -->
+<!-- next-defect-id: PPD-267 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6332,3 +6332,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before narrow qualification repair. Primary terrain batches are already excluded by their terrain flag; the uncovered public-field combination remains a source-contract defect, not a measured memory or FPS attribution.
+
+
+## PPD-266 — Actual terrain helper fixture confuses viewer facade with LLImageGL
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Existing Publication fixture exposes image as an LLViewerFetchedTexture facade and white as its real LLImageGL owner. The included terrain helper consumes LLImageGL pointers and native texture leases.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Use the fixture's actual white LLImageGL owner for native handles and helper input arrays; preserve every assertion and production source. Rebuild and execute all combined checks.
+- Verification: Required53 00a90f4177 doctor/configure0, build1 after58.152s. Four errors in new actual terrain helper fixture: facade has no getMetalTexture and cannot convert to LLImageGL*. No native53 or cost53 execution occurred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 failed build receipt/log retained before correction. Integrator used the wrong existing fixture member; no runtime viewer fault or successful combined build claim.

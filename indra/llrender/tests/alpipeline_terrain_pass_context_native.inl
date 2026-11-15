@@ -52,9 +52,9 @@ struct ContextFixture
         };
         maps.height=make(ALMetalPixelFormat::r32_float);maps.composition=make(ALMetalPixelFormat::rg16_float);
         patch.terrain=true;patch.vertices=geometry.get();patch.vertex_count=4;patch.texture_count=4;
-        std::fill_n(patch.diffuse_textures.begin(),4,f.image.getMetalTexture());
+        std::fill_n(patch.diffuse_textures.begin(),4,f.white->getMetalTexture());
         patch.terrain_height_texture=maps.height.get();patch.terrain_composition_texture=maps.composition.get();
-        patch.terrain_alpha_ramp_texture=f.image.getMetalTexture();
+        patch.terrain_alpha_ramp_texture=f.white->getMetalTexture();
         LLMatrix4a identity;identity.setIdentity();std::memcpy(patch.modelview_projection,identity.getF32ptr(),64);
         std::memcpy(patch.terrain_modelview,identity.getF32ptr(),64);
         for(U32 axis=0;axis<3;++axis)patch.normal_matrix[axis][axis]=1;
@@ -62,7 +62,7 @@ struct ContextFixture
     }
     std::shared_ptr<const ALMetalWorldTerrainPass> seal()
     {
-        LLImageGL* images[]{&f.image};return ALMetalWorldTerrainPassCapture::seal(patch,maps,nullptr,images,1);
+        LLImageGL* images[]{f.white.get()};return ALMetalWorldTerrainPassCapture::seal(patch,maps,nullptr,images,1);
     }
 };
 }
@@ -89,7 +89,7 @@ TEST_CASE("Actual terrain pass seal selects exact map and fetched texture leases
 {
     using namespace TerrainPassContextTest;ContextFixture f;
     CHECK_FALSE(ALMetalWorldTerrainPassCapture::seal(f.patch,f.maps,nullptr,nullptr,0));
-    ALMetalTerrainFetchedBindings fetched;fetched.base[0].image.value=&f.f.image;
+    ALMetalTerrainFetchedBindings fetched;fetched.base[0].image.value=f.f.white.get();
     auto pass=ALMetalWorldTerrainPassCapture::seal(f.patch,f.maps,&fetched,nullptr,0);REQUIRE(pass);
     pass->install(f.patch);CHECK(pass->matches(f.patch));
     const auto old_height=f.patch.terrain_height_texture;auto old=f.maps.height;
