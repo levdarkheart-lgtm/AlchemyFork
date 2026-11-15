@@ -6,6 +6,7 @@
 #include "linden_common.h"
 #include "alnativeframebudget.h"
 #include <algorithm>
+#include <array>
 #include <mutex>
 
 struct ALNativeFrameBudget::State
@@ -31,6 +32,68 @@ struct ALNativeFrameBudget::State
     unsigned ordinary_this_frame = 0;
     unsigned hero_this_frame = 0;
     bool oversized_scene_in_flight = false;
+    struct ScenePending
+    {
+        Frame oldest = 0;
+        std::uint64_t bytes = 0;
+    };
+    struct SceneHistory
+    {
+        std::optional<ScenePending> previous_denial, current_denial;
+        std::optional<Frame> last_service, serviced_oldest;
+    };
+    std::array<SceneHistory, 2> scene_history;
+
+    // Ignore frame usage here: a later phase denied by today's earlier work
+    // must be visible to next frame's first caller. Actual active capacity
+    // and sole-oversized eligibility are still required for a useful hint.
+    bool sceneCanWait(std::uint64_t bytes) const noexcept
+    {
+        return bytes != unknown_bytes && bytes <= limits.scene_bytes_in_flight &&
+            !oversized_scene_in_flight &&
+            stats.scene_publications_in_flight < limits.scene_publications_in_flight &&
+            stats.scene_bytes_in_flight <= limits.scene_bytes_in_flight - bytes &&
+            (bytes <= limits.scene_bytes_per_frame || stats.scene_publications_in_flight == 0);
+    }
+    void sceneDenied(std::size_t kind, std::uint64_t bytes, Frame oldest) noexcept
+    {
+        if (oldest > stats.frame || !sceneCanWait(bytes)) return;
+        // A duplicate after this age bucket already received today's credit
+        // must not create a phantom older reservation for the following frame.
+        const auto& history = scene_history[kind];
+        if (history.last_service == stats.frame && history.serviced_oldest == oldest) return;
+        auto& pending = scene_history[kind].current_denial;
+        if (!pending || oldest < pending->oldest || (oldest == pending->oldest && bytes < pending->bytes))
+            pending = ScenePending{oldest, bytes};
+    }
+    std::optional<ScenePending> sceneWaiting(std::size_t kind) const noexcept
+    {
+        std::optional<ScenePending> oldest;
+        for (const auto& pending : {scene_history[kind].previous_denial, scene_history[kind].current_denial})
+        {
+            if (!pending || pending->oldest > stats.frame ||
+                stats.frame - pending->oldest < limits.maximum_deferral_frames || !sceneCanWait(pending->bytes)) continue;
+            if (!oldest || pending->oldest < oldest->oldest ||
+                (pending->oldest == oldest->oldest && pending->bytes < oldest->bytes)) oldest = pending;
+        }
+        return oldest;
+    }
+    bool sceneTurn(std::size_t kind, Frame oldest) const noexcept
+    {
+        // Within a phase, a newer earlier callback cannot overtake an older
+        // recently denied Pages/Commands request. An absent old request can
+        // cost at most one frame because only fresh denials renew the hint.
+        if (const auto same = sceneWaiting(kind); same && same->oldest < oldest) return false;
+        const auto other_kind = 1 - kind;
+        const auto other = sceneWaiting(other_kind);
+        if (!other) return true;
+        const auto mine = std::max(oldest, scene_history[kind].last_service.value_or(0));
+        const auto theirs = std::max(other->oldest, scene_history[other_kind].last_service.value_or(0));
+        // Stable ties prefer metadata. After a grant its service frame makes
+        // the other pending phase older, even if thousands of new CPU owners
+        // all carry the same original dirty age.
+        return mine < theirs || (mine == theirs && kind < other_kind);
+    }
 };
 
 ALNativeFrameBudget::ALNativeFrameBudget() : ALNativeFrameBudget(Limits{}) {}
@@ -69,7 +132,7 @@ ALNativeFrameBudget::Decision ALNativeCohortCompilationAdmission::tryAcquire(
     if (logical_bytes == ALNativeFrameBudget::unknown_bytes)
         return {{}, ALNativeFrameBudget::Reason::frame_work};
     auto decision = budget.tryAcquire(ALNativeFrameBudget::Work::scene_publication,
-        logical_bytes, *mPendingSince);
+        logical_bytes, *mPendingSince, ALNativeFrameBudget::ScenePublicationKind::cohort_compilation);
     if (decision) mLastAdmitted = frame;
     return decision;
 }
@@ -84,6 +147,12 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     std::lock_guard lock(mState->mutex);
     auto& state = *mState;
     if (state.stats.initialized && inputs.frame <= state.stats.frame) return;
+    const bool consecutive = state.stats.initialized && inputs.frame - state.stats.frame == 1;
+    for (auto& history : state.scene_history)
+    {
+        history.previous_denial = consecutive ? history.current_denial : std::nullopt;
+        history.current_denial.reset();
+    }
     state.inputs = inputs;
     state.stats.initialized = true;
     state.stats.frame = inputs.frame;
@@ -152,7 +221,7 @@ ALNativeFrameBudget::Credit::~Credit()
 }
 
 ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
-    Work work, std::uint64_t bytes, Frame oldest_frame)
+    Work work, std::uint64_t bytes, Frame oldest_frame, ScenePublicationKind scene_kind)
 {
     std::lock_guard lock(mState->mutex);
     auto& state = *mState;
@@ -161,14 +230,18 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
     const bool aged = stats.frame >= oldest_frame &&
         stats.frame - oldest_frame >= limits.maximum_deferral_frames;
     Reason reason = Reason::admitted;
-    const auto deny = [&stats](Reason why) -> Decision
+    const auto kind = static_cast<std::size_t>(scene_kind);
+    const auto deny = [&](Reason why) -> Decision
     {
+        if (work == Work::scene_publication && !stats.draining && kind < state.scene_history.size())
+            state.sceneDenied(kind, bytes, oldest_frame);
         ++stats.deferred;
         return {{}, why};
     };
     if (stats.draining && work != Work::upload) return deny(Reason::draining);
     if (work == Work::scene_publication)
     {
+        if (kind >= state.scene_history.size()) return deny(Reason::frame_work);
         // Native scene metadata is always bounded, including startup before
         // the first outer frame plan. Its hard in-flight cap is never waived.
         if (state.oversized_scene_in_flight ||
@@ -193,7 +266,7 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         // dirty batch does not add publication work to an already busy frame.
         if (stats.main_busy || stats.memory_pressure)
         {
-            if (!aged || stats.scene_publications_this_frame != 0)
+            if (!aged || stats.scene_publications_this_frame != 0 || !state.sceneTurn(kind, oldest_frame))
                 return deny(stats.memory_pressure ? Reason::memory_pressure : Reason::frame_work);
             reason = Reason::progress;
         }
@@ -276,6 +349,10 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         ++stats.scene_publications_this_frame;
         stats.scene_bytes_this_frame += bytes;
         if (bytes > limits.scene_bytes_per_frame) state.oversized_scene_in_flight = true;
+        auto& history = state.scene_history[kind];
+        history.last_service = stats.frame;history.serviced_oldest = oldest_frame;
+        if (history.current_denial && history.current_denial->oldest == oldest_frame)
+            history.current_denial.reset();
     }
     else
     {

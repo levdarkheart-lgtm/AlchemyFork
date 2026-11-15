@@ -74,7 +74,7 @@ struct PageFixture : Fixture
         std::unique_ptr<ALMetalCommandBuffer> command;
     };
     Encoded encode(const ALMetalWorldSourceFrameView& view,const ALMetalWorldSimpleBatch& source,
-                   std::unique_ptr<ALMetalCommandBuffer> supplied_command={})
+                   std::unique_ptr<ALMetalCommandBuffer> supplied_command={},bool clobber_bindings=false)
     {
         if(!pipeline)
         {
@@ -99,6 +99,15 @@ struct PageFixture : Fixture
         REQUIRE(encoder->setPipeline(*pipeline,&error));REQUIRE(encoder->setDepthStencilState(depth.get(),&error));
         REQUIRE(encoder->setViewport({0,0,side,side,0,1},&error));REQUIRE(encoder->setScissor({0,0,side,side},&error));
         REQUIRE(encoder->setCullMode(ALMetalCullMode::none,&error));REQUIRE(view.bind(*encoder,*value.command,&error));
+        // Native arena binds conservatively invalidate wrapper caches. An
+        // intervening ordinary bridge bind must still be emitted, and the
+        // next arena bind must restore all three overwritten view slots.
+        if(clobber_bindings)
+        {
+            REQUIRE(encoder->setVertexBuffer(1,*source.vertices,0,&error));
+            REQUIRE(encoder->setVertexBuffer(2,*source.vertices,0,&error));
+            REQUIRE(encoder->setFragmentBuffer(2,*source.vertices,0,&error));
+        }
         // Rebinding the same immutable view must not repeat the native union
         // or grow completion pins, but still restores overwritten bindings.
         REQUIRE(view.bind(*encoder,*value.command,&error));

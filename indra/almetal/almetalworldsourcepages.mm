@@ -212,6 +212,38 @@ struct ALMetalWorldSourceFrameView::Impl
     std::shared_ptr<BankReader> bank;
     std::vector<std::shared_ptr<PageReader>> pages;
     std::shared_ptr<Buffer> regions,globals,mapping;
+    // Retain only the native resource. FrameData owns/recycles its C++ wrapper
+    // and may die independently; no raw slice pointer escapes publication.
+    id<MTLBuffer> arena_buffer=nil;
+    std::size_t arena_region_offset=0,arena_globals_offset=0;
+    std::weak_ptr<const ALMetalCommandCompletion> arena_command;
+    bool publishView(ALMetalCommandBuffer* command,ALMetalWorldFrameData* frame_data,
+        std::span<const ALMetalWorldSourceRegion> values,const ALMetalWorldSourceGlobals& flags,std::string* error)
+    {
+        if(frame_data)
+        {
+            if(!command || values.size()!=1)return false;
+            auto origin=command->completionToken();
+            if(!origin || origin->isComplete())return false;
+            std::array<std::byte,288> bytes{};
+            std::memcpy(bytes.data(),values.data(),sizeof(ALMetalWorldSourceRegion));
+            std::memcpy(bytes.data()+256,&flags,sizeof(flags));
+            ALMetalWorldDataSlice slice;
+            if(!frame_data->publish(*command,bytes.data(),bytes.size(),slice,error,false))return false;
+            if(!slice.buffer || slice.offset%256 || slice.length!=bytes.size() ||
+               slice.offset>slice.buffer->length() || bytes.size()>slice.buffer->length()-slice.offset)
+            {fail(error,"Native cohort arena publication returned an invalid range");return false;}
+            arena_buffer=(__bridge id<MTLBuffer>)slice.buffer->nativeHandle();
+            if(!arena_buffer){fail(error,"Native cohort arena publication has no native buffer");return false;}
+            arena_region_offset=slice.offset;arena_globals_offset=slice.offset+256;arena_command=origin;
+            return true;
+        }
+        regions=makeBuffer(context,values.size_bytes(),"Alchemy source regional view matrices",error);
+        globals=makeBuffer(context,sizeof(flags),"Alchemy source view globals",error);
+        if(!regions || !globals)return false;
+        std::memcpy(regions->value->mappedBytes(),values.data(),values.size_bytes());
+        std::memcpy(globals->value->mappedBytes(),&flags,sizeof(flags));return true;
+    }
     std::vector<std::uint32_t> rows,generations;
     std::vector<CommandSource> commands;
     std::vector<std::shared_ptr<const void>> native_owners;
@@ -258,6 +290,13 @@ try
     if(command.isCommitted()||command.nativeDevice()!=(__bridge void*)view.context->native ||
        encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
     {fail(error,"Native source view requires its exact uncommitted device command");return false;}
+    if(view.arena_buffer)
+    {
+        const auto origin=view.arena_command.lock();const auto current=command.completionToken();
+        if(!origin || origin->isComplete() || !current || origin.get()!=current.get() ||
+           origin.owner_before(current)||current.owner_before(origin))
+        {fail(error,"Native cohort arena view requires its exact incomplete publication command");return false;}
+    }
     id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
     if(!native){fail(error,"Native source view requires a live render encoder");return false;}
     const auto declare=[&](const ALMetalBuffer& buffer,MTLRenderStages stages)
@@ -283,11 +322,20 @@ try
             if(!view.context->resources->declareResources(encoder,command,table,error))return false;
         view.declared_encoder=native;
     }
+    if(view.arena_buffer)
+    {
+        // Flush any queued direct draw before native binding changes, and
+        // leave these slots conservatively unknown to the wrapper's cache.
+        // Subsequent ordinary bridge binds therefore cannot be skipped.
+        encoder.invalidateIndirectBufferBindings();
+        [native setVertexBuffer:view.arena_buffer offset:view.arena_region_offset atIndex:1];
+        [native setVertexBuffer:view.arena_buffer offset:view.arena_globals_offset atIndex:2];
+        [native setFragmentBuffer:view.arena_buffer offset:view.arena_globals_offset atIndex:2];
+    }
     const bool bound=encoder.setVertexBuffer(0,*view.bank->bank->buffer->value,0,error) &&
         encoder.setFragmentBuffer(0,*view.bank->bank->buffer->value,0,error) &&
-        encoder.setVertexBuffer(1,*view.regions->value,0,error) &&
-        encoder.setVertexBuffer(2,*view.globals->value,0,error) &&
-        encoder.setFragmentBuffer(2,*view.globals->value,0,error) &&
+        (view.arena_buffer || (encoder.setVertexBuffer(1,*view.regions->value,0,error) &&
+            encoder.setVertexBuffer(2,*view.globals->value,0,error) && encoder.setFragmentBuffer(2,*view.globals->value,0,error))) &&
         encoder.setVertexBuffer(3,*view.mapping->value,0,error);
     if(bound)view.context->binds.fetch_add(1,std::memory_order_relaxed);
     return bound;
@@ -512,7 +560,7 @@ std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::free
 {return freezeInternal(&command,requests,regions,globals,error);}
 std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeCohortForCommand(
     ALMetalCommandBuffer& command,const ALMetalWorldSourceCohortView& supplied,
-    const ALMetalWorldSourceGlobals& supplied_globals,std::string* error)
+    const ALMetalWorldSourceGlobals& supplied_globals,std::string* error,ALMetalWorldFrameData* frame_data)
 try
 {
     auto& state=*mImpl;++state.statistics.cohort_requests;
@@ -544,11 +592,9 @@ try
         if(!state.current(*entry->binding))continue;
         auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;
         view->cohort=entry->binding;view->cohort_native_owner=selected.native_owner;view->mapping=entry->binding->mapping;
-        view->regions=makeBuffer(state.context,sizeof(region),"Alchemy cohort regional view",error);
-        view->globals=makeBuffer(state.context,sizeof(globals),"Alchemy cohort view globals",error);
-        if(!view->regions||!view->globals)return reject("Native cohort per-view metadata capacity is exhausted");
-        std::memcpy(view->regions->value->mappedBytes(),&region,sizeof(region));
-        std::memcpy(view->globals->value->mappedBytes(),&globals,sizeof(globals));
+        if(!view->publishView(&command,frame_data,std::span(&region,1),globals,error))
+            return reject("Native cohort per-view publication failed");
+        if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=288;}
         for(const auto& proof:entry->binding->pages)
         {
             auto& page=state.pages[proof.page];auto reader=page->reader.lock();
@@ -558,7 +604,7 @@ try
         view->bank=state.bank->reader.lock();
         if(!view->bank){view->bank=std::make_shared<BankReader>();view->bank->bank=state.bank;state.bank->reader=view->bank;}
         state.cohorts.splice(state.cohorts.end(),state.cohorts,entry);
-        ++state.statistics.cohort_hits;state.statistics.view_bytes+=sizeof(region)+sizeof(globals);
+        ++state.statistics.cohort_hits;if(!frame_data)state.statistics.view_bytes+=sizeof(region)+sizeof(globals);
         return std::shared_ptr<const ALMetalWorldSourceFrameView>(new ALMetalWorldSourceFrameView(std::move(view)));
     }
     // This is the cold boundary only. Descriptor-free direct publications are
@@ -612,7 +658,7 @@ try
         ALMetalWorldSourceRequest request;request.key=selected.cohort->key(index);request.source=&source;
         request.cpu_owner=selected.cpu_owner;request.native.owner=selected.native_owner;requests.push_back(std::move(request));
     }
-    auto frozen=freezeInternal(&command,requests,std::span(&region,1),globals,error,resources,true);
+    auto frozen=freezeInternal(&command,requests,std::span(&region,1),globals,error,resources,true,frame_data);
     if(!frozen){++state.statistics.cohort_failures;return {};}
     // Immutable command records are issued only after exact native publication
     // succeeded. They contain values/native identities, never source pointers.
@@ -729,14 +775,14 @@ void ALMetalWorldSourcePages::setPublicationAdmission(PublicationAdmission admis
 std::shared_ptr<const ALMetalWorldSourceFrameView> ALMetalWorldSourcePages::freezeInternal(
     ALMetalCommandBuffer* command,std::span<const ALMetalWorldSourceRequest> requests,
     std::span<const ALMetalWorldSourceRegion> regions,const ALMetalWorldSourceGlobals& globals,std::string* error,
-    std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides,bool certified_cohort)
+    std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides,bool certified_cohort,ALMetalWorldFrameData* frame_data)
 try
 {
     auto& state=*mImpl;
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldSourceFrameView>
     {++state.statistics.failures;fail(error,message);return {};};
     const auto commandValid=[&]{return !command||(!command->isCommitted()&&command->nativeDevice()==(__bridge void*)state.context->native);};
-    if((!overrides.empty()&&overrides.size()!=requests.size())||!state.supported||requests.empty()||requests.size()>alMetalWorldSourceMaximumRows||regions.empty()||
+    if((frame_data&&(!certified_cohort||regions.size()!=1))||(!overrides.empty()&&overrides.size()!=requests.size())||!state.supported||requests.empty()||requests.size()>alMetalWorldSourceMaximumRows||regions.empty()||
        regions.size()>alMetalWorldSourceMaximumRows||!finite(globals.mirror_clip_plane,4)||
        globals.flags[0]>1||globals.flags[1]>1||globals.flags[2]>1||globals.flags[3]||!commandValid())
         return reject("Native source view shape or command is invalid");
@@ -868,7 +914,7 @@ try
     }
     mapping.resize(std::size_t(highest_slot)+1);
     const auto mapping_bytes=certified_cohort?(state.cohort_mapping?0:state.limits.maximum_rows*sizeof(std::uint32_t)):mapping.size()*sizeof(std::uint32_t);
-    const auto view_bytes=regions.size_bytes()+sizeof(globals)+mapping_bytes;
+    const auto view_bytes=(frame_data?0:regions.size_bytes()+sizeof(globals))+mapping_bytes;
     const auto page_allocation=work.allocation_bytes-work.encoded_table_bytes;
     const auto live=state.context->budget->bytes.load(std::memory_order_relaxed);
     if(live>state.context->budget->limit||page_allocation>state.context->budget->limit-live||
@@ -960,8 +1006,8 @@ try
         row.last_use=state.serial;state.lru.splice(state.lru.end(),state.lru,row.lru);
     }
     auto view=std::make_unique<ALMetalWorldSourceFrameView::Impl>();view->context=state.context;view->tables=std::move(prepared_tables);
-    view->regions=makeBuffer(state.context,regions.size_bytes(),"Alchemy source regional view matrices",error);
-    view->globals=makeBuffer(state.context,sizeof(globals),"Alchemy source view globals",error);
+    if(!view->publishView(command,frame_data,regions,globals,error)){++state.statistics.failures;return {};}
+    if(frame_data){++state.statistics.arena_views;state.statistics.arena_view_bytes+=288;}
     if(certified_cohort)
     {
         if(!state.cohort_mapping)
@@ -973,9 +1019,7 @@ try
         view->mapping=state.cohort_mapping;
     }
     else view->mapping=makeBuffer(state.context,mapping.size()*sizeof(std::uint32_t),"Alchemy source to view region map",error);
-    if(!view->regions||!view->globals||!view->mapping){++state.statistics.failures;return {};}
-    std::memcpy(view->regions->value->mappedBytes(),regions.data(),regions.size_bytes());
-    std::memcpy(view->globals->value->mappedBytes(),&globals,sizeof(globals));
+    if(!view->mapping){++state.statistics.failures;return {};}
     if(!certified_cohort)std::memcpy(view->mapping->value->mappedBytes(),mapping.data(),mapping.size()*sizeof(std::uint32_t));
     std::set<std::shared_ptr<const void>,std::owner_less<std::shared_ptr<const void>>> owners;
     std::unordered_set<const ALMetalBuffer*> buffers;std::unordered_set<const ALMetalTexture*> textures;std::unordered_set<void*> geometry;

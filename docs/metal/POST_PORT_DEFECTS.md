@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-214 -->
+<!-- next-defect-id: PPD-216 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5077,6 +5077,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source26 authored repair stages native bank/cache/index registry and one completion-owner retention before no-throw cache commit. Both APIs include A/Bdeny/A-hit and index-capacity fixtures; root bounded source review passes, native execution pending.
 
+- 2026-11-15: Source29 corrected banks3348/9 and broader88CTest pass, including A/Bdeny/A-hit, index-capacity and pending/abandon cases. Owner/runtime acceptance remains pending.
+
 ## PPD-208 — Idle GPU cohort tables retain uncharged native texture generations
 
 - Status: investigating
@@ -5096,6 +5098,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Source26 authored repair counts unique native root texture allocations, derives cap from existing GPU working-set advice, reports it separately and prunes at ordinary FrameData.beginFrame. Pending FrameViews remain native readers; native fixtures authored, execution pending.
+
+- 2026-11-15: Native27 pages1547/12 plus broad29 pass including cap/dedup/expiry and pending-reader checks; frame-boundary hook compiled. No owner/runtime closure.
 
 ## PPD-209 — GPU cohort cache evicts warm entries before allocating its new list node
 
@@ -5117,6 +5121,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Source26 authored repair stages cache list/accounting allocations before eviction and returns valid uncached FrameViews on optional cache insertion failure. One-shot CPU allocation seam and preservation fixture authored; no actual OOM execution claimed.
 
 
+- 2026-11-15: Native27 cache-insertion fault case and broader29 pass; valid uncached view/old warm membership preserved. Physical OOM not claimed.
+
 ## PPD-210 — New GPU cohort cost assertion fails Catch2 decomposition
 
 - Status: investigating
@@ -5134,6 +5140,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Registered before the single assertion repair; preserve failed required26 receipt/log.
 
+
+- 2026-11-15: Fixture expression repaired before required27; required29/static69063 and broader gates pass. Failure26 retained.
 
 ## PPD-211 — Mixed renderer fixture omits its required CPU reference owner
 
@@ -5153,6 +5161,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before fixing the mixed fixture; native-correctness-27 failure receipt retained.
 
 
+- 2026-11-15: Shared referenced prototype owner repair passes source29 renderer2331/4 and broader gates; failure27 retained.
+
 ## PPD-212 — Native range fixture waits on an unattached visibility result batch
 
 - Status: investigating
@@ -5171,6 +5181,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Registered before correcting the low-level native fixture; retain native-remainder-27 failure evidence.
 
 
+- 2026-11-15: The attempted private API repair failed as213; final native shared query-buffer fixture reads only after exact command completion. Source29 banks3348/9 and broad gates pass.
+
 ## PPD-213 — Query-fixture repair calls a private attachment method
 
 - Status: investigating
@@ -5187,3 +5199,45 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Registered before correcting the root-authored private API call; no private API exposure or production validation relaxation authorized.
+
+
+- 2026-11-15: Root correction uses existing indexed-join native pass/query pattern, no private API exposure. Required29/static69063/native/broad pass; failure28 retained.
+
+## PPD-214 — Busy-frame CPU publication can starve older GPU metadata work
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared native frame admission
+- Discovered: 2026-11-15
+- Original reference: Bounded frame-wide publication must guarantee progress across CPU compilation and native GPU metadata, not only within one traversal phase.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). CPU postSort compilation runs before G-buffer native page/bank publication and shares Work::scene_publication. Busy/pressure progress requires scene_publications_this_frame==0; releasing a CPU-local credit does not reset that count. Two aged permanently ineligible compilation candidates can alternate admitted attempts, retain old pending age after seal failure, and consume that first slot every frame. An older valid GPU metadata request, called later, is then denied indefinitely. No executed viewer performance attribution is claimed.
+- Next action: Provide bounded cross-phase progress fairness in the existing shared budget, including failed CPU attempts, older GPU requests and vanished pending owners; preserve idle quotas/bytes/completion retirement and direct fallback. Add a deterministic repeated-busy-frame integration model using actual CPU admission and GPU metadata policy.
+- Verification: Source-confirmed call-order counterexample before repair; new regression not yet executed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered from bounded G5 source audit while source29 fixture build runs. This is separate from the earlier shared shadow-credit integration PPD204.
+
+
+- 2026-11-15: Source30 authored fixed two-category age/service arbitration plus5focused models; default metadata API and CPU kind routing, idle caps/leases retained. Read-only peer/root reviews find no blocker, execution pending.
+
+## PPD-215 — GPU cost fixture applies steady-state assertions to its first warm-up
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex three-arm native cost fixture
+- Discovered: 2026-11-15
+- Original reference: A warm-condition fixture must first publish its just-invalidated state during the initial warm-up; measured steady-state samples begin only after the declared warm-ups.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source29 three-arm run completes all144summary rows/2016samples but fails128 of140088assertions. Exactly32 each of getter/dependency/image/compile zero assertions fail at warm condition sample0 (warmup1), covering2families/4counts/2viewcounts/2cohortmodes. That first warm-up correctly performs the initial publication. All pixel/query and other assertions pass. Timings remain provisional because the gate failed.
+- Next action: Apply only those four steady-state zero-work assertions to measured warm samples after warm-ups; retain setup costs/raw warm-up output and every other parity/admission check. Rerun after the coherent next build.
+- Verification: Executed cost-fixture expectation failure; no rendering mismatch or validated performance acceptance claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Registered before correcting the measured-sample guard; failed cost29 receipt/log retained without alteration.
+
+- 2026-11-15: Root adds sample>=warmups guard only to four steady-state expectations. Warm-up raw rows and all parity/admission checks retained; source30 rerun pending.

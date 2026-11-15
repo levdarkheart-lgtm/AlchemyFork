@@ -10458,7 +10458,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 std::memcpy(globals.mirror_clip_plane,scene.mirror_clip_plane,sizeof(globals.mirror_clip_plane));
                 globals.flags[0]=scene.reverse_z;globals.flags[1]=scene.mirror_clip;globals.flags[2]=scene.normal_hdr;
                 auto frame=mImpl->source_pages
-                    ? mImpl->source_pages->freezeCohortForCommand(*command,view,globals,&optional_error) : nullptr;
+                    ? mImpl->source_pages->freezeCohortForCommand(*command,view,globals,&optional_error,mImpl->frame_data.get()) : nullptr;
                 if (!frame)
                 {
                     ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=count;

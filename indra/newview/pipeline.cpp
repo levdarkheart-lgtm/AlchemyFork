@@ -3139,6 +3139,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << stats.pages.cached_cohort_metadata_bytes
                     << ", cached_cohort_native_asset_bytes/cap=" << stats.pages.cached_cohort_native_asset_bytes
                     << '/' << stats.pages.cached_cohort_native_asset_limit
+                    << ", cohort_arena_views/copied_bytes=" << stats.pages.arena_views << '/' << stats.pages.arena_view_bytes
                     << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
                 const auto banks=renderer->worldSourceCommandStats();
                 LL_INFOS("MetalScene") << "Native source command banks: view=" << owner

@@ -587,3 +587,42 @@ buffer/native pass attachment, following existing indexed-join native fixtures;
 read real counters only after the exact producer command's commitAndWait.
 Higher-level renderer tests still exercise production VisibilityResultBatch
 lifecycle. No production API/validation change. Required29 follows.
+
+
+## Source29 gates and coherent source30 continuation
+
+06d8d4484d278d38c63c912f5f71a15281316ae1 required29 build28.115s and
+static69063 pass. Corrected renderer2331/4 and banks3348/9 pass; unaffected
+production native27 evidence remains source-pinned. Broad29 passes88/88CTest
+139.435s,10native specializations,3archive processes and private decoder corpus.
+PPD211–213 fixture failures/attempts are retained; production validation/API
+never relaxed. No viewer launch/profile/push.
+
+New3arm cost29 executes all144summary rows/2016raw samples but fails128 of
+140088assertions, exclusively four steady-state-zero-work expectations on
+warm condition sample0 (warmup). PPD215 corrects only measured-sample guard;
+no pixel/query mismatch. Timings provisional, not accepted: warm512 GPU CPU
+about0.060ms versus direct0.256–0.278ms(1view), but small4 GPUCPU about0.039ms
+versus direct0.033–0.034ms. Full settle/GPU costs remain material and mixed;
+no activation follows the failed gate or its warm CPU improvement alone.
+
+PPD214 source audit confirms early aged CPU compilation can starve later
+GPU metadata under sustained pressure. Clock audit separately confirms actual
+CLOCK_THREAD_CPUTIME_ID/required_main_cpu_ns, not blocked GPU/presentation wall
+time; no timing rewrite needed. Frozen fix adds fixed two-category recent
+denial/service histories to existing budget, CPUAdmission selects compilation
+kind, native callbacks retain their default. Idle quotas/hard caps/leases
+unchanged. Five authored repeated-frame models plus read-only peer/root review;
+execution pending. No task graph, request identity registry or resource pins.
+
+Source30 also uses existing FrameData scalar arena for cold/warm GPU cohort
+views: one padded288B publication, native buffer+offsets and weak exact origin
+completion only. No FrameData/rawCppslice retention. Wrong/completed/abandoned
+commands reject before binding; standalone null-FrameData views retain prior
+immutable208B behavior. Wrapper join/cache state is flushed/invalidated before
+native view-buffer writes. Three native cases cover output/allocation reuse/
+pending/abandon/recycle/parent expiry. Root supplies FrameData at the single
+renderer callsite and adds throttled arena counters/actual-cost assertions.
+No shader/backend/default activation. Coherent source freeze is reviewed but
+unbuilt; required30 (shared budget header may rebuild many targets) next, then
+native/broad/static and corrected3arm costs. Next defect216.

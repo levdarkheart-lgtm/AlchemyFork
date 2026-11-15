@@ -10,6 +10,7 @@
 
 struct ALMetalWorldSimpleBatch;
 struct ALMetalWorldSourceCohortView;
+class ALMetalWorldFrameData;
 
 inline constexpr std::size_t alMetalWorldSourceMaximumRows = 4096;
 inline constexpr std::size_t alMetalWorldSourceRowsPerPage = 128;
@@ -97,6 +98,9 @@ struct ALMetalWorldSourcePageStats
     std::uint64_t requests=0,hits=0,row_publications=0,failures=0;
     std::uint64_t encoded_row_bytes=0,copied_page_bytes=0,copied_bank_bytes=0;
     std::uint64_t page_allocations=0,bank_allocations=0,view_bytes=0,binds=0;
+    // Actual padded CPU copies into FrameData; arena physical pages remain
+    // in FrameData accounting, separate from the standalone view buffers.
+    std::uint64_t arena_view_bytes=0,arena_views=0;
     std::size_t rows=0,live_metadata_bytes=0;
     std::uint64_t admission_requests=0,admission_denials=0,admitted_bytes=0;
     // Unique native buffers per freeze, not attributes/draws. A proof hit
@@ -169,9 +173,12 @@ public:
         ALMetalCommandBuffer&, std::span<const ALMetalWorldSourceRequest>,
         std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
         std::string* error=nullptr);
+    // Optional FrameData publication is synchronous and command-scoped: its
+    // native-only view may bind only on that exact incomplete command. Null
+    // retains the standalone immutable-buffer lifetime.
     std::shared_ptr<const ALMetalWorldSourceFrameView> freezeCohortForCommand(
         ALMetalCommandBuffer&,const ALMetalWorldSourceCohortView&,
-        const ALMetalWorldSourceGlobals&,std::string* error=nullptr);
+        const ALMetalWorldSourceGlobals&,std::string* error=nullptr,ALMetalWorldFrameData* frame_data=nullptr);
     // Product owner injection only; generic/native fixtures default to no
     // policy. Dirty standalone freeze refuses an active policy (no command
     // can own its credit); fully reused standalone views remain legal.
@@ -192,7 +199,7 @@ private:
         ALMetalCommandBuffer*, std::span<const ALMetalWorldSourceRequest>,
         std::span<const ALMetalWorldSourceRegion>, const ALMetalWorldSourceGlobals&,
         std::string*, std::span<const std::shared_ptr<const ALMetalWorldResourceSource>> overrides={},
-        bool certified_cohort=false);
+        bool certified_cohort=false,ALMetalWorldFrameData* frame_data=nullptr);
     struct Impl;
     explicit ALMetalWorldSourcePages(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;

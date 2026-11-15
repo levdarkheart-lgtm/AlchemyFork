@@ -653,3 +653,127 @@ TEST_CASE("almetal: optional cohort cache allocation failure preserves a valid v
         CHECK(std::any_of(pixels.depth.begin(),pixels.depth.end(),[](auto value){return value!=0x3f800000u;}));
     }
 }
+
+namespace
+{
+void checkCohortArenaBindRejected(CohortPageFixture& f,const ALMetalWorldSourceFrameView& view,
+                                 ALMetalCommandBuffer& command)
+{
+    ALMetalRenderTargetDescriptor descriptor;descriptor.width=descriptor.height=side;descriptor.color_attachment_count=1;
+    descriptor.colors[0].format=ALMetalPixelFormat::rgba8_unorm;
+    auto target=ALMetalRenderTarget::create(*f.device,descriptor,&f.error);REQUIRE(target);
+    auto pass=target->makeRenderPass({},&f.error);REQUIRE(pass);
+    auto encoder=ALMetalRenderEncoder::begin(command,*pass,"Reject wrong cohort arena command",&f.error);REQUIRE(encoder);
+    CHECK_FALSE(view.bind(*encoder,command,&f.error));REQUIRE(encoder->end(&f.error));
+}
+}
+
+TEST_CASE("almetal: cohort views use one shared frame arena publication and preserve native output and binding caches",
+          "[almetal][world-source-pages][world-cohort][world-cohort-arena]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto selected=f.cohortView();selected.view.modelview_projection[12]=-.25f;
+        auto standalone=f.pages();auto standalone_command=f.device->makeCommandBuffer("Standalone cohort reference",&f.error);REQUIRE(standalone_command);
+        const auto ordinary_before=alMetalResourceAllocationStats();
+        auto immutable=standalone->freezeCohortForCommand(*standalone_command,selected,f.globals,&f.error);REQUIRE(immutable);
+        const auto ordinary_buffers=alMetalResourceAllocationStats().buffers_created-ordinary_before.buffers_created;
+        // Standalone semantics allow another command after the publication
+        // command is abandoned; its buffers are immutable independent owners.
+        standalone_command.reset();auto reference=f.encode(*immutable,f.descriptions->sources[0]);
+        REQUIRE(reference.command->commitAndWait(&f.error));const auto expected=f.read(*reference.target);
+        auto arena=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(arena);arena->beginFrame(100);
+        auto pages=f.pages();auto command=f.device->makeCommandBuffer("Cold cohort arena publication",&f.error);REQUIRE(command);
+        const auto before=alMetalResourceAllocationStats();const auto data_before=arena->stats();
+        auto first=pages->freezeCohortForCommand(*command,selected,f.globals,&f.error,arena.get());INFO(f.error);REQUIRE(first);
+        const auto published=pages->stats();const auto data_after=arena->stats();
+        // The cold path also replaces two old buffers with one arena page.
+        CHECK(alMetalResourceAllocationStats().buffers_created-before.buffers_created+1==ordinary_buffers);
+        CHECK(data_after.pages_created-data_before.pages_created==1);
+        CHECK(data_after.published_bytes-data_before.published_bytes==288);
+        CHECK(published.arena_views==1);CHECK(published.arena_view_bytes==288);
+        CHECK(published.view_bytes==alMetalWorldSourceMaximumRows*sizeof(std::uint32_t)); // only the once-published map
+        auto foreign=f.device->makeCommandBuffer("Different live command cannot borrow arena view",&f.error);REQUIRE(foreign);
+        checkCohortArenaBindRejected(f,*first,*foreign);
+        auto result=f.encode(*first,f.descriptions->sources[0],std::move(command),true);
+        REQUIRE(result.command->commitAndWait(&f.error));CHECK(f.read(*result.target)==expected);
+        const auto membership=first->commandMembership();
+        // Completed arenas may recycle even while an old FrameView keeps the
+        // native buffer alive. Old views cannot turn that into a late bind.
+        arena->beginFrame(101);const auto warm_before=alMetalResourceAllocationStats();const auto arena_before=arena->stats();
+        std::vector<std::shared_ptr<const ALMetalWorldSourceFrameView>> retained;
+        for(unsigned i=0;i<8;++i)
+        {
+            auto next=f.device->makeCommandBuffer("Warm allocation-free cohort arena publication",&f.error);REQUIRE(next);
+            auto warm=pages->freezeCohortForCommand(*next,selected,f.globals,&f.error,arena.get());REQUIRE(warm);
+            CHECK(warm->commandMembership()==membership);retained.push_back(std::move(warm));
+        }
+        CHECK(alMetalResourceAllocationStats().buffers_created==warm_before.buffers_created);
+        CHECK(arena->stats().pages_reused-arena_before.pages_reused==1);
+        CHECK(arena->stats().published_bytes-arena_before.published_bytes==8*288);
+        CHECK(pages->stats().arena_view_bytes-published.arena_view_bytes==8*288);
+        CHECK(pages->stats().view_bytes==published.view_bytes);
+        auto late=f.device->makeCommandBuffer("Completed or abandoned arena view stays invalid",&f.error);REQUIRE(late);
+        checkCohortArenaBindRejected(f,*first,*late);checkCohortArenaBindRejected(f,*retained.back(),*late);
+    }
+}
+
+TEST_CASE("almetal: pending cohort arena data survives frame retirement and arena destruction without retaining CPU owners",
+          "[almetal][world-source-pages][world-cohort][world-cohort-arena]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pages=f.pages();auto selected=f.cohortView();
+        auto setup=f.device->makeCommandBuffer("Warm source pipeline before arena queue gate",&f.error);REQUIRE(setup);
+        auto baseline=pages->freezeCohortForCommand(*setup,selected,f.globals,&f.error);REQUIRE(baseline);
+        auto reference=f.encode(*baseline,f.descriptions->sources[0],std::move(setup));REQUIRE(reference.command->commitAndWait(&f.error));
+        const auto expected=f.read(*reference.target);
+        auto arena=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(arena);arena->beginFrame(1);
+        auto command=f.device->makeCommandBuffer("Pending native-only cohort arena view",&f.error);REQUIRE(command);
+        auto view=pages->freezeCohortForCommand(*command,selected,f.globals,&f.error,arena.get());REQUIRE(view);
+        auto pending=f.encode(*view,f.descriptions->sources[0],std::move(command),true);
+        id<MTLSharedEvent> gate=[(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];REQUIRE(gate);
+        struct OpenGate {id<MTLSharedEvent> gate;~OpenGate(){gate.signaledValue=1;}} open{gate};
+        auto blocker=f.device->makeCommandBuffer("Hold pending cohort arena bytes",&f.error);REQUIRE(blocker);
+        [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];REQUIRE(blocker->commit(&f.error));
+        REQUIRE(pending.command->commit(&f.error));arena->beginFrame(2);REQUIRE(arena->stats().retired_pages==1);
+        const auto pages_created=arena->stats().pages_created;
+        auto another=f.device->makeCommandBuffer("Another frame while old arena page is pending",&f.error);REQUIRE(another);
+        auto moved=selected;moved.view.modelview_projection[12]=.5f;
+        auto next=pages->freezeCohortForCommand(*another,moved,f.globals,&f.error,arena.get());REQUIRE(next);
+        CHECK(arena->stats().pages_created==pages_created+1);CHECK(arena->stats().pages_reused==0);
+        std::weak_ptr<ALMetalWorldFrameData> weak_arena=arena;arena.reset();CHECK(weak_arena.expired());
+        std::weak_ptr<PageCohortCpu> weak_cpu=f.descriptions;std::weak_ptr<const ALMetalWorldSourceCohort> weak_certificate=f.certificate;
+        selected={};moved={};f.certificate.reset();f.descriptions.reset();CHECK(weak_cpu.expired());CHECK(weak_certificate.expired());
+        gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));CHECK(f.read(*pending.target)==expected);
+        auto late=f.device->makeCommandBuffer("Destroyed arena view cannot be rebound after completion",&f.error);REQUIRE(late);
+        checkCohortArenaBindRejected(f,*view,*late);
+    }
+}
+
+TEST_CASE("almetal: abandoned arena commands release pages for reuse while stale views cannot read overwritten data",
+          "[almetal][world-source-pages][world-cohort][world-cohort-arena]")
+{
+    @autoreleasepool
+    {
+        CohortPageFixture f;auto pages=f.pages();auto selected=f.cohortView();
+        auto arena=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(arena);arena->beginFrame(1);
+        auto command=f.device->makeCommandBuffer("Abandoned original arena cohort",&f.error);REQUIRE(command);
+        auto old=pages->freezeCohortForCommand(*command,selected,f.globals,&f.error,arena.get());REQUIRE(old);
+        auto completion=command->completionToken();REQUIRE(completion);command.reset();REQUIRE(completion->isComplete());
+        const auto old_stats=arena->stats();arena->beginFrame(2);
+        selected.view.modelview_projection[12]=.375f;auto next=f.device->makeCommandBuffer("Reused arena new camera",&f.error);REQUIRE(next);
+        const auto before=alMetalResourceAllocationStats();
+        auto current=pages->freezeCohortForCommand(*next,selected,f.globals,&f.error,arena.get());REQUIRE(current);
+        CHECK(arena->stats().pages_created==old_stats.pages_created);CHECK(arena->stats().pages_reused==old_stats.pages_reused+1);
+        CHECK(alMetalResourceAllocationStats().buffers_created==before.buffers_created);
+        CHECK(current->commandMembership()==old->commandMembership());
+        checkCohortArenaBindRejected(f,*old,*next);
+        auto actual=f.encode(*current,f.descriptions->sources[0],std::move(next),true);REQUIRE(actual.command->commitAndWait(&f.error));
+        const auto pixels=f.read(*actual.target);
+        auto standalone=f.device->makeCommandBuffer("Immutable reference for reused arena camera",&f.error);REQUIRE(standalone);
+        auto immutable=pages->freezeCohortForCommand(*standalone,selected,f.globals,&f.error);REQUIRE(immutable);
+        auto reference=f.encode(*immutable,f.descriptions->sources[0],std::move(standalone));REQUIRE(reference.command->commitAndWait(&f.error));
+        CHECK(f.read(*reference.target)==pixels);
+    }
+}

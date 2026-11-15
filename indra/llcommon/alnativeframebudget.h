@@ -21,6 +21,7 @@ public:
     using Frame = std::uint64_t;
     static constexpr std::uint64_t unknown_bytes = std::numeric_limits<std::uint64_t>::max();
     enum class Work { upload, ordinary_probe, hero_probe, preparation, scene_publication };
+    enum class ScenePublicationKind { native_metadata, cohort_compilation };
     enum class Reason { admitted, progress, frame_work, in_flight, memory_pressure, draining };
     struct Limits
     {
@@ -119,7 +120,13 @@ public:
     // copied/zeroed source metadata work; the native allocator independently
     // bounds actual resident metadata. Pass its actual oldest dirty frame.
     // Warm views with no dirty sources need no scene publication credit.
-    Decision tryAcquire(Work, std::uint64_t logical_bytes = 0, Frame oldest_frame = 0);
+    // Busy progress is shared fairly by the early CPU compiler and later
+    // native metadata publishers. Recent denials reserve only a finite next
+    // frame opportunity; no requester, resource, job or credit is retained.
+    // Existing callbacks default to native metadata. Idle quotas are shared
+    // exactly as before, independently of this pressure-only service order.
+    Decision tryAcquire(Work, std::uint64_t logical_bytes = 0, Frame oldest_frame = 0,
+                        ScenePublicationKind = ScenePublicationKind::native_metadata);
     // Downstream debt constrains additional starts; active jobs and responders
     // are never cancelled. At least the established decoder minimum survives.
     unsigned decodeCeiling(unsigned minimum, unsigned current, unsigned maximum) const;

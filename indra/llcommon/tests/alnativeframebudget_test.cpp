@@ -551,3 +551,169 @@ TEST_CASE("Saturated cohort work is rejected before admission and aggregate byte
     { auto recovered = remainder.tryAcquire(budget, 2);REQUIRE(recovered); }
     CHECK(remainder.pendingSince() == 8);CHECK(remainder.lastAdmittedFrame() == 9);
 }
+
+TEST_CASE("Busy CPU compilation cannot starve later native page and command publication",
+          "[native-frame-budget][cohort-compilation][scene-publication][PPD-214]")
+{
+    for(unsigned count:{1u,2u,65u})for(bool pressure:{false,true})for(bool dirty_again:{false,true})
+    {
+        CAPTURE(count,pressure,dirty_again);auto limits=smallScene();Budget budget(limits);
+        std::vector<ALNativeCohortCompilationAdmission> cpu(count);
+        for(auto& owner:cpu)owner.notePending(0);
+        bool pages=false,commands=false;Budget::Frame page_frame=0,command_frame=0;
+        std::optional<Budget::Frame> command_pending;
+        Budget::Lease page_completion,command_completion;
+        unsigned cpu_services=0;
+        for(Budget::Frame id=1;id<=16;++id)
+        {
+            auto input=frame(id);
+            if(pressure)input.os_available_bytes=0;else input.required_main_cpu_ns=45'000'000;
+            budget.beginFrame(input);
+            std::vector<unsigned> order(count);for(unsigned i=0;i<count;++i)order[i]=i;
+            std::sort(order.begin(),order.end(),[&](unsigned a,unsigned b){return cpu[a].priority(a)<cpu[b].priority(b);});
+            for(unsigned i:order)
+            {
+                auto compilation=cpu[i].tryAcquire(budget,8);
+                if(!compilation)continue;
+                ++cpu_services;CHECK(compilation.reason==Budget::Reason::progress);
+                // Both permanent failed compiles and newly dirty successful
+                // owners must share service with the later renderer phase.
+                if(dirty_again){cpu[i].publicationCompleted();cpu[i].notePending(id);}
+            }
+            // This is the actual native callback's default category and age
+            // contract: a warm page needs no ticket; its later command bank
+            // keeps the first denied frame until successful admission.
+            if(!pages)
+            {
+                auto publication=budget.tryAcquire(Budget::Work::scene_publication,8,0);
+                if(publication){pages=true;page_frame=id;page_completion=publication.credit;command_pending=id;}
+            }
+            if(pages&&!commands)
+            {
+                auto publication=budget.tryAcquire(Budget::Work::scene_publication,8,*command_pending);
+                if(publication){commands=true;command_frame=id;command_completion=publication.credit;command_pending.reset();}
+            }
+            if(commands){page_completion.reset();command_completion.reset();}
+            const auto state=budget.snapshot();CHECK(state.scene_publications_this_frame<=1);
+            CHECK(state.scene_publications_in_flight<=2);CHECK(state.scene_bytes_in_flight<=32);
+            CHECK(state.uploads_this_frame==0);CHECK(state.optional_views_this_frame==0);
+        }
+        REQUIRE(pages);REQUIRE(commands);CHECK(page_frame<=limits.maximum_deferral_frames+1);
+        CHECK(command_frame<=page_frame+limits.maximum_deferral_frames+1);CHECK(cpu_services>0);
+        CHECK(budget.snapshot().scene_publications_in_flight==0);CHECK(budget.snapshot().scene_bytes_in_flight==0);
+    }
+}
+
+TEST_CASE("Equal-age phase service cannot be reset by arbitrarily many new CPU owners",
+          "[native-frame-budget][cohort-compilation][scene-publication][PPD-214]")
+{
+    Budget budget(smallScene());std::array<ALNativeCohortCompilationAdmission,64> cpu;
+    for(auto& owner:cpu)owner.notePending(0);
+    unsigned cpu_services=0,native_services=0;
+    for(Budget::Frame id=10;id<42;++id)
+    {
+        auto input=frame(id);input.required_main_cpu_ns=45'000'000;budget.beginFrame(input);
+        unsigned served=0;
+        for(auto& owner:cpu)if(auto lease=owner.tryAcquire(budget,8)){++cpu_services;++served;}
+        ALNativeCohortCompilationAdmission newcomer;newcomer.notePending(0);
+        CHECK_FALSE(newcomer.tryAcquire(budget,8)); // No per-owner reset of phase history.
+        if(auto lease=budget.tryAcquire(Budget::Work::scene_publication,8,0)){++native_services;++served;}
+        CHECK(served==1);CHECK(budget.snapshot().scene_publications_in_flight==0);
+        CHECK(budget.snapshot().scene_publications_this_frame==1);
+    }
+    CHECK(cpu_services==16);CHECK(native_services==16);CHECK(budget.snapshot().retired==32);
+}
+
+TEST_CASE("Older native command requests survive younger pages in the same late phase",
+          "[native-frame-budget][cohort-compilation][scene-publication][PPD-214]")
+{
+    Budget budget(smallScene());ALNativeCohortCompilationAdmission cpu;cpu.notePending(0);
+    const std::array<Budget::Frame,3> pending{2,1,0};
+    std::array<bool,3> complete{};std::vector<unsigned> native_order;
+    for(Budget::Frame id=10;id<18;++id)
+    {
+        auto input=frame(id);input.required_main_cpu_ns=45'000'000;budget.beginFrame(input);
+        {auto failed_compilation=cpu.tryAcquire(budget,8);}
+        for(unsigned context=0;context<complete.size();++context)
+        {
+            if(complete[context])continue;
+            auto publication=budget.tryAcquire(Budget::Work::scene_publication,8,pending[context]);
+            if(publication){complete[context]=true;native_order.push_back(context);}
+        }
+        CHECK(budget.snapshot().scene_publications_this_frame<=1);
+        CHECK(budget.snapshot().scene_publications_in_flight==0);
+    }
+    CHECK((native_order==std::vector<unsigned>{2,1,0}));
+}
+
+TEST_CASE("Vanished publication phases and skipped frames cannot reserve progress forever",
+          "[native-frame-budget][cohort-compilation][scene-publication][PPD-214]")
+{
+    for(bool skip_frames:{false,true})
+    {
+        Budget budget(smallScene());ALNativeCohortCompilationAdmission cpu;cpu.notePending(0);
+        auto input=frame(10);input.required_main_cpu_ns=45'000'000;budget.beginFrame(input);
+        {auto first=cpu.tryAcquire(budget,8);REQUIRE(first);}
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication,8,0));
+        input.frame=skip_frames?100:11;budget.beginFrame(input);
+        if(skip_frames){auto recovered=cpu.tryAcquire(budget,8);REQUIRE(recovered);}
+        else
+        {
+            CHECK_FALSE(cpu.tryAcquire(budget,8)); // One recent late-phase opportunity.
+            budget.beginFrame(input);auto stale=input;stale.frame=10;budget.beginFrame(stale);
+            CHECK(budget.snapshot().scene_publications_this_frame==0);
+            // No metadata callback renews the reservation in frame11.
+            input.frame=12;budget.beginFrame(input);auto recovered=cpu.tryAcquire(budget,8);REQUIRE(recovered);
+        }
+    }
+    // Conversely, a single remaining default metadata caller retains its
+    // established one-aged-item-per-pressure-frame behavior.
+    Budget metadata(smallScene());
+    for(Budget::Frame id=10;id<16;++id)
+    {auto input=frame(id);input.os_available_bytes=0;metadata.beginFrame(input);
+     auto only=metadata.tryAcquire(Budget::Work::scene_publication,8,0);REQUIRE(only);}
+    Budget same_phase(smallScene());ALNativeCohortCompilationAdmission earlier;earlier.notePending(0);
+    auto input=frame(10);input.required_main_cpu_ns=45'000'000;same_phase.beginFrame(input);
+    {auto first=earlier.tryAcquire(same_phase,8);REQUIRE(first);}
+    CHECK_FALSE(same_phase.tryAcquire(Budget::Work::scene_publication,8,0));
+    input.frame=11;same_phase.beginFrame(input);
+    CHECK_FALSE(same_phase.tryAcquire(Budget::Work::scene_publication,8,2)); // The older context has disappeared.
+    input.frame=12;same_phase.beginFrame(input);
+    {auto next=same_phase.tryAcquire(Budget::Work::scene_publication,8,2);REQUIRE(next);}
+}
+
+TEST_CASE("Publication hints recheck active byte capacity and never waive idle limits or draining",
+          "[native-frame-budget][cohort-compilation][scene-publication][PPD-214]")
+{
+    Budget budget(smallScene());ALNativeCohortCompilationAdmission cpu;cpu.notePending(0);
+    auto input=frame(10);input.required_main_cpu_ns=45'000'000;budget.beginFrame(input);
+    {auto compilation=cpu.tryAcquire(budget,8);REQUIRE(compilation);}
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication,24,0)); // Legal sole oversized hint.
+    budget.recordRequiredMainWork(0); // Actual main work can clear the old busy estimate before probes.
+    auto held=budget.tryAcquire(Budget::Work::scene_publication,8,10);REQUIRE(held);
+    input.frame=11;budget.beginFrame(input);
+    {auto fits=cpu.tryAcquire(budget,8);REQUIRE(fits);} // 24 cannot run alone while held is active.
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication,24,0));
+    held.credit.reset();input.frame=12;budget.beginFrame(input);
+    {auto first=cpu.tryAcquire(budget,8);REQUIRE(first);}
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication,24,0));
+    input.frame=13;budget.beginFrame(input);CHECK_FALSE(cpu.tryAcquire(budget,8));
+    {auto sole=budget.tryAcquire(Budget::Work::scene_publication,24,0);REQUIRE(sole);CHECK(sole.reason==Budget::Reason::progress);}
+    CHECK(budget.snapshot().scene_bytes_in_flight==0);
+
+    Budget idle(smallScene());ALNativeCohortCompilationAdmission idle_cpu;idle_cpu.notePending(0);
+    idle.beginFrame(frame(1));auto c=idle_cpu.tryAcquire(idle,8);REQUIRE(c);
+    auto n=idle.tryAcquire(Budget::Work::scene_publication,8,0);REQUIRE(n);
+    CHECK_FALSE(idle.tryAcquire(Budget::Work::scene_publication,1,0));
+    CHECK(idle.snapshot().scene_publications_this_frame==2);CHECK(idle.snapshot().scene_bytes_this_frame==16);
+    c.credit.reset();n.credit.reset();CHECK(idle.snapshot().scene_publications_in_flight==0);
+    idle.beginDrain();idle.beginFrame(frame(2));
+    CHECK(idle_cpu.tryAcquire(idle,8).reason==Budget::Reason::draining);
+    CHECK(idle.tryAcquire(Budget::Work::scene_publication,8,0).reason==Budget::Reason::draining);
+
+    Budget invalid(smallScene());ALNativeCohortCompilationAdmission valid_cpu;valid_cpu.notePending(0);
+    input.frame=20;invalid.beginFrame(input);{auto first=valid_cpu.tryAcquire(invalid,8);REQUIRE(first);}
+    CHECK_FALSE(invalid.tryAcquire(Budget::Work::scene_publication,Budget::unknown_bytes,0));
+    CHECK_FALSE(invalid.tryAcquire(Budget::Work::scene_publication,33,0));
+    input.frame=21;invalid.beginFrame(input);{auto unaffected=valid_cpu.tryAcquire(invalid,8);REQUIRE(unaffected);}
+}

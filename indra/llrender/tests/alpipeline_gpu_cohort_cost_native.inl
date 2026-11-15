@@ -24,6 +24,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
         U64 bank_hits=0,bank_builds=0,bank_admission_requests=0,bank_admission_denials=0,bank_argument_bytes=0;
         U64 page_cohort_requests=0,page_cohort_hits=0,page_cohort_builds=0,page_cohort_failures=0;
         U64 page_admission_requests=0,page_admission_denials=0,page_admitted_bytes=0,page_view_bytes=0;
+        U64 page_arena_views=0,page_arena_bytes=0;
         U64 icb_live_bytes=0,index_retained_bytes=0,cached_banks=0,live_banks=0,page_live_bytes=0,cached_cohort_rows=0,cached_cohort_bytes=0;
         U64 cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
         U64 all_scene_admitted=0,all_scene_deferred=0,all_scene_bytes=0;
@@ -263,6 +264,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                         value.page_admission_requests=pages.admission_requests-before_pages.admission_requests;
                         value.page_admission_denials=pages.admission_denials-before_pages.admission_denials;
                         value.page_admitted_bytes=pages.admitted_bytes-before_pages.admitted_bytes;value.page_view_bytes=pages.view_bytes-before_pages.view_bytes;
+                        value.page_arena_views=pages.arena_views-before_pages.arena_views;value.page_arena_bytes=pages.arena_view_bytes-before_pages.arena_view_bytes;
                         value.page_live_bytes=pages.live_metadata_bytes;value.cached_cohort_rows=pages.cached_cohort_rows;
                         value.cached_cohort_bytes=pages.cached_cohort_metadata_bytes;
                         value.cached_cohort_native_asset_bytes=pages.cached_cohort_native_asset_bytes;
@@ -278,9 +280,10 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             CHECK(value.bank_requested==U64(count)*views);
                             if(count==1){CHECK(value.bank_draws==0);CHECK(value.bank_fallback==views);CHECK(value.execute_calls==0);}
                             else if(!value.page_admission_denials&&!value.bank_admission_denials)
-                            {CHECK(value.bank_draws==U64(count)*views);CHECK(value.execute_calls==2*views);}
+                            {CHECK(value.bank_draws==U64(count)*views);CHECK(value.execute_calls==2*views);
+                             CHECK(value.page_arena_views==views);CHECK(value.page_arena_bytes==U64(288)*views);}
                         }
-                        if(mode&&condition==1&&value.cohort_draws==U64(count)*views)
+                        if(sample>=warmups&&mode&&condition==1&&value.cohort_draws==U64(count)*views)
                         {CHECK(value.getters==0);CHECK(value.dependencies==0);CHECK(value.images==0);CHECK(value.compile_admitted==0);}
                         if(sample>=warmups)costs[mode][sample-warmups]=value;
                         if(sample==warmups-1)for(U32 view=0;view<views;++view)pixels[mode][view]=f.read(*targets[view]);
@@ -301,6 +304,7 @@ TEST_CASE("Actual retained cohorts compare ordinary direct and native bank compl
                             <<" page_cohort_builds="<<value.page_cohort_builds<<" page_cohort_failures="<<value.page_cohort_failures
                             <<" page_admission_requests="<<value.page_admission_requests<<" page_admission_denials="<<value.page_admission_denials
                             <<" page_admitted_logical_bytes="<<value.page_admitted_bytes<<" page_view_bytes="<<value.page_view_bytes
+                            <<" page_arena_views="<<value.page_arena_views<<" page_arena_cpu_copy_bytes="<<value.page_arena_bytes
                             <<" live_icb_allocated_bytes="<<value.icb_live_bytes<<" unique_retained_index_bytes="<<value.index_retained_bytes
                             <<" cached_banks="<<value.cached_banks<<" live_banks="<<value.live_banks<<" live_page_metadata_bytes="<<value.page_live_bytes
                             <<" cached_cohort_rows="<<value.cached_cohort_rows<<" cached_cohort_cpu_metadata_bytes="<<value.cached_cohort_bytes
