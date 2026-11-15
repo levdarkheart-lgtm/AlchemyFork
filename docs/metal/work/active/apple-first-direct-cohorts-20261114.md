@@ -1683,3 +1683,13 @@ native/cost run. Rootbindsexistingalways-pass/no-write overlaydepthstate, retain
 depth/stencil andGPUvalidation. No viewercrash/newlaunch or all48pass claim.
 Next49build/scopedretest; priorsuccessreuse requires explicitproductiondiffproof.
 Next256. Failedreceipt/logretained.
+
+
+Required49 da8c24dbca/69092 doctor/configure/build0 (37.728s),static/strictPASS.
+Probe API validation no longer aborts;3/4cases and7560/7562assertions pass, only
+synthetic sky nonzero assertions fail(PPD257). Exact tile/separate equality passes.
+Fixture omitted actual HDRI normal alpha1; correction retains all assertions and
+production source. Remaining native/cost suites did not execute. Next50 targeted
+retest with exact unchanged-production22-scope reuse proof. PPD256 compact static
+restoration remains independently implementing; owner whole-engine goal active.
+Next258. Owner69085/69065 remain unchanged; no viewer launch/profile/push.

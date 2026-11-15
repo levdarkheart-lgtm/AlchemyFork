@@ -190,6 +190,7 @@ TEST_CASE("almetal: probe tile pass census, sky transfer and ineligible inputs k
         // execute after light visibility without overwriting the tile attachment.
         ALMetalRenderPassConfig clear;clear.clear_depth=1;clear.depth_store=ALMetalStoreAction::store;
         clear.stencil_store=ALMetalStoreAction::store;clear.colors[3].clear={.125,.25,.5,0};
+        clear.colors[2].clear={0,0,0,1}; // Exact HDRI G-buffer family marker.
         auto pass=input->makeRenderPass(clear,&f.error);REQUIRE(pass);
         auto command=f.device->makeCommandBuffer("Probe tile clear-sky input",&f.error);REQUIRE(command);
         auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"Probe tile sky input",&f.error);REQUIRE(encoder);

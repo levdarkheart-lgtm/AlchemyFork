@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-256 -->
+<!-- next-defect-id: PPD-258 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6122,3 +6122,45 @@ is always-compare, no depth writes and no stencil writes.
 ### History
 
 - 2026-11-15 native-correctness-48 probe scope exitsSIGABRT(-6) under API/GPU validation; exact private log retained. Registered before repair. Earlier successful scopes remain valid evidence, not an all48pass claim.
+
+
+## PPD-256 — Retained static restoration stores an unused multipurpose batch
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Native group restoration is new; original LLDrawInfo/pass ordering and current typed-generation/material contracts remain authoritative. PPD203 already made batch slot storage lazy and shared when frozen.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md), [Implementation checklist](work/active/apple-first-architecture-status.md).
+- Next action: Replace only owner-side idle static restoration metadata with a compact owner-free tuple; SIMPLE can reuse its existing immutable proof. Preserve renderer cohort descriptions, weak native-generation proof, exact active fields, warm OGroup transport, caps and failure/retry. Measure actual representation/copy costs, not just a cheaper estimate.
+- Verification: Source48 audit finds fullBatch copies in Layout.Source, childWorldVariant and privateCohortSource. Layout restoration unnecessarily keeps224Bview matrices,256Bterrain hex arrays and avatar/impostor fields. Frozen Legacy384B/PBR1600B tables are shared, not repeated deep arrays; metadata estimate also conservatively charges a shared certificate twice. Rough9KBcharged perrow is not unique physical allocation or a demonstrated churn cause.
+- Owner verification: pending
+- Push approval: not_granted
+
+The intended change removes real unused owner metadata, not a render backend or
+warm-view adapter. Expand a material restoration tuple only on dirty republication
+when the completed child/proof expired. Keep the private cohort's full immutable
+renderer batch and all current source-generation checks. Do not raise cache caps
+or claim a runtime speedup from correcting conservative accounting alone.
+
+### History
+
+- 2026-11-15 source audit registered before implementation. Existing lazy/shared slot work is retained; probe churn/performance attribution remains unproved until runtime reasons and complete costs support it.
+
+
+## PPD-257 — Probe sky fixture omits the actual HDRI G-buffer marker
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-15
+- Original reference: Current HDRI G-buffer shader writes normal={0,0,0,1}; unchanged base-light sky transfer requires that family marker. The synthetic clear must reproduce it.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Set the synthetic normal attachment to the actual HDRI marker; retain exact tile/separate parity, both nonzero sky assertions and API/GPU validation. Rebuild and rerun the four targeted native scopes before costs.
+- Verification: Required49 da8c24dbca/69092 doctor/configure/build0; static/strict pass. Probe scope3/4cases and7560/7562assertions pass. Only nonzero sky red/blue fail; tile/separate equality passes because both correctly reject the fixture normal alpha0. Source review confirms actual HDRI alpha1 and unchanged shader marker condition. Later native/cost checks did not run.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before fixture correction. Source48 API abort repaired by source49; source49 failure is distinct fixture input. Retain both failed receipts; no product sky defect or successful cost claim.
