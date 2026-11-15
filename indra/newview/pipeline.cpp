@@ -443,6 +443,8 @@ void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
 
 }
 
+#include "pipeline_terrain_pass_capture_native.inl"
+
 struct LLPipeline::MetalWorldSimpleCapture
 {
     static constexpr U32 max_failed_frames = 120;
@@ -15734,7 +15736,8 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     F32 detail_scale, const F32* detail_phase, F32 tess_density,
     bool smoothing, bool triplanar, bool hex, F32 triplanar_blend,
     bool tessellation_pinned,
-    std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched)
+    std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched,
+    ALMetalWorldTerrainPassCapture* terrain_pass)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
@@ -15760,12 +15763,16 @@ void LLPipeline::captureMetalWorldTerrainBatch(
 
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
+    const bool reuse_terrain_pass=terrain_pass && terrain_pass->current(*region,false);
+    if(reuse_terrain_pass)terrain_pass->publication->install(batch);
     batch.terrain = true;
     capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
     batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
+    if(!reuse_terrain_pass)
+    {
     batch.texture_count = 4;
     for (U32 texture = 0; texture < batch.texture_count; ++texture)
     {
@@ -15881,6 +15888,8 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         }
     }
 
+    } // Immutable common surface/view inputs; geometry and factors stay per patch.
+
     const LLVector3& patch_origin = patch->getOriginRegion();
     const F32 patch_size = surface->getGridsPerPatchEdge() *
                            batch.terrain_grid_scale;
@@ -15944,6 +15953,15 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         batch.terrain_tessellation_factors[4 + inside] =
             ALWaterHeightBake::halfOf(inner[inside]);
     }
+    if(!reuse_terrain_pass && terrain_pass)
+    {
+        LLImageGL* images[6]{};
+        for(U32 i=0;i<4;++i)images[i]=detail_textures[i]?detail_textures[i]->getGLTexture():nullptr;
+        images[4]=alpha_ramp?alpha_ramp->getGLTexture():nullptr;
+        images[5]=parcel_overlay?parcel_overlay->getGLTexture():nullptr;
+        if(auto pass=ALMetalWorldTerrainPassCapture::seal(batch,maps,fetched.get(),images,6))
+        {pass->install(batch);terrain_pass->remember(*region,false,std::move(pass));}
+    }
 }
 
 void LLPipeline::captureMetalWorldPBRTerrainBatch(
@@ -15959,7 +15977,8 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
     U32 paint_type, S32 pbr_detail, F32 tess_density,
     bool smoothing, bool triplanar, bool hex, bool flat_normals,
     F32 triplanar_blend, bool tessellation_pinned,
-    std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched)
+    std::shared_ptr<const ALMetalTerrainFetchedBindings> fetched,
+    ALMetalWorldTerrainPassCapture* terrain_pass)
 try
 {
     if (!mMetalWorldSimpleCapture ||
@@ -16017,6 +16036,8 @@ try
     };
     ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
+    const bool reuse_terrain_pass=terrain_pass && terrain_pass->current(*region,true);
+    if(reuse_terrain_pass)terrain_pass->publication->install(batch);
     batch.terrain = true;
     batch.terrain_pbr = true;
     capture.retainGeometry(*buffer);
@@ -16024,6 +16045,8 @@ try
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
     batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
+    if(!reuse_terrain_pass)
+    {
     batch.texture_count = LLVLComposition::ASSET_COUNT;
     batch.pbr_slot_count = LLVLComposition::ASSET_COUNT;
     for (U32 material = 0; material < batch.texture_count; ++material)
@@ -16172,6 +16195,8 @@ try
         }
     }
 
+    } // Immutable common surface/view inputs; geometry and factors stay per patch.
+
     const LLVector3& patch_origin = patch->getOriginRegion();
     const F32 patch_size = surface->getGridsPerPatchEdge() *
                            batch.terrain_grid_scale;
@@ -16237,6 +16262,21 @@ try
     {
         batch.terrain_tessellation_factors[4 + inside] =
             ALWaterHeightBake::halfOf(inner[inside]);
+    }
+    if(!reuse_terrain_pass && terrain_pass)
+    {
+        LLImageGL* images[18]{};
+        for(U32 i=0;i<4;++i)
+        {
+            images[i]=base_color_textures[i]?base_color_textures[i]->getGLTexture():nullptr;
+            images[4+i]=normal_textures[i]?normal_textures[i]->getGLTexture():nullptr;
+            images[8+i]=orm_textures[i]?orm_textures[i]->getGLTexture():nullptr;
+            images[12+i]=emissive_textures[i]?emissive_textures[i]->getGLTexture():nullptr;
+        }
+        images[16]=blend_texture?blend_texture->getGLTexture():nullptr;
+        images[17]=parcel_overlay?parcel_overlay->getGLTexture():nullptr;
+        if(auto pass=ALMetalWorldTerrainPassCapture::seal(batch,maps,fetched.get(),images,18))
+        {pass->install(batch);terrain_pass->remember(*region,true,std::move(pass));}
     }
 }
 

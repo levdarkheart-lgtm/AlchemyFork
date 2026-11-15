@@ -1554,6 +1554,14 @@ struct ALMetalWorldFrameData::Impl
     std::vector<std::unique_ptr<Page>> available;
     std::unordered_multimap<std::uint64_t, Entry> entries;
     std::unordered_map<const ALMetalAttachmentPaletteRecord*, PaletteEntry> palettes;
+    struct TerrainEntry
+    {
+        std::weak_ptr<const ALMetalWorldTerrainPass> owner;
+        Entry range;
+        std::array<float,4> mirror;
+        bool reverse_z, normal_hdr;
+    };
+    std::unordered_map<const ALMetalWorldTerrainPass*, TerrainEntry> terrain_passes;
     ALMetalWorldFrameDataStats statistics;
     std::shared_ptr<const ALMetalShaderLibrary> builtin_library;
     std::uint64_t builtin_library_epoch = 0;
@@ -1622,6 +1630,7 @@ void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
     }
     mImpl->entries.clear();
     mImpl->palettes.clear();
+    mImpl->terrain_passes.clear();
     for (auto& page : mImpl->active)
         mImpl->retired.push_back(std::move(page));
     mImpl->active.clear();
@@ -1924,6 +1933,42 @@ bool ALMetalWorldFrameData::publishPaletteRecord(
     slice = {range.page->buffer.get(), range.offset, range.length};
     return true;
 }
+
+bool ALMetalWorldFrameData::publishTerrainPass(ALMetalCommandBuffer& command,
+    const std::shared_ptr<const ALMetalWorldTerrainPass>& pass,
+    const ALMetalWorldGBufferScene& scene, ALMetalWorldDataSlice& slice, std::string* error)
+try
+{
+    slice={};
+    if(!pass || command.isCommitted() || command.nativeDevice()!=mImpl->device->nativeHandle())
+    { setError(error,"Metal terrain pass publication is invalid");return false; }
+    const auto found=mImpl->terrain_passes.find(pass.get());
+    if(found!=mImpl->terrain_passes.end())
+    {
+        const auto& entry=found->second;
+        if(!entry.owner.owner_before(pass) && !pass.owner_before(entry.owner) &&
+            entry.reverse_z==scene.reverse_z && entry.normal_hdr==scene.normal_hdr &&
+            std::memcmp(entry.mirror.data(),scene.mirror_clip_plane,sizeof(scene.mirror_clip_plane))==0)
+        {
+            auto completion=command.completionToken();
+            if(!completion){setError(error,"Metal terrain pass requires a completion token");return false;}
+            auto& commands=entry.range.page->commands;
+            if(std::find(commands.begin(),commands.end(),completion)==commands.end())commands.push_back(std::move(completion));
+            slice={entry.range.page->buffer.get(),entry.range.offset,entry.range.length};
+            ++mImpl->statistics.terrain_reuses;return true;
+        }
+    }
+    std::array<std::byte,ALMetalWorldTerrainPass::constantByteSize()> bytes;
+    if(!pass->copyConstants(scene,bytes) || !publish(command,bytes.data(),bytes.size(),slice,error,false))return false;
+    // Non-deduplicated publication appends to this exact active page. The
+    // weak proof cannot retain a CPU packet or confuse a recycled identity.
+    Impl::TerrainEntry entry{pass,{mImpl->active.back().get(),slice.offset,slice.length},{},scene.reverse_z,scene.normal_hdr};
+    std::memcpy(entry.mirror.data(),scene.mirror_clip_plane,sizeof(scene.mirror_clip_plane));
+    mImpl->terrain_passes.insert_or_assign(pass.get(),std::move(entry));
+    ++mImpl->statistics.terrain_publications;mImpl->statistics.terrain_published_bytes+=slice.length;
+    return true;
+}
+catch(const std::bad_alloc&){slice={};if(error)error->clear();return false;}
 
 ALMetalWorldFrameDataStats ALMetalWorldFrameData::stats() const noexcept
 {
@@ -9285,6 +9330,101 @@ try
 }
 catch(const std::bad_alloc&){if(error)error->clear();return false;}
 
+struct ALMetalWorldTerrainPass::Impl
+{
+    struct Resources { std::vector<std::shared_ptr<const ALMetalTexture>> textures; };
+    ALMetalWorldSimpleBatch prototype;
+    WorldTerrainConstants constants;
+    std::shared_ptr<const Resources> resources;
+};
+ALMetalWorldTerrainPass::ALMetalWorldTerrainPass(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
+ALMetalWorldTerrainPass::~ALMetalWorldTerrainPass()=default;
+std::shared_ptr<const ALMetalWorldTerrainPass> ALMetalWorldTerrainPass::create(
+    const ALMetalWorldSimpleBatch& input,std::span<const std::shared_ptr<const ALMetalTexture>> textures,std::string* error)
+try
+{
+    static_assert(sizeof(WorldTerrainConstants)==constantByteSize());
+    if(!input.terrain){setError(error,"Metal terrain pass requires a terrain patch");return {};}
+    auto impl=std::make_unique<Impl>();impl->prototype=input;
+    auto& prototype=impl->prototype;prototype.terrain_pass.reset();
+    if(!prototype.freezeCpuSlots(error) || !alMetalValidateWorldBatch(ALMetalWorldGBufferScene{},prototype,error))return {};
+    // These generic owners have no terrain consumer. Keep only the exact
+    // selected texture generations below, never unrelated CPU source graphs.
+    prototype.impostor_texture_owner.reset();prototype.native_material_source.reset();prototype.native_resource_source.reset();
+    auto resources=std::make_shared<Impl::Resources>();
+    const auto retain=[&](const ALMetalTexture* raw)
+    {
+        if(!raw)return true;
+        for(const auto& held:resources->textures)if(held.get()==raw)return true;
+        const auto found=std::find_if(textures.begin(),textures.end(),[&](const auto& value){return value.get()==raw;});
+        if(found==textures.end() || !*found || !(*found)->nativeHandle())return false;
+        resources->textures.push_back(*found);return true;
+    };
+    bool owned=retain(prototype.terrain_height_texture) && retain(prototype.terrain_composition_texture) &&
+        retain(prototype.terrain_alpha_ramp_texture) && retain(prototype.terrain_paint_texture) && retain(prototype.terrain_parcel_overlay_texture);
+    for(std::size_t slot=0;owned && slot<prototype.texture_count;++slot)owned=retain(prototype.diffuse_textures[slot]);
+    for(std::size_t slot=0;owned && slot<prototype.pbr_slot_count;++slot)
+    {const auto& value=std::as_const(prototype).pbrSlots()[slot];owned=retain(value.normal_texture)&&retain(value.orm_texture)&&retain(value.emissive_texture);}
+    if(!owned){setError(error,"Metal terrain pass lacks an exact native texture lease");return {};}
+    impl->constants=buildWorldTerrainConstants(ALMetalWorldGBufferScene{},prototype);
+    impl->resources=std::move(resources);
+    // No idle geometry lease and no capture aggregate/CPU owner. The actual
+    // patch/native input owner remains responsible for its exact vertex data.
+    prototype.vertices=nullptr;prototype.indices=nullptr;prototype.vertex_count=prototype.index_count=0;
+    prototype.position_offset=prototype.index_offset=0;
+    prototype.terrain_texture_owner=impl->resources;
+    return std::shared_ptr<const ALMetalWorldTerrainPass>(new ALMetalWorldTerrainPass(std::move(impl)));
+}
+catch(const std::bad_alloc&){if(error)error->clear();return {};}
+
+void ALMetalWorldTerrainPass::install(ALMetalWorldSimpleBatch& patch) const
+{
+    const auto* vertices=patch.vertices;const auto* indices=patch.indices;
+    const auto position=patch.position_offset,index_offset=patch.index_offset;
+    const auto vertex_count=patch.vertex_count,index_count=patch.index_count;const auto index_type=patch.index_type;
+    std::array<std::uint16_t,6> factors;std::copy_n(patch.terrain_tessellation_factors,6,factors.begin());
+    patch=mImpl->prototype;patch.terrain_pass=shared_from_this();
+    patch.vertices=vertices;patch.indices=indices;patch.position_offset=position;patch.index_offset=index_offset;
+    patch.vertex_count=vertex_count;patch.index_count=index_count;patch.index_type=index_type;
+    std::copy_n(factors.begin(),6,patch.terrain_tessellation_factors);
+}
+
+bool ALMetalWorldTerrainPass::matches(const ALMetalWorldSimpleBatch& batch) const noexcept
+{
+    const auto& p=mImpl->prototype;
+    const auto equal=[](const auto& a,const auto& b){return std::memcmp(&a,&b,sizeof(a))==0;};
+    return batch.terrain && batch.terrain_pbr==p.terrain_pbr && batch.texture_count==p.texture_count &&
+        batch.material_slot_count==0 && batch.pbr_slot_count==p.pbr_slot_count &&
+        batch.mPBRStorage.sealed==p.mPBRStorage.sealed &&
+        equal(batch.modelview_projection,p.modelview_projection) && equal(batch.terrain_modelview,p.terrain_modelview) &&
+        equal(batch.normal_matrix,p.normal_matrix) && equal(batch.diffuse_textures,p.diffuse_textures) &&
+        batch.terrain_height_texture==p.terrain_height_texture && batch.terrain_composition_texture==p.terrain_composition_texture &&
+        batch.terrain_alpha_ramp_texture==p.terrain_alpha_ramp_texture && batch.terrain_paint_texture==p.terrain_paint_texture &&
+        batch.terrain_parcel_overlay_texture==p.terrain_parcel_overlay_texture &&
+        equal(batch.terrain_diffuse_srgb,p.terrain_diffuse_srgb) && equal(batch.terrain_emissive_srgb,p.terrain_emissive_srgb) &&
+        batch.terrain_blend_wrap==p.terrain_blend_wrap && batch.terrain_overlay_wrap==p.terrain_overlay_wrap &&
+        batch.terrain_overlay_srgb==p.terrain_overlay_srgb && batch.alpha_mask==p.alpha_mask &&
+        equal(batch.terrain_grid_scale,p.terrain_grid_scale) && equal(batch.terrain_region_scale,p.terrain_region_scale) &&
+        equal(batch.terrain_detail_scale,p.terrain_detail_scale) && equal(batch.terrain_detail_phase,p.terrain_detail_phase) &&
+        equal(batch.terrain_triplanar_blend,p.terrain_triplanar_blend) &&
+        batch.terrain_smoothing==p.terrain_smoothing && batch.terrain_triplanar==p.terrain_triplanar &&
+        batch.terrain_hex==p.terrain_hex && batch.terrain_flat_normals==p.terrain_flat_normals &&
+        batch.terrain_pbr_detail==p.terrain_pbr_detail && batch.terrain_paint_type==p.terrain_paint_type &&
+        batch.terrain_tessellation_pinned==p.terrain_tessellation_pinned &&
+        equal(batch.terrain_uv_transform,p.terrain_uv_transform) && equal(batch.terrain_uv_offset,p.terrain_uv_offset) &&
+        equal(batch.terrain_normal_axes,p.terrain_normal_axes) && equal(batch.terrain_hex_base,p.terrain_hex_base) &&
+        equal(batch.terrain_hex_fraction,p.terrain_hex_fraction);
+}
+std::shared_ptr<const void> ALMetalWorldTerrainPass::resourceLease() const noexcept{return mImpl->resources;}
+bool ALMetalWorldTerrainPass::copyConstants(const ALMetalWorldGBufferScene& scene,std::span<std::byte> output) const noexcept
+{
+    if(output.size()!=sizeof(WorldTerrainConstants) || !finiteValues(scene.mirror_clip_plane,4))return false;
+    auto constants=mImpl->constants;
+    std::memcpy(constants.mirror_clip_plane,scene.mirror_clip_plane,sizeof(constants.mirror_clip_plane));
+    constants.config[0]=scene.reverse_z;constants.config[3]=scene.normal_hdr;
+    std::memcpy(output.data(),&constants,sizeof(constants));return true;
+}
+
 struct ALMetalWorldMaterialSource::Impl
 {
     std::shared_ptr<const ALMetalWorldSimpleBatch::MaterialSlots> material_slots;
@@ -9388,7 +9528,7 @@ bool compactWorldSourceSupported(const ALMetalWorldSimpleBatch& batch) noexcept
         batch.skin_palette_float_count == 0 && batch.skin_joint_count == 0 &&
         batch.weight_offset == 0 && batch.cloth_offset == 0 &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth &&
-        !batch.avatar_alpha && !batch.terrain && !batch.impostor &&
+        !batch.avatar_alpha && !batch.terrain && !batch.terrain_pass && !batch.impostor &&
         !batch.impostor_debug_outline && !batch.impostor_fullbright &&
         !batch.impostor_shiny && !batch.impostor_emboss &&
         !batch.water_exclusion && !batch.water_haze && !batch.water_surface &&
@@ -9987,7 +10127,16 @@ bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_
         return true;
     };
     if (batch.impostor) return copy(record.offset, buildWorldImpostorConstants(scene, batch));
-    if (batch.terrain) return copy(record.offset, buildWorldTerrainConstants(scene, batch));
+    if (batch.terrain)
+    {
+        if(batch.terrain_pass && batch.terrain_pass->matches(batch))
+        {
+            if(!record.length)return true; // A private layout alias has one earlier owner/writer.
+            return record.offset<=bytes.size() && sizeof(WorldTerrainConstants)<=bytes.size()-record.offset &&
+                batch.terrain_pass->copyConstants(scene,bytes.subspan(record.offset,sizeof(WorldTerrainConstants)));
+        }
+        return copy(record.offset,buildWorldTerrainConstants(scene,batch));
+    }
     record.avatar = batch.avatar_rigid || batch.avatar_skinning;
     record.rigged = batch.skin_palette != nullptr && !record.avatar;
     record.bump = batch.normal_texture != nullptr;
@@ -10836,6 +10985,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
 
     ALMetalWorldDrawCursor draw_cursor(scene);
     std::size_t terrain_factor_index=0;
+    std::shared_ptr<const void> previous_terrain_texture_owner;
+    std::uint64_t terrain_source_draws=0,terrain_source_fallback_draws=0;
     std::uint64_t cohort_draws=0;
     for (std::size_t index = 0; encoded && index < draw_count; ++index,draw_cursor.advance())
     {
@@ -10970,17 +11121,29 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         if (batch.terrain)
         {
-            if (batch.terrain_texture_owner &&
-                !command->retainUntilCompletion(batch.terrain_texture_owner, error))
+            const bool shared_terrain=batch.terrain_pass && batch.terrain_pass->matches(batch);
+            // The matched private record supplies its own exact native tuple;
+            // a replaceable public batch owner cannot weaken this lifetime.
+            const auto terrain_owner=shared_terrain ? batch.terrain_pass->resourceLease() : batch.terrain_texture_owner;
+            if(terrain_owner && (terrain_owner.get()!=previous_terrain_texture_owner.get() ||
+                terrain_owner.owner_before(previous_terrain_texture_owner) || previous_terrain_texture_owner.owner_before(terrain_owner)))
             {
-                encoded = false;
-                break;
+                if(!command->retainUntilCompletion(terrain_owner,error)){encoded=false;break;}
+                previous_terrain_texture_owner=terrain_owner;
             }
             std::optional<WorldTerrainConstants> owned_constants;
-            if (!prepared) owned_constants = buildWorldTerrainConstants(scene, batch);
+            ALMetalWorldDataSlice terrain_slice;
+            bool terrain_published=false;
+            if(!prepared && shared_terrain && mImpl->frame_data)
+                terrain_published=mImpl->frame_data->publishTerrainPass(*command,batch.terrain_pass,scene,terrain_slice,error);
+            if(!prepared && !terrain_published)
+            {
+                if(error)error->clear(); // Optional cache failure retains ordinary required publication.
+                owned_constants=buildWorldTerrainConstants(scene,batch);
+            }
             const void* constants_data = prepared
                 ? prepared_constants.data() + prepared_records[index].offset
-                : static_cast<const void*>(&*owned_constants);
+                : terrain_published ? nullptr : static_cast<const void*>(&*owned_constants);
             const auto& terrain_pipelines = batch.terrain_pbr
                 ? mImpl->pbr_terrain_pipelines
                 : mImpl->terrain_pipelines;
@@ -10995,6 +11158,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
                 (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldTerrainConstants), 4, 0)
+                    : terrain_published ? encoder->setVertexBuffer(4,*terrain_slice.buffer,terrain_slice.offset,error) &&
+                        encoder->setFragmentBuffer(0,*terrain_slice.buffer,terrain_slice.offset,error)
                     : mImpl->setVertexAndFragmentData(*encoder, *command,
                         4, 0, constants_data, sizeof(WorldTerrainConstants), error)) &&
                 encoder->setVertexTexture(
@@ -11079,6 +11244,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     terrain_factor_index++ * sizeof(batch.terrain_tessellation_factors),
                     0, error) &&
                 encoder->drawPatches(4, 0, 1, 1, 0, error);
+            if(encoded && batch.terrain_pass)
+            {
+                if(shared_terrain && (prepared || terrain_published))++terrain_source_draws;
+                else ++terrain_source_fallback_draws;
+            }
             continue;
         }
         if (!current_cohort && source_bank_cursor < source_banks.size() && source_banks[source_bank_cursor].first == index)
@@ -11464,6 +11634,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     if (visibility_results)
     {
         *visibility_results = std::move(query_results);
+    }
+    if(mImpl->frame_data)
+    {
+        mImpl->frame_data->mImpl->statistics.terrain_source_draws+=terrain_source_draws;
+        mImpl->frame_data->mImpl->statistics.terrain_source_fallback_draws+=terrain_source_fallback_draws;
     }
     mImpl->constant_stats.bindings += constant_stats.bindings;
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;

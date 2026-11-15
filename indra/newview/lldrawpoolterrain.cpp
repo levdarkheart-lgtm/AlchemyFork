@@ -46,6 +46,10 @@
 #include "llviewertexturelist.h" // To get alpha gradients
 #include "llworld.h"
 #include "pipeline.h"
+#if LL_DARWIN
+#include "../almetal/almetalworld.h"
+#include "pipeline_terrain_pass_capture_native.inl"
+#endif
 #include "llviewershadermgr.h"
 #include "llrender.h"
 #include "llenvironment.h"
@@ -508,13 +512,14 @@ void LLDrawPoolTerrain::captureMetalReflectionProbe()
         };
         const auto fetched = resolve_terrain_inputs(
             detail_textures, m2DAlphaRampImagep.get(), parcel_overlay);
+        ALMetalWorldTerrainPassCapture terrain_pass;
         for (LLFace* face : mDrawFace)
         {
             gPipeline.captureMetalWorldTerrainBatch(
                 face, detail_textures, m2DAlphaRampImagep.get(),
                 parcel_overlay, sDetailScale, phase, levels.mDensity,
                 smoothing, triplanar, hex, triplanar_blend,
-                tessellation_pinned, fetched);
+                tessellation_pinned, fetched, &terrain_pass);
         }
         gPipeline.endMetalWorldGBufferPass();
         return;
@@ -613,6 +618,7 @@ void LLDrawPoolTerrain::captureMetalReflectionProbe()
         base_color_textures, blend_texture, parcel_overlay,
         normal_textures, orm_textures, emissive_textures,
         gPipeline.shaderInputs().mGlobal.mTerrainPBRDetail);
+    ALMetalWorldTerrainPassCapture terrain_pass;
     for (LLFace* face : mDrawFace)
     {
         gPipeline.captureMetalWorldPBRTerrainBatch(
@@ -624,7 +630,7 @@ void LLDrawPoolTerrain::captureMetalReflectionProbe()
             gPipeline.shaderInputs().mGlobal.mTerrainPBRDetail,
             levels.mDensity, smoothing, triplanar, hex,
             gPipeline.shaderInputs().mLocal.mTerrainPBRNormals,
-            triplanar_blend, tessellation_pinned, fetched);
+            triplanar_blend, tessellation_pinned, fetched, &terrain_pass);
     }
     gPipeline.endMetalWorldGBufferPass();
 #endif
@@ -748,6 +754,7 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
     const TessLevels levels = tess_levels();
     static LLCachedControl<F32> triplanar_blend(
         gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
+    ALMetalWorldTerrainPassCapture terrain_pass;
     for (LLFace* facep : mDrawFace)
     {
         llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
@@ -760,7 +767,7 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
             gPipeline.shaderInputs().mGlobal.mTerrainPlanarSampleCount == 3,
             gPipeline.shaderInputs().mGlobal.mTerrainHexTiling,
             triplanar_blend,
-            gPipeline.shaderInputs().mLocal.mTerrainTessPinned, fetched);
+            gPipeline.shaderInputs().mLocal.mTerrainTessPinned, fetched, &terrain_pass);
         facep->renderIndexed(LLRender::PATCHES);
     }
     gPipeline.endMetalWorldGBufferPass();
@@ -1070,6 +1077,7 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
         base_color_textures, blend_texture, parcel_overlay,
         normal_textures, orm_textures, emissive_textures, sPBRDetailMode);
     gPipeline.beginMetalWorldTerrainPass();
+    ALMetalWorldTerrainPassCapture terrain_pass;
     for (LLFace* facep : mDrawFace)
     {
         llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
@@ -1087,7 +1095,7 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
             gPipeline.shaderInputs().mGlobal.mTerrainHexTiling,
             gPipeline.shaderInputs().mLocal.mTerrainPBRNormals,
             triplanar_blend,
-            gPipeline.shaderInputs().mLocal.mTerrainTessPinned, fetched);
+            gPipeline.shaderInputs().mLocal.mTerrainTessPinned, fetched, &terrain_pass);
         facep->renderIndexed(LLRender::PATCHES);
     }
     gPipeline.endMetalWorldGBufferPass();

@@ -376,3 +376,6 @@ TEST_CASE("almetal: complete prepared world path cost matrix", "[almetal][.world
         }
     }
 }
+
+#include "almetal_terrain_pass_publication_test.inl"
+#include "almetal_world_owned_preparation_cost_test.inl"

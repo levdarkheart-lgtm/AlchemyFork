@@ -41,7 +41,7 @@ There is no demonstrated overall viewer FPS improvement yet.
 4. **Doing:** terrain pass sharing (PPD261), in a separate worktree. Seal common
    surface/material inputs once and preserve each patch's geometry, camera-based
    tessellation and query order. Production implementation and native parity,
-   resource-lifetime and complete-path cost fixtures are underway.
+   resource-lifetime and complete-path cost fixtures are integrated and independently reviewed; execution is next.
 5. **Remaining:** useful CPU/GPU preparation and visibility, specialized source
    gaps, admission/churn integration, then the combined owner evaluation above.
    No supported percentage-complete or delivery ETA is available.

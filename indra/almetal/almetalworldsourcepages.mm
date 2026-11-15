@@ -155,7 +155,7 @@ bool captureInput(const ALMetalWorldSourceRequest& request,const ALMetalWorldSou
     if(!resources)resources=source.native_resource_source;
     const bool pbr=source.pbr_slot_count!=0,material=source.material_slot_count!=0;
     if(pbr==material||source.normal_texture||source.skin_palette_record||source.skin_palette||source.skin_joint_count||source.weight_offset||
-       source.avatar_rigid||source.avatar_skinning||source.avatar_cloth||source.terrain||source.impostor||
+       source.avatar_rigid||source.avatar_skinning||source.avatar_cloth||source.terrain||source.terrain_pass||source.impostor||
        !source.native_material_source||!source.native_material_source->matches(source)||
        !resources||!resources->matches(source)||
        (request.native.vertices&&request.native.vertices.get()!=source.vertices)||

@@ -1763,3 +1763,34 @@ currentproduction bothadopts, so fair ownedcostfixture next beforeworkerpolicy.
 Bankrange-splitting suspicion was disproved bysource10638existingadjacentmerge;
 no productionfix/defect claimed. Terrain261 author ownsrenderer/prepared files;
 rootreservespipeline/.h/CMake integration. Next264, no viewerlaunch/profile/push.
+
+
+Required52 ceb989d223/69096 doctor/configure/build0(build30.976s),static/strictPASS.
+Fixture-onlyproductiondiffempty; priornativecorrectness reusedexplicitly. Original
+smallcost73578/1 andnewexpiredcost43532/1PASS. New672raw/48summaryrows show336
+actualtupleexpansions and336liveproofreuses across measuredconditions, no tuple
+rebuilds,144admittedcompiles percondition/zerodenials, exactnativebuffersreused.
+Forcedexpired12pairsCPUallworse median+6.45%,+0.833..6.209us; completion5/12wins,
+median+1.13%. Liveproof12pairsCPUallworse median+9.06%,+2.730..8.896us; completion
+4/12wins,median+0.75%. Syntheticwithdrawal vsraw, not old/newtuplecausalcomparison.
+PPD262frontiernowcovered; do not claimuniversalCPUgainfromcompactmetadata.
+
+Integrated261terrainproducerhelper/nativecommonrecords, preparedaliases,
+originalperpatchgeometry/factors retained. Original1eb44 terrainpool bindscommon
+material/transform/maps beforedrawLoop; newpassownership follows thatboundary.
+264exactnativelease and265staticqualifier/unusedownercleanup included. Native
+fixture6normalcases+completecostpeerPASS; rootactualcontext2cases coveractual
+namespacehelper withtypedregion/camera/maps frontiers, not fullLLpool traversal.
+Preparedcost263 threeownedarms+forcedcreditdenial integratedfromfrozen0adce681
+peerPASS, no productionworkeractivation. Rootpipelinepatch/PPD265guards reviewed;
+next53required/fullnative+terrain/palette/probe/owned-prep/expirycohortcosts.
+Allpreviousapps/captures retained; no viewerlaunch/profile/push. Next266.
+
+
+53pre-build peer: architecture independent sevenproductionfiles+exactpipelinepatch
+PASS; residencyownedcost263PASS; opaque independentterrain6casefixturePASS.
+Rootindependentactualcontext2cases reviewed and strengthened validR32missinglease
+case (not merelywrongformat); all perpatchoriginalsourcepreflight/range/factors
+remainactualcode. No successclaimbeforeexecution. Fullnormalnative scope set
+rerun aftersharedworld/FrameData/sourcequalification changes; allcostssequential
+withvalidationlayersdisabledandno activeviewer/recorder.

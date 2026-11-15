@@ -297,6 +297,7 @@ struct ALMetalWorldPreparation::Impl
     std::atomic<bool> invalid{false};
     std::size_t jobs = 1;
     bool compacted = false;
+    std::vector<std::size_t> terrain_owners;
     std::shared_ptr<const ALMetalPreparedWorldView> result;
 
     bool stale() const noexcept
@@ -331,9 +332,9 @@ struct ALMetalWorldPreparation::Impl
             next += length;
             return true;
         };
-        for (auto& record : prepared->records)
+        for (std::size_t index=0;index<prepared->records.size();++index)
         {
-            const auto old = record;
+            auto& record=prepared->records[index];const auto old=record;
             if (record.family == ALMetalWorldPreparedRecord::Family::simple)
             {
                 if (old.length != common_bytes || !fits(old.offset, common_bytes)) return false;
@@ -350,6 +351,15 @@ struct ALMetalWorldPreparation::Impl
                     previous_common_offset = record.offset;
                     have_previous_common = true;
                 }
+            }
+            else if(record.family==ALMetalWorldPreparedRecord::Family::terrain && !old.length)
+            {
+                // Aliases have one earlier writer. Remap to its already moved
+                // range after every worker has joined; never copy/write twice.
+                const auto owner=terrain_owners[index];
+                if(owner>=index || prepared->records[owner].family!=ALMetalWorldPreparedRecord::Family::terrain ||
+                    !prepared->records[owner].length)return false;
+                record.offset=prepared->records[owner].offset;++shared;
             }
             else if (!move(old.offset, old.length, record.offset)) return false;
             // Material tables keep their original per-record semantics/order.
@@ -393,11 +403,29 @@ try
     impl->prepared->records.resize(count);
     std::size_t bytes = 0;
     ALMetalWorldDrawCursor cursor(scene);
+    std::unordered_map<const ALMetalWorldTerrainPass*,std::size_t> terrain_owners;
+    impl->terrain_owners.resize(count);
+    std::size_t shared_terrain_bytes=0;
     for (std::size_t index = 0; index < count; ++index,cursor.advance())
-        if (!alMetalLayoutWorldRecord(cursor.draw().source(), bytes, impl->prepared->records[index], error)) return {};
+    {
+        const auto& batch=cursor.draw().source();auto& record=impl->prepared->records[index];
+        impl->terrain_owners[index]=index;
+        if(batch.terrain && batch.terrain_pass && batch.terrain_pass->matches(batch))
+        {
+            const auto [found,first]=terrain_owners.emplace(batch.terrain_pass.get(),index);
+            if(!first)
+            {
+                record.family=ALMetalWorldPreparedRecord::Family::terrain;
+                record.offset=impl->prepared->records[found->second].offset;record.length=0;
+                impl->terrain_owners[index]=found->second;
+                shared_terrain_bytes+=ALMetalWorldTerrainPass::constantByteSize();continue;
+            }
+        }
+        if (!alMetalLayoutWorldRecord(batch, bytes, record, error)) return {};
+    }
     impl->prepared->constants.resize(bytes);
     impl->prepared->statistics = {count, 0, bytes, impl->jobs, false};
-    impl->prepared->statistics.uncompacted_constant_bytes = bytes;
+    impl->prepared->statistics.uncompacted_constant_bytes = bytes+shared_terrain_bytes;
     return std::shared_ptr<ALMetalWorldPreparation>(new ALMetalWorldPreparation(std::move(impl)));
 }
 catch (const std::bad_alloc&)

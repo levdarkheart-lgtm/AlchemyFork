@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-264 -->
+<!-- next-defect-id: PPD-266 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6296,3 +6296,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before new fair cost fixture. This is a measurement-frontier limitation, not a demonstrated worker speedup or a viewer rendering defect. No automatic world-worker activation is authorized by source inspection alone.
+
+
+## PPD-264 — New matched terrain path relies on a replaceable batch resource owner
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / terrain publication author
+- Discovered: 2026-11-15
+- Original reference: A matched immutable terrain publication proves exact texture generations; the encoded command must retain that publication's native-only resource lease independently of public mutable batch owner fields.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Matched terrain encoding retains terrain_pass.resourceLease independently; unmatched/raw retains existing owner behavior. Add pending-command coverage where the public owner is reset/replaced and CPU inputs retire.
+- Verification: Author pre-freeze review finds new terrain path still retains only batch.terrain_texture_owner, which public callers can replace without changing matched static fields. No affected build/runtime execution; no viewer failure claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow new-feature ownership repair. Preserve independent native completion retirement; do not retain the CPU pass record or viewer region to hide this gap.
+
+
+## PPD-265 — Static source qualification omits the new terrain-pass owner field
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / terrain publication author
+- Discovered: 2026-11-15
+- Original reference: Static cohort/page/group certificates exclude terrain and attachment owner fields so cached static records cannot retain unrelated resource graphs. The new shared terrain-pass field must obey the same contract.
+- Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
+- Next action: Reject nonnull terrain_pass in static cohort/page/group qualification, independent of the terrain flag or replaceable terrain_texture_owner. Add an otherwise-qualified material certificate negative case and retain normal terrain behavior.
+- Verification: Source261 adds shared_ptr terrain_pass to every batch. Existing static cohort/page/group gates reject terrain flags and old owner fields but not the new field. A public otherwise-static batch can carry this unrelated native-resource owner into retained static metadata. No affected execution or viewer regression observed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow qualification repair. Primary terrain batches are already excluded by their terrain flag; the uncovered public-field combination remains a source-contract defect, not a measured memory or FPS attribution.

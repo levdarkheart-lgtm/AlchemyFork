@@ -356,7 +356,7 @@ inline bool cpuOnlySimple(const ALMetalWorldSimpleBatch& batch) noexcept
     // the complete public owning fields of ALMetalWorldSimpleBatch; material
     // and special-pass prototypes are deliberately outside this static slice.
     return !batch.native_material_source && !batch.native_resource_source &&
-        !batch.impostor_texture_owner && !batch.terrain_texture_owner &&
+        !batch.impostor_texture_owner && !batch.terrain_pass && !batch.terrain_texture_owner &&
         !batch.material_slot_count && !batch.pbr_slot_count && !batch.normal_texture &&
         !batch.skin_palette_record && !batch.skin_palette && !batch.skin_palette_float_count && !batch.skin_joint_count &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth && !batch.avatar_alpha &&
@@ -626,7 +626,7 @@ inline bool ordinaryMaterial(const ALMetalWorldSimpleBatch& batch) noexcept
         ((batch.material_slot_count != 0) != (batch.pbr_slot_count != 0)) &&
         !batch.normal_texture && !batch.skin_palette_record && !batch.skin_palette && !batch.skin_joint_count && !batch.skin_palette_float_count &&
         !batch.avatar_rigid && !batch.avatar_skinning && !batch.avatar_cloth && !batch.avatar_alpha &&
-        !batch.terrain && !batch.impostor && !batch.impostor_texture_owner && !batch.terrain_texture_owner &&
+        !batch.terrain && !batch.impostor && !batch.impostor_texture_owner && !batch.terrain_pass && !batch.terrain_texture_owner &&
         !batch.impostor_fullbright && !batch.impostor_shiny && !batch.impostor_emboss &&
         !batch.water_exclusion && !batch.water_haze && !batch.water_surface && !batch.atmospheric_haze &&
         !batch.pre_water_alpha && !batch.post_water_alpha && !batch.post_water_depth_only &&

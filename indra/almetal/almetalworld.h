@@ -39,6 +39,7 @@ class ALMetalPreparedWorldView;
 class ALMetalWorldVisibilityView;
 class ALMetalWorldMaterialSource;
 class ALMetalWorldMaterialDataCache;
+class ALMetalWorldTerrainPass;
 
 // Ordinary probe scratch/filter output and manager publication must agree on
 // storage: the publication blit copies bytes and does not convert formats.
@@ -476,6 +477,7 @@ struct ALMetalWorldSimpleBatch
     using PBRSlots = std::array<ALMetalWorldPBRSlot, max_material_slots>;
 
 private:
+    friend class ALMetalWorldTerrainPass;
     template<class Slots>
     struct SlotStorage
     {
@@ -585,6 +587,9 @@ public:
 
     // Valid only with this batch's private sealed table identity and matching
     // scalar modes/counts. Manual or mutated batches retain ordinary packing.
+    // Optional immutable terrain common inputs. Install through the factory;
+    // changed common fields select the ordinary validated native path.
+    std::shared_ptr<const ALMetalWorldTerrainPass> terrain_pass;
     std::shared_ptr<const ALMetalWorldMaterialSource> native_material_source;
     std::shared_ptr<const ALMetalWorldResourceSource> native_resource_source;
 
@@ -2582,6 +2587,34 @@ struct ALMetalWorldDataSlice
     std::size_t length = 0;
 };
 
+// One completed terrain surface/pass snapshot, including the exact CPU view
+// matrices. It owns sealed authored slots and exact typed native texture
+// generations; no viewer/region pointer or patch geometry owner is retained.
+// Patch geometry/ranges and six tessellation factors remain ordinary per-draw
+// inputs. Commands retain resourceLease(), never this CPU record.
+class ALMetalWorldTerrainPass final : public std::enable_shared_from_this<ALMetalWorldTerrainPass>
+{
+public:
+    static std::shared_ptr<const ALMetalWorldTerrainPass> create(
+        const ALMetalWorldSimpleBatch& completed_patch,
+        std::span<const std::shared_ptr<const ALMetalTexture>> textures,
+        std::string* error = nullptr);
+    ~ALMetalWorldTerrainPass();
+    // Copy sealed common values while preserving this patch's geometry and
+    // factors. The caller owns this record through capture/jobs/encoding.
+    void install(ALMetalWorldSimpleBatch& patch) const;
+    bool matches(const ALMetalWorldSimpleBatch& patch) const noexcept;
+    std::shared_ptr<const void> resourceLease() const noexcept;
+    static constexpr std::size_t constantByteSize() noexcept { return 896; }
+    // Exact existing shader ABI; scene-only flags/clip are overlaid once per
+    // native view. This performs no native publication or resource mutation.
+    bool copyConstants(const ALMetalWorldGBufferScene&, std::span<std::byte>) const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldTerrainPass(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
+};
+
 struct ALMetalWorldFrameDataStats
 {
     std::uint64_t published_bytes = 0;
@@ -2590,6 +2623,9 @@ struct ALMetalWorldFrameDataStats
     std::uint64_t pages_reused = 0;
     std::uint64_t record_publications = 0;
     std::uint64_t record_reuses = 0;
+    std::uint64_t terrain_publications = 0, terrain_reuses = 0;
+    std::uint64_t terrain_published_bytes = 0;
+    std::uint64_t terrain_source_draws = 0, terrain_source_fallback_draws = 0;
     std::size_t retired_pages = 0;
 };
 
@@ -2627,6 +2663,10 @@ public:
         const ALMetalAttachmentPaletteRecord* palette,
         ALMetalWorldDataSlice& slice, std::string* error = nullptr,
         bool deduplicate_new = false);
+    bool publishTerrainPass(ALMetalCommandBuffer& command,
+        const std::shared_ptr<const ALMetalWorldTerrainPass>& pass,
+        const ALMetalWorldGBufferScene& scene, ALMetalWorldDataSlice& slice,
+        std::string* error = nullptr);
     ALMetalWorldFrameDataStats stats() const noexcept;
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);
