@@ -1,120 +1,49 @@
 # Apple-first architecture implementation status
 
-Updated 2026-11-15 (active integration). The original whole-engine goal is **active and incomplete**.
-Detailed source and evidence remain in the [execution ledger](apple-first-direct-cohorts-20261114.md).
+Updated 2026-11-15. The original whole-engine goal is **active and incomplete**.
+Source and exact commands/receipts are retained in the [execution ledger](apple-first-direct-cohorts-20261114.md).
 
-Latest built source: **21676f507d / 26.4.0.69111**. Required doctor,
-configure/build(804.100s), static and strict source checks pass. All28existing
-source60renderer scopes remain passed;61actual publisher21713/77 and repaired
-CPUvisibility1780/4 pass. New48condition CPUvisibility cost3674320/1 passes.
+Latest built source: **7308c43db9 / 26.4.0.69113**. Doctor, configure/build,
+ARM64/signature/native-import verification and strict source audit pass. No new
+viewer launch, login, live profile or push has occurred. Existing owner apps and
+separately staged69102 remain unchanged. There is **no established whole-viewer
+FPS improvement**.
 
-Native texture-maintenance and allold texture-generation/mip checks now pass62:
-843assertions/18cases, includingallthree actual GPU admission/completion cases.
-The earlier61fixture-overload failure(PPD283) remains recorded.
-
-Next62contains affine support intervals to reduce measured all-visible CPU cost
-(PPD284), with independent CPU corner/rounded-arithmetic oracle. The body-palette
-bridge(PPD282) is source-complete and peer-reviewed separately; root's actual
-capture integration is in progress, not yet built.
-A separate combined checkpoint is staged and statically verified locally at
-`artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-checkpoint-69102`
-in the canonical workspace. Its launcher uses the same primary choices as owner69085. The existing69085/69065 apps remain unchanged.
-No new viewer launch/login/live profile or push has occurred. There is **no
-established whole-viewer FPS improvement**. The older69085 five-minute14FPS
-recording is not a controlled before/after result.
-
-| Boundary | Implemented and checked | Still required |
+| Boundary | Implemented and checked | Remaining |
 |---|---|---|
-| Shared scene and resources | Producer generations, immutable material/resource tuples, dirty subscriptions, retained static groups, compact restoration and native leases. | Same-frame reproduction distinguishes CPU metadata expiry from retained native resources; add exact capacity/miss reasons before choosing a remedy. Finish specialized sharing gaps while keeping per-view transforms/order/culling current. |
-| Animated data | Attachment identity shared through main/probe GBuffer and forward passes; pose ownership/parity/queued-reader lifetime checked. Equal-byte upload amplification removed. | Keep view-dependent system-body composition; qualify any additional animated visibility conservatively. Whole-engine benefit remains unproved. |
-| Useful CPU preparation | Owned immutable packets, bounded shared credits and joined shadow work. New producer-derived scalar recipes avoid repeated400B assembly/comparison and fixed flag lookup. | World-worker tickets remain disabled: fair owned-input comparisons still regress complete time. Continue useful producer work rather than enabling idle worker infrastructure. |
-| Visibility and native submission | Direct retained-group submission and scalar recipes work for small groups. Native bounds, GPU frustum and command-bank experiments are implemented. | Published CPU visibility is integrated for verification, default OFF: reject qualified static bounds before bindings, preserve queries and unknown draws. Native parity and complete cold/warm/churn costs pending. GPU visibility/banks remain disabled after mixed/worse results. |
-| Unified memory and admission | Decode/upload/frame admission, native COW generations, CPU reclaim and native-only command-completion leases. | Native capacity/age/touch reasons are now logged and unit-checked; source reuse reproduction passes. Texture reduction copies now enter the shared coordinator, verification pending. Cache policy remedy still needed; no blind cap increases. |
-| Terrain | Shared pass-common material/surface inputs, one native constant publication per view, prepared aliases and independent texture leases. Exact output/depth/query/lifetime checks pass. | Caller now selects sharing at>=16patches in allfourmain/probe paths; owner runtime confirmation and complete LL pool performance remain open. |
-| Probe lighting | Eligible unblurred light map and base lighting share one tile-memory pass; sky/HDR/shadow/reverse-Z/depth/older-library behavior checked. Empty local/projector owners avoid empty work. | Whole-engine evaluation. No cadence or face-multiplicity regression was found againstG1. |
-| Combined product | New checked build includes all accepted work above with exact source/evidence. | Finish remaining architecture boundaries and staged verification, then owner feature/stability/whole-frame performance evaluation. Full release gates remain partial. |
+| Shared scene/resources | Producer generations, immutable geometry/material tuples, dirty subscriptions, retained static groups, compact restoration, exact native leases and cache-reason counters. Same-frame lifetime reproduction passes. | Integrate retained animated GPU records; owner runtime evaluation. |
+| CPU preparation | Owned immutable inputs, shared admission credits, useful joined shadow work and producer-derived scalar recipes. | World workers remain disabled after measured completion regressions. Integrate the service-adjusted admission fairness repair needed by unsorted animated callers. |
+| Animated ownership | Attachment palettes shared across views; system-body view composition now publishes immutable records instead of raw capture plus adoption copies. Actual publisher22267 assertions/78 cases passes. | One new body-shadow reference fixture used invalid coverage; test-only repair pending65. Do not reuse view-dependent body matrices across cameras. |
+| Persistent visibility/submission | Retained direct groups/scalar recipes, static bounds and native GPU experiments exist. CPU support intervals pass GPU parity and independent boundary/rounding controls. | Required G4 rigged/masked GPU records are authored and undergoing final source review, not yet integrated or built. Late pose/view inputs and conservative current-pose visibility must pass correctness and complete costs. |
+| Unified memory/admission | Frame-wide CPU/native admission, decode/upload coordination, native COW generations, CPU reclaim and command-completion retirement; maintenance843 assertions/18 cases passes. Native and CPU cache caps remain distinct. | Animated bank expiry, exact view leases and CPU/GPU compilation admission must pass integrated tests. No blind cap increase. |
+| Terrain/probe lighting | Terrain pass-common publication selected at measured16-patch threshold; eligible probe/base lighting fusion and empty local/projector avoidance pass contained checks. | Owner whole-viewer feature/stability/performance evaluation. |
+| Combined viewer | Earlier69102 checkpoint separately staged and statically verified; later69113 builds. | Integrate G4, run targeted GPU/actual-caller costs and relevant regressions, then stage one exact combined candidate for owner evaluation. |
 
 ## Latest measured decisions
 
-- **Terrain:**1/2/4patch sharing loses CPU in all12conditions.16/64/256patches
-  improve CPU and completion in all12. The caller uses16as a measured boundary;
-  shaders, patch geometry/tessellation and update cadence are preserved.
-- **Retained scalar path:**many-group warm CPU improves8/8conditions versusraw,
-  median28.05%; completion improves7/8, median14.60%. Cold compilation remains
-  slower. These results include retained publication, not just the new recipe.
-- **Narrow recipe comparison:**exact source54/source55 binaries use identical
-  existing tests and shader bytes. Raw timing drift is substantial. Normalizing
-  cohort/raw CPU ratios, allsix512-draw warm cases improve, median7.03%; small
-  groups are mixed. This is limited cross-run evidence, not a frame-FPS claim.
-- **World workers:**the fair owned-input benchmark includes adoption, credits,
-  real worker join, reclaim and completion. Available-worker completion loses
-  allnineconditions at source55. Workers remain disabled.
-- **Restoration:**the revised cost frontier proves actual expired/live-proof
-  restoration and native-buffer reuse. Forced tiny-group rebuilding costs more
-  CPU than raw; warm reuse and cold debt must both govern compilation policy.
+- CPU visibility64: warm50%-outside versus retained direct improves CPU8/8
+  conditions (median19.99%) and completion8/8 (11.13%). All-visible warm CPU
+  costs1.74% median; all-visible churn3.25%; cold also costs more. Control stays
+  OFF pending selection. These are contained costs, not viewer FPS.
+- Body palette64: complete composition/capture/adoption/encode/reclaim/retirement
+  frontier passes24 configurations. Timings are mixed and near parity; maximum
+  logical native-byte ratio1.0. Ownership improvement is established, speedup is
+  not. CPU allocator/control-block and physical resident memory are not implied.
+- Terrain: small1/2/4-patch sharing loses CPU;16/64/256 improve CPU/completion in
+  all measured conditions. The caller uses16, preserving shading and geometry.
+- World workers and previously slower GPU banks remain disabled. Implementing an
+  architecture capability does not justify enabling a measured regression.
 
-## Immediate next work
+## Concrete remaining sequence
 
-1. **Done:** separate69102checkpoint inventory/static verification,8272matching
-   nodes,346ARM64Mach-O files and exact source/signature/import/feature checks.
-2. Use a contained main→probe→probe cache-lifetime reproduction to distinguish
-   same-revision metadata expiry from real producer changes and flavor extension;
-   preserve caps until a measured remedy is supported.
-3. Continue the useful visibility/submission and specialized sharing boundaries.
-   Do not activate banks from owner CPU busy alone: existing completed-command
-   sums overlap and lack whole-frame queue coverage.
-4. Evaluate the combined viewer as a whole when the required implementation
-   boundaries are ready. Keep performance and full feature acceptance partial
-   until owner runtime outcomes exist.
+1. Rerun the body-shadow fixture after its test-only avatar-coverage correction.
+2. Integrate the reviewed animated source/backend/shader/frontend change (PPD287),
+   its fallback/fairness/lifetime fixes (289–292), root settings and build wiring.
+3. Build; run native GPU parity/lifetime/admission tests and actual LL draw-caller
+   cold/warm/pose/resource-churn costs, including small draws and multiple views.
+4. Repair actual failures; select supported paths; verify and separately stage the
+   combined app with exact source/evidence for owner whole-engine evaluation.
 
-## Source audits retained
-
-Probe cameras are applied after source lookup; reads do not signal producer
-changes, promotion preserves existing variants, and cube faces do not increment
-outer frame age. Same-frame metadata withdrawal is reproduced in contained controls; its share of
-saved-profile rebuild cost remains unknown. The69085census reached the3712MiB
-native wrapper-byte ceiling and separate2048CPUlayout entry ceiling; native
-entries stayed below8192. These wrapper estimates are not physical allocation totals. G1/source55 probe face schedules, hero rate selection and shadow calls
-match; completion callbacks only retire credit/resources.
-
-
-Current integration: PPD271 CPU visibility six production files + two new
-native/actual-cost appendices are frozen and peer-reviewed, with default-OFF
-setting, producer bounds request and periodic counters wired by root. Verification
-pending; no activation or performance claim. PPD273 WIP fixture corrections included.
-
-Required59/5785fb5761 builds69107, static/strict pass. Cache lifetime2516/2520
-assertions pass, all same-frame reuse/build controls match; four final teardown
-checks fail before releasing actual upload frame owners (PPD275). Fixture now
-settles initialization/releases frame fences before asserting retirement; retest
-pending. Source58compilefailure is retained separately (PPD272), corrected59.
-PPD274 adds exact native capacity/age/touch branch census with policy unchanged.
-No viewer launch/login/profile or push. Existing staged69102 remains intact.
-
-
-Next executable checkpoint61: required build, static/strict verification,
-frame-budget and pressure-queue tests, actual native maintenance plus existing
-texture generation/mip checks, repaired published CPU visibility parity, and
-48condition actual CPU visibility cost. Prior60 production renderer checks
-are reusable only with exact source-diff evidence. No61successfulbuild orFPS
-claim yet. PPD272/274/275/276 repairs have automated evidence; owner acceptance
-and push approval remain pending.
-
-
-Latest visibility decision: warm50%outside against retaineddirect wins all8
-CPU/completion/GPU conditions (medians12.55%/9.21%/7.15% lower). All-visible CPU
-loses all8(median4.41%); churn all-visible loses all8(5.97%). Cold publication
-still costs more. Keep control OFF while reducing classifier overhead; do not
-conflate retained-vs-raw gain with this mechanism's narrower contribution.
-
-
-Current integration milestone: body palette publication282 is integrated with
-required per-view composition, one privately sealed CPU record instead of the
-old raw capture array plus adoption snapshot, exact metadata validation and
-native-only completion lifetime. All source peers pass;63build/normalnative and
-24conditioncompletecost are next. Bodyruntime/performance is not accepted yet.
-
-62intervalclassifier improves warmhalfoutside vsretained CPUall8median18.96%,
-completionall8median11.86%; allvisiblewarm CPU overhead falls to1.15%median,
-churnallvisible4.14%, cold remainsdebt. Its175616grid andGPUparity implications
-pass; one missingstresscontrolresultcounter286 is fixed for63retest.
+No new shadow-only investigation is a prerequisite. Special body/cloth/query or
+unsupported draws retain correct native rendering; new retained animated shadow
+submission is not claimed by the main/probe animated GPU implementation.

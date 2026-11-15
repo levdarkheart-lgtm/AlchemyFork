@@ -46,7 +46,7 @@ ALMetalWorldSpotShadowBatch shadow(const ALMetalWorldSimpleBatch& batch)
     std::memcpy(result.avatar_sin_wave,batch.avatar_sin_wave,sizeof(result.avatar_sin_wave));
     std::memcpy(result.avatar_gravity,batch.avatar_gravity,sizeof(result.avatar_gravity));
     std::memcpy(result.avatar_cloth_depth,batch.avatar_cloth_depth,sizeof(result.avatar_cloth_depth));
-    result.coverage=ALMetalWorldSpotShadowCoverage::texture_mask;result.texture_count=1;
+    result.coverage=ALMetalWorldSpotShadowCoverage::avatar_mask;result.texture_count=1;
     result.coverageData().textures[0]=batch.diffuse_textures[0];result.coverageData().alpha_cutoffs[0]=.2f;
     return result;
 }
@@ -119,7 +119,8 @@ TEST_CASE("almetal: raw and body records preserve mixed queries formats cloth an
             }
             auto caster=BodyPaletteNative::shadow(body);ALMetalWorldSpotShadowScene shadows;shadows.batches=&caster;shadows.batch_count=1;
             shadows.width=shadows.height=side;shadows.reverse_z=scene.reverse_z;shadows.depth_clamp=(format&2)!=0;
-            REQUIRE(f.renderer->renderSpotShadow(*depth,mode,shadows,&f.error));
+            const bool shadow_rendered=f.renderer->renderSpotShadow(*depth,mode,shadows,&f.error);
+            INFO(f.error);REQUIRE(shadow_rendered);
         }
         CHECK(images[0]==images[1]);CHECK(samples[0]==samples[1]);
         std::array<std::vector<float>,2> shadow_pixels;

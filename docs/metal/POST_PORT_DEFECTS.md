@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-287 -->
+<!-- next-defect-id: PPD-293 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -6736,6 +6736,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 build63/5258c8bf85 doctor/configure0, build1 after55.336s: new native appendix unqualified shadow(body) conflicts with the macOS MacTypes shadow enum. Registered under this same new-fixture record before qualifying the helper call. No native63/static63/cost63 execution; failedreceipt/log retained.
 
+- 2026-11-15 required64/7308c43db9 builds69113(140.989s), static/strict pass. New mixed body fixture fails raw shadow reference: avatar=true with texture_mask coverage is invalid; existing validator requires avatar_mask/avatar_blend. Registered before changing only fixture coverage to avatar_mask and evaluating error after the render call. Previous17cases in palette/preparation scope pass; no production body-shadow regression inferred.
+
 ## PPD-286 — CPU interval stress fixture omits its inside controls from result counts
 
 - Status: investigating
@@ -6752,3 +6754,139 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-15 registered before one-counter fixture repair; preserve failed62receipt/log, no fulloracle pass claimed yet.
+
+
+## PPD-287 — Persistent native scene rows exclude rigged animated surfaces
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator / animated GPU source authors
+- Discovered: 2026-11-15
+- Original reference: Original Goal4 explicitly extends persistent geometry/material tables and GPU visibility/compaction to rigged and masked surfaces. Current static source eligibility rejects skin/weight inputs; shadow rigged ICB preparation still rebuilds per-view draw/constants and visibility arrays.
+- Evidence: [Original route](research/apple-first-implementation-route.md), [execution ledger](work/active/apple-first-direct-cohorts-20261114.md), completion inventory at5258c8bf85.
+- Next action: Implement retained animated native source descriptors with late pose/view inputs and conservative current-pose visibility, preserve query/order/coverage semantics and native completion ownership, then gate actual small-run complete costs.
+- Verification: Static Legacy/PBR cohorts/pages/banks and masked paths exist; producer geometry/material/pose ownership and frame admission exist. Rigged world cohort/page qualifiers still reject weight_offset/skin records; source bounds decline animated vertices. This is an unfinished original architecture capability, not a new rendering regression or FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before required G4 animated-consumption implementation. Do not equate enabling slower pilots or merely constructing Metal4 objects with this capability.
+
+
+- 2026-11-15 pre-execution source review: new animated factory used static-compact Draw(batch,&canonicalView) validation, which rejects rigged palettes. Registered under this feature implementation record before changing to a cold local canonical Batch and ordinary raw Draw validation. No per-view copy or executed failure claimed.
+
+- 2026-11-15 pre-execution backend review finds new animated-cache entry insertion precedes potentially allocating native-asset ledger nodes, risking partial accounting on bad_alloc. Registered before staging all missing asset nodes/cache node, rolling back uncommitted zero nodes and committing reference/byte counts without allocation. Preserve old warm cache and all caps on failure; no executed fault claimed.
+
+- 2026-11-15 pre-execution review finds newly authored scalar animated fallback calls nonexistent AttachmentPaletteRecord::floatCount; verified API is size(). Registered before one-call correction; no build/runtime fault claimed.
+
+- 2026-11-15 Pre-execution resource review finds animated execution declares root allocations but misses exact linear/sRGB child texture views referenced by its table. Add native-only resource context and existing declareResources for each unique table before execution, preserving caps/completion ownership; no CPU source graph retained.
+
+- 2026-11-15 pre-freeze backend review finds animated bank publication validates the binding cap but does not commit its selected binding limit into the shared command state. Register before committing that limit on successful publication, retaining all caps. Also count requested animated references during explicit prepared fallback calls (GPU0/fallbackN); production bypasses preparation for this mode. No executed failure claimed.
+
+- 2026-11-15 backend peer review finds prepareAnimatedSourcesForCommand invokes the shared admission callback without first pinning its owner locally. Reentrant callback replacement can destroy the executing closure before its later captured-state access. Register before copying the shared callback locally for invocation, matching the existing paths and retaining epoch/denial checks. Source-only finding, no runtime incident claimed.
+
+## PPD-288 — New animated-source fixtures use invalid API and coverage assumptions
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex animated-source fixture author
+- Discovered: 2026-11-15
+- Original reference: Actual LLVB exposes TEXCOORD2/EMISSIVE striders and Weight4 input uses LLVector4a, not the authored convenience setters/vector type.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), animated-gpu-records worktree pre-execution fixture review.
+- Next action: Use the verified existing strider interfaces and LLVector4a weights; preserve geometry, index uniqueness and intended pass/material coverage.
+- Verification: Test-only WIP source issue; no integration/build/execution or production fault claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before fixture API corrections. Check real declarations/examples before adding fixture API calls.
+
+- 2026-11-15 pre-execution native fixture review: inherited all-zero UVs sample the checker texture transparent first texel, so masked parity can be vacuous. Registered before authoring UV coverage over the checker and asserting positive/partial masked reference coverage against opaque control. Preserve fixed-UV positive GPU contract; changed UV explicitly exercises scalar fallback.
+
+
+- 2026-11-15 pre-execution review also finds guessed abandonCommandBatch name (actual API cancelCommandBatch) and a local NativeScope that keeps generation owners alive during intended final-retirement checks. Registered before correcting the API call and explicitly resetting temporary/fixture owners; pending survival and final expiry must prove their distinct ownership boundaries.
+
+- 2026-11-15 pre-execution fixture review finds a capturing lambda assigned to the existing function-pointer promotion seam. Use a captureless lambda with function-local static counter; preserve hook/count semantics and scope cleanup. No execution or production fault claimed.
+
+- 2026-11-15 pre-freeze fixture review corrects provisional requested-draw denominator: requested counts emitted animated references, excluding cold CPU admission denials that retain required raw draws. Track captured-reference count, retain uncaptured raw count and require GPU+fallback=requested; no executed failure or production change.
+
+- 2026-11-15 Pre-execution actual-fixture peer finds two assumptions: promotion hook intentionally runs before exact-transient guard, so throwing hook count must be1 while resource/cert/admission work remains0; and PBR masked flavor must match all owned materials ALPHA_MODE_MASK rather than inherited OPAQUE. Register before correcting only these fixture inputs/assertions; production order/guards unchanged.
+
+- 2026-11-15 pre-execution native fixture review finds replacing FrameData on an already-used renderer does not reset its cached source context, making the intended cold-denial callback vacuous. Register before creating a fresh library/renderer with the fresh FrameData before first source use. Preserve denial assertions; no production setter change or runtime incident inferred.
+
+## PPD-289 — Optional animated promotion can reject a required reader after cache withdrawal
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex animated producer author
+- Discovered: 2026-11-15
+- Original reference: An exact reader-pinned transient may remain usable after residency withdraws State publication without changing producer revision. Existing optional promotion checks require that publication to remain current.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), new animated-capability path source review before enabling it.
+- Next action: Decline optional GPU promotion while retaining only the exact required reader when state identity/revision, actual draw-info state, empty publisher and weak transient identity/control block all still match. Preserve all existing stale/new-publisher rejection guards and hook ordering.
+- Verification: New animated request on exact withdrawn metadata would otherwise return an empty required lease when promotion cannot publish. No viewer/runtime failure claimed; GPU candidate must decline and raw native rendering remain available with the same pose.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before narrow no-promotion fallback branch. No cache cap bypass, resource/seal work or producer invalidation relaxation permitted.
+
+
+## PPD-290 — Fixed-order animated CPU admission can repeatedly serve a failed source first
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native admission author
+- Discovered: 2026-11-15
+- Original reference: Existing group caller sorts service-adjusted source priority before admission. New per-source animated factory traverses fixed pass order; CommonAdmission currently passes original pending age to budget even after recent service.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), pre-execution animated admission integration review.
+- Next action: Pass existing service-adjusted unserved_since into budget acquisition while retaining original pending age and once-frame semantics; verify unsorted repeated failures cannot starve older sources and existing sorted admission remains valid.
+- Verification: Under busy one-item progress, continuously failing first source can remain aged forever and consume each opportunity before later unserved source. This is source-confirmed new caller/policy integration, not a measured viewer regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before common policy repair; reuse existing state/fairness, no new queue, cap or requester/resource retention.
+
+
+## PPD-291 — Subnormal packed weights can invalidate cold animated bone bounds
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex animated source/bounds author
+- Discovered: 2026-11-15
+- Original reference: Existing object skinning falls back to first influence when GPU weight sum flushes to zero. CPU cold scan can instead see a positive subnormal fraction and bound a different bone.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), pre-execution animated source/shader peer review.
+- Next action: Mark bounds unqualified for any nonzero subnormal encoded weight; retain normal native drawing/unknown visibility. Cover CPU/GPU FTZ fallback and possible visible first influence in focused parity tests.
+- Verification: Example packed weights7.0/subnormal/0/0 can make CPU select joint0 while GPU FTZ selects first joint7; different poses could otherwise falsely cull. New code unbuilt/unexecuted; no owner rendering incident claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before source-factory guard repair; no shader layout or render-weight semantics change.
+
+- 2026-11-15 Separate pre-freeze GPU enclosure review: a constant32*FLT_MIN floor does not bound intermediate skin-coefficient underflow amplified by large positions. Register before scaling world/clip underflow floors by both operand magnitudes (source extents/linear coefficients and point/MVP), retaining conservative relative and uncertain-W/cancellation guards. Rendering vertex math and shader ABI remain unchanged.
+
+
+## PPD-292 — Idle animated command banks outlive expired source proofs
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex animated native command author
+- Discovered: 2026-11-15
+- Original reference: Existing idle-bank pruning follows weak membership proofs. New animated banks use native source closures but leave that membership proof null, so they are not retired by the same expiry path.
+- Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), animated backend lifetime/census peer review before execution.
+- Next action: Add weak exact CPU-source/native-tuple generation proof for idle lookup/pruning; remove expired animated cache banks while prepared/queued views keep their independent native leases. Do not reject already prepared work merely because CPU metadata expired.
+- Verification: Shared index/binding/asset caps already bound storage; no unbounded leak or COW-pin claim. Source-page census may release its accounting while idle bank closure still holds native assets; each census must describe its owner scope correctly.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15 registered before weak-proof idle-prune repair. Preserve actual native completion lifetime independently of CPU cache freshness.
+
+- 2026-11-15 proof review also requires mutable AnimatedGpuView native lease to match the private captured weak owner/control block (and finite view) before warm binding. Register before adding matchesNativeLease alongside idle proof; no strong CPU parent or change to already prepared lease validity.

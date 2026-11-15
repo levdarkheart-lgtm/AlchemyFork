@@ -2066,3 +2066,47 @@ unqualifiedshadow(body) conflictsmacOSMacTypesenum. PPD285history registered
 beforequalifyingBodyPaletteNative::shadow only. No63native/static/costexecution.
 75084/20701terminalfailed; preserve63receipts/binariesnotclaimedsource63passed.
 Next64required/fullnative/CPU48+body24cost atsameproductionbodyimplementation.
+
+
+Independentcompletioninventory5258: G2producerdirty/source/orderedadmission,
+G3ownedjoinedpreparation, G5UMA/COW/globalnativecreditsnowhaveactualcode;
+63/64bodygates+rollout/ownerwholeengineacceptance remain. StrictoriginalG4
+CODEboundary stillmissing: retainedanimatedGPUrows/posevisibility before repeated
+per-view command/constants reconstruction. OriginalrouteGoal4 explicitlyincludes
+rigged/masked; notmerelyactivationofrejectedstaticpilots. RegisteredPPD287before
+newimplementation. No newgeneraljobgraphorendlesscoldmicrooptimizationrequired
+bythisinventory. Bodycamera-specificcomposition remainsrequiredspecialization.
+
+
+## Owner progress checkpoint: source64 and remaining G4 integration
+
+Source7308c43db9 builds26.4.0.69113: doctor/configure/build0/0/0
+(140.989s build), static63 verifier and strict source audit0. Main native runner
+failed only the new body-shadow raw reference fixture at avatar=true with
+texture_mask (PPD285);17/18 palette/preparation cases passed. Test-only repair
+uses existing avatar_mask coverage and captures the error after render returns;
+source65 build and failed-scope retest are next. Source63 helper-name compile
+failure and64 reference failure are retained, not counted as production bugs.
+
+Independent64 remaining scopes all pass (handle17862 terminal0): probe7562/4,
+old probe65/1, empty465/2, deferred27016/1, terrain5157/6, scalar7835/3,
+CPU visibility1780/4, interval137/3, body123/2, maintenance/generation/mips843/18,
+pressure174/23. Actual publisher22267/78 passed in the initial64 runner.
+Receipts native-correctness-64.json and native-correctness-64-remaining.json.
+
+Both64 actual cost frontiers passed independently: CPU visibility3674320/1
+(48configurations,16.247s); body103104/1 (24configurations,2.696s). CPU warm
+half-outside versus retained direct wins all8 CPU/completion conditions, medians
+19.987%/11.133% lower; all-visible warm CPU median1.739% higher, churn3.253%
+higher. Body costs are mixed/near parity (1/4/64 draw CPU medians+0.508%,
+-0.907%,+0.606%); max logical native-byte ratio1.0. No FPS or physical-memory
+reduction claim. Exact summary JSON files retained without overwriting.
+
+PPD287 required G4 animated GPU records are authored in the exclusive shared
+author tree: frontend/common/shader/test source reviews converge, backend final
+lease/callback/cap review ongoing. Not integrated, built or measured yet. Root
+next wires lazy admission, main/probe capture, scene flags, preparation bypass,
+OFF/Persist0 setting, census and CMake. Source review is not executed validation.
+Remaining deliverable is integrated G4 plus relevant native and actual-caller
+cost checks, then one separately staged verified combined app. Full product
+feature/stability/performance acceptance remains partial. No launch/profile/push.
