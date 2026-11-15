@@ -863,6 +863,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     U64 scene_source_failures = 0;
     const char* last_scene_source_failure = nullptr;
     std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
+    std::vector<U32> world_visibility_indices;
+    bool visibility_metadata_failed = false;
+    U64 visibility_metadata_failures = 0;
     std::shared_ptr<WorldResourceLease> world_resources = std::make_shared<WorldResourceLease>();
     void retainGeometry(const LLVertexBuffer& buffer)
     {
@@ -3048,6 +3051,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
                     << ", source_failures=" << value->scene_source_failures
+                    << ", optional_visibility_metadata_failures=" << value->visibility_metadata_failures
                     << ", preparation_requested=" << preparation_requested()
                     << ", encoded_views(scalar/prepared/credited)=" << value->scalar_world_views << '/' << value->prepared_world_views << '/' << value->credited_world_views
                     << ", prepared_constant_bytes(compact/original)=" << value->prepared_world_constant_bytes << '/' << value->prepared_world_uncompacted_bytes
@@ -3203,6 +3207,20 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", material_captured_groups/draws=" << groups.material_captured_groups << '/' << groups.material_captured_draws
                 << ", cpu_layout_cache(entries/rows/estimated_bytes)=" << layouts.layouts << '/' << layouts.rows << '/' << layouts.estimated_bytes
                 << ", cpu_layout_evictions/rejections=" << layouts.evictions << '/' << layouts.rejections << LL_ENDL;
+            if (sNativeSceneVisibility)
+            {
+                const auto visibility=sNativeSceneVisibility->stats();
+                LL_INFOS("MetalScene") << "Native retained visibility: compute_views/cohort_compute_views=" << visibility.views << '/' << visibility.cohort_views
+                    << ", cohort_groups/candidates=" << visibility.cohort_groups << '/' << visibility.cohort_candidates
+                    << ", cohort_row_builds/hits=" << visibility.cohort_row_builds << '/' << visibility.cohort_row_hits
+                    << ", cohort_row_upload_bytes=" << visibility.cohort_row_upload_bytes
+                    << ", cohort_row_native_allocation_bytes=" << visibility.cohort_row_allocated_bytes
+                    << ", expanded_base_member_bytes=" << visibility.expanded_member_bytes
+                    << ", cached_rows/live_native_row_bytes=" << visibility.cached_cohort_rows << '/' << visibility.live_cohort_row_bytes
+                    << ", publication_requests/denials/logical_bytes=" << visibility.admission_requests << '/'
+                    << visibility.admission_denials << '/' << visibility.admitted_logical_bytes
+                    << ", fallbacks=" << visibility.fallbacks << LL_ENDL;
+            }
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             LL_INFOS("MetalMemory")
@@ -16357,10 +16375,19 @@ void LLPipeline::endMetalWorldGBufferCapture()
         }
     }
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
-    if (native_visibility() && sNativeSceneVisibility && !scene.join_adjacent_static_draws)
+    const bool qualified_visibility_work=!capture.world_visibility_members.empty() ||
+        std::any_of(capture.source_cohorts.begin(),capture.source_cohorts.end(),
+            [](const auto& group){return group.cohort->qualifiedBoundsCount()!=0;});
+    if (native_visibility() && !capture.visibility_metadata_failed && qualified_visibility_work && !scene.join_adjacent_static_draws)
     {
-        capture.world_visibility_members.resize(capture.batches.size());
-        scene.native_visibility = sNativeSceneVisibility->makeView(std::move(capture.world_visibility_members), &error);
+        if (sNativeSceneVisibilityDevice != capture.device || !sNativeSceneVisibility)
+        {
+            sNativeSceneVisibility = ALMetalWorldVisibility::create(*capture.device);
+            sNativeSceneVisibilityDevice = capture.device;
+        }
+        if (sNativeSceneVisibility)
+            scene.native_visibility = sNativeSceneVisibility->makeView(std::move(capture.world_visibility_members),
+                std::move(capture.world_visibility_indices),capture.source_cohorts, scene.drawCount(), &error);
         if (!scene.native_visibility)
         {
             LL_WARNS_ONCE("Metal") << "Native scene visibility retained direct draws: " << error << LL_ENDL;
@@ -21342,7 +21369,7 @@ void LLPipeline::postSort(LLCamera &camera)
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
     const bool native_group_view = native_group_sources() &&
-        !native_visibility() && !depth_prepass() &&
+        !depth_prepass() &&
         !sShadowRender && !sImpostorRender && !sRenderingHUDs && !mRenderDebugMask &&
         !cullingToCutoutSubject() &&
         ((isMainWorldPass() && mRT == &mMainRT) || isMetalProbeFaceCaptureActive());
@@ -21735,6 +21762,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     ALScenePublicationNative::WorldFlavor flavor;
                     if(sources.empty() || !hasRenderType(type) || !nativeMaterialGroupFlavor(type,flavor))continue;
+                    flavor.cohort_bounds = native_visibility();
                     auto& owner=group->mMetalMaterialCohorts[type];
                     if(!owner.state)owner.state=std::make_shared<ALNativePublication::State>();
                     consider(type,sources,owner.state,owner.compilation,flavor);
@@ -21767,7 +21795,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     if(candidate.type==LLRenderPass::PASS_SIMPLE)
                         return ALSceneGroupPublicationNative::seal(candidate.publisher,group->mMetalGroupDependencies,
-                            group->mMetalGroupLayout,*model,region,sources->second,sNativeSceneSources,sNativeSceneSerial,gFrameCount);
+                            group->mMetalGroupLayout,*model,region,sources->second,sNativeSceneSources,sNativeSceneSerial,gFrameCount,native_visibility());
                     auto& owner=group->mMetalMaterialCohorts[candidate.type];
                     return ALSceneGroupPublicationNative::sealMaterial(candidate.publisher,owner.dependencies,owner.layout,
                         *model,region,sources->second,candidate.flavor,sNativeSceneSources,sNativeSceneSerial,gFrameCount);

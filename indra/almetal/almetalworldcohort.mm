@@ -23,6 +23,8 @@ struct ALMetalWorldCohortSource::Impl
     ALMetalWorldSimpleBatch prototype;
     std::uint32_t family=0;
     bool double_sided=false;
+    bool bounds_published=false;
+    ALMetalWorldConservativeBounds bounds;
 };
 // One shared allocation contains the immutable snapshot and its public
 // facade. The alias returned by seal owns Storage, not a parent publication.
@@ -30,8 +32,10 @@ struct ALMetalWorldCohortSource::Storage
 {
     Impl value;
     ALMetalWorldCohortSource certificate;
-    Storage(const ALMetalWorldKeyedSource& source,std::uint32_t family)
-        :value{source.key,*source.prototype,family,source.prototype->double_sided},certificate(&value){}
+    Storage(const ALMetalWorldKeyedSource& source,std::uint32_t family,
+        const ALMetalWorldConservativeBounds* bounds)
+        :value{source.key,*source.prototype,family,source.prototype->double_sided},certificate(&value)
+    {if(bounds){value.bounds=*bounds;value.bounds_published=true;}}
 };
 ALMetalWorldCohortSource::ALMetalWorldCohortSource(const Impl* impl) noexcept:mImpl(impl){}
 ALMetalWorldCohortSource::~ALMetalWorldCohortSource()=default;
@@ -39,9 +43,11 @@ const ALMetalWorldSourceKey& ALMetalWorldCohortSource::key() const noexcept{retu
 const ALMetalWorldSimpleBatch& ALMetalWorldCohortSource::source() const noexcept{return mImpl->prototype;}
 std::uint32_t ALMetalWorldCohortSource::family() const noexcept{return mImpl->family;}
 bool ALMetalWorldCohortSource::doubleSided() const noexcept{return mImpl->double_sided;}
+bool ALMetalWorldCohortSource::hasBoundsPublication() const noexcept{return mImpl->bounds_published;}
+const ALMetalWorldConservativeBounds& ALMetalWorldCohortSource::bounds() const noexcept{return mImpl->bounds;}
 std::size_t ALMetalWorldCohortSource::ownedBytes() const noexcept{return sizeof(Storage);}
 std::shared_ptr<const ALMetalWorldCohortSource> ALMetalWorldCohortSource::seal(
-    const ALMetalWorldKeyedSource& keyed,std::string* error)
+    const ALMetalWorldKeyedSource& keyed,std::string* error,const ALMetalWorldConservativeBounds* bounds)
 try
 {
     const auto reject=[&](const char* message)->std::shared_ptr<const ALMetalWorldCohortSource>
@@ -81,7 +87,7 @@ try
         validation.normal_hdr=normal_hdr;
         if(!alMetalValidateWorldBatch(validation,draw,error))return {};
     }
-    auto storage=std::make_shared<Storage>(keyed,family);
+    auto storage=std::make_shared<Storage>(keyed,family,bounds);
     return std::shared_ptr<const ALMetalWorldCohortSource>(storage,&storage->certificate);
 }
 catch(const std::bad_alloc&){if(error)error->clear();return {};}
@@ -95,6 +101,7 @@ struct ALMetalWorldSourceCohort::Impl
     std::uint64_t region=0;
     std::uint32_t family=0;
     bool family_initialized=false,double_sided=false,uniform_double_sided=true;
+    std::size_t qualified_bounds=0;
     ALMetalWorldSourceCohort::NativeTextureResolver resolve_texture=nullptr;
 };
 ALMetalWorldSourceCohort::ALMetalWorldSourceCohort(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
@@ -119,6 +126,9 @@ const ALMetalWorldSimpleBatch& ALMetalWorldSourceCohort::source(std::size_t inde
 {return mImpl->sources[index]->source();}
 const ALMetalWorldSourceKey& ALMetalWorldSourceCohort::key(std::size_t index) const noexcept
 {return mImpl->sources[index]->key();}
+const ALMetalWorldConservativeBounds& ALMetalWorldSourceCohort::bounds(std::size_t index) const noexcept
+{return mImpl->sources[index]->bounds();}
+std::size_t ALMetalWorldSourceCohort::qualifiedBoundsCount() const noexcept{return mImpl->qualified_bounds;}
 bool ALMetalWorldSourceCohort::matchesOwners(const std::shared_ptr<const void>& cpu,
                                            const std::shared_ptr<const void>& native) const noexcept
 {return exactOwner(mImpl->cpu,mImpl->cpu_pointer,cpu) && exactOwner(mImpl->native,mImpl->native_pointer,native);}
@@ -172,6 +182,10 @@ try
         {impl->family=source->family();impl->double_sided=source->doubleSided();impl->family_initialized=true;}
         else impl->uniform_double_sided=impl->uniform_double_sided && impl->double_sided==source->doubleSided();
         impl->sources.push_back(source);
+        const auto& bounds=source->bounds();
+        if(bounds.qualified && finite(bounds.minimum,4) && finite(bounds.maximum,4) &&
+           bounds.minimum[0]<=bounds.maximum[0] && bounds.minimum[1]<=bounds.maximum[1] && bounds.minimum[2]<=bounds.maximum[2])
+            ++impl->qualified_bounds;
     }
     // As with NativeScope/SourceReference, the completed producer is
     // responsible for the typed native union. A void owner cannot be

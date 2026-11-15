@@ -2627,6 +2627,11 @@ public:
     // Application-owner policy injection, normally before any source context
     // exists. Generic native callers have no global frame-budget dependency.
     void setSourcePublicationAdmission(ALMetalWorldSourcePages::PublicationAdmission);
+    // Other native metadata owners share the injected policy/credit class.
+    // Their lazy closure preserves its own pending age, independently of
+    // page/command contexts. No policy means standalone callers stay allowed.
+    bool requestSourcePublication(const ALMetalWorldSourcePublicationWork&,
+                                  std::shared_ptr<const void>& credit);
     std::shared_ptr<ALMetalWorldSourceCommands> worldSourceCommands(std::string* error=nullptr);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
     // Retire only shader-derived material encoders/tables. Existing command

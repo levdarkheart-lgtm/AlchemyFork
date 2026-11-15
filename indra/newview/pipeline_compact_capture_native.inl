@@ -22,6 +22,9 @@ void clearDraws() noexcept
     cpu_sources.reset();
     compact_gbuffer_active = false;
     clearSourceRows();
+    world_visibility_members.clear();
+    world_visibility_indices.clear();
+    visibility_metadata_failed = false;
 }
 void retainCpu(std::shared_ptr<const void> owner)
 {

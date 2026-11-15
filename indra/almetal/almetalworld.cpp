@@ -1558,6 +1558,7 @@ struct ALMetalWorldFrameData::Impl
     std::vector<ResourceContext> resource_contexts;
     std::vector<std::weak_ptr<ALMetalWorldSourcePages>> source_contexts;
     ALMetalWorldSourcePages::PublicationAdmission source_publication_admission;
+    std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> direct_source_admission;
     std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
 };
 
@@ -1692,11 +1693,28 @@ void ALMetalWorldFrameData::setSourcePublicationAdmission(
     ALMetalWorldSourcePages::PublicationAdmission admission)
 {
     mImpl->source_publication_admission = std::move(admission);
+    mImpl->direct_source_admission.reset();
     if (mImpl->source_commands)
         mImpl->source_commands->setPublicationAdmission(mImpl->source_publication_admission);
     for (const auto& weak : mImpl->source_contexts)
         if (auto context = weak.lock())
             context->setPublicationAdmission(mImpl->source_publication_admission);
+}
+
+bool ALMetalWorldFrameData::requestSourcePublication(
+    const ALMetalWorldSourcePublicationWork& work,std::shared_ptr<const void>& credit)
+{
+    credit.reset();
+    if(!mImpl->source_publication_admission)return true;
+    try
+    {
+        if(!mImpl->direct_source_admission)
+            mImpl->direct_source_admission=std::make_shared<ALMetalWorldSourcePages::PublicationAdmission>(mImpl->source_publication_admission);
+        // Reentrant policy replacement must not destroy a running callable.
+        const auto policy=mImpl->direct_source_admission;
+        credit=(*policy)(work);return bool(credit);
+    }
+    catch(const std::bad_alloc&){return false;}
 }
 
 std::shared_ptr<ALMetalWorldSourceCommands> ALMetalWorldFrameData::worldSourceCommands(std::string* error)
@@ -7936,7 +7954,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     if (command && scene.native_visibility && scene.native_visibility->size() == scene.batch_count && scene.batch_count)
     {
         std::string optional_error;
-        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error);
+        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error,mImpl->frame_data.get());
     }
     if (command && query_results && !query_results->attachCommand(*command, error))
     {
@@ -10204,7 +10222,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     if (scene.native_visibility && scene.native_visibility->size() == draw_count && draw_count)
     {
         std::string optional_error;
-        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error);
+        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error,mImpl->frame_data.get());
     }
     if (query_results && !query_results->attachCommand(*command, error))
     {
@@ -11216,8 +11234,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         pbr_slot.emissive_texture, error);
             }
         }
-        const bool shared_visible_draw = !current_cohort && shared_visibility_arguments && !avatar && !rigged &&
-            !batch.avatar_cloth && shared_visibility_arguments->appliesTo(index, batch.index_count, draw.modelviewProjection());
+        const bool shared_visible_draw = shared_visibility_arguments && !avatar && !rigged &&
+            !batch.avatar_cloth && (current_cohort
+                ? shared_visibility_arguments->appliesToCohort(index,batch.index_count,*current_cohort)
+                : shared_visibility_arguments->appliesTo(index,batch.index_count,draw.modelviewProjection()));
         encoded = encoded && (shared_visible_draw
             ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
                 *batch.indices, batch.index_offset, batch.index_count, error)

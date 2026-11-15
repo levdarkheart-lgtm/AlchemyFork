@@ -54,6 +54,7 @@ struct WorldFlavor
     bool native_resources = false;
     // Optional immutable consumer capabilities, not shader/material semantics.
     bool cohort_source = false;
+    bool cohort_bounds = false; // Optional CPU proof, never a shading-key bit.
     bool normal_map = false, specular_map = false;
     bool alpha_mask = false, rigged = false, pbr_glow = false;
     bool post_water_pbr_glow = false;
@@ -78,6 +79,8 @@ struct WorldFlavor
             (U64(material_alpha_mode) << 32);
     }
 };
+// Owner-only fault seam for the optional per-view metadata transaction.
+inline void (*visibilityMetadataAllocationForTesting)() = nullptr;
 
 struct WorldVariant
 {
@@ -123,6 +126,7 @@ struct Payload
 {
     U64 serial = 0, producer_revision = 0;
     ALMetalWorldConservativeBounds bounds;
+    bool bounds_attempted = false;
     std::shared_ptr<const ALMetalBuffer> vertices, indices;
     std::vector<WorldVariant> worlds;
     std::vector<ShadowVariant> shadows;
@@ -256,44 +260,59 @@ inline std::shared_ptr<Payload> extend(const LLDrawInfo& info, U64& serial)
     }
     return value;
 }
-inline void qualifyBounds(const LLDrawInfo& info, Payload& payload)
+inline void qualifyBounds(const LLDrawInfo& info, const ALMetalWorldSimpleBatch& batch, Payload& payload)
 {
-    if (payload.bounds.qualified) return;
-    auto* value = &payload;
+    if (payload.bounds_attempted) return;
+    payload.bounds_attempted = true;
     // Exact published rigid position plane, in the same local coordinates
     // consumed by the vertex shader. Unproved/animated extents fail visible.
-    auto* buffer = info.mVertexBuffer.get();
-    const U8* bytes = buffer->getMappedData();
-    if (!bytes) bytes = static_cast<const U8*>(value->vertices->mappedBytes());
-    const U8* indices = buffer->getMappedIndices();
-    if (!indices) indices = static_cast<const U8*>(value->indices->mappedBytes());
-    const auto offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    if (bytes && indices && !info.mAvatar &&
-        offset + std::size_t(buffer->getNumVerts()) * 16 <= value->vertices->length())
+    if (!payload.vertices || !payload.indices || batch.vertices != payload.vertices.get() ||
+        batch.indices != payload.indices.get() || info.mAvatar || info.mSkinInfo ||
+        batch.weight_offset || batch.cloth_offset || batch.avatar_rigid || batch.avatar_skinning || batch.avatar_cloth) return;
+    const auto* bytes = static_cast<const U8*>(payload.vertices->mappedBytes());
+    const auto* indices = static_cast<const U8*>(payload.indices->mappedBytes());
+    // Prefer the established cached CPU shadow over reading write-combined
+    // Metal storage, but only while it proves this exact published generation.
+    // A reentrant/new producer falls back to the pinned immutable native bytes.
+    const auto* buffer=info.mVertexBuffer.get();
+    if(buffer && info.metalSourcePublication()->revision()==payload.producer_revision &&
+       buffer->hasPublishedMetalVertexBuffer() && buffer->hasPublishedMetalIndexBuffer() &&
+       buffer->getMetalVertexBuffer()==payload.vertices.get() && buffer->getMetalIndexBuffer()==payload.indices.get() &&
+       buffer->getSize()>=payload.vertices->length() && buffer->getIndicesSize()>=payload.indices->length())
+    {
+        if(buffer->getMappedData())bytes=buffer->getMappedData();
+        if(buffer->getMappedIndices())indices=buffer->getMappedIndices();
+    }
+    const auto stride = batch.index_type == ALMetalIndexType::uint32 ? 4u : 2u;
+    if (bytes && indices && batch.vertex_count && batch.index_count &&
+        batch.position_offset <= payload.vertices->length() &&
+        batch.vertex_count <= (payload.vertices->length() - batch.position_offset) / 16 &&
+        batch.index_offset <= payload.indices->length() &&
+        batch.index_count <= (payload.indices->length() - batch.index_offset) / stride)
     {
         bool finite = true;
         for (U32 axis = 0; axis < 3; ++axis)
         {
-            value->bounds.minimum[axis] = std::numeric_limits<float>::infinity();
-            value->bounds.maximum[axis] = -std::numeric_limits<float>::infinity();
+            payload.bounds.minimum[axis] = std::numeric_limits<float>::infinity();
+            payload.bounds.maximum[axis] = -std::numeric_limits<float>::infinity();
         }
-        for (U32 at = 0; at < info.mCount; ++at)
+        for (U32 at = 0; at < batch.index_count; ++at)
         {
             U32 vertex = 0;
-            const auto* index = indices + std::size_t(info.mOffset + at) * buffer->getIndexStride();
-            if (buffer->getIndexStride() == 2)
+            const auto* index = indices + batch.index_offset + std::size_t(at) * stride;
+            if (stride == 2)
             { U16 small; std::memcpy(&small, index, sizeof(small)); vertex = small; }
             else std::memcpy(&vertex, index, sizeof(vertex));
-            if (vertex >= buffer->getNumVerts()) { finite = false; break; }
-            float point[4]; std::memcpy(point, bytes + offset + std::size_t(vertex) * 16, sizeof(point));
+            if (vertex >= batch.vertex_count) { finite = false; break; }
+            float point[4]; std::memcpy(point, bytes + batch.position_offset + std::size_t(vertex) * 16, sizeof(point));
             for (U32 axis = 0; axis < 3; ++axis)
             {
                 finite = finite && std::isfinite(point[axis]);
-                value->bounds.minimum[axis] = std::min(value->bounds.minimum[axis], point[axis]);
-                value->bounds.maximum[axis] = std::max(value->bounds.maximum[axis], point[axis]);
+                payload.bounds.minimum[axis] = std::min(payload.bounds.minimum[axis], point[axis]);
+                payload.bounds.maximum[axis] = std::max(payload.bounds.maximum[axis], point[axis]);
             }
         }
-        value->bounds.qualified = finite;
+        payload.bounds.qualified = finite;
     }
 }
 
@@ -527,6 +546,7 @@ inline void sealCohortSource(const Payload& value, WorldVariant& variant, U64 id
         const auto& prior = variant.cohort_source->source();
         const auto& key = variant.cohort_source->key();
         if (key.identity == identity && key.flavor == variant.key && key.revision == revision &&
+            (!value.bounds_attempted || variant.cohort_source->hasBoundsPublication()) &&
             prior.vertices == batch.vertices && prior.indices == batch.indices &&
             prior.native_material_source == batch.native_material_source && prior.texture_count == batch.texture_count &&
             prior.texture_count <= prior.diffuse_textures.size() &&
@@ -534,7 +554,8 @@ inline void sealCohortSource(const Payload& value, WorldVariant& variant, U64 id
         variant.cohort_source.reset();
     }
     if (!completeWorldResources(value, batch)) return;
-    variant.cohort_source = ALMetalWorldCohortSource::seal({{identity, variant.key, revision}, &batch});
+    variant.cohort_source = ALMetalWorldCohortSource::seal({{identity, variant.key, revision}, &batch}, nullptr,
+        value.bounds_attempted ? &value.bounds : nullptr);
     if (variant.cohort_source) ++cohort_source_publications;
 }
 
@@ -556,13 +577,15 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                     return !flavor.native_materials &&
                         (variant.prototype.material_slot_count || variant.prototype.pbr_slot_count) && !variant.cpu_slots_frozen;
                 };
-                const auto ready = [&](const WorldVariant& variant)
+                const auto ready = [&](const WorldVariant& variant, const Payload& publication)
                 {
                     return (!flavor.native_resources || (variant.prototype.native_resource_source &&
                         variant.prototype.native_resource_source->matches(variant.prototype))) &&
-                        (!flavor.cohort_source || variant.cohort_source) && !needs_cpu_freeze(variant);
+                        (!flavor.cohort_bounds || publication.bounds_attempted) &&
+                        (!flavor.cohort_source || (variant.cohort_source &&
+                            (!flavor.cohort_bounds || variant.cohort_source->hasBoundsPublication()))) && !needs_cpu_freeze(variant);
                 };
-                if (ready(*found))
+                if (ready(*found, *value))
                 {
                     working_set.touch(info.metalSourcePublication()->identity(), value->serial, frame);
                     return {std::move(value), &found->prototype, nullptr, true};
@@ -577,7 +600,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                 { return state->identity() == identity && state->revision() == revision && state->publication().get() == value.get(); };
                 const auto authored_transient_current = [&]
                 {
-                    if (!needs_cpu_freeze(*found) || flavor.native_resources || flavor.cohort_source ||
+                    if ((!needs_cpu_freeze(*found) && !flavor.cohort_bounds) || flavor.native_resources || flavor.cohort_source ||
                         state->publication() || state->identity() != identity || state->revision() != revision ||
                         info.metalSourcePublication() != state) return false;
                     const auto& metadata = info.mMetalShadowSource;
@@ -590,13 +613,15 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                 {
                     if (capabilityPromotionAllocationForTesting) capabilityPromotionAllocationForTesting(*state);
                     // Cache withdrawal may leave only this real reader. CPU
-                    // freezing is optional: retain its exact authored source,
-                    // never resurrect an unbudgeted publisher just to freeze.
+                    // freezing/bounds are optional: retain its exact source
+                    // (unqualified bounds fail visible), without resurrecting
+                    // an unbudgeted child publisher. PPD-205 / PPD-219.
                     if (authored_transient_current())
                         return {std::move(value), &found->prototype, nullptr, true};
                     const auto index = static_cast<std::size_t>(found - value->worlds.data());
                     auto promoted = std::make_shared<Payload>(*value);
                     auto& variant = promoted->worlds[index];
+                    if (flavor.cohort_bounds) qualifyBounds(info, variant.prototype, *promoted);
                     if (needs_cpu_freeze(variant)) variant.cpu_slots_frozen = variant.prototype.freezeCpuSlots();
                     const bool had_cohort_source = static_cast<bool>(variant.cohort_source);
                     if (flavor.native_resources && (!variant.prototype.native_resource_source ||
@@ -604,7 +629,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
                         publishResourceSource(*promoted, variant.prototype);
                     if (flavor.cohort_source || had_cohort_source)
                         sealCohortSource(*promoted, variant, info.metalSourcePublication()->identity(), promoted->producer_revision);
-                    if (!ready(variant))
+                    if (!ready(variant, *promoted))
                     {
                         if (!original_current())
                             return {{}, nullptr, "Native scene changed while optional capabilities were unavailable"};
@@ -630,11 +655,11 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         info.observeMetalSourceDependencies();
         auto value = extend(info, serial);
         if (!value) return {{}, nullptr, "Native scene geometry lease is missing"};
-        if (flavor.visibility_bounds) qualifyBounds(info, *value);
         auto& variant = value->worlds.emplace_back();
         variant.key = key;
         if (!buildWorld(info, flavor, *value, variant.prototype))
             return {{}, nullptr, "Native scene world material/layout is incomplete"};
+        if (flavor.visibility_bounds || flavor.cohort_bounds) qualifyBounds(info, variant.prototype, *value);
         if (!flavor.native_materials) variant.cpu_slots_frozen = variant.prototype.freezeCpuSlots();
         if (flavor.native_materials && flavor.family != WorldFamily::simple)
         {

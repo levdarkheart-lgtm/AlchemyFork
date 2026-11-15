@@ -8,6 +8,8 @@
 #include <array>
 #include <limits>
 #include <span>
+struct ALMetalWorldSourceCohortView;
+class ALMetalWorldFrameData;
 
 struct ALMetalWorldBoundsHandle
 {
@@ -42,7 +44,7 @@ enum class ALMetalWorldVisibilityFailure : std::uint8_t
 {
     none, invalid_input, completion_tracking, bounds_allocation,
     arguments_busy, arguments_allocation, publication, retention, encoder,
-    host_allocation, count
+    host_allocation, admission, stale_plan, count
 };
 struct ALMetalWorldVisibilityStats
 {
@@ -50,6 +52,12 @@ struct ALMetalWorldVisibilityStats
     std::uint64_t generation_copies = 0, generation_reuses = 0;
     std::uint64_t dirty_records_uploaded = 0, uploaded_bytes = 0;
     std::uint64_t views = 0, argument_candidates = 0, fallbacks = 0;
+    std::uint64_t cohort_views = 0, cohort_groups = 0, cohort_candidates = 0;
+    std::uint64_t cohort_row_builds = 0, cohort_row_hits = 0, cohort_row_upload_bytes = 0;
+    std::uint64_t cohort_row_allocated_bytes = 0;
+    std::uint64_t live_cohort_row_bytes = 0, cached_cohort_rows = 0;
+    std::uint64_t expanded_member_bytes = 0;
+    std::uint64_t admission_requests = 0, admission_denials = 0, admitted_logical_bytes = 0;
     std::array<std::uint64_t, static_cast<std::size_t>(ALMetalWorldVisibilityFailure::count)> fallback_reasons{};
     ALMetalWorldVisibilityFailure last_fallback = ALMetalWorldVisibilityFailure::none;
 };
@@ -73,6 +81,8 @@ public:
     bool appliesTo(std::size_t index, std::uint32_t index_count,
                    const float* modelview_projection = nullptr,
                    bool required_depth_clamp = false) const noexcept;
+    bool appliesToCohort(std::size_t index, std::uint32_t index_count,
+                        const ALMetalWorldSourceCohortView&) const noexcept;
     // Only the command that encoded these arguments may consume them.
     bool drawIndexed(ALMetalRenderEncoder&, ALMetalCommandBuffer&,
         std::size_t index, ALMetalIndexType, const ALMetalBuffer& indices,
@@ -101,10 +111,25 @@ public:
     bool retire(ALMetalWorldBoundsHandle) noexcept;
     std::shared_ptr<const ALMetalWorldVisibilityView> makeView(
         std::vector<ALMetalWorldVisibilityMember> ordered_members, std::string* error = nullptr);
+    // Members cover only the ordinary raw/ref order. Certified cohorts insert
+    // their persistent membership between those tokens, with one exact MVP.
+    // The CPU owners live through encoding; GPU retirement owns native data only.
+    std::shared_ptr<const ALMetalWorldVisibilityView> makeView(
+        std::vector<ALMetalWorldVisibilityMember> ordered_base_members,
+        std::span<const ALMetalWorldSourceCohortView> cohorts,
+        std::size_t logical_count, std::string* error = nullptr);
+    // Sparse qualified raw members: all other raw/ref/cohort holes keep their
+    // required direct draws. Unrepresented argument slots are never consumed.
+    std::shared_ptr<const ALMetalWorldVisibilityView> makeView(
+        std::vector<ALMetalWorldVisibilityMember> qualified_members,
+        std::vector<std::uint32_t> logical_indices,
+        std::span<const ALMetalWorldSourceCohortView> cohorts,
+        std::size_t logical_count, std::string* error = nullptr);
     // Same-command compute precedes render; no readback, CPU wait or ICB.
     // nullptr leaves the caller's exact native direct path available.
     static std::shared_ptr<ALMetalWorldVisibilityArguments> encode(
-        ALMetalCommandBuffer&, const ALMetalWorldVisibilityView&, std::string* error = nullptr);
+        ALMetalCommandBuffer&, const ALMetalWorldVisibilityView&, std::string* error = nullptr,
+        ALMetalWorldFrameData* frame_data = nullptr);
     ALMetalWorldVisibilityStats stats() const noexcept;
 private:
     friend class ALMetalWorldVisibilityView;

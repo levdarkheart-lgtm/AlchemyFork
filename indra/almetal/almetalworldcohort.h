@@ -6,6 +6,7 @@
 #pragma once
 #include "almetalworlddraws.h"
 #include "almetalworldsourcepages.h"
+#include "almetalworldvisibility.h"
 #include <memory>
 #include <span>
 #include <string>
@@ -28,7 +29,8 @@ class ALMetalWorldCohortSource final
 {
 public:
     static std::shared_ptr<const ALMetalWorldCohortSource> seal(
-        const ALMetalWorldKeyedSource&,std::string* error=nullptr);
+        const ALMetalWorldKeyedSource&,std::string* error=nullptr,
+        const ALMetalWorldConservativeBounds* bounds=nullptr);
     ~ALMetalWorldCohortSource();
     ALMetalWorldCohortSource(const ALMetalWorldCohortSource&)=delete;
     ALMetalWorldCohortSource& operator=(const ALMetalWorldCohortSource&)=delete;
@@ -36,6 +38,8 @@ public:
     const ALMetalWorldSimpleBatch& source() const noexcept;
     std::uint32_t family() const noexcept;
     bool doubleSided() const noexcept;
+    bool hasBoundsPublication() const noexcept;
+    const ALMetalWorldConservativeBounds& bounds() const noexcept;
     std::size_t ownedBytes() const noexcept;
 private:
     struct Impl;
@@ -78,6 +82,8 @@ public:
     std::uint64_t regionIdentity() const noexcept;
     const ALMetalWorldSimpleBatch& source(std::size_t) const noexcept;
     const ALMetalWorldSourceKey& key(std::size_t) const noexcept;
+    const ALMetalWorldConservativeBounds& bounds(std::size_t) const noexcept;
+    std::size_t qualifiedBoundsCount() const noexcept;
     bool matchesOwners(const std::shared_ptr<const void>& cpu,
                        const std::shared_ptr<const void>& native) const noexcept;
     // Cold optional GPU certification only. The completed producer returns an

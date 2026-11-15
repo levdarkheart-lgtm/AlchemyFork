@@ -97,8 +97,12 @@ try
     if (!capture.complete || !params.mCount) return;
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> native_resources(gSavedSettings, "RenderMetalWorldResourceTables", false);
+    static LLCachedControl<bool> native_groups(gSavedSettings, "RenderMetalGroupSources", false);
     ALScenePublicationNative::WorldFlavor flavor;
-    flavor.visibility_bounds = native_visibility();
+    // Retained cohorts qualify bounds inside admitted compilation. A denied
+    // or unsupported raw fallback does no new optional bounds scan. The
+    // standalone legacy flag retains its existing per-source qualification.
+    flavor.cohort_bounds = native_visibility() && !native_groups() && !capture.visibility_metadata_failed;
     // Forward/alpha passes have their own lighting ABI. Publish stable tables
     // for the ordinary G-buffer consumer, including opaque impostor bakes.
     flavor.native_materials = !capture.impostor_alpha_active &&
@@ -170,30 +174,50 @@ try
     std::memcpy(batch.normal_matrix, view.normal_matrix, sizeof(batch.normal_matrix));
     std::memcpy(batch.rigged_normal_matrix, view.rigged_normal_matrix, sizeof(batch.rigged_normal_matrix));
     std::memcpy(batch.texture_matrix, view.texture_matrix, sizeof(batch.texture_matrix));
-    if (native_visibility() && !capture.rigged)
+    if (native_visibility() && !capture.visibility_metadata_failed && !capture.rigged && source.owner->bounds.qualified)
     {
-        if (sNativeSceneVisibilityDevice != capture.device)
+        try
         {
-            sNativeSceneVisibility = ALMetalWorldVisibility::create(*capture.device);
-            sNativeSceneVisibilityDevice = capture.device;
-        }
-        if (sNativeSceneVisibility)
-        {
-            auto& metadata = *params.mMetalShadowSource;
-            if (metadata.visibility.lock() != sNativeSceneVisibility ||
-                metadata.bounds_revision != source.owner->producer_revision)
+            if (ALScenePublicationNative::visibilityMetadataAllocationForTesting)
+                ALScenePublicationNative::visibilityMetadataAllocationForTesting();
+            if (sNativeSceneVisibilityDevice != capture.device || !sNativeSceneVisibility)
             {
-                metadata.bounds = sNativeSceneVisibility->publishBounds(params.metalSourcePublication()->identity(),
-                    source.owner->producer_revision, source.owner->bounds);
-                metadata.bounds_revision = source.owner->producer_revision;
-                metadata.visibility = sNativeSceneVisibility;
+                sNativeSceneVisibility = ALMetalWorldVisibility::create(*capture.device);
+                sNativeSceneVisibilityDevice = capture.device;
             }
-            capture.world_visibility_members.resize(capture.batches.size());
-            auto& member = capture.world_visibility_members.back();
-            std::memcpy(member.modelview_projection, batch.modelview_projection, sizeof(member.modelview_projection));
-            member.identity = metadata.bounds.identity; member.revision = metadata.bounds.revision;
-            member.slot = metadata.bounds.slot; member.index_count = batch.index_count;
-            member.enabled = source.owner->bounds.qualified;
+            if (!sNativeSceneVisibility)
+            {
+                capture.world_visibility_members.clear();capture.world_visibility_indices.clear();
+                capture.visibility_metadata_failed = true;++capture.visibility_metadata_failures;
+            }
+            if (sNativeSceneVisibility)
+            {
+                auto& metadata = *params.mMetalShadowSource;
+                if (metadata.visibility.lock() != sNativeSceneVisibility ||
+                    metadata.bounds_revision != source.owner->producer_revision)
+                {
+                    metadata.bounds = sNativeSceneVisibility->publishBounds(params.metalSourcePublication()->identity(),
+                        source.owner->producer_revision, source.owner->bounds);
+                    metadata.bounds_revision = source.owner->producer_revision;
+                    metadata.visibility = sNativeSceneVisibility;
+                }
+                if (metadata.bounds.identity && capture.logicalDrawCount() <= std::numeric_limits<U32>::max())
+                {
+                    ALMetalWorldVisibilityMember member;
+                    std::memcpy(member.modelview_projection, batch.modelview_projection, sizeof(member.modelview_projection));
+                    member.identity = metadata.bounds.identity; member.revision = metadata.bounds.revision;
+                    member.slot = metadata.bounds.slot; member.index_count = batch.index_count; member.enabled = 1;
+                    capture.world_visibility_members.push_back(member);
+                    capture.world_visibility_indices.push_back(static_cast<U32>(capture.logicalDrawCount() - 1));
+                }
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            // PPD-224: this optional transaction cannot clear required scene
+            // geometry, native leases, ordering, queries or cohort captures.
+            capture.world_visibility_members.clear();capture.world_visibility_indices.clear();
+            capture.visibility_metadata_failed = true;++capture.visibility_metadata_failures;
         }
     }
     if (capture.rigged)

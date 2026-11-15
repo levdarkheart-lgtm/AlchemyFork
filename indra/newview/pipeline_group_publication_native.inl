@@ -52,6 +52,8 @@ struct Source
     // Material proofs retain native wrapper leases and stay weak above.
     std::shared_ptr<const ALMetalWorldCohortSource> simple_proof;
     std::vector<std::weak_ptr<const ALMetalTexture>> textures;
+    ALMetalWorldConservativeBounds bounds;
+    bool bounds_attempted = false;
 };
 struct SourceLease
 {
@@ -347,7 +349,7 @@ std::shared_ptr<const Payload> seal(
     std::shared_ptr<ALNativePublication::Observer>& dependency_owner,
     std::shared_ptr<Layout>& layout_owner,
     const LLMatrix4a& model, const ALNativeRegionModel::Snapshot& region, const Draws& draws,
-    ALNativeSourceWorkingSet& working_set, U64& source_serial, U32 frame)
+    ALNativeSourceWorkingSet& working_set, U64& source_serial, U32 frame, bool request_bounds=false)
 try
 {
     if (!state || !region || std::memcmp(region.model.data(), model.getF32ptr(), sizeof(region.model))) return {};
@@ -388,7 +390,8 @@ try
         auto record = layout->sources[row];
         auto producer = record ? record->producer.lock() : nullptr;
         bool reuse = producer && producer->identity() == record->identity && producer->revision() == record->revision &&
-            record->simple_proof && record->simple_proof->family() == 0 && cpuOnlySimple(record->simple_proof->source());
+            record->simple_proof && (!request_bounds || record->simple_proof->hasBoundsPublication()) &&
+            record->simple_proof->family() == 0 && cpuOnlySimple(record->simple_proof->source());
         if (reuse)
         {
             const auto& key = record->simple_proof->key();
@@ -414,7 +417,7 @@ try
                 info->mMaterial || !info->mMaterialSlotList.empty())
             { ++statistics.declined; return {}; }
             ALScenePublicationNative::WorldFlavor flavor;
-            flavor.indexed_textures = true;flavor.cohort_source = true;
+            flavor.indexed_textures = true;flavor.cohort_source = true;flavor.cohort_bounds = request_bounds;
             ALScenePublicationNative::WorldLease source;
             if (!producer->publication() && info->mMetalShadowSource)
             {
@@ -425,7 +428,8 @@ try
                 if (transient && transient->producer_revision == producer->revision())
                 {
                     auto normalized = flavor;normalized.indexed_textures = info->mTextureList.size() > 1;
-                    if (const auto* prototype = ALScenePublicationNative::findWorld(*transient, normalized.key()))
+                    if (const auto* prototype = ALScenePublicationNative::findWorld(*transient, normalized.key());
+                        prototype && (!request_bounds || transient->bounds_attempted))
                         source = {std::move(transient), prototype, nullptr, true};
                 }
             }
@@ -442,7 +446,8 @@ try
             if (!next->simple_proof && ALScenePublicationNative::completeWorldResources(*source.owner, *source.prototype))
             {
                 next->simple_proof = ALMetalWorldCohortSource::seal(
-                    {{next->identity, next->flavor_key, next->revision}, source.prototype});
+                    {{next->identity, next->flavor_key, next->revision}, source.prototype}, nullptr,
+                    source.owner->bounds_attempted ? &source.owner->bounds : nullptr);
                 if (next->simple_proof) ++ALScenePublicationNative::cohort_source_publications;
             }
             if (!next->simple_proof || next->simple_proof->family() != 0 || !cpuOnlySimple(next->simple_proof->source()))
@@ -655,6 +660,7 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
         ? std::make_shared<ALScenePublicationNative::Payload>(*cached)
         : std::make_shared<ALScenePublicationNative::Payload>();
     value->producer_revision = source.revision;value->serial = ++serial;
+    value->bounds = source.bounds;value->bounds_attempted = source.bounds_attempted;
     value->vertices = std::move(vertices);value->indices = std::move(indices);
     std::erase_if(value->worlds, [&](const auto& variant) { return variant.key == source.flavor_key; });
     auto& variant = value->worlds.emplace_back();variant.key = source.flavor_key;variant.prototype = source.prototype;
@@ -731,6 +737,7 @@ try
         bool record_reused = false;
         ALScenePublicationNative::WorldLease source;
         if (reuse) { source = restoreMaterial(*record, producer, working_set, source_serial, frame);if (new_dependencies) producer->observe(dependencies); }
+        if (source && flavor.cohort_bounds && !source.owner->bounds_attempted) source = {};
         if (!source)
         {
             const LLDrawInfo* info = draws[row];
@@ -745,6 +752,7 @@ try
             next->prototype.native_material_source.reset();next->prototype.native_resource_source.reset();
             next->producer = producer;next->identity = producer->identity();next->revision = source.owner->producer_revision;
             next->flavor_key = row_flavor.key();next->world_owner = source.owner;
+            next->bounds = source.owner->bounds;next->bounds_attempted = source.owner->bounds_attempted;
             next->vertices = source.owner->vertices;next->indices = source.owner->indices;
             next->material_source = source.prototype->native_material_source;next->resource_source = source.prototype->native_resource_source;
             const auto* variant = ALScenePublicationNative::findWorldVariant(*source.owner, next->flavor_key);

@@ -154,14 +154,14 @@ U32 gFrameCount=1;
 #include "../../newview/pipeline_scene_publication_native.inl"
 #include "../../newview/pipeline_group_publication_native.inl"
 #include "../../newview/pipeline_cohort_compilation_native.inl"
-struct Settings {bool native_visibility=false,native_resources=false;} gSavedSettings;
+struct Settings {bool native_visibility=false,native_resources=false,native_groups=false;} gSavedSettings;
 template<class T> struct LLCachedControl
 {
     Settings& settings;
-    bool resources;
+    bool resources,groups;
     LLCachedControl(Settings& source,const char* name,T):settings(source),
-        resources(std::strcmp(name,"RenderMetalWorldResourceTables")==0){}
-    T operator()() const{return static_cast<T>(resources?settings.native_resources:settings.native_visibility);}
+        resources(std::strcmp(name,"RenderMetalWorldResourceTables")==0),groups(std::strcmp(name,"RenderMetalGroupSources")==0){}
+    T operator()() const{return static_cast<T>(resources?settings.native_resources:groups?settings.native_groups:settings.native_visibility);}
 };
 // Only cull admission is a typed frontier. Native range admission and simple
 // capture below are the exact production bodies, including their ordering and
@@ -249,6 +249,9 @@ struct Capture
     std::shared_ptr<WorldCpuLease> cpu_sources;
     bool compact_gbuffer_active=false;
     std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
+    std::vector<U32> world_visibility_indices;
+    bool visibility_metadata_failed=false;
+    U64 visibility_metadata_failures=0;
     std::shared_ptr<WorldResources> world_resources=std::make_shared<WorldResources>();
 #include "../../newview/pipeline_source_rows_capture_native.inl"
 #include "../../newview/pipeline_compact_capture_native.inl"
@@ -325,6 +328,7 @@ struct Publication : ll_test::NativeFontUI
         Inputs::sNativeSceneVisibilityDevice=nullptr;
         Inputs::gSavedSettings.native_visibility=false;
         Inputs::gSavedSettings.native_resources=false;
+        Inputs::gSavedSettings.native_groups=false;
         Inputs::sCull=nullptr;
         Inputs::ALSceneGroupPublicationNative::statistics={};
         Inputs::LLViewerFetchedTexture::sWhiteImagep.value=nullptr;
@@ -532,7 +536,9 @@ struct MaterialGroupPublication : GroupPublication
     }
     std::shared_ptr<const NativeGroup> sealMaterial(ALNativeSourceWorkingSet& working_set=Inputs::sNativeSceneSources,U32 frame=Inputs::gFrameCount)
     {
-        if(type==Inputs::LLRenderPass::PASS_SIMPLE)return seal(working_set,frame);
+        if(type==Inputs::LLRenderPass::PASS_SIMPLE)
+            return Inputs::ALSceneGroupPublicationNative::seal(group,group_dependencies,group_layout,model,region.snapshot(),draws(),
+                working_set,Inputs::sNativeSceneSerial,frame,Inputs::gSavedSettings.native_visibility);
         return Inputs::ALSceneGroupPublicationNative::sealMaterial(group,group_dependencies,group_layout,model,region.snapshot(),draws(),flavor,
             working_set,Inputs::sNativeSceneSerial,frame);
     }
@@ -651,7 +657,7 @@ TEST_CASE("Actual scene factory shares main probe shadow sources and separates a
     CHECK(capture.world_visibility_members[0].identity==info.state->identity());
     const auto initial_bounds_revision=capture.world_visibility_members[0].revision;
     Inputs::ALScenePublicationNative::WorldFlavor flavor;
-    flavor.visibility_bounds=true;
+    flavor.cohort_bounds=true;
     auto main=Inputs::ALScenePublicationNative::world(info,flavor,
         Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
     REQUIRE(main); CHECK(main.reused);CHECK(main.owner->bounds.qualified);
@@ -1806,6 +1812,174 @@ TEST_CASE("Actual material capabilities promote one semantic source without rebu
     }
 }
 
+TEST_CASE("Actual retained visibility promotes bounds without another shading variant or native tuple",
+          "[almetal][pipeline-buffer-publication][native-cohort-visibility]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    for(U32 family:{0u,1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);auto& info=f.materialDraw(true);
+        auto flavor=f.flavor;flavor.native_resources=false;flavor.indexed_textures=family==0;flavor.indexed_materials=family!=0;
+        auto raw=world(info,flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(raw);
+        CHECK_FALSE(raw.owner->bounds_attempted);const auto images=f.image.image_reads;
+        const auto source_revision=info.state->revision();flavor.cohort_bounds=true;flavor.cohort_source=true;
+        CHECK(flavor.key()==(raw.owner->worlds.front().key));
+        auto bounded=world(info,flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(bounded);
+        REQUIRE(bounded.owner->bounds_attempted);REQUIRE(bounded.owner->bounds.qualified);CHECK(bounded.owner->worlds.size()==1);
+        REQUIRE(bounded.owner->worlds.front().cohort_source);CHECK(bounded.owner->worlds.front().cohort_source->hasBoundsPublication());
+        CHECK(bounded.owner->native_tuple==raw.owner->native_tuple);CHECK(bounded.owner->vertices==raw.owner->vertices);
+        CHECK(info.state->revision()==source_revision);CHECK(f.image.image_reads==images);CHECK_FALSE(raw.owner->bounds_attempted);
+        const auto serial=Inputs::sNativeSceneSerial;auto warm=world(info,flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
+        REQUIRE(warm);CHECK(warm.owner==bounded.owner);CHECK(Inputs::sNativeSceneSerial==serial);
+    }
+}
+
+TEST_CASE("Actual retained visibility keeps mixed raw reference cohort order and warm owner discovery absent",
+          "[almetal][pipeline-buffer-publication][native-cohort-visibility]")
+{
+    for(U32 family:{0u,1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_visibility=true;Inputs::gSavedSettings.native_groups=true;
+        f.flavor.native_resources=false;f.flavor.cohort_bounds=true;
+        auto& raw=f.materialDraw();auto& a=f.materialDraw();auto& b=f.materialDraw(true);auto& ref=f.materialDraw();
+        std::vector<Inputs::LLDrawInfo*> rows{&a,&b};
+        auto packet=family?Inputs::ALSceneGroupPublicationNative::sealMaterial(f.group,f.group_dependencies,f.group_layout,
+            f.model,f.region.snapshot(),rows,f.flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount)
+            :Inputs::ALSceneGroupPublicationNative::seal(f.group,f.group_dependencies,f.group_layout,f.model,f.region.snapshot(),rows,
+                Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount,true);
+        REQUIRE(packet);REQUIRE(packet->cohort->bounds(0).qualified);REQUIRE(packet->cohort->bounds(1).qualified);
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,false,false);
+        pipeline.captureMetalPublishedWorldBatch(raw,family,false,true);
+        const auto before=f.reads();Inputs::LLCullResult cull;
+        REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,2,f.region.snapshot()):cull.pushNativeSimpleRange(packet,2,f.region.snapshot())));
+        {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);CHECK(f.reads()==before);
+        // A reference is deliberately left unqualified. It still occupies its
+        // original base token after the retained cohort's two logical draws.
+        auto ref_flavor=f.flavor;ref_flavor.cohort_bounds=false;
+        auto reference=Inputs::ALScenePublicationNative::world(ref,ref_flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
+        REQUIRE(reference);auto view=capture.source_cohorts.front().view;
+        std::memcpy(view.texture_matrix,reference.prototype->texture_matrix,sizeof(view.texture_matrix));
+        capture.retainCpu(reference.owner);capture.world_resources->retain(reference.owner->native_tuple);
+        REQUIRE(capture.appendReference(*reference.prototype,view));REQUIRE(capture.flushDrawOrder());
+        REQUIRE(capture.batches.size()==1);REQUIRE(capture.source_cohorts.size()==1);REQUIRE(capture.source_references.size()==1);
+        CHECK_FALSE(capture.source_rows);CHECK(capture.world_visibility_members.empty());CHECK(capture.world_visibility_indices.empty());
+        std::array<ALMetalWorldVisibilityQuery,3> queries{};
+        for(U32 i=0;i<queries.size();++i)
+        {
+            auto& q=queries[i];std::memcpy(q.modelview_projection,f.model.getF32ptr(),sizeof(q.modelview_projection));
+            q.center[0]=.35f;q.center[1]=-.5f;q.center[2]=.75f;
+            q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.08f;q.batch_offset=i==0?1:i==1?2:4;q.fan=7;q.count_samples=1;
+        }
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        auto scene=f.scene(capture);scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+        std::shared_ptr<ALMetalVisibilityResultBatch> expected_queries,actual_queries;
+        auto expected=renderer->render(scene,&f.error,&expected_queries);INFO(f.error);REQUIRE(expected);REQUIRE(expected_queries);
+        auto visibility=ALMetalWorldVisibility::create(*f.device,&f.error);REQUIRE(visibility);
+        scene.native_visibility=visibility->makeView(capture.world_visibility_members,capture.world_visibility_indices,
+            capture.source_cohorts,scene.drawCount(),&f.error);
+        INFO(f.error);REQUIRE(scene.native_visibility);auto actual=renderer->render(scene,&f.error,&actual_queries);
+        INFO(f.error);REQUIRE(actual);REQUIRE(actual_queries);CHECK(f.read(*actual)==f.read(*expected));
+        for(U32 i=0;i<queries.size();++i)
+        {U64 left=0,right=0;REQUIRE(expected_queries->wait(i,left,&f.error));REQUIRE(actual_queries->wait(i,right,&f.error));CHECK(left==right);}
+        const auto stats=visibility->stats();CHECK(stats.cohort_groups==1);CHECK(stats.cohort_candidates==2);
+        CHECK(stats.expanded_member_bytes==0);
+        // A regional rebase changes only this copied view; the geometry source
+        // generations and retained cohort certificate stay exact and reusable.
+        REQUIRE(f.region.update(f.model,LLVector3(4.f,0.f,0.f)));const auto source_serial=Inputs::sNativeSceneSerial;
+        auto same=family?Inputs::ALSceneGroupPublicationNative::currentMaterial(f.group,f.region.snapshot(),f.flavor,Inputs::sNativeSceneSources,Inputs::gFrameCount)
+            :Inputs::ALSceneGroupPublicationNative::current(f.group,f.region.snapshot(),Inputs::sNativeSceneSources,Inputs::gFrameCount);
+        CHECK(same==packet);CHECK(Inputs::sNativeSceneSerial==source_serial);
+    }
+}
+
+TEST_CASE("Actual retained visibility keeps only native generations through pending GPU COW",
+          "[almetal][pipeline-buffer-publication][native-cohort-visibility][native-tuple]")
+{
+    for(U32 family:{0u,1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_visibility=true;Inputs::gSavedSettings.native_groups=true;
+        f.flavor.native_resources=false;f.flavor.cohort_bounds=true;
+        auto& info=f.materialDraw(true);auto buffer=info.mVertexBuffer;f.materialDraw();
+        auto packet=f.sealMaterial();REQUIRE(packet);REQUIRE(packet->cohort->bounds(0).qualified);
+        std::weak_ptr<const NativeGroup> weak_group=packet;std::weak_ptr<const ALMetalWorldSourceCohort> weak_cohort=packet->cohort;
+        std::weak_ptr<const Inputs::ALScenePublicationNative::Payload> weak_source=
+            std::static_pointer_cast<const Inputs::ALScenePublicationNative::Payload>(info.state->publication());
+        Inputs::LLCullResult cull;REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,2,f.region.snapshot()):
+            cull.pushNativeSimpleRange(packet,2,f.region.snapshot())));
+        Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,false,false);
+        {CullScope scope(cull);f.capture(pipeline);}REQUIRE(capture.complete);CHECK(capture.batches.empty());CHECK(capture.world_visibility_members.empty());
+        const auto* original=packet->cohort->source(0).vertices;
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
+        auto expected=renderer->render(f.scene(capture),&f.error);INFO(f.error);REQUIRE(expected);const auto pixels=f.read(*expected);
+        auto visibility=ALMetalWorldVisibility::create(*f.device,&f.error);REQUIRE(visibility);
+        auto scene=f.scene(capture);scene.native_visibility=visibility->makeView({},capture.source_cohorts,scene.drawCount(),&f.error);
+        INFO(f.error);REQUIRE(scene.native_visibility);
+        REQUIRE(renderer->beginCommandBatch("Actual retained visibility old native generation",&f.error));
+        auto pending=renderer->render(scene,&f.error);INFO(f.error);REQUIRE(pending);
+        auto completion=renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
+        const auto stats=visibility->stats();CHECK(stats.expanded_member_bytes==0);CHECK(stats.cohort_groups==1);CHECK(stats.cohort_candidates==2);
+        scene={};cull.clear();packet.reset();capture.clearDraws();capture.world_resources=std::make_shared<Inputs::WorldResources>();
+        f.group->invalidate();f.group_layout.reset();f.group_dependencies.reset();
+        for(const auto& source:f.infos)source->state->invalidate();Inputs::sNativeSceneSources.clear();f.infos.clear();
+        CHECK(weak_group.expired());CHECK(weak_cohort.expired());CHECK(weak_source.expired());
+        gGL.frameFences().release();const auto before=LLVertexBuffer::metalUploadStats();
+        f.positions(*buffer,true);buffer->unmapBuffer();CHECK(buffer->getMetalVertexBuffer()!=original);
+        CHECK(LLVertexBuffer::metalUploadStats().leased_orphans==before.leased_orphans+1);
+        REQUIRE(renderer->commitCommandBatch(&f.error));REQUIRE(f.device->waitUntilIdle(&f.error));CHECK(completion->isComplete());
+        CHECK(f.read(*pending)==pixels);
+    }
+}
+
+TEST_CASE("Actual optional visibility metadata failure preserves required raw reference cohort geometry",
+          "[almetal][pipeline-buffer-publication][native-cohort-visibility][PPD-224]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    static U32 fault_calls=0;
+    struct RestoreFault {~RestoreFault(){visibilityMetadataAllocationForTesting=nullptr;}} restore;
+    for(U32 family:{0u,1u,2u})
+    {
+        CAPTURE(family);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_visibility=true;
+        f.flavor.native_resources=false;auto& first=f.materialDraw();auto& second=f.materialDraw();auto& member=f.materialDraw();
+        std::vector<Inputs::LLDrawInfo*> rows{&member};
+        auto packet=family?Inputs::ALSceneGroupPublicationNative::sealMaterial(f.group,f.group_dependencies,f.group_layout,
+            f.model,f.region.snapshot(),rows,f.flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount)
+            :Inputs::ALSceneGroupPublicationNative::seal(f.group,f.group_dependencies,f.group_layout,f.model,f.region.snapshot(),rows,
+                Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
+        REQUIRE(packet);Inputs::LLPipeline pipeline;auto& capture=*pipeline.mMetalWorldSimpleCapture;f.configure(capture,false,false);
+        fault_calls=0;visibilityMetadataAllocationForTesting=[]{++fault_calls;throw std::bad_alloc();};
+        pipeline.captureMetalPublishedWorldBatch(first,family,false,true);
+        REQUIRE(capture.complete);REQUIRE(capture.batches.size()==1);CHECK(capture.visibility_metadata_failed);
+        CHECK(capture.visibility_metadata_failures==1);CHECK(capture.world_visibility_members.empty());CHECK(capture.world_visibility_indices.empty());
+        Inputs::LLCullResult cull;REQUIRE((family?cull.pushNativeMaterialRange(f.type,packet,1,f.region.snapshot()):
+            cull.pushNativeSimpleRange(packet,1,f.region.snapshot())));
+        {CullScope scope(cull);f.capture(pipeline);}pipeline.captureMetalPublishedWorldBatch(second,family,false,true);
+        REQUIRE(capture.complete);CHECK(fault_calls==1);CHECK(capture.batches.size()==2);CHECK(capture.source_cohorts.size()==1);
+        auto second_source=current(second);REQUIRE(second_source);CHECK_FALSE(second_source->bounds_attempted);
+        auto source=current(member);REQUIRE(source);const auto* prototype=findWorld(*source,packet->cohort->key(0).flavor);REQUIRE(prototype);
+        capture.retainCpu(source);capture.world_resources->retain(source->native_tuple);
+        auto reference_view=capture.source_cohorts[0].view;
+        std::memcpy(reference_view.texture_matrix,prototype->texture_matrix,sizeof(reference_view.texture_matrix));
+        REQUIRE(capture.appendReference(*prototype,reference_view));REQUIRE(capture.flushDrawOrder());
+        REQUIRE(capture.logicalDrawCount()==4);CHECK(capture.visibility_metadata_failed);CHECK(fault_calls==1);
+        CHECK(capture.world_visibility_members.empty());CHECK(capture.world_visibility_indices.empty());
+        auto scene=f.scene(capture);CHECK(scene.draw(0).source().vertices==first.mVertexBuffer->getMetalVertexBuffer());
+        CHECK(scene.draw(1).source().vertices==member.mVertexBuffer->getMetalVertexBuffer());
+        CHECK(scene.draw(2).source().vertices==second.mVertexBuffer->getMetalVertexBuffer());
+        CHECK(scene.draw(3).source().vertices==member.mVertexBuffer->getMetalVertexBuffer());
+        std::array<ALMetalWorldVisibilityQuery,2> queries{};
+        for(U32 i=0;i<queries.size();++i)
+        {auto& q=queries[i];std::memcpy(q.modelview_projection,f.model.getF32ptr(),sizeof(q.modelview_projection));
+         q.center[0]=.35f;q.center[1]=-.5f;q.center[2]=.75f;q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.08f;
+         q.batch_offset=i?4:1;q.fan=7;q.count_samples=1;}
+        scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+        auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);REQUIRE(renderer);
+        std::shared_ptr<ALMetalVisibilityResultBatch> results;auto target=renderer->render(scene,&f.error,&results);
+        INFO(f.error);REQUIRE(target);REQUIRE(results);CHECK(renderer->worldCohortStats().draws==1);
+        for(U32 i=0;i<queries.size();++i){U64 count=0;REQUIRE(results->wait(i,count,&f.error));CHECK(count>0);}
+        visibilityMetadataAllocationForTesting=nullptr;capture.clearDraws();CHECK_FALSE(capture.visibility_metadata_failed);
+    }
+}
+
 TEST_CASE("Actual partially dirty cohorts share immutable source proofs and refresh only changed generations",
           "[almetal][pipeline-buffer-publication][native-material-group][PPD-194]")
 {
@@ -1983,6 +2157,76 @@ TEST_CASE("Actual authored forward readers survive cache withdrawal without a CP
             CHECK_FALSE(info.state->publication());CHECK(info.state->revision()==revision);CHECK(tiny.entryCount()==0);
             CHECK(Inputs::sNativeSceneSerial==serial);CHECK_FALSE(reader->worlds[0].cpu_slots_frozen);
             CHECK_FALSE(result.prototype->native_material_source);CHECK_FALSE(result.prototype->native_resource_source);
+            CHECK_FALSE(reader->worlds[0].cohort_source);
+        }
+        else
+        {
+            CHECK_FALSE(result);
+            if(scenario==1 || scenario==4){CHECK(info.state->revision()==revision+1);CHECK_FALSE(info.state->publication());}
+            else if(scenario==6){CHECK_FALSE(info.state->publication());CHECK(info.state->revision()==revision);
+                CHECK(info.mMetalShadowSource->native_scene_transient.lock()==hook_replacement);}
+            else {REQUIRE(info.state->publication());CHECK(info.state->publication().get()!=reader.get());
+                  CHECK(std::static_pointer_cast<const Payload>(info.state->publication())->serial==reader->serial+100);
+                  CHECK(info.state->revision()==revision);}
+        }
+        // world() observes dependencies once before checking its cache.
+        CHECK(info.dependency_walks==walks+1);CHECK(resource_source_publications==resources);CHECK(cohort_source_publications==records);
+        CHECK(reader->producer_revision==revision);REQUIRE(reader->native_tuple);
+        CHECK(reader->native_tuple->resources.size()==reader->resources.size());
+        for(const auto& resource:reader->native_tuple->resources)CHECK(resource.allocation);
+    }
+}
+
+TEST_CASE("Actual raw bounds-only readers survive cache withdrawal without a capability publisher",
+          "[almetal][pipeline-buffer-publication][native-cohort-visibility][PPD-219]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    static std::shared_ptr<const Payload> hook_reader;
+    static std::shared_ptr<const Payload> hook_replacement;
+    static Inputs::LLDrawInfo* hook_info=nullptr;
+    for(U32 family:{0u,1u,2u})for(U32 scenario=0;scenario<7;++scenario)
+    {
+        CAPTURE(family,scenario);MaterialGroupPublication f(family);Inputs::gSavedSettings.native_resources=false;
+        struct RestoreHook
+        {
+            std::shared_ptr<const Payload>& reader;
+            std::shared_ptr<const Payload>& replacement;
+            Inputs::LLDrawInfo*& info;
+            ~RestoreHook(){capabilityPromotionAllocationForTesting=nullptr;reader.reset();replacement.reset();info=nullptr;}
+        } restore{hook_reader,hook_replacement,hook_info};
+        auto& info=f.materialDraw();auto flavor=f.flavor;flavor.native_resources=false;
+        auto original=world(info,flavor,Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);REQUIRE(original);
+        auto authored=std::make_shared<Payload>(*original.owner);authored->serial=++Inputs::sNativeSceneSerial;
+        ALNativeSourceWorkingSet tiny(1,1,0);
+        REQUIRE(publish(info,authored,tiny,Inputs::gFrameCount));
+        std::shared_ptr<const Payload> reader=authored;authored.reset();original={};hook_reader=reader;hook_info=&info;
+        REQUIRE_FALSE(info.state->publication());CHECK(tiny.entryCount()==0);
+        flavor.cohort_bounds=true;
+        const auto revision=info.state->revision(),serial=Inputs::sNativeSceneSerial;
+        const auto walks=info.dependency_walks,resources=resource_source_publications,records=cohort_source_publications;
+        if(scenario==0)
+            capabilityPromotionAllocationForTesting=[](ALNativePublication::State&){throw std::bad_alloc();};
+        else if(scenario==1)
+            capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state){state.invalidate();throw std::bad_alloc();};
+        else if(scenario==2 || scenario==3)
+        {
+            if(scenario==2)capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state)
+            {auto newer=std::make_shared<Payload>(*hook_reader);newer->serial+=100;(void)state.publish(state.revision(),newer);};
+            else capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state)
+            {auto newer=std::make_shared<Payload>(*hook_reader);newer->serial+=100;(void)state.publish(state.revision(),newer);throw std::bad_alloc();};
+        }
+        else if(scenario==4)capabilityPromotionAllocationForTesting=[](ALNativePublication::State& state){state.invalidate();};
+        else if(scenario==6)capabilityPromotionAllocationForTesting=[](ALNativePublication::State&)
+        {auto newer=std::make_shared<Payload>(*hook_reader);newer->serial+=200;hook_replacement=newer;
+         hook_info->mMetalShadowSource->native_scene_transient=newer;};
+        else capabilityPromotionAllocationForTesting=nullptr;
+        auto result=world(info,flavor,tiny,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
+        if(scenario==0 || scenario==5)
+        {
+            REQUIRE(result);CHECK(result.owner==reader);CHECK(result.prototype==&reader->worlds[0].prototype);
+            CHECK_FALSE(info.state->publication());CHECK(info.state->revision()==revision);CHECK(tiny.entryCount()==0);
+            CHECK(Inputs::sNativeSceneSerial==serial);CHECK_FALSE(reader->bounds_attempted);
+            CHECK(bool(result.prototype->native_material_source)==bool(family));CHECK_FALSE(result.prototype->native_resource_source);
             CHECK_FALSE(reader->worlds[0].cohort_source);
         }
         else
@@ -3775,3 +4019,4 @@ TEST_CASE("Actual plain SIMPLE cohorts include publication same-view replacement
 #include "alpipeline_compile_cost_attribution_native.inl"
 #include "alpipeline_gpu_cohort_cost_native.inl"
 #include "alpipeline_many_cohort_cost_native.inl"
+#include "alpipeline_cohort_visibility_cost_native.inl"
