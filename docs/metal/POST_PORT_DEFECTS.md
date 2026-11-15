@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-220 -->
+<!-- next-defect-id: PPD-221 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5328,3 +5328,21 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-15: Architecture source owner reports this concrete pre-freeze defect before repair in codex/apple-first-retained-cohort-visibility. Root allocates219; next220. Owner69065 app and tested source32 remain unchanged.
+
+
+## PPD-220 — Retained visibility arguments lack exact cohort generation qualification
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility consumer
+- Discovered: 2026-11-15
+- Original reference: Optional culling may suppress required geometry only when its bounds/arguments belong to the exact immutable source and native generation being rendered. Mismatched optional preparation must fail visible through ordinary native rendering.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the unbuilt retained visibility consumer, generic Arguments::appliesTo(index,count,MVP) can accept a view created from a different certified cohort/native generation when logical range and MVP coincide. The new cohort API has exact certificate and CPU/native control-block identities available, but this generic consumer check does not compare them. No observed viewer incident or executed failure is claimed.
+- Next action: Add appliesToCohort(index,count,CohortView) and use it only for retained cohort indirect selection. Require exact pointer/control-block ownership plus matching copied MVP/range. Wrong cohort/native-generation arguments must retain required direct rendering; store qualification identities weakly so GPU retirement does not retain CPU source graphs. Add swapped-generation/cohort negative tests and execute pending-lifetime coverage.
+- Verification: Source-confirmed pre-freeze qualification gap registered before repair; native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Architecture source owner reports before repair; root allocates220, next221. Existing raw trusted metadata contract is unchanged; no renderer/backend default activation authorized.

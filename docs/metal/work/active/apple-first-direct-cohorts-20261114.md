@@ -861,3 +861,5 @@ The original goal stays active; the source32 cache repair is one concrete
 completed engineering step, not a replacement definition of the architecture.
 
 Pre-freeze retained-visibility review finds PPD219: bounds-only optional promotion can reject a valid current-reader transient after child-cache withdrawal. Registered before extending only the exact transient fallback guard; revision/newer replacement and195/205 protections remain required. Implementation/native execution pending; next220.
+
+PPD220 pre-freeze retained consumer review: generic range/MVP qualification cannot distinguish a different exact cohort/native generation. Registered before a cohort-specific weak-identity qualification API and swapped-generation controls; required direct fail-visible rendering and native-only retirement remain required. Next221.
