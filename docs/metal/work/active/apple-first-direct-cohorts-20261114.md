@@ -2622,3 +2622,28 @@ Dispatch completecost atactual423–867meanviewscale, including snapshots/output
 admission/release. Do notactivate8192aggregatewithno measuredsegmenthistogram.
 Keepcacheturnover240/274open; PPD295partialmitigationdoesnotclosethem.
 No additional launch/login/profile/push authorized.
+
+
+## Mixed-family preparation cost prototype integrated for contained execution
+
+Frozen test-only MMebab3795 sourceSHA
+ebab379562e9b883d5b8888155dd1b98afef77de5905108f45da39b8e4bc781e
+copiedexact. No productionrenderer/threshold/queue change.
+Normaltagshadow-prepare-segments checks rawcurrent-scalar vsaggregate serial/
+Dispatch values, threeviews, family/queryboundaries, merges, positiveDispatch,
+creditdenial/cancellation andlateinputfailure. Optincost108triples/8748samples
+usesactualrawsmall-familymaterialization, oneownedSourceRecordperlogicaldraw,
+sharednativegeometry andoneone-jointpose, reusedcommandpins/scratch andfinal
+release. ScopeexcludesLLpublicationlookup/traversal/assets/pose-solve/encoding/
+GPU anddoesnotemulateproduction8192selector. No GPU/CPUcostexecutionclaimyet.
+
+AdditionalAurora notes areinformational, notthreadtopologyorperformanceproof.
+Pinnedlocalframe_par usescallerparticipation; rootCPUdiagnostic confirms existing
+M1dispatch_apply_f alsoexecutesworkonthecaller forbothglobal andAUTOqueues
+inobservedtwo-job trials. E2/dispatch-apply-participation-20261115 storesprogram/
+compiler/hash/outputs; thisisnotabenchmark orcaller-participationguarantee.
+Do not addacustomschedulerorcopyAurorathresholds fromthisdatum.
+
+Parallelindependentproductionwork296/297 hasexclusiveworktrees/files. CPU
+performancewindowsserializedbyroot; nofullviewerlaunch/login/profile/push.
+Rootnexttestbuild74 andnewnormalcase beforeanytiming.

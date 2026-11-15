@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "../almetalshadowprepare.h"
+#include "../almetalshadowcapture.h"
 #include "../../llcommon/alnativeframebudget.h"
 #include "llmath.h"
 #include "llmatrix4a.h"
@@ -1099,6 +1100,346 @@ TEST_CASE("almetal: opt-in complete compact shadow preparation CPU cost",
                     << " variant=" << (arm ? "dispatch" : "serial")
                     << " samples=" << values.size() << " p50_ms=" << values[99]
                     << " p95_ms=" << values[189] << '\n';
+            }
+        }
+    }
+}
+
+
+namespace
+{
+// A frozen-record boundary model of captureMetalShadowScene, not an LL scene
+// traversal or a viewer timing. The raw arm mirrors its small-family scalar
+// construction and LLMatrix4a multiplication, rather than compact serial prep.
+struct SegmentPlan
+{
+    struct Family { std::size_t begin, end; };
+    Fixture& fixture;
+    std::vector<Family> families;
+    std::vector<LLMatrix4a> models;
+    std::vector<std::array<float, 16>> uv;
+    std::vector<unsigned> source_ids;
+    std::size_t opaque_families;
+    bool query_split;
+    LLMatrix4a projection;
+    std::array<LLMatrix4a, 3> views;
+    std::vector<std::shared_ptr<const Record>> retained;
+
+    SegmentPlan(Fixture& f, std::size_t count, unsigned family_count, bool query = true) : fixture(f),
+        opaque_families((family_count + 1) / 2), query_split(query),
+        projection(alMetalShadowIdentity.data())
+    {
+        // Two adjacent triangles permit a positive opaque-merge control.
+        const std::array<std::uint16_t, 6> indices{{0, 1, 2, 0, 1, 2}};
+        ALMetalBufferDescriptor descriptor; descriptor.length = sizeof(indices);
+        auto buffer = ALMetalBuffer::create(*f.device, descriptor, &f.error); REQUIRE(buffer);
+        REQUIRE(buffer->write(0, indices.data(), sizeof(indices), &f.error));
+        f.indices16 = std::move(buffer);
+        auto v = alMetalShadowIdentity, p = alMetalShadowIdentity;
+        v[0] = .75f; v[6] = .03125f; v[12] = -.0625f; p[5] = .5f; p[11] = -.015625f;
+        for (unsigned at = 0; at < views.size(); ++at)
+        { v[12] = -.0625f * float(at + 1); views[at] = LLMatrix4a(v.data()); }
+        projection = LLMatrix4a(p.data());
+        for (unsigned family = 0; family < family_count; ++family)
+        {
+            const Family range{count * family / family_count, count * (family + 1) / family_count};
+            families.push_back(range);
+            for (std::size_t at = range.begin; at < range.end; ++at)
+            {
+                auto model = alMetalShadowIdentity, texture = alMetalShadowIdentity;
+                model[1] = float((at / 2) % 13) / 128.f; model[12] = float((at / 2) % 31) / 64.f;
+                texture[12] = float(at % 11) / 128.f;
+                models.emplace_back(model.data()); uv.push_back(texture);
+                source_ids.push_back(family < opaque_families ? (family % 3 == 2 ? 2u : unsigned(at % 2))
+                    : 3u + (family - unsigned(opaque_families)) % 4);
+            }
+        }
+        retained.reserve(count);
+        for (std::size_t at = 0; at < count; ++at) retained.push_back(seal(at, 1));
+    }
+    std::shared_ptr<const Record> seal(std::size_t at, unsigned revision)
+    {
+        const unsigned id = source_ids[at];
+        const auto coverage = id < 3 ? ALMetalWorldSpotShadowCoverage::opaque :
+            id < 5 ? ALMetalWorldSpotShadowCoverage::legacy_mask : ALMetalWorldSpotShadowCoverage::pbr_mask;
+        auto batch = fixture.prototype(coverage, id == 2 || id == 4 || id == 6);
+        batch.index_offset = id == 1 ? 6 : 0;
+        auto source = fixture.source(std::uint64_t(revision) * (models.size() + 1) + at + 1, batch);
+        if (!source) throw std::runtime_error(fixture.error);
+        return source;
+    }
+};
+struct SegmentResult
+{
+    // Command-wide pins and vector capacities survive successive view clears.
+    std::vector<std::shared_ptr<const Record>> sources;
+    std::shared_ptr<const ALMetalAttachmentPaletteRecord> pose;
+    std::vector<std::shared_ptr<const Record>> publications, source_pins;
+    std::unordered_set<const Record*> source_ids;
+    std::unordered_set<const ALMetalAttachmentPaletteRecord*> pose_ids;
+    std::vector<std::shared_ptr<const ALMetalAttachmentPaletteRecord>> pose_pins;
+    std::vector<Batch> batches, prepared;
+    std::vector<ALMetalShadowPrepareInstance> inputs;
+    std::vector<std::array<float, 16>> texture_matrices;
+    ALMetalShadowCaptureAdmission admission;
+    std::size_t query_offset = 0, query_sources = 0, jobs = 0, dispatches = 0;
+    bool complete = false;
+};
+bool segmentAppend(SegmentResult& result, Batch& batch)
+{
+    if (batch.coverage == ALMetalWorldSpotShadowCoverage::opaque && !batch.skin_palette)
+    {
+        ALMetalOpaqueShadowSource source;
+        source.vertices = batch.vertices; source.indices = batch.indices;
+        source.position_offset = batch.position_offset; source.vertex_count = batch.vertex_count;
+        source.index_offset = batch.index_offset; source.index_count = batch.index_count;
+        source.index_type = batch.index_type; source.modelview_projection = batch.modelview_projection;
+        source.double_sided = batch.double_sided; source.reverse_z = false;
+        const auto old_size = result.batches.size();
+        if (!result.admission.appendOpaque(result.batches, source)) return false;
+        if (result.batches.size() == old_size) result.batches.back().clearBorrowedInputs();
+        else if (const auto* record = batch.sourceRecord())
+        {
+            auto& appended = result.batches.back(); appended.borrowPreparedInputs(record, nullptr, nullptr);
+            if (!record->matchesStableInputs(appended)) appended.clearBorrowedInputs();
+        }
+    }
+    else
+    {
+        if (!result.admission.admitSeparate()) return false;
+        result.batches.push_back(std::move(batch));
+    }
+    return true;
+}
+// route: 0=current raw scalar, 1=aggregate compact serial, 2=aggregate Dispatch.
+// mode: 0=retained sources, 1=cold source seals, 2=new late pose record.
+// fault: 1=cancelled epoch, 2=malformed last compact input after opaque output.
+bool segmentPrepare(SegmentPlan& plan, unsigned route, unsigned mode,
+    unsigned revision, ALNativeFrameBudget& budget, SegmentResult& result,
+    unsigned view_number = 0, unsigned fault = 0)
+{
+    result.batches.clear(); result.admission.reset(); result.complete = false;
+    result.query_offset = result.query_sources = result.jobs = result.dispatches = 0;
+    const auto& view = plan.views[view_number];
+    if (!result.pose && mode == 2)
+    {
+        std::array<float, 16> values{}; values[4] = values[9] = values[14] = 1.f;
+        values[7] = float(revision % 17) / 256.f;
+        result.pose = ALMetalAttachmentPaletteRecord::create(values.data(), values.size(), 1, &plan.fixture.error);
+        if (!result.pose) throw std::runtime_error(plan.fixture.error);
+    }
+    if (!result.pose) result.pose = plan.fixture.pose;
+    if (mode == 1 && result.sources.empty()) result.sources.resize(plan.models.size());
+    const auto acquire = [&](std::size_t at)
+    {
+        const auto& source = [&]() -> const std::shared_ptr<const Record>& {
+            if (mode != 1) return plan.retained[at];
+            if (!result.sources[at]) result.sources[at] = plan.seal(at, revision);
+            return result.sources[at];
+        }();
+        result.publications.push_back(source);
+        if (result.source_ids.insert(source.get()).second) result.source_pins.push_back(source);
+        const auto* palette = source->requiresPalette() ? result.pose.get() : nullptr;
+        if (palette && result.pose_ids.insert(palette).second) result.pose_pins.push_back(result.pose);
+        return std::pair{source.get(), palette};
+    };
+    const auto fail = [&] { result.batches.clear(); result.admission.invalidate();
+        result.query_offset = result.query_sources = 0; };
+    std::atomic<std::uint64_t> current_epoch{fault == 1 ? 8u : 7u};
+    for (unsigned segment = 0; segment < (plan.query_split ? 2u : 1u); ++segment)
+    {
+        const auto first = segment ? plan.opaque_families : 0;
+        const auto last = (!plan.query_split || segment) ? plan.families.size() : plan.opaque_families;
+        auto& inputs = result.inputs; auto& texture_matrices = result.texture_matrices;
+        inputs.clear(); texture_matrices.clear();
+        if (route && first < last)
+        {
+            const auto count = plan.families[last - 1].end - plan.families[first].begin;
+            inputs.reserve(count); texture_matrices.reserve(count);
+        }
+        for (std::size_t family = first; family < last; ++family)
+        {
+            if (!route) result.admission.barrier();
+            for (std::size_t at = plan.families[family].begin; at < plan.families[family].end; ++at)
+            {
+                const auto [source, palette] = acquire(at); const auto& prototype = source->prototype();
+                const bool model = (at / 2) % 3 != 0;
+                const bool texture = prototype.coverage != ALMetalWorldSpotShadowCoverage::opaque && at % 3 != 0;
+                if (!route)
+                {
+                    Batch batch; static_cast<ALMetalWorldSpotShadowValues&>(batch) = prototype;
+                    batch.borrowPreparedInputs(nullptr, palette, prototype.coverageDataIdentity());
+                    LLMatrix4a modelview = view, mvp;
+                    if (model) modelview.setMul(plan.models[at], view);
+                    mvp.setMul(modelview, plan.projection);
+                    std::memcpy(batch.modelview_projection, mvp.getF32ptr(), 64);
+                    if (texture) std::memcpy(batch.texture_matrix, plan.uv[at].data(), 64);
+                    if (palette) { batch.skin_palette = palette->data();
+                        batch.skin_palette_float_count = palette->size(); batch.skin_joint_count = palette->jointCount(); }
+                    if (!segmentAppend(result, batch)) { fail(); return false; }
+                }
+                else
+                {
+                    ALMetalShadowPrepareInstance input;
+                    input.source = source; input.palette = palette; input.source_generation = source->generation();
+                    input.epoch = 7; input.has_model = model;
+                    if (model) std::memcpy(input.model.data(), plan.models[at].getF32ptr(), 64);
+                    if (texture) { input.texture_matrix_slot = texture_matrices.size(); texture_matrices.push_back(plan.uv[at]); }
+                    inputs.push_back(input);
+                }
+            }
+        }
+        if (route && !inputs.empty())
+        {
+            if (fault == 2 && last == plan.families.size()) ++inputs.back().source_generation;
+            ALMetalShadowPrepareContext context; context.texture_matrices = texture_matrices;
+            std::memcpy(context.view.data(), view.getF32ptr(), 64);
+            std::memcpy(context.projection.data(), plan.projection.getF32ptr(), 64);
+            auto& prepared = result.prepared; prepared.clear(); prepared.resize(inputs.size());
+            ALMetalShadowPrepareStats stats;
+            if (!alMetalPrepareShadowBatches(inputs, context, prepared, budget, 7, &current_epoch,
+                    route == 2, &stats, &plan.fixture.error)) { fail(); return false; }
+            result.jobs += stats.jobs; result.dispatches += stats.dispatched;
+            std::size_t output = 0;
+            for (std::size_t family = first; family < last; ++family)
+            {
+                result.admission.barrier();
+                for (auto at = plan.families[family].begin; at < plan.families[family].end; ++at)
+                    if (!segmentAppend(result, prepared[output++])) { fail(); return false; }
+            }
+            prepared.clear();
+        }
+        // Flush all opaque records before the original directional query point.
+        if (plan.query_split && !segment) { result.admission.barrier(); result.query_offset = result.batches.size();
+            result.query_sources = result.admission.sourceCount(); }
+    }
+    result.complete = result.admission.complete(plan.models.size());
+    return result.complete;
+}
+void sameSegmentValues(const SegmentResult& expected, const SegmentResult& actual)
+{
+    REQUIRE(expected.complete); REQUIRE(actual.complete);
+    REQUIRE(expected.batches.size() == actual.batches.size());
+    CHECK(expected.query_offset == actual.query_offset); CHECK(expected.query_sources == actual.query_sources);
+    CHECK(expected.admission.mergedSourceCount() == actual.admission.mergedSourceCount());
+    for (std::size_t at = 0; at < expected.batches.size(); ++at)
+    {
+        const auto& a = expected.batches[at]; const auto& b = actual.batches[at];
+        CHECK(a.vertices == b.vertices); CHECK(a.indices == b.indices); CHECK(a.index_count == b.index_count);
+        CHECK(a.index_offset == b.index_offset); CHECK(a.coverage == b.coverage); CHECK(a.weight_offset == b.weight_offset);
+        CHECK(std::memcmp(a.modelview_projection, b.modelview_projection, 64) == 0);
+        CHECK(std::memcmp(a.texture_matrix, b.texture_matrix, 64) == 0);
+        CHECK(a.skin_palette_float_count == b.skin_palette_float_count); CHECK(a.skin_joint_count == b.skin_joint_count);
+        REQUIRE(bool(a.skin_palette) == bool(b.skin_palette));
+        if (a.skin_palette) REQUIRE(std::memcmp(a.skin_palette, b.skin_palette, a.skin_palette_float_count * sizeof(float)) == 0);
+        CHECK(a.texture_count == b.texture_count);
+        if (a.texture_count) { CHECK(a.coverageData().textures[0] == b.coverageData().textures[0]);
+            CHECK(a.coverageData().alpha_cutoffs[0] == b.coverageData().alpha_cutoffs[0]); }
+    }
+}
+}
+
+TEST_CASE("almetal: mixed small shadow families preserve scalar order query splits and budget fallback",
+          "[almetal][shadow-prepare][shadow-prepare-segments]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        for (const auto& [count, families] : {std::pair{3u, 3u}, std::pair{3u, 8u}, std::pair{867u, 8u}, std::pair{1158u, 24u}})
+        for (bool query_split : {false, true})
+        {
+            SegmentPlan plan(fixture, count, families, query_split);
+            ALNativeFrameBudget budget; ALNativeFrameBudget::FrameInputs frame; frame.frame = 1; budget.beginFrame(frame);
+            SegmentResult reference; REQUIRE(segmentPrepare(plan, 0, 0, 1, budget, reference));
+            if (count == 3 && families == 3) { CHECK(reference.query_offset == (query_split ? 2u : 0u)); CHECK(reference.batches.size() == 3); }
+            if (count > 3) CHECK(reference.admission.mergedSourceCount() > 0);
+            for (unsigned mode = 0; mode < 3; ++mode)
+            {
+                std::array<SegmentResult, 3> result;
+                for (unsigned view = 0; view < 3; ++view)
+                {
+                    for (unsigned route = 0; route < 3; ++route)
+                        REQUIRE(segmentPrepare(plan, route, mode, 2, budget, result[route], view));
+                    sameSegmentValues(result[0], result[1]); sameSegmentValues(result[0], result[2]);
+                    CHECK(result[0].jobs == 0); CHECK(result[1].dispatches == 0);
+                    CHECK(result[2].dispatches == (count >= 512 ? query_split ? 2u : 1u : 0u));
+                    CHECK(budget.snapshot().preparation_in_flight == 0);
+                }
+            }
+            auto occupied = budget.tryAcquire(ALNativeFrameBudget::Work::preparation); REQUIRE(occupied);
+            SegmentResult denied; REQUIRE(segmentPrepare(plan, 2, 0, 1, budget, denied));
+            sameSegmentValues(reference, denied);
+            CHECK(denied.dispatches == 0); CHECK(budget.snapshot().preparation_in_flight == 1);
+            if (count >= 512) CHECK(budget.snapshot().deferred > 0);
+            occupied.credit.reset(); CHECK(budget.snapshot().preparation_in_flight == 0);
+            for (unsigned fault : {1u, 2u})
+            {
+                SegmentResult failed; CHECK_FALSE(segmentPrepare(plan, 2, 0, 1, budget, failed, 0, fault));
+                CHECK_FALSE(failed.complete); CHECK(failed.batches.empty()); CHECK(failed.query_offset == 0);
+                CHECK(budget.snapshot().preparation_in_flight == 0);
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: opt-in mixed-family scalar and aggregate preparation CPU cost",
+          "[.][almetal][shadow-prepare-segment-cost]")
+{
+    const auto enabled = [](const char* name) { const char* value = std::getenv(name); return value && value[0] && value[0] != '0'; };
+    if (!enabled("ALCHEMY_SHADOW_SEGMENT_BENCHMARK")) SKIP("Set ALCHEMY_SHADOW_SEGMENT_BENCHMARK=1 for explicit timing");
+#ifndef NDEBUG
+    SKIP("Shadow segment timing requires an optimized build");
+#endif
+    REQUIRE_FALSE(enabled("MTL_DEBUG_LAYER")); REQUIRE_FALSE(enabled("MTL_SHADER_VALIDATION"));
+    REQUIRE_FALSE(enabled("MTL_CAPTURE_ENABLED")); REQUIRE_FALSE(enabled("MTL_HUD_ENABLED"));
+    @autoreleasepool
+    {
+        Fixture fixture;
+        std::cout << std::setprecision(12) << "SHADOW_SEGMENT_SCOPE includes=record_acquire_pose_pins_cold_seals_snapshots_outputs_budget_prepare_family_admission_scratch_owner_release_pool_drain"
+            " excludes=scene_traversal_native_publication_lookup_asset_allocation_pose_solve_native_encoding_GPU views=3 source_records_per_draw=1 pose_records=1 pose_joints=1 shared_native_geometry=1 modes=0_retained_1_cold_records_2_late_pose raw_reference=current_small_family_branch selection_not_emulated=1 reusable_command_aggregate=1 reusable_scratch=1 route2=budgeted_allow_dispatch_actual_jobs_logged worker_prototype=1 FPS_claim=0\n";
+        for (const std::size_t count : {256u, 512u, 867u, 1158u, 2048u, 8192u})
+        for (const unsigned families : {1u, 8u, 24u})
+        for (unsigned mode = 0; mode < 3; ++mode)
+        for (bool query_split : {false, true})
+        {
+            SegmentPlan plan(fixture, count, families, query_split); std::array<std::vector<double>, 3> samples;
+            for (unsigned block = 0; block < 9; ++block)
+            for (unsigned repetition = 0; repetition < 3; ++repetition)
+            {
+                std::array<std::array<std::size_t, 3>, 3> results{};
+                for (unsigned arm = 0; arm < 3; ++arm)
+                {
+                    const unsigned route = (arm + block + repetition) % 3;
+                    ALNativeFrameBudget budget; ALNativeFrameBudget::FrameInputs frame; frame.frame = 1; budget.beginFrame(frame);
+                    const auto started = Clock::now(); std::size_t jobs = 0, dispatches = 0; double first_view_ms = 0;
+                    @autoreleasepool
+                    {
+                        SegmentResult result;
+                        for (unsigned view = 0; view < 3; ++view)
+                        {
+                            if (!segmentPrepare(plan, route, mode, block * 3 + repetition + 2, budget, result, view))
+                                throw std::runtime_error("Incomplete shadow segment timing arm");
+                            results[route] = {result.admission.sourceCount(), result.batches.size(), result.query_offset};
+                            jobs += result.jobs; dispatches += result.dispatches;
+                            if (!view) first_view_ms = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+                        }
+                    }
+                    const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+                    samples[route].push_back(elapsed);
+                    std::cout << "SHADOW_SEGMENT_SAMPLE draws=" << count << " families=" << families << " mode=" << mode << " query_split=" << query_split
+                        << " block=" << block << " repetition=" << repetition << " route=" << route
+                        << " jobs=" << jobs << " dispatches=" << dispatches
+                        << " logical_sources=" << results[route][0] << " physical_records=" << results[route][1]
+                        << " query_record_offset=" << results[route][2] << " first_view_ms=" << first_view_ms << " cpu_total_ms=" << elapsed << '\n';
+                }
+                REQUIRE(results[0] == results[1]); REQUIRE(results[0] == results[2]);
+            }
+            for (unsigned route = 0; route < 3; ++route)
+            {
+                auto values = samples[route]; std::sort(values.begin(), values.end()); REQUIRE(values.size() == 27);
+                std::cout << "SHADOW_SEGMENT_SUMMARY draws=" << count << " families=" << families << " mode=" << mode << " query_split=" << query_split
+                    << " route=" << route << " samples=" << values.size() << " p50_ms=" << values[13]
+                    << " p95_ms=" << values[25] << '\n';
             }
         }
     }
