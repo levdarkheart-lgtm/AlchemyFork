@@ -883,3 +883,80 @@ pending old/new tuples and PPD223 mapping-only shared admission/retirement.
 Root/independent reviews pass; required33/native execution next. Renderer and
 complete cost integration remain required after retained visibility freezes.
 No Source33 performance improvement or combined candidate is claimed.
+
+PPD224 source review registers broad optional visibility allocation catch before repair: optional metadata bad_alloc currently reaches clear-required-capture handling. Narrow local disable/fail-visible must retain raw/ref/cohort geometry and queries, with actual-body fault injection. Required geometry/source failures keep old incomplete policy. Same220 guard also distinguishes raw arguments from cohort spans in both consumer directions. Next225.
+
+
+## Source33 backend gates pass before renderer consumption
+
+Exact `f78f994b643c6c232a63b16727ff6b7eda115765`, version
+`26.4.0.69073`: required33 doctor/configure/build exit0,163.914s/232targets.
+Static passes346ARM64/signatures/source/imports/features; strict scans3587files,
+905informational/0blockers/0errors. Native33 passes all20processes withAPI/GPU
+validation, including SourcePages5364/22 (five ordered-pass cases), admission
+1993/7, banks3348/9, actualproducer12397/53, renderer2331/4, shadow98414/14,
+framebudget1690/24, resources and old-library controls. Receipts follow the
+same `frozen-source-build-33`, `static-native-33`, `strict-source-33` and
+`native-correctness-33` prefixes in the private evidence directory.
+
+Existing-single consumers also pass3arm140840/1 (3.931s) andmany1872424/1
+(8.838s), with bothraw logs/derived summaries retained. No viewer process was
+observed at the cost start. Direct cohorts still win all8many-small CPU and
+settlement comparisons; current single-cohort GPU banks still lose settlement
+24.8–120.9% andGPU24.2–145.5% versus direct. These costs do not exercise new
+renderer composition grouping, so they establish compatibility/regression
+coverage, not a new aggregation speedup. Required main/probe renderer wiring
+and complete cold/warm/churn/many costs remain before any bank activation.
+
+Retained visibility remains source-owned in its separate worktree; sparse
+qualifiedraw logical indices now replace optional disabled raw/ref placeholders,
+while cohort spans remain O(G). PPD219–222/224 repairs and fixtures are authored
+there but unbuilt/unintegrated. Root owns all native execution and renderer
+composition wiring after that full slice freezes. No owner app replacement,
+launch/login/live profile/push or full-goal completion occurred.
+
+PPD225 pre-execution cost review: requested50% outside atone source actuallyselects0sources. Keep requestedlabels andreport actualoutsidecount/effectivefraction, includingrounding, before accepting evidence. Production/nativefixtures stayfrozen during this fixture-only correction. Retained visibility runtimeflag newlytoggled ontooldplaincohorts currently staysdirectuntilproducerrebuild; freshlaunchflagON publishesbounds. This limitation is retained, not a claim of fully GPU-driven discovery/CPU-binding elimination. Next226.
+
+PPD226 final root compile-dependency review finds new visibility implementation accessing forward-only WorldSimpleBatch/FrameData declarations. Register before including almetalworld.h directly; no backend PCH is present. Required34 compilation follows; no executed compile failure is claimed. Next227.
+
+
+## Retained visibility source34 freeze and verification boundary
+
+The complete15file slice in the retained-cohort-visibility worktree is frozen,
+with source/native-fixture/actual-owner/cost peer reviews. Root adds only the
+PPD226 direct world.h include. New CPU optional bounds are not material-key
+bits; retained views keep compact qualifiedraw logical indices and one matrix
+per cohort. Existing same-command GPU arguments preserve order/query offsets;
+exact current-cohort identities/MVP are required at consumption. Credits flow
+through existing FrameData admission before cold writes, with physical native
+row debt distinct from logical upload work. Optional metadata OOM disables only
+visibility. PPD219/220/221/222/224 source guards/native cases are authored;
+PPD225 reports actual offscreen geometry for integer-rounding scenarios.
+
+New included cost tag is `[.native-cohort-visibility-cost]`, correctedfile
+SHA474be95c5baf7a435a58b0cca566af07af6bd59eca47130d03f0d54a4e86bdf8.
+It retains504summary rows (168configuredscenarios×3arms),12measured samples,
+small2/many64warmups, full CPU capture/admission/retirement and GPU/query settle.
+No pre-seal/source expansion is hidden. Nativefixture finalSHA is
+f9145920588e5075ee5fc45d6661dac37313aa6bd36d3b40b69637ff234ad401.
+These are unexecuted authored gates at freeze, not accepted results.
+
+Source34 first combines the visibility slice with validated backend33, without
+renderer composition wiring yet. Required34, all existing native suites plus
+world-visibility, actual-owner and new cost gates follow. Source settings remain
+OFF. Experimental retained visibility needs GroupSources1/NativeVisibility1/
+DepthPrePass0 and banks/SourceRows/CompactInputs/resource tables/join/preparation0.
+It is frustum culling, not occlusion or GPU conditional command generation; CPU
+per-source direct bindings remain. Oldplain cohorts on a mid-session flagtoggle
+staydirect until producer rebuild; freshlaunchON publishes required bounds.
+
+One independent6line shader hypothesis is frozen in
+`/private/tmp/alchemy-apple-first-constant-view-metadata`, basedf78f994b64:
+region array/map/local reference useconstant instead ofdevice address space in
+two source-row vertex shaders. No geometry/layout/reflection/math changes.
+Source33 exactmetallib control is saved with receipt `source33-shader-control.json`.
+Do not integrate that experiment into34: preserve34control and test separately
+onlyafter visibility gates, with parity and actualsame workload GPU costs.
+Source facts show ordinaryshaders also manuallyfetchgeometry; a fixed-function
+vertex-fetch explanation of current regressions is unsupported. Additional
+source-row pointer chains are observed, but their measured cost share isunknown.

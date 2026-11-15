@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-224 -->
+<!-- next-defect-id: PPD-227 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5393,7 +5393,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Original reference: A persistent native mapping created for an optional retained composition is publication work. Required transient per-view camera/global buffers remain distinct.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the frozen unbuilt ordered-pass backend, freezeInternal computes mapping_bytes/view_bytes for a persistent region map but does not include its writes in SourcePublicationWork::chargedBytes(). Resource preparations return0publicationBytes when an existing table is reused. A new composition reusing valid rows/tables can therefore allocate/copy its persistent multi-region map with charged==0, bypassing the existing admission callback. The earlier exclusion for required per-view maps does not cover this new retained cache allocation. Root confirms exact charge and existing-table code paths; no runtime incident is attributed.
 - Next action: Charge persistent certified-cohort mapping writes explicitly before allocation/publication, preserve ordinary transient per-view buffer behavior and zero warm tickets, and add a mapping-only cold composition denial case over already reused rows/tables. Verify no allocation/cache eviction on denial and exact command-only credit retirement.
-- Verification: Source-confirmed pre-integration admission omission registered before repair; native execution pending.
+- Verification: Sourcef78f994b64/69073 required/static/strict and all20native processes pass. SourcePages5364assertions/22cases includes mapping-only denial, old-warm preservation and actual command abandonment/completion; shared admission1993/7 also passes. Actual renderer composition integration/performance remains pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5402,3 +5402,65 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Root finds this after independent backend review, before first backend build; allocates223, next224. Source32/owner69065 unchanged. Physical storage and logical work accounting remain separate.
 
 - 2026-11-15: PPD223 repair frozen/reviewed in ordered-pass backend: encoded_mapping_bytes participates checked chargedBytes, allocation diagnostic includes retained map while local capacity counts it once; warm and ordinary transient view maps unchanged. Added mapping-only8B denial/old-warm/grant-abandon/gated-completion case. Independent/source reviews pass; no native execution yet.
+
+
+
+- 2026-11-15: Required33 doctor/configure/build0 (build163.914s), static69073/346ARM64/signatures/source/imports and strict3587files/0blockers/0errors pass. Native20processes pass, pages5364/22 incl5ordered-pass cases, banks3348/9 andactualproducer12397/53. Existing-single3arm140840/1 andmany1872424/1 regressionsuites also pass; no pass-renderer consumption or performancegain claimed.
+
+## PPD-224 — Optional visibility capture allocation failure discards required geometry
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native world capture optional metadata
+- Discovered: 2026-11-15
+- Original reference: Failure of optional visibility metadata must fail visible and preserve admitted required geometry. Required geometry/source allocation failures retain their established incomplete-capture handling.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). captureMetalPublishedWorldBatch currently places optional visibility vector growth/publishBounds inside its outer bad_alloc handler, which marks the whole capture incomplete and clears required draws. The retained visibility sparse index vector adds another optional allocation at that boundary. Source owner confirms this existing/new-path failure boundary before repair; no observed viewer OOM/crash is attributed.
+- Next action: Catch only optional visibility preparation allocation failure locally, clear/disable that capture's optional metadata and skip optional view construction while retaining raw/ref/cohort geometry/order/native owners. Preserve required-source/geometry OOM behavior. Add actual-function failure injection verifying ordinary rendering/query output and no repeated optional work after disable.
+- Verification: Source-confirmed pre-freeze failure-isolation defect registered before repair; native execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Architecture source owner reports before patching sparse capture; root allocates224, next225. Existing owner-passed apps and source33 backend build are unaffected.
+
+
+## PPD-225 — Visibility cost labels requested offscreen fraction as actual for one source
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility cost fixture
+- Discovered: 2026-11-15
+- Original reference: Performance evidence must identify the geometry workload actually submitted, including integer rounding in small adverse cases.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Pre-execution peer review of new alpipeline_cohort_visibility_cost_native.inl finds requested outside_percent=50 with1group/1source displaces0sources because the odd-source predicate never selects the only source. That row duplicates actual0% while labeled50%. Other even-source shapes realize the intended fraction; no executed benchmark result exists yet.
+- Next action: Keep the requested percentage and adverse one-source scenario, and emit actual outside source count and effective fraction in every raw and summary row. Do not claim a fractional source was culled or count that label as evidence of50% actual offscreen geometry.
+- Verification: Registered before narrow fixture-only label correction; no production changes or native results claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Independent cost peer reports before feature freeze/build; root allocates225, next226. All unexecuted cost evidence remains unclaimed.
+
+
+
+- 2026-11-15: Fixture-only correction emits requested_outside_percent, actual_outside_sources and effective_outside_percent inraw+summary rows; adverse1source requested50 reportsactual0. Correctedfile SHA474be95c5baf7a435a58b0cca566af07af6bd59eca47130d03f0d54a4e86bdf8; diffcheckpasses, executionpending.
+
+## PPD-226 — Retained visibility implementation uses incomplete world types
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex retained visibility integration
+- Discovered: 2026-11-15
+- Original reference: Objective-C++ implementation units require complete declarations before accessing native batch members or FrameData methods; the backend deliberately has no precompiled header.
+- Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Final root review of almetalworldvisibility.mm finds new accesses to ALMetalWorldSimpleBatch::index_count and ALMetalWorldFrameData::requestSourcePublication. Its included cohort/draw/source-pages headers only forward-declare those world types; almetalworld.h supplies their definitions. Generated visibility source contains shader text, and almetal/CMakeLists explicitly avoids a backend PCH. No compiler attempt has been made yet.
+- Next action: Include almetalworld.h directly in this implementation before first feature build, retaining the public forward declarations and existing ownership/API behavior.
+- Verification: Source-confirmed missing direct include registered before the one-line integration correction; required34 compilation will verify it.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-15: Root identifies this after complete feature freeze and before committing/integrating the slice. No production behavior or native test relaxation is involved; next227.
+
+- 2026-11-15: Root adds direct world.h include after source-owner notification; no other source change follows full visibility freeze. Required34 compile/native/cost gates next.
