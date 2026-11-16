@@ -2831,3 +2831,31 @@ It retains root prefix case, adds actual two-probe SH/radiance data and positive
 now explicitly identify legacy/probe;8cells only,2warmup/8paired measurements.
 No source execution claim until77. All exclusive authors released their files;
 root owns final integration and the current source is coherent for freezing.
+
+
+## Source77 SSAO outcome —rejected and runtime reverted
+
+All required77 build/static/strict/full34 checks PASS, plus mainSSAO14202/4,
+context392/5 and existing shadow/material/reload18390/29. Complete cost gate
+then fails exit42:8cells/160samples complete, all80 parity checks pass, GPU
+median wins5/8, CPU2/8, settled4/8.1080p legacy/no-shadow GPU+11.09%;1080p
+probe/shadows+3.12%. The lost full-path gate overrides the reduced pass count.
+Actual physical/tile-pressure cause is unproved; no new variant was timed.
+Source current separate SSAO/base implementation, shader code, startup PSOs,
+caller and setting restored from3ed2540223; new candidate test removed from
+active build, independent context/packet/covered tests and accurate native
+failure text retained. This rejects one implementation, not the architecture.
+
+Exact failed branch codex/apple-first-main-ssao-integration-tested pins12ac914277.
+Private main-ssao-rejected-77 contains exact source snapshot and native test
+bundle/metallib with hashes. main-ssao-cost-77.json/log/summary.json/md retain
+failed gate and every warm/cold row. Initial parser median convention corrected
+to match actual source; no rerun. Owner apps69122/69129/69134 unchanged.
+
+Next original G3 work is production coarse encoding over owned view packets:
+retain the original global shadow admission bound and command/source-lease
+identity, owner-only query/cache/publication settlement and all lifecycle joins.
+A context and packet alone are not that integration. It must cover actual
+query-bearing main views rather than assume only non-query eligibility, and
+avoid a one-GPU-command local limit replacing existing multi-frame overlap.
+No view launch/login/live capture/push authorized by these contained checks.

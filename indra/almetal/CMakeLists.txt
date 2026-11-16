@@ -274,7 +274,6 @@ if(AL_BUILD_TESTS)
             tests/almetal_shadow_capture_test.mm
             tests/almetal_shadow_prepare_test.mm
             tests/almetal_shadow_encoding_context_test.cpp
-            tests/almetal_ssao_base_tile_test.mm
             tests/almetal_shadow_extended_test.mm
             tests/almetal_shadow_generation_benchmark.mm
             tests/almetal_shadow_source_benchmark.mm
@@ -334,7 +333,6 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_shadow_cache_test.mm
                               tests/almetal_shadow_prepare_test.mm
                               tests/almetal_shadow_encoding_context_test.cpp
-                              tests/almetal_ssao_base_tile_test.mm
                               tests/almetal_shadow_extended_test.mm
                               tests/almetal_shadow_generation_benchmark.mm
                               tests/almetal_shadow_source_benchmark.mm

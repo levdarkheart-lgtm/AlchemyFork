@@ -2736,8 +2736,6 @@ struct ALMetalWorldGBufferRenderer::Impl
         base_light_sky_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         probe_tile_light_map_pipelines, probe_tile_base_pipelines, probe_tile_sky_pipelines;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
-        ssao_final_blur_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> hero_probe_filter_pipeline;
     std::unique_ptr<ALMetalComputePipeline> probe_gaussian_pipeline;
@@ -5527,24 +5525,6 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 impl->probe_tile_base_pipelines[hdr] = std::move(base);
                 impl->probe_tile_sky_pipelines[hdr] = std::move(sky);
             }
-        }
-
-        if (impl->probe_tile_base_pipelines[hdr] &&
-            impl->library->hasFunction("almetal_world_ssao_final_blur_fragment"))
-        {
-            ALMetalRenderPipelineDescriptor tile;
-            tile.library = impl->library.get();
-            tile.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
-            tile.color_attachment_count = 2;
-            tile.colors[0].format = ALMetalPixelFormat::rgba16_float;
-            tile.colors[0].write_mask = ALMetalColorWriteMask::none;
-            tile.colors[1].format = ALMetalPixelFormat::rg8_unorm;
-            tile.vertex_function = "almetal_world_local_light_vertex";
-            tile.fragment_function = "almetal_world_ssao_final_blur_fragment";
-            tile.label = "Alchemy main SSAO final vertical tile blur";
-            std::string optional_error;
-            impl->ssao_final_blur_pipelines[hdr] =
-                ALMetalRenderPipeline::create(device, tile, &optional_error);
         }
 
         ALMetalRenderPipelineDescriptor sky_behind_descriptor;
@@ -23708,15 +23688,6 @@ ALMetalWorldGBufferRenderer::renderLightMap(
     const ALMetalWorldLightMapScene& scene,
     std::string* error)
 {
-    return renderLightMapInternal(scene, false, error);
-}
-
-std::unique_ptr<ALMetalRenderTarget>
-ALMetalWorldGBufferRenderer::renderLightMapInternal(
-    const ALMetalWorldLightMapScene& scene,
-    bool horizontal_only,
-    std::string* error)
-{
     if (!mImpl || !mImpl->device || !validateWorldLightMap(scene, error)) return nullptr;
     const auto& constants = scene.constants;
     const bool directional_shadows = constants.config[1] != 0;
@@ -23809,9 +23780,9 @@ ALMetalWorldGBufferRenderer::renderLightMapInternal(
 
     auto scratch = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
-    auto output = horizontal_only ? nullptr : mImpl->makeRenderTarget(
+    auto output = mImpl->makeRenderTarget(
         *mImpl->device, output_descriptor, error);
-    if (!scratch || (!horizontal_only && !output))
+    if (!scratch || !output)
     {
         mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
@@ -23823,7 +23794,7 @@ ALMetalWorldGBufferRenderer::renderLightMapInternal(
         raw->colorTexture(0), scratch->colorTexture(0),
     };
     const float* deltas[2] = {horizontal, vertical};
-    for (std::size_t axis = 0; axis < (horizontal_only ? 1u : 2u); ++axis)
+    for (std::size_t axis = 0; axis < 2; ++axis)
     {
         auto blur_pass = destinations[axis]->makeRenderPass(
             pass_config, error);
@@ -23858,7 +23829,7 @@ ALMetalWorldGBufferRenderer::renderLightMapInternal(
     }
 
     return mImpl->finishCommandBuffer(owned_command, true, error)
-        ? (horizontal_only ? std::move(scratch) : std::move(output)) : nullptr;
+        ? std::move(output) : nullptr;
 }
 
 bool ALMetalWorldGBufferRenderer::compositeHDRISky(
@@ -25215,92 +25186,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderBaseLigh
     return renderBaseLightingInternal(scene, nullptr, error);
 }
 
-bool ALMetalWorldGBufferRenderer::supportsMainSSAOFusion() const noexcept
-{
-    if (!mImpl || !mImpl->device || mImpl->device->info().highest_apple_family < 7) return false;
-    for (std::size_t index = 0; index < 2; ++index)
-        if (!mImpl->ssao_final_blur_pipelines[index] ||
-            !mImpl->probe_tile_base_pipelines[index] ||
-            !mImpl->probe_tile_sky_pipelines[index]) return false;
-    return true;
-}
-
-std::unique_ptr<ALMetalRenderTarget>
-ALMetalWorldGBufferRenderer::renderMainSSAOLighting(
-    const ALMetalWorldLightMapScene& light_map,
-    const ALMetalWorldBaseLightingScene& base,
-    std::string* error, ALMetalMainSSAOLightingPath* path)
-{
-    Impl::GBufferFailureScope transaction(mImpl.get(), error);
-    if (path) *path = ALMetalMainSSAOLightingPath::none;
-    if (base.light_map)
-    {
-        auto result = renderBaseLighting(base, error);
-        if (result && path) *path = ALMetalMainSSAOLightingPath::separate_passes;
-        transaction.succeeded = static_cast<bool>(result);
-        return result;
-    }
-    if (!mImpl || !mImpl->device || !validateWorldLightMap(light_map, error))
-        return nullptr;
-
-    // This is an exact producer/consumer boundary, not a new SSAO setting.
-    // Compare both camera/config descriptions before replacing the final
-    // stored map; valid mismatched or non-main inputs keep separate passes.
-    const bool eligible = supportsMainSSAOFusion() &&
-        base.diagnostic_view.view_kind == 1 &&
-        base.gbuffer == light_map.gbuffer &&
-        light_map.constants.config[2] == 1 && base.constants.config[3] == 1 &&
-        light_map.constants.config[0] == base.constants.config[0] &&
-        light_map.constants.config[1] == base.constants.config[2] &&
-        static_cast<float>(light_map.constants.config[3]) == base.constants.surface[1] &&
-        std::memcmp(light_map.constants.inverse_projection,
-                    base.constants.inverse_projection,
-                    sizeof(light_map.constants.inverse_projection)) == 0;
-    if (eligible)
-    {
-        auto horizontal = renderLightMapInternal(light_map, true, error);
-        if (!horizontal) return nullptr;
-        auto result = renderBaseLightingInternal(
-            base, &light_map, error, horizontal->colorTexture(0));
-        if (result && path) *path = ALMetalMainSSAOLightingPath::memoryless_final_blur;
-        transaction.succeeded = static_cast<bool>(result);
-        return result;
-    }
-    auto map = renderLightMap(light_map, error);
-    if (!map) return nullptr;
-    auto separate = base;
-    separate.light_map = map->colorTexture(0);
-    auto result = renderBaseLighting(separate, error);
-    if (result && path) *path = ALMetalMainSSAOLightingPath::separate_passes;
-    transaction.succeeded = static_cast<bool>(result);
-    return result;
-}
-
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     const ALMetalWorldBaseLightingScene& scene,
     const ALMetalWorldLightMapScene* tile_light_map,
-    std::string* error,
-    const ALMetalTexture* final_blur_source)
+    std::string* error)
 {
     if (tile_light_map && !validateWorldLightMap(*tile_light_map, error)) return nullptr;
-    if (final_blur_source)
-    {
-        const auto& source = final_blur_source->descriptor();
-        if (!tile_light_map || !supportsMainSSAOFusion() ||
-            !sampleableTexture(final_blur_source) ||
-            source.type != ALMetalTextureType::texture_2d ||
-            source.format != ALMetalPixelFormat::rg8_unorm ||
-            source.width != tile_light_map->gbuffer->descriptor().width ||
-            source.height != tile_light_map->gbuffer->descriptor().height ||
-            source.sample_count != 1 || source.mipmap_level_count != 1 ||
-            tile_light_map->constants.config[2] != 1 ||
-            scene.constants.config[3] != 1)
-        {
-            setError(error, "Metal main SSAO final-blur input is incompatible");
-            return nullptr;
-        }
-    }
     const bool probe_environment =
         validPBRReflectionProbes(scene.reflection_probes);
     const bool legacy_environment =
@@ -25435,8 +25327,7 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         tile.width = input.width; tile.height = input.height;
         tile.storage = ALMetalStorageMode::memoryless;
         tile.usage = ALMetalTextureUsage::render_target;
-        tile.label = final_blur_source ? "Alchemy main SSAO tile-only final RG8 light map"
-                                       : "Alchemy probe tile-only RG8 shadow visibility";
+        tile.label = "Alchemy probe tile-only RG8 shadow visibility";
         tile_visibility = ALMetalTexture::create(*mImpl->device, tile, error);
         if (!tile_visibility) return nullptr;
     }
@@ -25586,26 +25477,7 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         ? mImpl->reverse_readonly_depth.get()
         : mImpl->forward_readonly_depth.get();
     bool encoded = true;
-    if (final_blur_source)
-    {
-        // Keep the final RG8 conversion in hardware before the base draw.
-        // The horizontal image remains sampleable because the vertical
-        // bilateral kernel reads neighbours; only its completed result is
-        // tile-local. The draw neither tests nor modifies carried depth.
-        const float vertical[4] = {0.f, 1.f, 0.f, 0.f};
-        encoded = encoder->setViewport(viewport, error) && encoder->setScissor(scissor, error) &&
-            encoder->setCullMode(ALMetalCullMode::none, error) &&
-            encoder->setDepthStencilState(mImpl->overlay_composite_depth.get(), error) &&
-            encoder->setPipeline(*mImpl->ssao_final_blur_pipelines[pipeline_index], error) &&
-            encoder->setFragmentBytes(0, &tile_light_map->constants, sizeof(tile_light_map->constants), error) &&
-            encoder->setFragmentBytes(1, vertical, sizeof(vertical), error) &&
-            encoder->setFragmentTexture(0, final_blur_source, error) &&
-            encoder->setFragmentTexture(1, normal, error) &&
-            encoder->setFragmentTexture(2, depth, error) &&
-            encoder->setFragmentSampler(0, mImpl->point_clamp_sampler.get(), error) &&
-            encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    }
-    else if (tile_light_map)
+    if (tile_light_map)
     {
         const bool shadows = tile_light_map->constants.config[1] != 0;
         const auto* directional = shadows && tile_light_map->directional_shadows

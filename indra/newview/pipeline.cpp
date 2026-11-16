@@ -875,10 +875,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     // Probe light maps have no external reader; an eligible native pass keeps
     // their RG8 intermediate in tile memory instead of publishing a texture.
     std::optional<ALMetalWorldLightMapScene> pending_probe_light_map;
-    // Main SSAO keeps the raw/horizontal stages and RG8 quantization; the
-    // final blur is consumed synchronously by the following base-light pass.
-    std::optional<ALMetalWorldLightMapScene> pending_main_ssao_light_map;
-    U64 main_ssao_tile_lighting_encoded = 0, main_ssao_separate_lighting_encoded = 0;
     U64 probe_tile_lighting_encoded = 0, probe_separate_lighting_encoded = 0;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
     std::unique_ptr<ALMetalTexture> legacy_glow_noise_texture;
@@ -2047,7 +2043,6 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
-    capture.pending_main_ssao_light_map.reset();
     capture.base_light_target.reset();
     capture.clearDraws();
     capture.avatar_palettes.clear();
@@ -2166,7 +2161,6 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
-    capture.pending_main_ssao_light_map.reset();
     capture.base_light_target.reset();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2279,7 +2273,6 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
-    capture.pending_main_ssao_light_map.reset();
     capture.base_light_target.reset();
     capture.clearDraws();
     capture.avatar_palettes.clear();
@@ -2349,7 +2342,6 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
-    capture.pending_main_ssao_light_map.reset();
     capture.base_light_target.reset();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2527,7 +2519,6 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
         capture.invalidateShadowMaps();
         capture.base_light_map_target.reset();
         capture.pending_probe_light_map.reset();
-        capture.pending_main_ssao_light_map.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
         capture.base_light_target.reset();
@@ -3147,7 +3138,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 if (!value) return;
                 static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
                 static LLCachedControl<bool> cpu_visibility_requested(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-                static LLCachedControl<bool> main_ssao_requested(gSavedSettings, "RenderMetalMainSSAOBlurLighting", false);
                 const auto cpu_visibility=value->renderer ? value->renderer->worldCpuVisibilityStats() : ALMetalWorldCpuVisibilityStats{};
                 LL_INFOS("MetalScene") << "Native published CPU visibility: view=" << view
                     << ", requested=" << cpu_visibility_requested()
@@ -3161,11 +3151,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native body palette publication: view=" << view
                     << ", record_publications/reuses=" << body_data.body_record_publications << '/' << body_data.body_record_reuses
                     << ", scope=view_frame_data_cumulative" << LL_ENDL;
-                LL_INFOS("MetalScene") << "Native main SSAO lighting: view=" << view
-                    << ", requested=" << main_ssao_requested()
-                    << ", capable=" << (value->renderer && value->renderer->supportsMainSSAOFusion())
-                    << ", encoded(tile/separate)=" << value->main_ssao_tile_lighting_encoded
-                    << '/' << value->main_ssao_separate_lighting_encoded << LL_ENDL;
                 const auto cohorts = value->renderer ? value->renderer->worldCohortStats() : ALMetalWorldCohortStats{};
                 LL_INFOS("MetalScene") << "Native shared scene publication: view=" << view
                     << ", world_source_hit/build=" << value->scene_source_hits << '/' << value->scene_source_builds
@@ -3677,7 +3662,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
         capture.pending_probe_light_map.reset();
-        capture.pending_main_ssao_light_map.reset();
         capture.base_light_target.reset();
         capture.attempted = false;
         capture.local_lighting_attempted = false;
@@ -4204,7 +4188,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.invalidateShadowMaps();
         capture.base_light_map_target.reset();
         capture.pending_probe_light_map.reset();
-        capture.pending_main_ssao_light_map.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
         capture.base_light_target.reset();
@@ -17484,8 +17467,7 @@ bool LLPipeline::renderMetalWorldLightMap(
     {
         return false;
     }
-    if (capture.base_light_map_target || capture.pending_probe_light_map ||
-        capture.pending_main_ssao_light_map)
+    if (capture.base_light_map_target || capture.pending_probe_light_map)
     {
         return true;
     }
@@ -17617,17 +17599,6 @@ bool LLPipeline::renderMetalWorldLightMap(
     constants.config[2] = has_ssao ? 1u : 0u;
     constants.config[3] = capture.normal_hdr ? 1u : 0u;
 
-    static LLCachedControl<bool> main_ssao_fusion_requested(
-        gSavedSettings, "RenderMetalMainSSAOBlurLighting", false);
-    if (main_ssao_fusion_requested() && RenderDeferredAtmospheric && has_ssao &&
-        isMainWorldPass() && !mMetalHeroWorldCaptureActive &&
-        !mMetalReflectionWorldCaptureActive && mRT == &mMainRT &&
-        capture.renderer->supportsMainSSAOFusion())
-    {
-        capture.pending_main_ssao_light_map = scene;
-        return true;
-    }
-
     if (isMetalProbeFaceCaptureActive() && !has_ssao &&
         capture.renderer->supportsProbeLightingFusion())
     {
@@ -17673,8 +17644,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
-        (!capture.base_light_map_target && !capture.pending_probe_light_map &&
-         !capture.pending_main_ssao_light_map) ||
+        (!capture.base_light_map_target && !capture.pending_probe_light_map) ||
         capture.base_lighting_attempted)
     {
         return;
@@ -17827,21 +17797,11 @@ void LLPipeline::renderMetalWorldBaseLighting(
         !capture.renderer->commandBatchActive() && begin_metal_base_capture()};
     std::string error;
     ALMetalProbeLightingPath probe_path = ALMetalProbeLightingPath::none;
-    ALMetalMainSSAOLightingPath main_ssao_path = ALMetalMainSSAOLightingPath::none;
-    std::unique_ptr<ALMetalRenderTarget> target;
-    if (capture.pending_main_ssao_light_map)
-    {
-        target = capture.renderer->renderMainSSAOLighting(
-            *capture.pending_main_ssao_light_map, scene, &error, &main_ssao_path);
-    }
-    else if (capture.pending_probe_light_map)
-    {
-        target = capture.renderer->renderProbeLighting(
-            *capture.pending_probe_light_map, scene, &error, &probe_path);
-    }
-    else target = capture.renderer->renderBaseLighting(scene, &error);
+    auto target = capture.pending_probe_light_map
+        ? capture.renderer->renderProbeLighting(*capture.pending_probe_light_map,
+              scene, &error, &probe_path)
+        : capture.renderer->renderBaseLighting(scene, &error);
     capture.pending_probe_light_map.reset();
-    capture.pending_main_ssao_light_map.reset();
     // End before publishing the result or emitting any other rendering work.
     if (capture_end.started)
     {
@@ -17856,14 +17816,6 @@ void LLPipeline::renderMetalWorldBaseLighting(
             << "Native world base-light encoding failed: "
             << error << LL_ENDL;
         return;
-    }
-
-    if (scene.diagnostic_view.view_kind == 1 && has_ssao)
-    {
-        if (main_ssao_path == ALMetalMainSSAOLightingPath::memoryless_final_blur)
-            ++capture.main_ssao_tile_lighting_encoded;
-        else
-            ++capture.main_ssao_separate_lighting_encoded;
     }
 
     if (isMetalProbeFaceCaptureActive())
@@ -26015,7 +25967,6 @@ void LLPipeline::renderDeferredLighting()
             {
                 capture.base_light_map_target.reset();
                 capture.pending_probe_light_map.reset();
-                capture.pending_main_ssao_light_map.reset();
                 capture.base_light_target.reset();
                 capture.composed_light_target.reset();
                 const U32 failed_frames =
