@@ -1,4 +1,7 @@
-# Integrated69172 owner session — assessment in progress
+# Integrated69172 first attempt — trace discarded by owner
+
+The old detailed trace and raw copies were deleted at the owner's request.
+The later [verified Overview assessment](integrated-build-69172-overview-quiet-club-20261116.md) is authoritative for CPU/GPU conclusions.
 
 The owner completed both five-minute scene intervals and normal logout/close.
 Whole-viewer performance acceptance remains **unproved**. CPU/GPU trace

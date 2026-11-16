@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-315 -->
+<!-- next-defect-id: PPD-317 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3523,6 +3523,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Combined69008 builds/contained native checks pass, but this incident attribution remains unproved; no live teleport/shutdown retest or owner closure. Keep investigating.
+- 2026-11-16 fresh69172/source350b803597 normal shutdown repeats one remainingvolume/LOD1reference(fourwarninglines, oneincident). FullCPU/GPU scene captures close normally, Goodbye12:20:37. Retain ownership anomaly; no permanentGPUleak or frame-ratecause proved. Private fresh analysis-warnings-review/summary retain source/log evidence.
+
 ## PPD-127 — Startup XUI parameter parsing emits an unresolved warning
 
 - Status: ready_for_owner
@@ -5868,6 +5870,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-16 exact69172/source350b803597 live session: cumulative main failed views10/probe0, all pool-stage at captureMetalSpotShadowTerrainBatch failure lambda line14554(pass/pool93,map3,directional1). Increments3startup/7post-busy, none inside either300s window. Specific operand remains unlogged; do not attribute measured clubFPS or PPD125 nullVB to this aggregate. Preserve first-reason guards and add precise helper operands before repair. Private analysis-warnings-review/summary/census-series retain timestamps.
 
 
+- 2026-11-16 fresh69172 actual5min windows: mainfailedviews3already present at12:06:21startup,probe0; no increment in quiet/club. Same shadow-terrain compound lambda attribution remains operand-unknown. Opaque indirect0selected because no run reaches2048eligible draws; preparation/fallback failures0. No threshold lowering or GPUerror inference.
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating
@@ -6582,6 +6586,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 exact69172/source350b803597 runtime final source-cache census:16730384retains,8104885success/new,8625499false(all bytepressure; other rejection buckets0),5673095capacity/892699ageevictions. Configured estimatedbytecap3892314112,retained3888122790;17629optional group failures allnative_retention withrequired raw/direct pathpreserved. These are logicalresource estimates and workcounts, not physicalUMAallocation orcausalFPScost. Correlate actual CPU/GPU beforechangingcaps/admission; priorallocationmitigations are not totalchurnrepairs. Private session analysis-warnings-review/summary/census-series preserve exactsource/logUTC.
 
+
+- 2026-11-16 valid fresh5min evidence: near-window byte rejects1,988,956quiet/3,970,763club; capacityevictions1,276,671/2,288,000; groupnative-retainfallback835/5731. BusyactualCPUcacheunion13.356s/retain7.681s overlaps engine passes. Work is real, but a larger cap is not justified; sourceaudit confirms revision guard already prevents repeated dependencywalk on cachewithdrawal. PPD316 isolates only redundant same-Signal subscriptions.
 
 ## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
 
@@ -7435,6 +7441,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 future collector artifact corrected to recognize the observed Starting recording/CLI control prompt and avoid sending SIGINT once automatic exit/Stopping recording/save/completion is already reported. Eight pure lifecycle cases and syntax pass against actual CLI evidence; future script has a fail-closed instrumentation qualification guard and was not executed. Active original controller/raw metadata remain unchanged; separate authoritative timer completed both300s intervals. This is not new live capture verification or closure. Evidence: private future-collector-logic-check.json and record-integrated-69172-corrected-not-executed.py.
 
+- 2026-11-16 new bounded Overview controller uses per-scene recorder exit and actual saved TOC start/end as phase authority. Both300s scenes save/TOC0 with correct owner arrival markers; original faulty phase metadata remains only in discarded-attempt history. No fabricated recorder text or replacement of old evidence.
+
 ## PPD-310 — Integrated Instruments recording stalls during system-trace teardown
 
 - Status: investigating
@@ -7456,6 +7464,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 lighter recovery attempt starts11:22:50UTC from APFS-cloned later269311200736-byte attachment using installed Game Performance Overview(windowLimit0), handle44448/PID78586; original65180 preserved. Original progresses into DWARF symbol processing with cursor warnings; inspect actual symbol coverage after export, not warning counts alone. No new viewer or successful-retention claim. Prepared detailed parser qualifies only against short69151 fixtures and has sizing/RSS guards.
 
+- 2026-11-16 owner explicitly stops recovery and orders old trace deletion. Jobs65180/78586 killed; original trace and both APFS raw snapshots deleted, receipts/logs retained. Fresh identical69172 viewer then records quiet300.826s/club300.737s with proven Overview template and390s/2GiB per-scene bounds: both record0/TOC0, final40.1/50.7MB. ActualCPU spans>300s and GPUmetric coverage100%/99.9469% verified. The failed detailed capture supplies no CPU/GPU assessment and must not be auto-resumed.
+
 ## PPD-311 — Live rigged skin data repeatedly requires nonfinite-matrix stabilization
 
 - Status: investigating
@@ -7473,6 +7483,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 registered the observed live quality fallback before repair. Busy-window55throttled notices are retained alongside transition/startup/shutdown evidence; source predates current architecture, which does not establish the origin of malformed inputs.
 
+- 2026-11-16 unchanged fresh69172 has no nonfinite skin/operand/fallback warning. This does not close the earlier reproduced symptom or prove equal avatar/assets; no corrective source change was made.
+
 ## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
 
 - Status: investigating
@@ -7489,6 +7501,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered all three stderr warnings separately from365structured viewer warnings. No application change or warning suppression attempted.
+
+- 2026-11-16 unchanged fresh69172 again emits2grayICC/RGBPNG and1interlace stderrwarning. No asset/phase/emitter/visualeffect isolation; retain source/API-order concern without attribution to FPS.
 
 ## PPD-313 — Skin default and empty-input paths violate initialization/indexing contracts
 
@@ -7523,3 +7537,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before implementation. Original69172/source350b803597 candidate and in-progress raw-data analysis remain frozen. Diagnostic correctness/component cost does not establish an architecture FPS gain; no new viewer run/push authorized by this record.
+
+- 2026-11-16 implementation halted when owner rejects profiling rabbit-hole. Isolated codex/apple-first-continuous-frame-telemetry at254b74538a has uncommitted apphook/CMake/newmodule/test files. StandaloneCPU compile and119assertions/9cases passed; apphook compilation/fullbuild/runtime and peerreview remain unverified. Not integrated into69172; no further telemetry work or live jobs. Preserve files, do not represent as delivered viewer work.
+
+## PPD-315 — Main-frame admission throttles three transactions as two commands
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native main-frame admission integration
+- Discovered: 2026-11-16
+- Original reference: Exact350b803597 pipeline.cpp main G-buffer/sky17075–17399, light-map/lighting26449–26510 and opaque/optical8756–10337 use the same renderer/default2pending-command limit. almetalworld.cpp2434–2481 counts command entries, despite a comment describing two complete graphs. Original1eb44 uses end-frame pacing/resource reuse rather than this conversion-era intra-frame command cap.
+- Evidence: [Verified69172 engine assessment](research/integrated-build-69172-overview-quiet-club-20261116.md); private fresh-session analysis-source-overlap-audit.md/receipt.json retain exact excerpts/hashes, CPU/GPU results and validation recipe.
+- Next action: Implement explicit bounded main-frame groups with a finite invocation bound, preserving the three early commits, ordered native queue, completion-owned resources/credits and separate special-view policies. Event-gated actual native transaction/group, cancellation/error/output/lifetime checks before integration. Do not globally raise2to6 or merge the whole graph into one late commit.
+- Verification: If current-frame G-buffer and lighting remain pending, beginning its post transaction waits for its own G-buffer. This source path inserts an avoidable CPU completion wait into normal frame overlap. Runtime incidence, magnitude and whole-viewer FPS benefit are unproved; Overview latency spans are not isolated GPU execution time.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation after valid300s quiet/club evidence. Frozen69172/source350b803597 remains the baseline; no source repair/build/performance win claimed. Existing shadow ALMetalFrameAdmission{2,6} provides a local ownership precedent, not permission to change unrelated admission/drawable/upload limits.
+
+## PPD-316 — Repeated dependency roles rescan the same Signal subscription
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared publication dependency optimization
+- Discovered: 2026-11-16
+- Original reference: Native llspatialpartition_native_dependencies.inl Relay::remember92–112 and refresh145–153 call Signal::observe for every role, although alnativepublication.cpp55–63 makes identical observer subscription idempotent. Original1eb44 current draw/resource selection and before-write invalidation behavior must be preserved; this Relay has no GL API equivalent.
+- Evidence: [Verified69172 engine assessment](research/integrated-build-69172-overview-quiet-club-20261116.md); private fresh-session analysis-source-publication-review.md/receipt retain source and real-body validation conditions.
+- Next action: Subscribe once per immutable Signal identity while retaining the full ordered role topology and existing ownership/inline-spill behavior. Validate repeated/distinct identities, producer mutation, transactional failure/reentrancy, cache withdrawal and actual subscription counts. No cap/retention policy or rendering/loading change.
+- Verification: The real30-role fixture has3distinct Signals but performs30prune/observer scans; a correct dedup makes3actual subscriptions while retaining30ordered identities. Distinct30must remain30. Busy Signal::observe totals3.777CPU-s, only part redundant; no large or whole-viewer FPS gain inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation. The apparent double world/shadow observation calls already have a revision guard and can be required after reentrant buffer publication; do not remove them. This bounded secondary candidate does not replace the primary frame-overlap work.
