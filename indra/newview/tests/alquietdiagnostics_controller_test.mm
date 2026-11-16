@@ -229,3 +229,52 @@ TEST_CASE("quiet controller: actual factory collision consumes one failed attemp
         CHECK_FALSE(fs::exists(directory.path / ALMetalFrameCapture::quiet_late_directory));
     }
 }
+
+TEST_CASE("quiet controller: telemetry cutoff cancels an active capture without waiting for a display",
+          "[.][quiet-controller-cutoff]")
+{
+    if (!nativeRequested()) return;
+    @autoreleasepool
+    {
+        Environment environment;
+        Directory directory;
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        Shutdown shutdown;
+        alQuietDiagnosticsInitialize();
+        REQUIRE(D::enabled());
+        reachFirstAttempt(*device, shutdown);
+        REQUIRE(alQuietDiagnosticsStatistics().capture_active);
+        REQUIRE([MTLCaptureManager sharedCaptureManager].isCapturing);
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = 4;
+        descriptor.storage = ALMetalStorageMode::shared;
+        auto output = ALMetalBuffer::create(*device, descriptor, &error);
+        REQUIRE(output);
+        auto command = device->makeCommandBuffer("Quiet controller cutoff ordinary work", &error);
+        REQUIRE(command);
+        auto native_command = (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+        auto blit = [native_command blitCommandEncoder];
+        REQUIRE(blit);
+        [blit fillBuffer:(__bridge id<MTLBuffer>)output->nativeHandle()
+                   range:NSMakeRange(0,4) value:0x75];
+        [blit endEncoding];
+        REQUIRE(command->commit(&error));
+        D::stop(); // CPU writer cutoff only; no viewer display or GPU wait.
+        REQUIRE_FALSE(D::enabled());
+        alQuietDiagnosticsHeartbeat(shutdown.frame, false);
+        const auto stats = alQuietDiagnosticsStatistics();
+        CHECK_FALSE(stats.capture_active);
+        CHECK(stats.terminal);
+        CHECK(stats.capture_failed);
+        CHECK(stats.attempts == 1);
+        CHECK_FALSE([MTLCaptureManager sharedCaptureManager].isCapturing);
+        REQUIRE(command->waitUntilCompleted(&error)); // Test-only preservation check.
+        CHECK(*static_cast<const unsigned*>(output->mappedBytes()) == 0x75757575u);
+        alQuietDiagnosticsAdvanceDisplay(device.get(), normal(++shutdown.frame));
+        CHECK(alQuietDiagnosticsStatistics().attempts == 1);
+        CHECK_FALSE(alQuietDiagnosticsStatistics().capture_active);
+        CHECK_FALSE(fs::exists(directory.path / ALMetalFrameCapture::quiet_late_directory));
+    }
+}
