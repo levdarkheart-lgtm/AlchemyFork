@@ -2935,3 +2935,62 @@ Separate69151 staging is VERIFIED8273 nodes/all19 checksum rows PASS; owner
 GPU visibility still follows CPU discovery; GPU-owned discovery, GPU-priority
 policy, runtime activation and whole-engine performance/feature/stability remain
 open. No launch/login/profile/push; original goal stays active, not complete.
+
+
+## PPD301 early static classification — tested and rejected for enabled policy
+
+Frozen renderer source `9be33e2b3e627bdb49f1fdae65076b513911bf4f`, build
+**26.4.0.69155**, now contains the actual before-main-cull resident-group
+producer and a later command reader. The weak2048-group/8192-row index accepts
+only successful immutable publications, copies current region/camera data and
+owns no idle CPU graph or native geometry. Native bounds encoding drops its
+snapshot owners before CPU cull. Later reads require successful producer
+completion, exact current cohort/control-block/used-matrix proof and sparse
+logical remapping. Reader leases protect argument slots until GPU retirement;
+original same-command checks, CPU cull/occlusion/pass policy and queries remain.
+This is bounds classification, **not GPU-owned world discovery or CPU binding
+elimination**. Depth prepass and incompatible modes decline speculative work.
+
+Doctor/configure/build PASS; current native early500assertions/4cases, actual
+producer75/2, old visibility7521/13 and shader reload1248/6 PASS with API/GPU
+validation. Static exact69155/signature/ARM64/imports/features and strict3598files,
+0blockers/0errors PASS. Source83 full34renderer1130599/358 executions are explicitly
+reused, not rerun or relabelled as84: only docs/new early-test mask inputs changed,
+all105 production archives/other native-test objects/native libraries match,
+llrender/common binaries are identical, all34 filters exclude the changed test,
+and the repaired four-case fixture actually executes on84. Both initial compile
+and fixture failures remain in PPD301 history and immutable82/83 receipts.
+
+One24-cell/480-row actual-owner comparison passes195988assertions/1case for
+output/query/accounting. The runtime policy is **rejected**: all16 prefix-active
+cells increase owner-phase wall medians16.61–86.59%;12/16 also increase settled
+medians. Eight-source measured requested views adopt0/128;256-source adopt24/104.
+The early result often misses the CPU-consumer deadline once retained capture
+becomes cheap. Required loading competes too: one prefix credit reduces new
+cohort admission16→15 while outstanding, delaying warm256 one-view settlement
+fromsample4 to5. No cap is increased to hide that cost. Startup factory costs,
+loading debt, denials, ready peeks, successful adoption, indirect submissions,
+direct fallback and all unfavorable pairs remain in the raw receipt/summary.
+
+The fixture includes768unique indices/source and16×16 targets, one-view main
+scope plus three-view stress. Its mixed256 groups model outside rows inside a
+CPU-accepted group; outside one-row groups are only an upper-bound/stress case
+because real octree cull already rejects wholly outside tested group bounds.
+CPU cull/capture/bindings still run, and physical slot-cache retirement latency,
+real traversal/assets/dependency walking and target-wrapper retirement are not
+timed. No viewer/FPS/physical-RAM/ALU-utilization inference follows.
+
+Evidence root: `artifacts/metal/apple-first-persistent-native-scene-20261114/`:
+`early-visibility-cost-84{,-summary}.json`, `early-visibility-selection-84.json`,
+`native-correctness-reuse-84.json`, current dedicated/static/build receipts.
+Tested branch `codex/apple-first-early-visibility-tested-69155` preserves source.
+`RenderMetalEarlyGroupVisibility` remains nonpersistent/defaultOFF. There is no
+newly recommended/staged app; **69151 remains the existing owner candidate**.
+
+The next G4 boundary must remove actual per-row CPU submission together with
+native visibility, using existing ordered cohort command consumers and honoring
+required-main publication priority. Existing native bank cost failures remain
+constraints; another early-dispatch-only variant is not selected. Broader GPU-owned
+discovery and original whole-engine runtime/feature/stability acceptance remain
+active and partial. The Testing Integrated Build session retains its separate
+analysis responsibility; no viewer launch/login/profile/push occurred here.
