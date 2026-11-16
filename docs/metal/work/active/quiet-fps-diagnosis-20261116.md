@@ -132,6 +132,22 @@ Evidence root: private `artifacts/metal/quiet-fps-diagnostic-preparation-2026111
 failures and first incorrect test-path attempt remain preserved. PPD-320/321
 retain diagnostic lifecycle repairs; PPD-314/318 need actual viewer retest.
 
+Offline `quiet_diagnostic_summary.py` is integrated separately from frozen
+enginefd5. It reduces bounded raw native data into phase cadence, configuration
+and capture exclusions, command-envelope unions, CPU spans and workload/resource
+progression. Missing frame telemetry, losses and cutoffs remain explicit. It
+does not diagnose shader causes automatically and refuses evidence overwrite.
+Root final Python tool suite at ad213de8ec passes with the retained native stream
+read unchanged; receipt/log under `tools-final/`.
+
+Owner asks whether manual Xcode capture can replace scripted recording. Yes:
+Xcode Debug Executable with GPU Frame Capture=Metal launches the verified app;
+capture a small early and late frame set and export each .gputrace. Instruments
+Game Performance Overview can record the continuous login-to-decline timeline.
+Keyboard capture while the viewer stays foreground avoids focus-throttle
+confusion; pause/capture intervals remain diagnostic overhead. No owner viewer
+run has yet been performed or authorized by that question alone.
+
 Next action: only on explicit owner instruction, launch exact staged69200 with
 the prepared native environment, attach the recorder immediately, then cue
 Login after actual readiness. Owner selects quiet Home and drives the viewer.
