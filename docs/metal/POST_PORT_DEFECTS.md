@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-323 -->
+<!-- next-defect-id: PPD-327 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7542,6 +7542,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 owner explicitly activates quiet-FPS diagnosis. New default-off native JSONL sink and actual LLAppViewer iteration hook are compiled into separately verified69200/fd5e8e088e, preserving the old halted worktree. It records raw Mach start/end/display IDs/startup/teleport/focus/window state without the strict benchmark gate; existing CPU spans and actual command timestamps are separate fields. Native serializer/controller cases pass, but real app-hook coverage, cadence and owner runtime remain unverified until the authorized viewer session. See [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md); no closure or performance claim.
 
+- 2026-11-16 actual owner Terminal run PID62863/fd5/69200 proves the raw appiteration hook executes and reproduces eligible24.162→14.467FPS with exact Mach/UTC world anchoring.3430frame rows survive, zero malformed rows. The bounded64MiB cutoff and344reported dropped events keep whole-stream acceptance partial (PPD-326); requested world0–120s phases are covered. See clean Terminal findings; no strict benchmark behavior change or defect closure.
+
 ## PPD-315 — Main-frame admission throttles three transactions as two commands
 
 - Status: investigating
@@ -7634,6 +7636,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 collector qualification corrections and explicit native PID binding pass154 tool tests/38 collector tests on the tool branch; installed3s CPU/scheduler proofs retain their actual earlier hashes rather than being relabelled final-source runtime. Existing21370 Overview is rechecked offline: each required GPU family has1864 positive rows/465.686s coverage, so old evidence remains valid. Root actual controller capture with API+GPU layers enabled returns NotSupported(1); intended profiling mode with those layers unset passes early/stop/invalidation45, collision25 and cutoff33 assertions. Both attempts retained; prepared launch explicitly clears validation and benchmark/stage settings. Exact69200/fd5 app is staged/verified, no viewer launch or recorder attachment yet.
 
+- 2026-11-16 new owner Terminal recorder and cached CPU/GPU exports complete180.692s/exit0. The outer collector instead returns1 because its positive-only GPU-family start-gap guard rejects explicit retained zero-associated-frame rows across focusloss. PPD-325 records the new confirmed qualification defect before repair. Preserve the failed receipt, use the actual covered data and do not manufacture missing GPU execution.
+
 ## PPD-319 — Quiet frame cadence declines after login as completion latency grows
 
 - Status: investigating
@@ -7654,6 +7658,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 owner explicitly pauses the original architecture goal and makes explaining this quiet decline the sole current objective. [Diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md) records the capture method and incomplete preparation. Source inspection confirms existing capture/stage timing are post-benchmark gated and stage timing excludes ordinary shadow overlap; do not reuse that altered schedule as representative startup evidence. Prepare bounded early/late quiet capture, workload/resource evolution and available GPU limiter/frequency/thermal evidence. No new renderer change, launch or profile during discussion; cause and owner acceptance remain open.
 
 - 2026-11-16 diagnostic preparation is complete: separately staged verified69200/fd5, actual controller/native/static gates, final170 tool tests and Xcode fixture replay/source/counters are preserved. Three subsequent goal continuations confirm no owner viewer/recorder and no new owner capture in the prepared root. Goal is blocked on manual capture paths or explicit owner launch/record instruction, as the goal prohibits autonomous runtime. No exact quiet GPU cause, causal check or performance acceptance can be claimed yet; original architecture work remains paused.
+
+- 2026-11-16 clean owner Terminal reproduction (all4native paths active; no sampled Xcode/validation helpers): period41.387→69.123ms, FPS24.162→14.467. Exact eligible main waits20.674→49.068ms/frame account for the expansion;4384paired waittargets retain native GPU intervals, almost all lighting/post exactly2display frames old. Target-GPUEnd delivery~0.2ms per actual waited command remains stable. Main probe config0→22by60s→39by120s while mainpoint/projector counts/rectangles and resolution remain fixed; GPU lighting/post envelopes grow but Gbuffer remains~14ms. Probe traversal/concurrent work and resource/cache effects are measured hypotheses, not exact shader cause. ThermalNominal, late decode0.017CPU-s. Early/late viewer gputrace and contained causal check remain absent; original goalpaused, no optimization/push. See research/quiet-terminal-findings-20261116.md and private matched native/CPU/GPU/log reports. PPD-325/326 preserve measurement limits.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -7715,3 +7721,75 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered after the owner reports the manual launch dialog. Prior manual instructions omitted this Xcode default; correct the setup guidance before retry. No viewer binary/settings/source modification, launch or profiling by Codex.
+
+## PPD-323 — Manual performance workflow retains Xcode validation and capture helpers
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex manual quiet capture workflow
+- Discovered: 2026-11-16
+- Original reference: Manual Xcode launch of staged69200/fd5 retains MTL_DEBUG_LAYER=1 plus GPUTools capture/interposer and MainThreadChecker/backtrace helpers. Prior manual setup guidance specified Metal frame capture but omitted explicit validation-off instructions. This is a measurement-configuration issue; the FPS penalty and original viewer performance cause are unproved.
+- Evidence: Owner-provided ~/Alchemy.trace, exact stable private copy/211file hashes and TOC at artifacts/metal/quiet-owner-manual-20261116T165709Z; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md). Safe context JSON records only relevant switches. PID61191/69200,62.766128s16:53:17.597–16:54:20.363UTC, STATE_STARTED16:53:35. Owner reports14–15FPSfromstart, never24.
+- Next action: Complete bounded CPU/GPU/log analysis, quantify directly attributable instrumentation CPU separately from wrapped driver work, and retain this as a slow-state diagnostic. A same-build/view control without validation/capture/debug helpers is required to measure their FPS cost; no new launch/profile without instruction.
+- Verification: Overview capture valid and starts before login; only aggregated GPU metrics/RunningCPU samples, no detailed encoder/shader capture or available per-frame rows. API layer enabled is proved; shader validation is not explicitly enabled in TOC. No proof that capture overhead accounts for the whole low-FPS state or earlier25→14decline. New runtime architecture-path differences under audit; do not attribute them to owner graphics changes.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before workflow correction. Owner manual trace preserved unchanged; no viewer launch/recording or source/graphics modification by Codex. Original architecture implementation remains paused.
+
+- 2026-11-16 owner Terminal run62863 has explicit API/shader validation/capture OFF and zero sampled MetalTools/GPUTools/Backtrace/MainThreadChecker main-stack union. The24→14decline still reproduces. This establishes that the prior developer-helper work is absent and is not necessary for the original decline; it is not a matched OFF measurement of the manual session FPS penalty because restored architecture paths/loading/scene history also differ. No code fix or closure.
+
+## PPD-324 — Plain manual diagnostic launch omits selected architecture arguments
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex quiet capture launch provenance
+- Discovered: 2026-11-16
+- Original reference: Earlier exact69187/source92 owner session explicitly selected GroupSources, GroupSourceStability, ShadowViewOverlap and MainLightingRenderPass TRUE through --set launch arguments. Staged69200/fd5 preserves the source and FALSE defaults; manual Xcode Debug Executable guidance did not carry those run arguments. Runtime log confirms new group/stability/shadow-overlap/main-lighting preparation paths inactive. The owner did not need to change any visible graphics setting for this difference to occur.
+- Evidence: Safe filtered original session.json viewer_argv pairs plus old/new runtime control and census joins under private quiet-owner-manual-20261116T165709Z/analysis-log; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md).
+- Next action: Preserve this manual run as a distinct instrumented/default-path slow-state capture. Restore exact previously selected architecture arguments in the next diagnostic launch recipe, with validation/debug/capture modes explicitly bound. Do not change renderer defaults or resume architecture optimization. Owner still controls any new launch/profile.
+- Verification: Source/default/argument/runtime difference is confirmed, not an owner graphics change or measured cause of the old quiet decline. Current trace has no24FPS world interval and cannot be treated as a matched retest. Correction and actual same-configuration runtime remain pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before launch-recipe correction. Both raw runs and original settings/source defaults are preserved. No viewer launch, graphics/source change or profile by Codex.
+
+- 2026-11-16 owner-run Terminal capture PID62863/69200 restores the exact19 prior override pairs, including the four TRUE architecture controls. CPU samples show native shadow-worker execution; runtime census verification is retained with the new analysis. This corrects launch provenance for the new run, without retrospectively matching the earlier manual run or proving an architecture FPS benefit.
+
+## PPD-325 — GPU coverage gate mistakes explicit no-frame intervals for missing data
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex quiet capture qualification
+- Discovered: 2026-11-16
+- Original reference: New quiet_capture.py coverage qualification measures the maximum separation between positive-frame aggregate bucket starts. A retained zero-frame aggregate is evidence of no associated frames, but is excluded from that continuity calculation. This is a collector classification defect, not an upstream viewer rendering defect.
+- Evidence: [Clean Terminal findings](research/quiet-terminal-findings-20261116.md); owner Terminal run /Users/dekstroza/Alchemy-quiet-l9vbrfzj, exact stable242-file/186388665-byte private copy and input receipt under artifacts/metal/quiet-terminal-analysis-20261116T172257Z. Recorder exits0 with180.691688s trace; cached CPU export covers180.414s and GPU families180.289s. coverage.json instead reports insufficient positive-frame GPU Begin to End coverage.
+- Next action: Complete analysis of retained data first. Then qualify aggregate coverage using actual retained rows/ranges while reporting explicit no-frame intervals separately; preserve the existing failed receipt. Do not suppress genuine missing data or assume why the viewer stopped producing associated frames.
+- Verification: Same-layer buckets explicitly report zero associated frames at trace69.292/70.349/71.358/72.309s, between positive buckets starting68.289 and73.306s. The resulting5.016658s positive-start gap exceeds the hard5s guard. A second explicit no-frame interval occurs126.295–128.364s. Native focus flags go OFF69.476→ON74.674s and OFF126.721→ON129.363s, aligning with these intervals; raw app iterations continue and visible/non-minimized flags remain set. These aggregates do not establish viewer0FPS. Full retained export is usable. No code repair or passing regression check yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before any repair. Preserve outer collector exit1 and real recorder exit0 separately. Do not ask the owner to repeat a completed run solely because of this false retention classification.
+
+## PPD-326 — Native telemetry byte budget ends before the requested three-minute run
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex quiet diagnostic retention
+- Discovered: 2026-11-16
+- Original reference: Diagnostic telemetry intentionally has a bounded64MiB lossy asynchronous sink. The three-minute Terminal recipe had not been qualified against actual viewer command/event volume. Reaching the explicit cutoff is safe designed behavior, but leaves the requested native recording incomplete; it is not evidence of a renderer memory leak or the FPS cause.
+- Evidence: [Clean Terminal findings](research/quiet-terminal-findings-20261116.md); same immutable owner-run copy as PPD-325; native/diagnostic.jsonl SHA25602f5a102c0692bb016781752c2c4f74a456d0b7a4cd579cbae2d74f4273aed8d,67105193bytes. Footer and offline summary under analysis-native retain all loss, budget and pending counts.
+- Next action: Use the covered early/decline/late prefix before changing tooling. For a later authorized run, choose a bounded retention policy consistent with observed event rate and required duration, and retain explicit loss/cutoff reporting. No engine optimization or viewer relaunch is authorized by this defect.
+- Verification: Footer byte_limit after approximately163.85s from header/~149s after first world marker;339054 parsed rows,3430 raw app iterations, zero malformed rows,203 contention drops/141 budget drops/zero full-ring drops/zero I/O errors,20 pending committed commands. All requested world0–120s analysis phases precede cutoff, but individual unmatched/lost records and the unrecorded tail cannot be reconstructed. No full native-stream success or zero observer-cost claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered on first actual native viewer workload. The independent180.692s Overview recording survives the native cutoff. Preserve the completed run; this limitation does not invalidate its observed24→14FPS reproduction.

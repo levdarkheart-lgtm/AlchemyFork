@@ -172,8 +172,89 @@ and DebugDocumentVersioning property. Disable that scheme option and keep GPU
 Frame Capture=Metal. Owner closed the temporary debug workspace during
 inspection; Codex changed no scheme option and launched/profiled nothing.
 
+## Owner manual trace and Terminal follow-up
+
+Owner supplied `/Users/dekstroza/Alchemy.trace`, reporting14–15FPSfromstart.
+Exact211file/39,462,307byte copy and original-stability hashes are private at
+`artifacts/metal/quiet-owner-manual-20261116T165709Z/`. PID61191 is exact
+69200/fd5. Overview62.766s16:53:17.597–16:54:20.363 includes STATE_STARTED
+16:53:35.43 complete world buckets average15.279FPS, mildly improve14.96→15.61,
+none reach24. Per-frame schemas have zero rows; no shader/encoder capture.
+Thermal is Nominal; associated GPU envelope91.997ms/inflight61.370ms are not
+hardware busy time. Main20–60s is39.211sampledCPU-s/40s (~98%core); direct
+instrumentation leaves5.363s, instrumentation/immediate runtime support27.184s.
+These overlap and do not predict saved FPS. Actual older-group waits remain0.
+MTL_DEBUG_LAYER=1 plus capture/interposer helpers prove material instrumentation
+work (PPD-323). Four nonpersistent architecture controls were also omitted by
+manual launch (PPD-324); same target resolution, different loading state.105
+warnings/38callsites,0ERROR/FATAL, normal ownerquit. Separate CPU/GPU/log reports,
+raw exports and source/input/output hashes remain under that private run.
+This explains why this recording is not a matched retest; the original quiet
+25→14 causal explanation remains incomplete.
+
+Owner now requests exact Terminal commands and will execute them. Private
+`quiet-fps-diagnostic-preparation-20261116/run_quiet_terminal.py` is a thin
+owner-run wrapper around the verified attach-only collector. It checks the
+exact staged executable hash and19priorRenderMetal override pairs (4TRUE),
+strips inherited Xcode/Metal validation/capture/debug injection, launches the
+viewer outside Xcode, records180s Overview plus bounded asynchronous native
+timing, and prints LOGIN NOW only after actual recorder notification/live data.
+Default has no GPU capture layer; `--capture-frames` is a separate follow-up.
+Fresh private ~/Alchemy-quiet-* outputs preserve oldAlchemy.trace; user quits
+the viewer. Syntax/hash/arguments dry-run passes; wrapper has NOT launched a
+viewer or recorder. No new build/source or graphics-setting changes. Native
+frame captures and a matched overhead/causal check remain to do.
+
 Success requires an early-versus-late critical-path explanation, exact source
 and evidence, and a contained causal check. A suspect list, another club trace,
 or preparation alone does not complete this objective.
 
 [Existing findings](../../research/engine-checkpoint-69187-findings-20261116.md).
+
+## Owner clean Terminal capture received and analyzed
+
+Owner supplied `/Users/dekstroza/Alchemy-quiet-l9vbrfzj`; exact stable242-file/
+186388665-byte copy is private at
+`artifacts/metal/quiet-terminal-analysis-20261116T172257Z/owner-run`.
+PID62863/sourcefd5/build69200,180.691688s17:17:32.040–17:20:32.731UTC, world
+marker17:17:46.647911. All19prior argument pairs and4TRUE native paths restored;
+no sampled Xcode/validation helper stacks. No viewer/profiler/build was started
+for this analysis. Owner quits normally17:21:13–15.
+
+Eligible raw cadence24.162→18.490→14.467FPS. Same-eligible-interval main wait
+unions20.674→32.789→49.068ms/frame. Early→late frame period grows27.736ms,
+while recorded waits grow28.394ms and all remaining wall time falls0.658ms.
+All4384paired main waits have surviving target GPU intervals; almost all wait
+lighting/post commands exactly2display frames older. Wait-after-GPUEnd grows
+only0.337→0.433ms/frame, and actual waited lighting/post callback tails remain
+~0.2ms. This accounts for the critical-path expansion as downstream completion
+backpressure, without proving shader/hardware-busy cause. Main lighting and
+post GPU envelopes grow33.82→50.87/47.93→73.09ms while Gbuffer14.10→14.35ms;
+these overlap and are not additive.
+
+Configured main probe pack0→1(first10s),1→22(by60s),22→39(by120s); ordinary
+probe pack8→45→82. Source-confirmed candidate/accepted traversal makes this a
+leading changing-workload hypothesis, alongside concurrent probe work and
+resource/mip/cache effects, not39actual taps/pixel or proven causation. Main
+local9/projector39 populations/rectangles,3456×2168quality6 and SSR25/4inputs
+are fixed. Device allocation settles~8.83GB; source cache churns at distinct
+3.892GB logical cap. No system-memory exhaustion/fault/bandwidth proof. Decode
+CPU52.951s over10–60world falls0.017s over60–120; shadowjobs execute on5workers;
+main runs on Pcores. MainCPU/wall falls, but CPU/frame is not inferred from it.
+ThermalNominal covers0–120world; no GPUfrequency/counters.116warnings/38source
+callsites+3libpng,0ERROR/FATAL; no warning-storm FPS attribution.
+
+PPD-325 registers collector positive-bucket gap false failure: recorder/export0,
+explicit zero-associated-frame rows align focusloss; native iterations continue.
+PPD-326 registers native64MiB cutoff/~149worlds,203contention+141budget drops,
+20pendingcommands. Raw0–120phase observations remain usable with loss accounting;
+no whole-stream success or invented completions. Neither tool limitation is
+the renderer decline cause. No code repair was attempted during analysis.
+
+[Findings](../../research/quiet-terminal-findings-20261116.md) include exact
+source/evidence and next causal boundary; private CPU/GPU/log/native reports
+and5s time series are siblingoutputs outside immutable owner-run. Next useful
+runtime evidence is prepared early/late .gputrace with validationoff, retaining
+this capture-free run as cadence control. Profiling overhead and a contained
+causal check remain required. Original architecture stays paused, PPD-319open;
+no agent launch/profile or push.
