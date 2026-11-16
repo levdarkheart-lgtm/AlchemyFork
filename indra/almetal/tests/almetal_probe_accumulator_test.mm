@@ -145,7 +145,9 @@ struct Fixture
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     id<MTLCommandQueue> queue = nil;
     std::array<id<MTLLibrary>, 2> helper_library{}, production_library{};
-    std::array<id<MTLRenderPipelineState>, 2> helper_pso{}, base_pso{}, simple_pso{}, shadow_pso{};
+    std::array<id<MTLRenderPipelineState>, 2> helper_pso{}, base_pso{}, simple_pso{};
+    std::array<std::array<id<MTLRenderPipelineState>,2>,2> shadow_pso{}; // variant, quality2/other
+    std::array<bool,2> shadow_classic_specialization{}, shadow_quality_specialization{};
     std::array<std::array<id<MTLTexture>, 3>, 2> output{};
     std::array<std::array<id<MTLBuffer>, 3>, 2> readback{};
     std::array<id<MTLTexture>, 2> shadow_output{};
@@ -187,7 +189,8 @@ struct Fixture
         auto t = [device newTextureWithDescriptor:d]; REQUIRE(t); return t;
     }
     id<MTLRenderPipelineState> pipeline(id<MTLLibrary> library,
-        const char* vertex, const char* fragment, unsigned attachments, bool shadowed_alpha = false)
+        const char* vertex, const char* fragment, unsigned attachments,
+        bool shadowed_alpha = false, unsigned shadow_quality = 0)
     {
         auto d = [MTLRenderPipelineDescriptor new];
         d.vertexFunction = [library newFunctionWithName:[NSString stringWithUTF8String:vertex]];
@@ -196,8 +199,9 @@ struct Fixture
         if (d.fragmentFunction.functionConstantsDictionary.count != 0)
         {
             // Match ALMetalRenderPipeline::create: optional declarations still
-            // require specialization through an empty values object. Nothing
-            // is defined, so the ordinary main-view filter remains selected.
+            // require specialization through an empty values object. Main
+            // shadow constant0 stays unset; named opt-in proposals below are
+            // qualified independently without affecting generic fallbacks.
             auto values = [MTLFunctionConstantValues new];
             MTLFunctionConstant* classic = d.fragmentFunction.functionConstantsDictionary[@"almetal_simple_alpha_classic_mode"];
             if (shadowed_alpha && classic)
@@ -210,6 +214,15 @@ struct Fixture
                 const bool modern = false;
                 [values setConstantValue:&modern type:MTLDataTypeBool atIndex:2];
                 std::printf("probe_specialization fragment=%s classic_constant2=false shadow_constant0=undefined\n",fragment);
+            }
+            MTLFunctionConstant* quality = d.fragmentFunction.functionConstantsDictionary[@"almetal_directional_shadow_high"];
+            if (shadowed_alpha && shadow_quality == 2 && quality)
+            {
+                REQUIRE(quality.index == 3);
+                REQUIRE(quality.type == MTLDataTypeBool);
+                const bool high = true;
+                [values setConstantValue:&high type:MTLDataTypeBool atIndex:3];
+                std::printf("probe_specialization fragment=%s quality_constant3=true runtime_quality=2 shadow_constant0=undefined\n",fragment);
             }
             NSError* error = nil;
             d.fragmentFunction = [library newFunctionWithName:[NSString stringWithUTF8String:fragment]
@@ -267,7 +280,12 @@ struct Fixture
             simple_pso[variant] = pipeline(production_library[variant], "almetal_world_shiny_vertex", "almetal_world_pre_water_simple_fragment", 1);
             // The main-view function constant is intentionally undefined,
             // preserving the complete runtime directional-shadow filter.
-            shadow_pso[variant] = pipeline(production_library[variant], "almetal_world_shiny_vertex", "almetal_world_pre_water_simple_shadow_fragment", 1, true);
+            auto shadow_function = [production_library[variant] newFunctionWithName:@"almetal_world_pre_water_simple_shadow_fragment"];
+            REQUIRE(shadow_function);
+            shadow_classic_specialization[variant] = shadow_function.functionConstantsDictionary[@"almetal_simple_alpha_classic_mode"] != nil;
+            shadow_quality_specialization[variant] = shadow_function.functionConstantsDictionary[@"almetal_directional_shadow_high"] != nil;
+            shadow_pso[variant][0] = pipeline(production_library[variant], "almetal_world_shiny_vertex", "almetal_world_pre_water_simple_shadow_fragment", 1, true, 2);
+            shadow_pso[variant][1] = pipeline(production_library[variant], "almetal_world_shiny_vertex", "almetal_world_pre_water_simple_shadow_fragment", 1, true, 3);
             shadow_output[variant] = texture(width,height,MTLPixelFormatRGBA16Float,MTLTextureType2D,1,1,true);
             shadow_readback[variant] = buffer(width * height * 8);
             for (unsigned a = 0; a != 3; ++a)
@@ -565,7 +583,7 @@ struct Fixture
         }
         else
         {
-            [encoder setRenderPipelineState:shadowed ? shadow_pso[variant] : simple_pso[variant]];
+            [encoder setRenderPipelineState:shadowed ? shadow_pso[variant][shadows.config[3] == 2 ? 0 : 1] : simple_pso[variant]];
             if (shadowed) [encoder setDepthStencilState:readonly_depth];
             for (unsigned i = 0; i != 4; ++i) [encoder setVertexBuffer:vertex_buffers[i] offset:0 atIndex:i];
             [encoder setVertexBuffer:shiny_buffer offset:0 atIndex:4];
@@ -766,8 +784,38 @@ TEST_CASE("almetal: bounded complete main shadow alpha probe costs",
                 const unsigned variant = (pair+ordinal)%2;
                 const auto timing = f.render(variant,Fixture::Path::simple_shadow,false);
                 REQUIRE(timing.gpu_ns > 0);
-                std::printf("probe_accumulator_home_cost count=%u family=%s shadow_quality=%u function_constant=undefined path=production-simple-shadow-alpha width=%u height=%u format=RGBA16Float blend=src_alpha/one_minus_src_alpha depth=readonly_less_equal draws=1 pair=%u ordinal=%u variant=%s gpu_ns=%.0f owner_wall_ns=%.0f\n",
+                std::printf("probe_accumulator_home_cost count=%u family=%s shadow_quality=%u shadow_constant0=undefined path=production-simple-shadow-alpha width=%u height=%u format=RGBA16Float blend=src_alpha/one_minus_src_alpha depth=readonly_less_equal draws=1 pair=%u ordinal=%u variant=%s gpu_ns=%.0f owner_wall_ns=%.0f\n",
                     count,family==0?"automatic":"mixed",quality,f.width,f.height,pair,ordinal,variant?"candidate":"baseline",timing.gpu_ns,timing.wall_ns);
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: sustained seven-layer high-quality shadow alpha probe costs",
+          "[almetal][.probe-accumulator-overdraw-cost]")
+{
+    @autoreleasepool
+    {
+        Fixture f(1024,576);
+        constexpr unsigned count = 20, quality = 2, draws = 7, pairs = 30;
+        for (const unsigned family : {0u,2u})
+        {
+            f.configureHomeAlpha(count,family,quality);
+            // Ten commands total alternate variants. Each command shades all
+            // seven layers: translucent blending and read-only depth retain
+            // earlier contributions instead of an opaque overwrite shortcut.
+            for (unsigned warmup=0;warmup!=10;++warmup)
+                f.render(warmup%2,Fixture::Path::simple_shadow,false,draws);
+            for (unsigned pair=0;pair!=pairs;++pair) for (unsigned ordinal=0;ordinal!=2;++ordinal)
+            {
+                const unsigned variant = (pair+ordinal)%2;
+                const auto timing = f.render(variant,Fixture::Path::simple_shadow,false,draws);
+                REQUIRE(timing.gpu_ns > 0);
+                std::printf("probe_accumulator_overdraw_cost count=%u family=%s shadow_quality=%u shadow_constant0=undefined classic_constant2=%s quality_constant3=%s path=production-simple-shadow-alpha width=%u height=%u format=RGBA16Float blend=src_alpha/one_minus_src_alpha depth=readonly_less_equal draws=%u pair=%u ordinal=%u variant=%s gpu_ns=%.0f owner_wall_ns=%.0f\n",
+                    count,family==0?"automatic":"mixed",quality,
+                    f.shadow_classic_specialization[variant]?"false":"undefined",
+                    f.shadow_quality_specialization[variant]?"true":"undefined",
+                    f.width,f.height,draws,pair,ordinal,variant?"candidate":"baseline",timing.gpu_ns,timing.wall_ns);
             }
         }
     }
