@@ -2878,6 +2878,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         base_light_sky_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         probe_tile_light_map_pipelines, probe_tile_base_pipelines, probe_tile_sky_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        high_probe_tile_light_map_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> hero_probe_filter_pipeline;
     std::unique_ptr<ALMetalComputePipeline> probe_gaussian_pipeline;
@@ -5856,7 +5858,13 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             auto sky = base ? ALMetalRenderPipeline::create(device, tile, &optional_error) : nullptr;
             if (light && base && sky)
             {
+                // Match the standalone producer's filter specialization before
+                // the RG8 store. Clone only the light-map descriptor so the
+                // tile attachments and depth contract remain identical.
+                auto high = impl->highShadowPipeline(*light, error);
+                if (!high) return nullptr;
                 impl->probe_tile_light_map_pipelines[hdr] = std::move(light);
+                impl->high_probe_tile_light_map_pipelines[hdr] = std::move(high);
                 impl->probe_tile_base_pipelines[hdr] = std::move(base);
                 impl->probe_tile_sky_pipelines[hdr] = std::move(sky);
             }
@@ -25664,7 +25672,8 @@ bool ALMetalWorldGBufferRenderer::supportsProbeLightingFusion() const noexcept
 {
     if (!mImpl || !mImpl->device || mImpl->device->info().highest_apple_family < 7) return false;
     for (std::size_t index=0; index<2; ++index)
-        if (!mImpl->probe_tile_light_map_pipelines[index] || !mImpl->probe_tile_base_pipelines[index] ||
+        if (!mImpl->probe_tile_light_map_pipelines[index] || !mImpl->high_probe_tile_light_map_pipelines[index] ||
+            !mImpl->probe_tile_base_pipelines[index] ||
             !mImpl->probe_tile_sky_pipelines[index]) return false;
     return true;
 }
@@ -26130,12 +26139,15 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
             ? tile_light_map->directional_shadows : nullptr;
         const auto& shadow_constants = directional ? directional->constants : mImpl->unshadowed_constants;
         const auto* shadow_texture = directional ? directional->depth_texture : mImpl->unshadowed_depth.get();
+        const auto* tile_light_map_pipeline = highShadowQuality(shadow_constants)
+            ? mImpl->high_probe_tile_light_map_pipelines[pipeline_index].get()
+            : mImpl->probe_tile_light_map_pipelines[pipeline_index].get();
         encoded = encoder->setViewport(viewport, error) && encoder->setScissor(scissor, error) &&
             encoder->setCullMode(ALMetalCullMode::none, error) &&
             // Same immutable always-pass/no-write state used for overlays;
             // the tile light map must not test or modify carried depth/stencil.
             encoder->setDepthStencilState(mImpl->overlay_composite_depth.get(), error) &&
-            encoder->setPipeline(*mImpl->probe_tile_light_map_pipelines[pipeline_index], error) &&
+            encoder->setPipeline(*tile_light_map_pipeline, error) &&
             encoder->setFragmentBytes(0, &tile_light_map->constants, sizeof(tile_light_map->constants), error) &&
             encoder->setFragmentBytes(1, &shadow_constants, sizeof(shadow_constants), error) &&
             encoder->setFragmentTexture(0, normal, error) && encoder->setFragmentTexture(1, depth, error) &&
