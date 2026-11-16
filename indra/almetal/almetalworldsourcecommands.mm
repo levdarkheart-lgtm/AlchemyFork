@@ -5,6 +5,7 @@
  */
 #include "almetalworldsourcecommands.h"
 #include "almetalworld.h"
+#include <cstddef>
 #include <cstring>
 #include <Metal/Metal.h>
 #include <algorithm>
@@ -65,6 +66,16 @@ struct AnimatedSlot
     void* library=nullptr;
     bool normal_hdr=false,gpu_visibility=true;
 };
+// Exact MSL almetal_world_static_visibility_commands row ABI. Index pointers
+// already include the actual indexed-call byte offset; the other type is null.
+struct alignas(16) StaticVisibilityRow
+{
+    std::array<float,4> minimum{},maximum{};
+    std::uint64_t index16=0,index32=0;
+    std::array<std::uint32_t,4> call{};
+};
+static_assert(sizeof(StaticVisibilityRow)==64 && alignof(StaticVisibilityRow)==16);
+static_assert(offsetof(StaticVisibilityRow,index16)==32 && offsetof(StaticVisibilityRow,call)==48);
 struct Bank
 {
     id<MTLIndirectCommandBuffer> native=nil;
@@ -78,6 +89,9 @@ struct Bank
     std::shared_ptr<AnimatedSlot> animated;
     std::shared_ptr<const ALMetalWorldSourceDirectSlot> direct_slot;
     bool direct_normal_hdr=false;
+    id<MTLLibrary> static_visibility_library=nil;
+    std::shared_ptr<ALMetalBuffer> static_visibility_rows,static_visibility_root;
+    std::vector<void*> static_visibility_indices;
     std::uint64_t binding_limit=0;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> direct_tables;
     std::vector<std::shared_ptr<IndexLease>> indices;
@@ -126,6 +140,9 @@ struct ALMetalWorldSourceCommands::Impl
     id<MTLLibrary> animated_library=nil;
     id<MTLArgumentEncoder> pose_encoder=nil,root_encoder=nil;
     std::unique_ptr<ALMetalComputePipeline> animated_pipeline;
+    id<MTLLibrary> static_visibility_library=nil;
+    id<MTLArgumentEncoder> static_visibility_root_encoder=nil;
+    std::unique_ptr<ALMetalComputePipeline> static_visibility_pipeline;
     bool supported=false,force_failure=false,preparing=false;
     std::optional<std::size_t> execution_failure_after;
     std::uint64_t epoch=1;
@@ -377,6 +394,17 @@ catch(...)
 std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareCohortForCommand(
     ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
     std::string* error,ALMetalWorldSourceCommandFailure* failure)
+{return prepareCohortForCommandImpl(command,std::move(frame),nullptr,nullptr,error,failure);}
+
+std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareVisibleCohortForCommand(
+    ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
+    const ALMetalDevice& device,const ALMetalShaderLibrary& library,std::string* error,ALMetalWorldSourceCommandFailure* failure)
+{return prepareCohortForCommandImpl(command,std::move(frame),&device,&library,error,failure);}
+
+std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareCohortForCommandImpl(
+    ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
+    const ALMetalDevice* visibility_device,const ALMetalShaderLibrary* visibility_library,
+    std::string* error,ALMetalWorldSourceCommandFailure* failure)
 try
 {
     auto& state=*mImpl;++state.statistics.requests;if(failure)*failure=ALMetalWorldSourceCommandFailure::none;
@@ -394,6 +422,32 @@ try
     const auto bindings=membership->directBindings();
     if(direct&&(!slot||!slot->nativeBuffer()||bindings.size()!=membership->calls().size()||!membership->directPolicyBuffer()))
         return reject(ALMetalWorldSourceCommandFailure::validation,"Native direct command binding membership is incomplete");
+    id<MTLLibrary> native_visibility_library=nil;
+    if(visibility_library)
+    {
+        if(!direct)return reject(ALMetalWorldSourceCommandFailure::unsupported,"Static GPU visibility requires direct command bindings");
+        if(!visibility_device||visibility_device->nativeHandle()!=(__bridge void*)state.device)
+            return reject(ALMetalWorldSourceCommandFailure::validation,"Static GPU visibility device owner is invalid");
+        native_visibility_library=(__bridge id<MTLLibrary>)visibility_library->nativeHandle();
+        if(!native_visibility_library||native_visibility_library.device!=state.device)
+            return reject(ALMetalWorldSourceCommandFailure::validation,"Static GPU visibility library belongs to another device");
+        if(state.static_visibility_library!=native_visibility_library)
+        {
+            // Missing old-library entry declines optional preparation before
+            // any command encoding; ordinary full-count banks remain usable.
+            id<MTLFunction> kernel=[native_visibility_library newFunctionWithName:@"almetal_world_static_visibility_commands"];
+            if(!kernel||kernel.functionType!=MTLFunctionTypeKernel)
+                return reject(ALMetalWorldSourceCommandFailure::unsupported,"Static GPU visibility entry is unavailable");
+            auto root=[kernel newArgumentEncoderWithBufferIndex:2];
+            ALMetalComputePipelineDescriptor descriptor;descriptor.library=visibility_library;
+            descriptor.function="almetal_world_static_visibility_commands";descriptor.label="Alchemy static GPU command visibility";
+            auto pipeline=ALMetalComputePipeline::create(*visibility_device,descriptor,error);
+            if(!root||!root.encodedLength||!pipeline)
+                return reject(ALMetalWorldSourceCommandFailure::unsupported,"Static GPU visibility layout is unavailable");
+            state.static_visibility_root_encoder=root;state.static_visibility_pipeline=std::move(pipeline);
+            state.static_visibility_library=native_visibility_library;
+        }
+    }
 
     std::shared_ptr<const Bank> selected;
     std::optional<BankPublication> publication;
@@ -410,6 +464,7 @@ try
         // from certifying a different generation. No per-source scan occurs.
         if(bank->membership_pointer==membership.get()&&!bank->membership.owner_before(membership)&&
            !membership.owner_before(bank->membership)&&bank->direct_slot==slot&&
+           bank->static_visibility_library==native_visibility_library&&
            (!direct||bank->direct_normal_hdr==frame->directNormalHDR()))
         {selected=bank;state.cache.splice(state.cache.begin(),state.cache,it);++state.statistics.hits;if(direct)++state.statistics.direct_hits;break;}
         ++it;
@@ -419,6 +474,7 @@ try
         if(std::exchange(state.force_failure,false))return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Forced native source command publication failure");
         auto bank=std::make_shared<Bank>();bank->membership=membership;bank->membership_pointer=membership.get();
         bank->direct_slot=slot;bank->direct_normal_hdr=frame->directNormalHDR();
+        bank->static_visibility_library=native_visibility_library;
         bank->binding_limit=direct?frame->directBindingAssetLimit():0;
         const auto calls=membership->calls();bank->count=calls.size();
         auto descriptor=[MTLIndirectCommandBufferDescriptor new];
@@ -495,12 +551,65 @@ try
             if(direct)for(const auto& binding:bindings)
                 binding_bytes+=(binding.legacy_numeric?12u:13u)*(2*sizeof(std::uint64_t));
             work.encoded_bank_range_bytes=argument_bytes+binding_bytes;
-            work.allocation_bytes=bank->bytes;++state.statistics.admission_requests;
+            work.allocation_bytes=bank->bytes;
+            if(visibility_library)
+            {
+                work.encoded_row_bytes=bank->count*sizeof(StaticVisibilityRow)+state.static_visibility_root_encoder.encodedLength;
+                work.allocation_bytes+=work.encoded_row_bytes;
+            }
+            ++state.statistics.admission_requests;
             publication_credit=(*admission)(work);
             if(epoch!=state.epoch||command.isCommitted()||command.nativeDevice()!=(__bridge void*)state.device)
                 return reject(ALMetalWorldSourceCommandFailure::admission,"Native cohort command publication changed during admission");
             if(!publication_credit){++state.statistics.admission_denials;return reject(ALMetalWorldSourceCommandFailure::admission,"Native source command publication was deferred");}
             charged_arguments=argument_bytes;charged_bindings=binding_bytes;
+        }
+        if(visibility_library)
+        {
+            const auto make=[&](std::size_t bytes,const char* label)
+            {
+                ALMetalBufferDescriptor descriptor;descriptor.length=bytes;descriptor.label=label;
+                return ALMetalBuffer::create(*visibility_device,descriptor,error);
+            };
+            bank->static_visibility_rows=make(bank->count*sizeof(StaticVisibilityRow),"Alchemy immutable static visibility rows");
+            bank->static_visibility_root=make(state.static_visibility_root_encoder.encodedLength,"Alchemy static visibility command root");
+            if(!bank->static_visibility_rows||!bank->static_visibility_root)
+                return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Static GPU visibility metadata allocation failed");
+            for(const auto& buffer:{bank->static_visibility_rows,bank->static_visibility_root})
+            {
+                auto lease=std::make_shared<IndexLease>();lease->native=(__bridge id<MTLBuffer>)buffer->nativeHandle();
+                lease->index_role=false;lease->bytes=lease->native.allocatedSize;lease->accounting=state.accounting;
+                state.accounting->binding_bytes.fetch_add(lease->bytes,std::memory_order_relaxed);
+                bank->indices.push_back(std::move(lease));
+            }
+            auto* rows=static_cast<StaticVisibilityRow*>(bank->static_visibility_rows->mappedBytes());
+            if(!rows||slot->globalsOffset()>std::numeric_limits<std::uint32_t>::max())
+                return reject(ALMetalWorldSourceCommandFailure::validation,"Static GPU visibility mapped range is invalid");
+            for(std::size_t index=0;index<calls.size();++index)
+            {
+                const auto& call=calls[index];const auto& binding=bindings[index];
+                const auto region=slot->regionOffset(binding.region);
+                id<MTLBuffer> indices=(__bridge id<MTLBuffer>)call.native_indices;
+                if(region>std::numeric_limits<std::uint32_t>::max()||!indices.gpuAddress||
+                   call.index_offset>std::numeric_limits<std::uint64_t>::max()-indices.gpuAddress)
+                    return reject(ALMetalWorldSourceCommandFailure::validation,"Static GPU visibility native address is invalid");
+                StaticVisibilityRow row;row.minimum=binding.bounds_minimum;row.maximum=binding.bounds_maximum;
+                (call.index_type==ALMetalIndexType::uint16?row.index16:row.index32)=indices.gpuAddress+call.index_offset;
+                row.call={call.index_count,static_cast<std::uint32_t>(region),call.row_id,binding.bounds_qualified?1u:0u};
+                rows[index]=row;
+            }
+            // Construct the exact index residency union once. Warm dispatch
+            // declares this immutable span with one Metal call, never N leases.
+            for(const auto& lease:bank->indices)if(lease->index_role)
+                bank->static_visibility_indices.push_back((__bridge void*)lease->native);
+            auto root=state.static_visibility_root_encoder;
+            [root setArgumentBuffer:(__bridge id<MTLBuffer>)bank->static_visibility_root->nativeHandle() offset:0];
+            struct Detach{id<MTLArgumentEncoder> encoder;~Detach(){[encoder setArgumentBuffer:nil offset:0];}}detach{root};
+            [root setIndirectCommandBuffer:bank->native atIndex:0];
+            const std::uint32_t config[]{static_cast<std::uint32_t>(bank->count),static_cast<std::uint32_t>(slot->globalsOffset()),0,0};
+            auto* configuration=[root constantDataAtIndex:1];
+            if(!configuration)return reject(ALMetalWorldSourceCommandFailure::validation,"Static GPU visibility root layout is invalid");
+            std::memcpy(configuration,config,sizeof(config));
         }
         // Membership is privately immutable numeric storage, kept alive by
         // this local lease through callbacks. It contains no borrowed Draw
@@ -537,6 +646,30 @@ try
     impl->command=(__bridge id<MTLCommandBuffer>)command.nativeHandle();impl->device=state.device;
     auto result=std::shared_ptr<const Batch>(new Batch(std::move(impl)));
     if(!retainPublication(command,result,std::move(publication_credit),error))return reject(ALMetalWorldSourceCommandFailure::retention,"Native source command lease retention failed");
+    if(visibility_library)
+    {
+        const auto& bank=*result->mImpl->bank;
+        auto compute=ALMetalComputeEncoder::begin(command,"Alchemy static GPU command visibility",error);
+        if(!compute||!compute->setPipeline(*state.static_visibility_pipeline,error)||
+           !compute->setBuffer(0,*bank.static_visibility_rows,0,error)||
+           !compute->setBuffer(2,*bank.static_visibility_root,0,error))
+            return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility compute setup failed");
+        auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForResources();
+        if(!native)return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility compute encoder is unavailable");
+        [native setBuffer:(__bridge id<MTLBuffer>)slot->nativeBuffer() offset:0 atIndex:1];
+        // The slot is fixed-address immutable while this exact FrameView owns
+        // its reader. Native index leases make the cold GPU pointers safe;
+        // no additional idle direct-slot reader or source graph is retained.
+        if(!bank.static_visibility_indices.empty())
+        {
+            const auto* indices=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(bank.static_visibility_indices.data());
+            [native useResources:indices count:bank.static_visibility_indices.size() usage:MTLResourceUsageRead];
+        }
+        [native useResource:bank.native usage:MTLResourceUsageWrite];
+        if(!compute->dispatch(static_cast<std::uint32_t>(bank.count),1,1,32,1,1,error)||!compute->end(error))
+            return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility dispatch failed");
+        ++state.statistics.static_visibility_dispatches;state.statistics.static_visibility_rows+=bank.count;
+    }
     if(publication){state.commitPublication(*publication);state.statistics.charged_logical_argument_bytes+=charged_arguments;
         state.statistics.charged_logical_binding_bytes+=charged_bindings;
         if(direct)state.binding_limit=result->mImpl->frame->directBindingAssetLimit();

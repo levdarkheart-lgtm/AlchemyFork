@@ -4387,3 +4387,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_dependency_topology_native.inl"
 
 #include "alpipeline_early_visibility_native.inl"
+
+#include "alpipeline_static_visibility_commands_native.inl"

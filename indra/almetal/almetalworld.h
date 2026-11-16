@@ -1293,6 +1293,9 @@ struct ALMetalWorldGBufferScene
     // Opt-in direct buffer bindings inside retained cohort command banks.
     // Requires source_command_banks; its existing row-bank mode stays separate.
     bool source_direct_command_banks = false;
+    // Same-command GPU bounds update of ordered static DIRECT-bank calls.
+    // Requires both bank switches; unknown bounds retain their original draw.
+    bool source_gpu_visibility = false;
     std::uint32_t source_command_minimum_run = 2;
     // Diagnostic native resource-table path; optional failure stays direct.
     bool material_argument_buffers = false;

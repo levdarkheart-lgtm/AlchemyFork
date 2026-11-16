@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-302 -->
+<!-- next-defect-id: PPD-305 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7222,3 +7222,65 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 frozen84/source9be33e2b3e627bdb49f1fdae65076b513911bf4f build69155 doctor/configure/build0 (29.584s). Corrected native early500/4, actual producer75/2, old visibility7521/13 and shader reload1248/6 PASS. Existing production34 scopes already PASS1130599/358 on83; only docs/new early-test fixture differ,105 production archives/other native-test objects/metallibs unchanged and llrender/common binaries identical, so explicit native-correctness-reuse-84.json retains actual83 execution provenance. Current static/signature/ARM64/imports/features and strict3598zero PASS. Both initial82 compiler failure and83 mask-fixture failure remain retained.
 
 - 2026-11-16 one complete actual-owner84 cost run, no viewer/profile:24cells480samples,195988assertions/1case PASS output/query/accounting. Enabled early visibility REJECTED: all16 prefix-active conditions have higher owner-wall point estimates (+16.61..+86.59%),12/16 also higher settled medians. Measured8-source requested views adopt0/128;256-source adopt24/104, with all fallback/first factory/loading rows retained. Warm256/one-view prefix uses one of existing16 shared publication credits: baseline settles groups atsample4, candidate atsample5. This is contained admission contention and deadline misses, not a live-viewer bug attribution, harmful-main-GPU-backlog proof, changed cap, or hardware-wide verdict. CPU still performs cull/capture/bindings, so standalone bounds does not remove the work that dominates the owner. Mixed256 groups preserve inside/outside rows; wholly-outside one-row fixture groups cannot prove extra rejection benefit because real CPU cull already rejects their tested bounds. Flag remains nonpersistent/defaultOFF, tested source preserved as codex/apple-first-early-visibility-tested-69155; no new app staged/recommended and69151 remains owner candidate. Core original goal stays active/partial; no launch/login/profile/push or owner closure.
+
+
+## PPD-302 — Static native bank submission has no integrated GPU visibility consumer
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex original G4 integration
+- Discovered: 2026-11-16
+- Original reference: Original1eb44bbd ordered LLDrawInfo/pass capture, indexed type/offset, raster and occlusion-query boundaries remain authoritative. Native compute-written retained commands are new; no original GPU command equivalent exists. Static opaque submission and material/lighting outputs must remain equivalent.
+- Evidence: [Architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). Current9a6bc0b92d static prepareCohortForCommand cold-encodes full-count calls and renderer skips actual CPU rows using ordered executeRange; scene.native_visibility explicitly declines banks. Animated preparation already uses same-command compute to update ordered ICB counts without resetting bindings. Source41/42/50 full warm bank hits still incur GPU penalties, so reducing metadata alone cannot establish useful native visibility/submission. PPD301 early classification does not remove CPU bindings and failed costs.
+- Next action: Add a distinct visibility-qualified DIRECT bank mode with immutable cold bounds/index descriptors, current fixed-slot region/globals input and same-command GPU count updates. Preserve full-count banks, current native generations/base instances, sparse query/raster ranges, bounded publication and no CPU readiness wait. Compare against selected stable retained-direct with actual small/mixed groups, cold/warm/churn, all-visible/partial rows and complete GPU/owner/settlement costs before any enabled policy.
+- Verification: Source audits only; no new code/native output/performance claim for this boundary yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation. Root owns world.cpp/h, shared shader, pipeline/settings/CMake/docs/integration/build. Native command author owns sourcecommands h/mm and dedicated test; producer author owns sourcepages h/mm bounds certificate and exact encoder identity; cost author owns one actual-producer appendix/inclusion. New diagnostic stays defaultOFF/nonpersistent. No viewer launch/login/profile/push.
+
+- 2026-11-16 pre-build302 author review finds an API lifetime gap in new unexecuted source: a borrowed ALMetalDevice wrapper pointer stored only to create later GPU metadata/pipelines could outlive its wrapper even though native MTLDevice remains alive. Registered before repair; new visible-preparation API now takes an explicit live ALMetalDevice reference, validating native identity like existing animated preparation, and stores no wrapper pointer. Native mechanism coverage also adds a clearly labeled synthetic-bounds probe to prove GPU zero-count writes independently of outside geometry producing the same pixels. Valid production-bounds parity tests remain separate. No native execution claimed.
+
+- 2026-11-16 pre-build302 fixture review catches an incorrect unconditional positive-query assertion in the new actual-producer appendix: its deliberate one-row PBR-outside stress should produce zero samples. Registered before test repair; preserve the outside scenario and compare correct expected per-query visibility plus arm parity. No scenario removal, native execution, or rendering defect attribution.
+
+- 2026-11-16 the pre-build actual-producer query concern above is DISPROVED by source trace before any assertion edit: ActualEarlyVisibility::addQuery uses a fixed visible proxy, and world encode_visibility_at draws that proxy independently of source geometry. Outside source rows therefore do not imply zero proxy samples. Existing positive-proxy controls and exact cross-arm parity are preserved with an explanatory comment. The separate native ranged-draw test, including synthetic bounds probe, directly observes zero-count ICB writes. No confirmed renderer or fixture defect is inferred from the withdrawn review finding.
+
+- 2026-11-16 PPD302/303/304 source now peer-reviewed for coherent85 freeze: retained static DIRECT ICB counts are GPU-updated on the same command before rendering, cold64B source bounds/index facts plus current fixed-slot view data avoid N warm CPU writes; existing ordered query/raster range skip bypasses CPU scalar binds. Typed cold table-declaration certificate eliminates per-table command-retain loops with exact encoder lifetime identities and live/idle metadata charging. Four new native command, four certificate and two actual-producer cases are authored; complete24cell/720row three-arm frontier retains real budgets/loading/churn. MSL3.1 compiler-only preflight PASS; all native execution/build/costs still pending. Flag remains defaultOFF.
+
+## PPD-303 — Source FrameView declaration proof uses a recyclable native encoder address
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source publication
+- Discovered: 2026-11-16
+- Original reference: Every original encoder/pass must receive its resource usage declarations. Native argument-buffer resources and GPU-address roots require declarations on each actual encoder lifetime; an object address alone is not a lifetime proof.
+- Evidence: [SourceFrameView binding](../../indra/almetal/almetalworldsourcepages.mm) and [native table declarations](../../indra/almetal/almetalworldresources.mm). Current almetalworldsourcepages.mm FrameView::bind compares view.declared_encoder raw id<MTLRenderCommandEncoder> to current native. A later encoder in the same allowed command can reuse that native object address and incorrectly inherit the previous encoder's declaration proof. Existing ALMetalRenderEncoder::declarationIdentity and animated command scopes already provide an exact inert lifetime identity. No live viewer fault or driver address-reuse incident has been observed.
+- Next action: Replace FrameView raw-address declaration proof with the existing exact weak encoder-lifetime identity and cover fresh encoder invalidation/current command qualification without retaining the native encoder. Preserve every resource union/table declaration and normal binds.
+- Verification: Source-confirmed proof weakness only; no reproduced live GPU fault or fixed test result yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before repair during302 review. Producer author owns sourcepages h/mm and dedicated tests; root owns register/integration. Do not change generic resource declaration semantics, cap or rendering policy to hide a missing declaration.
+
+- 2026-11-16 producer review extends303 to ResourceTable raw native encoder marker used by bind/declareResources as well as FrameView. Exact weak encoder lifetime identity now authored for both; no observed driver object-address reuse is claimed. Certificate302/304 uses a separately owned native table-closure span and does not mutate per-table declaration proofs. Original1eb44 per-pass resource binding/flush is the nearest source contract; native resource declarations have no direct GL equivalent. Tests/build pending.
+
+## PPD-304 — Cohort resource tables redundantly retain and declare an already-owned closure
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native source publication
+- Discovered: 2026-11-16
+- Original reference: Original accepted static pass owns every source resource through its submitted work. New native cohort certificates must preserve that lifetime and per-encoder resource declarations while avoiding repeated application-side discovery of immutable resources.
+- Evidence: [SourceFrameView binding](../../indra/almetal/almetalworldsourcepages.mm) and [native table declarations](../../indra/almetal/almetalworldresources.mm). Current SourceFrameView::bind retains shared_from_this once, which owns CohortBinding tables; then visits each table through Resources::declareResources, redundantly retaining each table using the command's linear owner-vector search. T distinct tables cause quadratic owner comparisons. Native table/context validation and resource span submission also repeat despite immutable successful publication. Runtime dominance and whole-viewer attribution are unknown; old bank GPU penalties remain independent.
+- Next action: Cold-publish one typed deduplicated cohort resource-declaration certificate, keep exact table/native owners and context identity, account allocated metadata, then declare its retained span once per exact encoder lifetime after command/FrameView qualification. Preserve ordinary noncohort resource behavior and all caps. Include unique-table, changed-generation, abandonment/pending-retirement and pixel/query correctness plus complete cost evidence.
+- Verification: Source-confirmed redundant host work only; no measured saving, rendering repair or hardware-wide performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation alongside302/303. Producer author exclusively owns sourcepages h/mm, resources h/mm and dedicated certificate/lifetime tests. No cap inflation or removal of declarations/native readers. This is support for the actual GPU-command consumer, not a substitute for that boundary.

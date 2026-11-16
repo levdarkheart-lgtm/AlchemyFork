@@ -3392,6 +3392,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << stats.pages.cached_cohort_native_asset_limit
                     << ", cohort_arena_views/copied_bytes=" << stats.pages.arena_views << '/' << stats.pages.arena_view_bytes
                     << ", direct_policy_logical_bytes=" << stats.pages.direct_policy_bytes
+                    << ", cohort_declaration_calls/resources=" << stats.pages.cohort_declaration_calls << '/' << stats.pages.cohort_declared_resources
                     << ", direct_slot_allocations/hits/view_copy_bytes=" << stats.pages.direct_slot_allocations << '/' << stats.pages.direct_slot_hits << '/' << stats.pages.direct_view_bytes
                     << ", live_direct_slots/native_allocated_bytes=" << stats.pages.live_direct_slots << '/' << stats.pages.live_direct_slot_bytes
                     << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
@@ -3399,6 +3400,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native source command banks: view=" << owner
                     << ", enabled=" << gSavedSettings.getBOOL("RenderMetalSourceCommandBanks")
                     << ", direct_bindings_requested=" << gSavedSettings.getBOOL("RenderMetalSourceDirectCommandBanks")
+                    << ", static_gpu_visibility_requested=" << gSavedSettings.getBOOL("RenderMetalSourceGpuVisibility")
                     << ", accepted_requested_candidates=" << banks.requested_draws
                     << ", accepted_bank_logical_draws=" << banks.bank_draws
                     << ", accepted_fallback_candidates=" << banks.fallback_draws
@@ -3413,6 +3415,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", charged_logical_indexed_argument_bytes=" << banks.cache.charged_logical_argument_bytes
                     << ", charged_logical_buffer_binding_bytes=" << banks.cache.charged_logical_binding_bytes
                     << ", direct_bank_builds/hits/encoded_calls=" << banks.cache.direct_builds << '/' << banks.cache.direct_hits << '/' << banks.cache.direct_encoded_calls
+                    << ", static_visibility_encoded_dispatches/rows=" << banks.cache.static_visibility_dispatches << '/' << banks.cache.static_visibility_rows
+                    << ", static_visibility_counts_are_encoded_not_executed=1"
                     << ", gross_retained_binding_bytes/cap=" << banks.cache.unique_retained_binding_bytes << '/' << banks.cache.retained_binding_limit_bytes
                     << ", live_icb_allocated_bytes=" << banks.cache.live_icb_allocated_bytes
                     << ", unique_retained_existing_index_bytes=" << banks.cache.unique_retained_index_bytes
@@ -11533,6 +11537,7 @@ void LLPipeline::beginMetalEarlyWorldVisibility()
         gSavedSettings.getBOOL("RenderMetalNativeVisibility") || gSavedSettings.getBOOL("RenderMetalCpuCohortVisibility") ||
         gSavedSettings.getBOOL("RenderMetalSourceCommandBanks") || gSavedSettings.getBOOL("RenderMetalJoinStaticDraws") ||
         gSavedSettings.getBOOL("RenderMetalWorldPreparation") || gSavedSettings.getBOOL("RenderDepthPrePass") ||
+        gSavedSettings.getBOOL("RenderMetalSourceGpuVisibility") ||
         (ALMetalStageTimingScope::current() && ALMetalStageTimingScope::current()->window()))
     { ++stats.unsupported;return; }
     auto* device=getViewerMetalDevice();
@@ -16865,6 +16870,9 @@ void LLPipeline::endMetalWorldGBufferCapture()
     static LLCachedControl<S32> source_bank_minimum(gSavedSettings, "RenderMetalSourceCommandMinimumRun", 2);
     scene.source_command_banks = source_banks() && !impostor_bake;
     scene.source_direct_command_banks = scene.source_command_banks && direct_source_banks();
+    static LLCachedControl<bool> source_gpu_visibility(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
+    static LLCachedControl<bool> gpu_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
+    scene.source_gpu_visibility = scene.source_direct_command_banks && gpu_group_sources() && source_gpu_visibility();
     scene.source_command_minimum_run = static_cast<U32>(llclamp(source_bank_minimum(), 2, 4096));
     scene.references = capture.source_references.data();
     scene.reference_count = capture.source_references.size();
@@ -21994,7 +22002,8 @@ bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& 
     static LLCachedControl<bool> gpu_bounds(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> cpu_bounds(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
     static LLCachedControl<bool> early_bounds(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
-    flavor.cohort_bounds = gpu_bounds() || cpu_bounds() || early_bounds();
+    static LLCachedControl<bool> command_bounds(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
+    flavor.cohort_bounds = gpu_bounds() || cpu_bounds() || early_bounds() || command_bounds();
     flavor.native_materials = true;
     for (const auto& pass : LLDrawPoolMaterials::DEFERRED_PASSES)
     {
@@ -22046,7 +22055,8 @@ void LLPipeline::postSort(LLCamera &camera)
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> cpu_cohort_visibility(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
     static LLCachedControl<bool> early_visibility(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
-    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility() || early_visibility();
+    static LLCachedControl<bool> command_visibility(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
+    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility() || early_visibility() || command_visibility();
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
     const bool native_group_view = native_group_sources() &&
         !depth_prepass() &&

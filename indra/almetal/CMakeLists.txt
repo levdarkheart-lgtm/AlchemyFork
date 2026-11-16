@@ -253,6 +253,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_submission_owner_test.mm
             tests/almetal_world_visibility_test.mm
             tests/almetal_early_visibility_test.mm
+            tests/almetal_static_visibility_commands_test.mm
+            tests/almetal_cohort_declaration_test.mm
             tests/almetal_world_material_source_test.mm
             tests/almetal_world_resources_test.mm
             tests/almetal_world_source_owner_test.mm
@@ -394,6 +396,7 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_world_visibility.metal" A
 configure_file(almetalworldvisibilitysource.h.in "${CMAKE_CURRENT_BINARY_DIR}/almetalworldvisibilitysource.h" @ONLY)
 set_source_files_properties(tests/almetal_world_visibility_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_early_visibility_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties(tests/almetal_static_visibility_commands_test.mm tests/almetal_cohort_declaration_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 

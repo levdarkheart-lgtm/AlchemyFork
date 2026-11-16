@@ -26,6 +26,12 @@ namespace
 {
 void fail(std::string* error,const char* message){if(error)*error=message;}
 struct Budget {std::atomic<std::size_t> bytes{0};std::size_t limit=0;};
+struct DeclarationMetadata
+{
+    std::shared_ptr<Budget> budget;
+    std::size_t bytes=0;
+    ~DeclarationMetadata(){if(budget)budget->bytes.fetch_sub(bytes,std::memory_order_relaxed);}
+};
 struct DirectSlotAccounting {std::atomic<std::size_t> count{0},bytes{0};};
 struct Buffer
 {
@@ -104,6 +110,7 @@ struct Context
     std::uint32_t anisotropy=1;
     std::uint64_t direct_asset_limit=0;
     std::atomic<std::uint64_t> binds{0};
+    std::atomic<std::uint64_t> cohort_declaration_calls{0},cohort_declared_resources{0};
     std::shared_ptr<DirectSlotAccounting> direct_slots=std::make_shared<DirectSlotAccounting>();
 };
 std::shared_ptr<Buffer> makeBuffer(const std::shared_ptr<Context>& context,std::size_t length,
@@ -247,6 +254,8 @@ struct CohortBinding
     std::vector<Asset> assets;
     bool asset_footprint_known=true;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
+    std::shared_ptr<const DeclarationMetadata> declaration_metadata;
+    std::shared_ptr<const ALMetalWorldResourceDeclaration> declaration;
     std::shared_ptr<Buffer> mapping;
     std::shared_ptr<Buffer> direct_policy;
     mutable std::vector<std::shared_ptr<ALMetalWorldSourceDirectSlot>> direct_slots;
@@ -338,7 +347,7 @@ struct ALMetalWorldSourceFrameView::Impl
     std::vector<std::shared_ptr<const ALMetalTexture>> textures;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
     std::vector<void*> geometry;
-    __weak id<MTLRenderCommandEncoder> declared_encoder=nil;
+    std::weak_ptr<const void> declared_encoder;
 };
 ALMetalWorldSourceFrameView::ALMetalWorldSourceFrameView(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceFrameView::~ALMetalWorldSourceFrameView()=default;
@@ -402,7 +411,9 @@ try
     if(!native){fail(error,"Native source view requires a live render encoder");return false;}
     const auto declare=[&](const ALMetalBuffer& buffer,MTLRenderStages stages)
     {[native useResource:(__bridge id<MTLBuffer>)buffer.nativeHandle() usage:MTLResourceUsageRead stages:stages];};
-    if(view.declared_encoder!=native)
+    const auto identity=encoder.declarationIdentity(true);
+    if(!identity){fail(error,"Native source view requires an active encoder identity");return false;}
+    if(view.declared_encoder.owner_before(identity)||identity.owner_before(view.declared_encoder))
     {
         if(!command.retainUntilCompletion(shared_from_this(),error))return false;
         if(!view.direct_reader)
@@ -427,9 +438,16 @@ try
             const auto* numeric=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(view.cohort->numeric.data());
             [native useResources:numeric count:view.cohort->numeric.size() usage:MTLResourceUsageRead stages:MTLRenderStageVertex|MTLRenderStageFragment];
         }
-        for(const auto& table:(view.cohort?view.cohort->tables:view.tables))
+        if(view.cohort)
+        {
+            if(!view.cohort->declaration || !view.context->resources->declareCertifiedResources(
+                encoder,command,*view.cohort->declaration,error))return false;
+            view.context->cohort_declaration_calls.fetch_add(1,std::memory_order_relaxed);
+            view.context->cohort_declared_resources.fetch_add(view.cohort->declaration->resourceCount(),std::memory_order_relaxed);
+        }
+        else for(const auto& table:view.tables)
             if(!view.context->resources->declareResources(encoder,command,table,error))return false;
-        view.declared_encoder=native;
+        view.declared_encoder=identity;
     }
     if(view.direct_reader){view.context->binds.fetch_add(1,std::memory_order_relaxed);return true;}
     if(view.arena_buffer)
@@ -910,6 +928,7 @@ try
         if(!binding->direct_policy)return reject("Native direct cohort policy publication failed");
         auto* mapped=static_cast<std::byte*>(binding->direct_policy->value->mappedBytes());if(!mapped)return reject("Native direct policy is not mapped");
         membership->bindings.reserve(requests.size());membership->policy=binding->direct_policy->value->nativeHandle();
+        std::size_t bounds_group=0,bounds_first=0;
         for(std::size_t index=0;index<requests.size();++index)
         {
             const auto& signature=state.rows[frozen->rowId(index)].signature;
@@ -917,6 +936,12 @@ try
             std::copy_n(signature.handles.begin(),7,direct.geometry.begin());direct.offsets=signature.offsets;
             direct.legacy_numeric=signature.handles[7];direct.pbr_ldr=signature.handles[8];direct.pbr_hdr=signature.handles[9];
             direct.resource_table=signature.handles[family==2?11:10];direct.region=requests[index].region;direct.policy_offset=index*96;
+            while(index-bounds_first>=selections[bounds_group].cohort->size())
+            {bounds_first+=selections[bounds_group].cohort->size();++bounds_group;}
+            const auto& bounds=selections[bounds_group].cohort->bounds(index-bounds_first);
+            std::copy_n(bounds.minimum,4,direct.bounds_minimum.begin());
+            std::copy_n(bounds.maximum,4,direct.bounds_maximum.begin());
+            direct.bounds_qualified=bounds.qualified;
             std::memcpy(mapped+direct.policy_offset,signature.values.data(),96);membership->bindings.push_back(direct);
         }
         state.statistics.direct_policy_bytes+=policy_bytes;
@@ -926,6 +951,17 @@ try
     for(std::size_t owner=0;owner<selections.size();++owner)
         if(unique_native_owners.insert(selections[owner].native).second)binding->native_owner_indices.push_back(static_cast<std::uint32_t>(owner));
     auto& view=*frozen->mImpl;binding->mapping=view.mapping;binding->tables=std::move(view.tables);binding->geometry=std::move(view.geometry);
+    binding->declaration=state.context->resources->prepareDeclaration(binding->tables,
+        state.limits.maximum_metadata_bytes,error);
+    if(!binding->declaration)return reject("Native cohort resource declaration publication failed");
+    const auto declaration_bytes=binding->declaration->metadataBytes()+sizeof(DeclarationMetadata)+2*sizeof(void*);
+    const auto metadata_used=state.context->budget->bytes.load(std::memory_order_relaxed);
+    if(metadata_used>state.context->budget->limit||declaration_bytes>state.context->budget->limit-metadata_used)
+        return reject("Native cohort resource declaration metadata is full");
+    auto declaration_metadata=std::make_shared<DeclarationMetadata>();declaration_metadata->budget=state.context->budget;
+    declaration_metadata->bytes=declaration_bytes;
+    state.context->budget->bytes.fetch_add(declaration_bytes,std::memory_order_relaxed);
+    binding->declaration_metadata=std::move(declaration_metadata);
     binding->pages.reserve(view.pages.size());
     for(std::size_t page=0;page<state.pages.size();++page)
         if(std::any_of(view.pages.begin(),view.pages.end(),[&](const auto& reader){return reader->page==state.pages[page];}))
@@ -960,7 +996,8 @@ try
         binding->membership->calls().size()*sizeof(CohortRowWatch)+
         binding->assets.capacity()*sizeof(CohortBinding::Asset)+binding->assets.size()*(sizeof(void*)+sizeof(Impl::AssetRef)+2*sizeof(void*));
     binding->metadata+=binding->membership->mImpl->bindings.capacity()*sizeof(ALMetalWorldSourceDirectBinding)+
-        binding->membership->mImpl->assets.capacity()*sizeof(ALMetalWorldSourceNativeFootprint);
+        binding->membership->mImpl->assets.capacity()*sizeof(ALMetalWorldSourceNativeFootprint)+
+        binding->declaration_metadata->bytes;
     // Actual command views retain only the completed native tuple and native
     // metadata. Private CPU certificates/prototypes can die after encode.
     view.cohort=binding;view.ranges=std::move(ranges);
@@ -1533,6 +1570,8 @@ void ALMetalWorldSourcePages::trimUnusedCohorts()noexcept{mImpl->pruneCohorts();
 ALMetalWorldSourcePageStats ALMetalWorldSourcePages::stats()const noexcept
 {
     auto result=mImpl->statistics;result.rows=mImpl->lookup.size();result.binds=mImpl->context->binds.load(std::memory_order_relaxed);
+    result.cohort_declaration_calls=mImpl->context->cohort_declaration_calls.load(std::memory_order_relaxed);
+    result.cohort_declared_resources=mImpl->context->cohort_declared_resources.load(std::memory_order_relaxed);
     result.device_proof_entries=mImpl->device_proofs.size();
     result.live_direct_slots=mImpl->context->direct_slots->count.load(std::memory_order_relaxed);
     result.live_direct_slot_bytes=mImpl->context->direct_slots->bytes.load(std::memory_order_relaxed);

@@ -47,6 +47,8 @@ struct ALMetalWorldSourceCommandStats
     // used in both roles overlaps these gross scopes; do not add them as RAM.
     std::uint64_t unique_retained_binding_bytes=0,retained_binding_limit_bytes=0;
     std::uint64_t direct_builds=0,direct_hits=0,direct_encoded_calls=0;
+    // Encoded compute dispatches/rows, not GPU-executed or visible draws.
+    std::uint64_t static_visibility_dispatches=0,static_visibility_rows=0;
     std::size_t cached_banks=0,live_banks=0;
     std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> failures{};
     ALMetalWorldSourceCommandFailure last_failure=ALMetalWorldSourceCommandFailure::none;
@@ -100,6 +102,12 @@ public:
     std::shared_ptr<const Batch> prepareCohortForCommand(ALMetalCommandBuffer&,
         std::shared_ptr<const ALMetalWorldSourceFrameView>,std::string* error=nullptr,
         ALMetalWorldSourceCommandFailure* failure=nullptr);
+    // DIRECT-only bank kind. Immutable cold bounds/index rows drive one GPU
+    // draw-count update on this exact publication command before rendering.
+    // Neither CPU readiness/readback nor per-row warm writes are required.
+    std::shared_ptr<const Batch> prepareVisibleCohortForCommand(ALMetalCommandBuffer&,
+        std::shared_ptr<const ALMetalWorldSourceFrameView>,const ALMetalDevice&,const ALMetalShaderLibrary&,
+        std::string* error=nullptr,ALMetalWorldSourceCommandFailure* failure=nullptr);
     // Current pose/view updates only; immutable native bindings and indexed
     // calls are encoded once per reusable completion-qualified slot. The
     // returned Batch and command own native generations, never CPU records.
@@ -130,6 +138,9 @@ public:
     // before emitting the range after this many successful range submissions.
     void failExecutionAfterForTesting(std::size_t successful_ranges) noexcept;
 private:
+    std::shared_ptr<const Batch> prepareCohortForCommandImpl(ALMetalCommandBuffer&,
+        std::shared_ptr<const ALMetalWorldSourceFrameView>,const ALMetalDevice*,const ALMetalShaderLibrary*,
+        std::string*,ALMetalWorldSourceCommandFailure*);
     bool executeRangeImpl(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
         std::size_t first,std::size_t count,const DeclarationScope*,std::string* error);
     struct Impl;

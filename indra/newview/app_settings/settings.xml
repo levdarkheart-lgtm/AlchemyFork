@@ -8070,6 +8070,13 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalSourceGpuVisibility</key>
+  <map>
+    <key>Comment</key><string>Diagnostic same-command GPU visibility updates to retained static direct command banks. Requires GroupSources, SourceCommandBanks and SourceDirectCommandBanks; preserves ordered queries and unknown geometry. Disabled pending complete costs.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalSourceCommandMinimumRun</key>
   <map>
     <key>Comment</key><string>Diagnostic minimum contiguous eligible draw count for a native source command bank, clamped to 2 through 4096.</string>

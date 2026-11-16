@@ -10581,6 +10581,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         setError(error, "Direct-bound cohort commands require source command banks");
         return nullptr;
     }
+    if (scene.source_gpu_visibility && (!scene.source_command_banks || !scene.source_direct_command_banks))
+    {
+        setError(error, "Static GPU visibility requires direct-bound source command banks");
+        return nullptr;
+    }
     if (prepared && !prepared->isCurrent())
     {
         setError(error, "Prepared world view epoch was cancelled");
@@ -11179,7 +11184,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         : ALMetalWorldSourceCommands::create(*mImpl->device,{},&optional_error);
                 auto reason=ALMetalWorldSourceCommandFailure::unsupported;
                 auto bank=mImpl->source_commands
-                    ? mImpl->source_commands->prepareCohortForCommand(*command,frame,&optional_error,&reason) : nullptr;
+                    ? (scene.source_gpu_visibility
+                        ? mImpl->source_commands->prepareVisibleCohortForCommand(*command,frame,*mImpl->device,*mImpl->library,&optional_error,&reason)
+                        : mImpl->source_commands->prepareCohortForCommand(*command,frame,&optional_error,&reason)) : nullptr;
                 if (!bank) {fallback(reason,count);at=end;continue;}
                 if (bank->size()!=count) {fallback(ALMetalWorldSourceCommandFailure::validation,count);at=end;continue;}
                 const auto owner=cohort_banks.size();

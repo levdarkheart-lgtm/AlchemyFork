@@ -17,6 +17,24 @@ struct ALMetalWorldSimpleBatch;
 class ALMetalWorldResourceTable;
 class ALMetalWorldResources;
 class ALMetalWorldResourcePreparation;
+class ALMetalWorldSourcePages;
+class ALMetalWorldSourceFrameView;
+
+// Cold native-only union of exact tables from one resource context. The
+// cohort's FrameView owns this certificate before declaring it; it neither
+// owns source descriptions nor changes individual tables' encoder proofs.
+class ALMetalWorldResourceDeclaration final
+{
+public:
+    ~ALMetalWorldResourceDeclaration();
+    std::size_t metadataBytes() const noexcept;
+    std::size_t resourceCount() const noexcept;
+private:
+    struct Impl;
+    explicit ALMetalWorldResourceDeclaration(std::unique_ptr<Impl>);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldResources;
+};
 
 enum class ALMetalWorldResourceFallback : std::uint8_t
 {
@@ -149,9 +167,20 @@ public:
     void failNextPreparationForTesting() noexcept;
     ALMetalWorldResourceStats stats() const noexcept;
 private:
+    // Cold cohort publication only. Capacity is bounded by SourcePages' existing
+    // metadata policy, and its actual retained capacities are charged there.
+    std::shared_ptr<const ALMetalWorldResourceDeclaration> prepareDeclaration(
+        std::span<const std::shared_ptr<const ALMetalWorldResourceTable>>,
+        std::size_t maximum_metadata_bytes,std::string* error);
+    // The caller has qualified and retained its whole FrameView on command.
+    // This emits one union without another command-owner scan for every table.
+    bool declareCertifiedResources(ALMetalRenderEncoder&,ALMetalCommandBuffer&,
+        const ALMetalWorldResourceDeclaration&,std::string* error);
     std::shared_ptr<const ALMetalWorldResourceTable> cachedSourceTable(
         const std::shared_ptr<const ALMetalWorldResourceSource>&, const ALMetalSamplerState&) const noexcept;
     struct Impl;
     explicit ALMetalWorldResources(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldSourcePages;
+    friend class ALMetalWorldSourceFrameView;
 };

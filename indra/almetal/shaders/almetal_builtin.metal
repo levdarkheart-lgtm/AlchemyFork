@@ -7450,6 +7450,84 @@ struct ALMetalWorldDirectPolicy
 };
 static_assert(sizeof(ALMetalWorldDirectPolicy) == 96, "Direct source policy ABI");
 
+
+// Cold source-generation facts for the GPU-written static direct command bank.
+// Current region/globals live in its completion-qualified fixed direct slot;
+// changing the camera never rebuilds or uploads this N-row descriptor table.
+struct ALMetalWorldStaticVisibilityRow
+{
+    float4 minimum, maximum;
+    device const ushort* index16;
+    device const uint* index32;
+    uint4 call; // index count, region byte offset, original base instance, qualified
+};
+static_assert(sizeof(ALMetalWorldStaticVisibilityRow) == 64, "Static visibility row ABI");
+static_assert(__builtin_offsetof(ALMetalWorldStaticVisibilityRow,call) == 48, "Static visibility call ABI");
+struct ALMetalWorldStaticVisibilityRoot
+{
+    command_buffer commands [[id(0)]];
+    uint4 config [[id(1)]]; // row count, globals byte offset, reserved
+};
+static bool almetal_static_visibility_finite(float4 value)
+{ return all((as_type<uint4>(value) & 0x7fffffffu) < 0x7f800000u); }
+static bool almetal_static_command_visible(
+    thread const ALMetalWorldStaticVisibilityRow& row,
+    constant ALMetalWorldSourceRegion& region, bool reverse_z)
+{
+    if (!row.call.w || !almetal_static_visibility_finite(row.minimum) ||
+        !almetal_static_visibility_finite(row.maximum) || any(row.minimum.xyz > row.maximum.xyz)) return true;
+    uint outside=63u;
+    // Match the conservative animated/CPU interval policy: cancellation,
+    // eye crossings, nonfinite values and operand-scaled underflow fail open.
+    constexpr float envelope=2048.0*5.9604644775390625e-8;
+    constexpr float underflow=32.0*1.1754943508222875e-38;
+    for (uint corner=0;corner<8u;++corner)
+    {
+        const float3 point=select(row.minimum.xyz,row.maximum.xyz,
+            bool3((corner&1u)!=0u,(corner&2u)!=0u,(corner&4u)!=0u));
+        const float4 clip=region.modelview_projection*float4(point,1.0);
+        const float4 size=abs(region.modelview_projection[0])*abs(point.x)+
+            abs(region.modelview_projection[1])*abs(point.y)+
+            abs(region.modelview_projection[2])*abs(point.z)+abs(region.modelview_projection[3]);
+        const float4 amplification=float4(1.0+abs(point.x)+abs(point.y)+abs(point.z))+
+            abs(region.modelview_projection[0])+abs(region.modelview_projection[1])+
+            abs(region.modelview_projection[2])+abs(region.modelview_projection[3]);
+        const float4 uncertainty=envelope*size+underflow*amplification;
+        if (!almetal_static_visibility_finite(clip) || !almetal_static_visibility_finite(uncertainty) ||
+            clip.w<=uncertainty.w || any(uncertainty>max(abs(clip),float4(1.0))/1024.0)) return true;
+        const uint bits=uint(clip.x+uncertainty.x < -clip.w-uncertainty.w) |
+            (uint(clip.x-uncertainty.x > clip.w+uncertainty.w)<<1) |
+            (uint(clip.y+uncertainty.y < -clip.w-uncertainty.w)<<2) |
+            (uint(clip.y-uncertainty.y > clip.w+uncertainty.w)<<3) |
+            (uint(reverse_z ? clip.z+uncertainty.z < 0.0 : clip.z+uncertainty.z < -clip.w-uncertainty.w)<<4) |
+            (uint(clip.z-uncertainty.z > clip.w+uncertainty.w)<<5);
+        outside &= bits;
+    }
+    return outside==0u;
+}
+kernel void almetal_world_static_visibility_commands(
+    device const ALMetalWorldStaticVisibilityRow* rows [[buffer(0)]],
+    constant uchar* view [[buffer(1)]],
+    constant ALMetalWorldStaticVisibilityRoot& root [[buffer(2)]],
+    uint index [[thread_position_in_grid]])
+{
+    if (index>=root.config.x || index>=4096u) return;
+    const ALMetalWorldStaticVisibilityRow row=rows[index];
+    constant ALMetalWorldSourceRegion& region=
+        *reinterpret_cast<constant ALMetalWorldSourceRegion*>(view+row.call.y);
+    constant ALMetalWorldSourceGlobals& globals=
+        *reinterpret_cast<constant ALMetalWorldSourceGlobals*>(view+root.config.y);
+    const bool visible=almetal_static_command_visible(row,region,globals.flags.x!=0u);
+    // Update the original ordered call only. Cold buffer bindings survive;
+    // no compaction/reset, query/raster reordering, CPU polling or readback.
+    render_command output(root.commands,index);
+    const uint count=visible?row.call.x:0u;
+    if (row.index32)
+        output.draw_indexed_primitives(primitive_type::triangle,count,row.index32,1,0,row.call.z);
+    else
+        output.draw_indexed_primitives(primitive_type::triangle,count,row.index16,1,0,row.call.z);
+}
+
 vertex ALMetalWorldSimpleVaryings almetal_world_material_direct_bound_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],

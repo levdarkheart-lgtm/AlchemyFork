@@ -14,6 +14,7 @@
 #include <new>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace
 {
@@ -105,7 +106,7 @@ struct ALMetalWorldResourceTable::Impl
     std::array<id<MTLTexture>,32> textures{};
     id<MTLSamplerState> sampler=nil;
     std::vector<void*> resources;
-    __weak id<MTLRenderCommandEncoder> declared_encoder=nil;
+    std::weak_ptr<const void> declared_encoder;
     std::shared_ptr<Budget> budget;
     std::size_t charged=0;
     ~Impl()
@@ -113,6 +114,19 @@ struct ALMetalWorldResourceTable::Impl
         if(budget){budget->tables.fetch_sub(1,std::memory_order_relaxed);budget->bytes.fetch_sub(charged,std::memory_order_relaxed);}
     }
 };
+struct ALMetalWorldResourceDeclaration::Impl
+{
+    std::weak_ptr<State> context;
+    std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
+    std::vector<void*> resources;
+};
+ALMetalWorldResourceDeclaration::ALMetalWorldResourceDeclaration(std::unique_ptr<Impl> impl)
+    :mImpl(std::move(impl)){}
+ALMetalWorldResourceDeclaration::~ALMetalWorldResourceDeclaration()=default;
+std::size_t ALMetalWorldResourceDeclaration::metadataBytes()const noexcept
+{return sizeof(*this)+sizeof(Impl)+mImpl->tables.capacity()*sizeof(mImpl->tables[0])+
+    mImpl->resources.capacity()*sizeof(mImpl->resources[0]);}
+std::size_t ALMetalWorldResourceDeclaration::resourceCount()const noexcept{return mImpl->resources.size();}
 struct ALMetalWorldResources::Impl
 {
     std::shared_ptr<State> state;
@@ -376,11 +390,13 @@ try
     owner->retain(source,table);
     id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
     if(!native){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
-    if(table->mImpl->declared_encoder!=native)
+    const auto identity=encoder.declarationIdentity(true);
+    if(!identity){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
+    if(table->mImpl->declared_encoder.owner_before(identity)||identity.owner_before(table->mImpl->declared_encoder))
     {
         const auto* resources=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(table->mImpl->resources.data());
         [native useResources:resources count:table->mImpl->resources.size() usage:MTLResourceUsageRead stages:MTLRenderStageFragment];
-        table->mImpl->declared_encoder=native;state->stats.declared_resources+=table->mImpl->resources.size();
+        table->mImpl->declared_encoder=identity;state->stats.declared_resources+=table->mImpl->resources.size();
     }
     if(!encoder.setFragmentBuffer(1,*table->mImpl->buffer,0,error)){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
     ++state->stats.buffer_bind_calls;return true;
@@ -400,11 +416,13 @@ try
     {rejected(*state,ALMetalWorldResourceFallback::retention,failure);return false;}
     id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
     if(!native){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
-    if(table->mImpl->declared_encoder!=native)
+    const auto identity=encoder.declarationIdentity(true);
+    if(!identity){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
+    if(table->mImpl->declared_encoder.owner_before(identity)||identity.owner_before(table->mImpl->declared_encoder))
     {
         const auto* resources=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(table->mImpl->resources.data());
         [native useResources:resources count:table->mImpl->resources.size() usage:MTLResourceUsageRead stages:MTLRenderStageFragment];
-        table->mImpl->declared_encoder=native;state->stats.declared_resources+=table->mImpl->resources.size();
+        table->mImpl->declared_encoder=identity;state->stats.declared_resources+=table->mImpl->resources.size();
     }
     // The source-row shader reaches this buffer through another argument
     // buffer; ordinary bind() directly binds it and does not need this call.
@@ -413,6 +431,52 @@ try
     return true;
 }
 catch(const std::bad_alloc&){rejected(*mImpl->state,ALMetalWorldResourceFallback::host_allocation,failure);if(error)error->clear();return false;}
+std::shared_ptr<const ALMetalWorldResourceDeclaration> ALMetalWorldResources::prepareDeclaration(
+    std::span<const std::shared_ptr<const ALMetalWorldResourceTable>> tables,
+    std::size_t maximum_metadata_bytes,std::string* error)
+try
+{
+    const auto& state=mImpl->state;
+    auto impl=std::make_unique<ALMetalWorldResourceDeclaration::Impl>();impl->context=state;
+    if(tables.empty()||tables.size()>state->limits.maximum_tables)
+    {fail(error,"Cohort declaration table count is invalid");return {};}
+    std::unordered_set<const ALMetalWorldResourceTable*> unique_tables;
+    std::unordered_set<void*> unique_resources;
+    for(const auto& table:tables)
+    {
+        if(!table||!sameContext(table->mImpl->context,state))
+        {fail(error,"Cohort declaration requires exact resource context tables");return {};}
+        if(!unique_tables.insert(table.get()).second)continue;
+        impl->tables.push_back(table);
+        const auto append=[&](void* resource)
+        {if(resource&&unique_resources.insert(resource).second)impl->resources.push_back(resource);};
+        append(table->mImpl->buffer->nativeHandle());
+        for(auto resource:table->mImpl->resources)append(resource);
+        // Check actual retained capacity, not only the number of unique handles.
+        const auto bytes=sizeof(ALMetalWorldResourceDeclaration)+sizeof(ALMetalWorldResourceDeclaration::Impl)+
+            impl->tables.capacity()*sizeof(impl->tables[0])+impl->resources.capacity()*sizeof(impl->resources[0]);
+        if(bytes>maximum_metadata_bytes)
+        {fail(error,"Cohort declaration metadata capacity is exhausted");return {};}
+    }
+    return std::shared_ptr<const ALMetalWorldResourceDeclaration>(new ALMetalWorldResourceDeclaration(std::move(impl)));
+}
+catch(const std::bad_alloc&){if(error)error->clear();return {};}
+
+bool ALMetalWorldResources::declareCertifiedResources(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
+    const ALMetalWorldResourceDeclaration& declaration,std::string* error)
+{
+    const auto& state=mImpl->state;
+    if(!sameContext(declaration.mImpl->context,state)||command.isCommitted()||
+       encoder.nativeDeviceForIndirect()!=(__bridge void*)state->device||
+       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
+    {fail(error,"Cohort declaration requires its exact context and active command");return false;}
+    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+    if(!native){fail(error,"Cohort declaration requires a live render encoder");return false;}
+    const auto* resources=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(declaration.mImpl->resources.data());
+    [native useResources:resources count:declaration.mImpl->resources.size()
+        usage:MTLResourceUsageRead stages:MTLRenderStageFragment];
+    state->stats.declared_resources+=declaration.mImpl->resources.size();return true;
+}
 void ALMetalWorldResources::releaseSourceCache(const std::shared_ptr<const ALMetalWorldResourceSource>& source)noexcept
 {
     if(source)std::erase_if(source->mImpl->tables,[&](const auto& table)

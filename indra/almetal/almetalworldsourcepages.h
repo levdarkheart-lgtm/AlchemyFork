@@ -67,6 +67,10 @@ struct ALMetalWorldSourceDirectBinding
     void* resource_table=nullptr;
     std::size_t policy_offset=0;
     std::uint32_t region=0;
+    // Cold producer certificate in the exact flattened command order. Unknown
+    // bounds stay unqualified and must keep their full indexed call.
+    std::array<float,4> bounds_minimum{},bounds_maximum{};
+    bool bounds_qualified=false;
 };
 struct ALMetalWorldSourceNativeFootprint
 {
@@ -202,6 +206,7 @@ struct ALMetalWorldSourcePageStats
     // other active owners and must not be added to a physical memory total.
     std::uint64_t cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
     std::uint64_t direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0;
+    std::uint64_t cohort_declaration_calls=0,cohort_declared_resources=0;
     std::uint64_t animated_source_publications=0,animated_source_hits=0;
     std::size_t live_direct_slots=0,live_direct_slot_bytes=0;
 };
