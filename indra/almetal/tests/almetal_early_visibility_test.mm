@@ -54,7 +54,20 @@ EarlyGroup group(Fixture& f, unsigned family, std::uint64_t key, std::uint64_t r
         auto& batch = result.cpu->rows[row]; batch = f.batch(family); batch.vertices = vertices.get();
         if (family)
         {
-            batch.alpha_mask = true; batch.alpha_cutoff = .6f;
+            // Legacy materials select MASK through their material mode and
+            // slot cutoff; generic alpha_mask is the separate PBR contract.
+            batch.alpha_cutoff = .6f;
+            if (family == 1)
+            {
+                batch.material_alpha_mode = 2;
+                batch.materialSlots()[0].alpha_cutoff = .6f;
+                batch.texcoord1_offset = batch.texcoord2_offset = batch.texcoord_offset;
+            }
+            else
+            {
+                batch.alpha_mask = true;
+                batch.pbrSlots()[0].alpha_cutoff = .6f;
+            }
             ALMetalTextureDescriptor td; td.width = td.height = 2;
             td.format = ALMetalPixelFormat::rgba8_unorm_srgb;
             std::shared_ptr<ALMetalTexture> mask = ALMetalTexture::create(*f.device, td, &f.error); REQUIRE(mask);
@@ -63,8 +76,11 @@ EarlyGroup group(Fixture& f, unsigned family, std::uint64_t key, std::uint64_t r
             REQUIRE(mask->upload(*upload, 0, 0, {}, pixels, 8, &f.error));
             REQUIRE(upload->commitAndWait(&f.error));
             batch.diffuse_textures[0] = mask.get(); result.native->textures.push_back(std::move(mask));
-            REQUIRE(ALMetalWorldMaterialSource::publish(*f.device, batch, materials, &f.error));
-            REQUIRE(ALMetalWorldResourceSource::publish(*f.device, batch, result.native->textures, &f.error));
+            CAPTURE(family, row, batch.material_alpha_mode, batch.alpha_mask);
+            auto published_material = ALMetalWorldMaterialSource::publish(*f.device, batch, materials, &f.error);
+            INFO(f.error); REQUIRE(published_material);
+            auto published_resources = ALMetalWorldResourceSource::publish(*f.device, batch, result.native->textures, &f.error);
+            INFO(f.error); REQUIRE(published_resources);
             for (const auto& uniform : {batch.native_material_source->materialLease(),
                     batch.native_material_source->pbrLease(false), batch.native_material_source->pbrLease(true)})
                 if (uniform) result.native->buffers.push_back(uniform);
