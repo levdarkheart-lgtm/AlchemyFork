@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-332 -->
+<!-- next-defect-id: PPD-334 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7897,3 +7897,38 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 root refines prior fail-closed instruction to preserve the existing explicit older-library contract. Independent source review found no pack/descriptor/lifetime blockers. Optional performance metadata absence is distinct from a failed real pipeline creation; retain generic behavior for the former, reject the latter. Actual tests/build pending.
+
+
+## PPD-332 — Native test matrix incorrectly enables shader instrumentation for disk archives
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home integration validation
+- Discovered: 2026-11-16
+- Original reference: Native pipeline cache intentionally refuses to serialize shader-validation programs; original GL has no native binary-archive equivalent. Current almetalpipelinecache.mm239–243 increments shader_validation_bypasses and returns before archive mutation. Dedicated instrumentation tests require that behavior; disk-persistence cases require uninstrumented programs.
+- Evidence: [Home integration evidence](research/quiet-home-shadow-specialization-20261116.md); private combined-correctness/renderer-full-default.log at source060942a945,464cases/457pass/6fail/1skip. Five failed cases expect archive files/hits/serializations while global MTL_SHADER_VALIDATION1 correctly bypasses them. Dedicated instrumented archive case passed; one separate tile pixel mismatch is PPD-333.
+- Next action: Run disk-tag cases in fresh API-validation-only processes with shader-validation variables unset; run selective-instrumentation test with its documented explicit selection; run ordinary correctness with API/GPU validation and those incompatible tags excluded. Preserve initial failure rather than changing archive policy to satisfy a wrong matrix.
+- Verification: Wrong validation configuration confirmed by actual PSO instrumentation receipt and unchanged cache policy. No renderer/archive code regression established. Correct matrix execution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 root full-suite invocation used one global instrumentation mode for tests with opposing requirements. Failed exit42 and all assertions retained. Do not claim all464 passed or treat archive suppression as a shader-optimization regression.
+
+## PPD-333 — High2 separate light-map specialization breaks exact fused probe parity
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex High2 integration
+- Discovered: 2026-11-16
+- Original reference: Existing native probe-lighting fusion requires exact parity with separately sampled RG8 visibility. Both producer entry points call almetal_world_light_map_value; this Apple tile implementation has no GL imageblock equivalent. Proposed High2 specialized the separate light-map producer while leaving its fused counterpart generic.
+- Evidence: [Home integration evidence](research/quiet-home-shadow-specialization-20261116.md); private combined-correctness/renderer-full-default.log and tile-parity-array-diff.json. Odd31x31/family2/reverse-Z/HDR/normal-HDR/shadows/quality2 case fails;63half components in21pixels differ on center row/column, maximum16half ULP /0.03515625HDR. Other457cases passed. No owner viewer run occurred.
+- Next action: Reproduce the focused failure, qualify matching prebuilt High2 fused light-map PSOs selected from the exact bound pack, and retest strict images without disabling fusion or weakening equality. Investigate map-level bytes if the shared specialization does not restore parity.
+- Verification: Pixel failure reproduced in the combined native suite. Source asymmetry confirmed; attribution to that boundary is a hypothesis until the focused repair passes. No global architecture rollback, quality reduction or accepted regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before repair. First staged69221/060942 app is retained as an unaccepted candidate; original recorded A/B/A remains valid source-intervention evidence, not proof combined engine correctness. Preserve failed suite and exact arrays.
