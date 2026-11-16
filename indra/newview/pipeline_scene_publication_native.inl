@@ -202,8 +202,6 @@ struct ShadowLease
 // only copied producer facts and weak exact native generations; native cache
 // withdrawal must not destroy those facts or retain an unbudgeted GPU lease.
 inline void rememberRecipe(const LLDrawInfo&, const std::shared_ptr<Payload>&, U32, bool) noexcept;
-inline WorldLease restoreWorldRecipe(const LLDrawInfo&, const WorldFlavor&,
-    ALNativeSourceWorkingSet&, U64&, U32);
 inline ShadowLease restoreShadowRecipe(const LLDrawInfo&, U32,
     ALMetalWorldSpotShadowCoverage, ALNativeSourceWorkingSet&, U64&, U32);
 
@@ -890,7 +888,6 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         }
         else ++source_miss_statistics.world_misses[
             static_cast<std::size_t>(FactoryMissStage::current_payload_missing)];
-        if (auto restored = restoreWorldRecipe(info, flavor, working_set, serial, frame)) return restored;
         if (!geometry(info)) return {{}, nullptr, "Native scene geometry is unpublished or invalid"};
         info.observeMetalSourceDependencies();
         auto value = extend(info, serial);
