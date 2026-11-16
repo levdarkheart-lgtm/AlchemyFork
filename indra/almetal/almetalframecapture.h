@@ -65,7 +65,8 @@ public:
         std::uint64_t start_frame = 0;
         std::uint64_t stop_frame = 0;
         Trigger trigger = Trigger::legacy;
-        // CPU bounds around the native start/stop calls; not GPU timestamps.
+        // mach_absolute_time converted to ns around native start/stop calls;
+        // CPU observation bounds, not GPU execution timestamps.
         std::uint64_t start_request_monotonic_ns = 0;
         std::uint64_t start_return_monotonic_ns = 0;
         std::uint64_t stop_request_monotonic_ns = 0;

@@ -12,6 +12,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <mach/mach_time.h>
 
 #include <cerrno>
 #include <cstdio>
@@ -20,7 +21,6 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 #include <utility>
 
@@ -54,10 +54,14 @@ namespace
 
     std::uint64_t monotonicNanoseconds() noexcept
     {
-        timespec time{};
-        if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return 0;
-        return static_cast<std::uint64_t>(time.tv_sec) * 1000000000ull +
-            static_cast<std::uint64_t>(time.tv_nsec);
+        static const auto timebase = []
+        {
+            mach_timebase_info_data_t value{};
+            mach_timebase_info(&value);
+            return value;
+        }();
+        return static_cast<std::uint64_t>(
+            (static_cast<__uint128_t>(mach_absolute_time()) * timebase.numer) / timebase.denom);
     }
 
     const char* triggerName(ALMetalFrameCapture::Trigger trigger) noexcept
@@ -140,6 +144,7 @@ struct ALMetalFrameCapture::Impl
             "\"cooldown_eligible_intervals\":%u,\"eligible_intervals_waited\":%u,"
             "\"start_attempts\":%u,\"native_error_code\":%lld,"
             "\"quiet_trigger\":\"%s\","
+            "\"quiet_cpu_clock\":\"mach_absolute_time_ns\","
             "\"quiet_start_request_monotonic_ns\":%llu,"
             "\"quiet_start_return_monotonic_ns\":%llu,"
             "\"quiet_stop_request_monotonic_ns\":%llu,"

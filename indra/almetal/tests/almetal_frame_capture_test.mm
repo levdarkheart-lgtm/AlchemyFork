@@ -113,6 +113,7 @@ namespace
             CHECK([object[@"present_duration_measurement"] boolValue] == NO);
             CHECK([object[@"gpu_completion_waited"] boolValue] == NO);
             CHECK([object[@"scope"] isEqualToString:@"device_all_queues"]);
+            CHECK([object[@"quiet_cpu_clock"] isEqualToString:@"mach_absolute_time_ns"]);
             result.push_back(object);
         }
         CHECK(result.size() <= 8);
