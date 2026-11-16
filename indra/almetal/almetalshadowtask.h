@@ -29,6 +29,9 @@ public:
     ALMetalShadowViewTask(const ALMetalShadowViewTask&) = delete;
     ALMetalShadowViewTask& operator=(const ALMetalShadowViewTask&) = delete;
     bool active() const noexcept;
+    // Nonblocking Dispatch completion observation; no mutable worker fields
+    // are polled. Completed work still owns its command, packet and CPU debt.
+    bool encodingComplete() const noexcept;
     enum class Decline { none, unavailable, budget, native_group, adoption };
     Decline lastDecline() const noexcept;
     std::uint64_t shaderGeneration() const noexcept;
@@ -43,7 +46,9 @@ public:
                std::shared_ptr<ALMetalTexture> target, std::uint32_t slice,
                ALNativeFrameBudget* budget = nullptr, std::string* error = nullptr);
     // Owner joins then commits/cancels. CPU array capacity can recycle now;
-    // native resource generations remain independently completion-owned.
+    // native resource generations remain independently completion-owned. The
+    // preparation reservation follows the returned packet until its CPU arrays
+    // are recycled/restored or it is destroyed, including Outcome/packet moves.
     Outcome finish(bool submit = true, std::string* error = nullptr) noexcept;
 private:
     struct Impl;

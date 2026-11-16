@@ -15,7 +15,6 @@ struct ALMetalShadowViewTask::Impl
         ALMetalShadowEncodingContext* context = nullptr;
         std::unique_ptr<ALMetalCapturedShadowView> packet;
         std::shared_ptr<ALMetalTexture> target;
-        ALNativeFrameBudget::Lease credit;
         std::shared_ptr<ALMetalVisibilityResultBatch> results;
         std::uint32_t slice = 0;
         bool encoded = false;
@@ -41,7 +40,6 @@ struct ALMetalShadowViewTask::Impl
         job.encode_finished_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         job.encode_ns = job.encode_finished_ns - job.encode_started_ns;
-        job.credit.reset();
     }
     std::unique_ptr<ALMetalShadowEncodingContext> mContext;
     std::unique_ptr<Job> mJob;
@@ -53,6 +51,10 @@ ALMetalShadowViewTask::ALMetalShadowViewTask(std::unique_ptr<ALMetalShadowEncodi
     : mImpl(std::make_unique<Impl>()) { mImpl->mContext = std::move(context); }
 ALMetalShadowViewTask::~ALMetalShadowViewTask() { finish(false); }
 bool ALMetalShadowViewTask::active() const noexcept { return bool(mImpl->mJob); }
+bool ALMetalShadowViewTask::encodingComplete() const noexcept
+{
+    return mImpl->mJob && dispatch_group_wait(mImpl->mGroup, DISPATCH_TIME_NOW) == 0;
+}
 ALMetalShadowViewTask::Decline ALMetalShadowViewTask::lastDecline() const noexcept { return mImpl->mDecline; }
 std::uint64_t ALMetalShadowViewTask::shaderGeneration() const noexcept
 { return mImpl->mContext ? mImpl->mContext->shaderGeneration() : 0; }
@@ -67,17 +69,18 @@ bool ALMetalShadowViewTask::start(ALMetalWorldGBufferRenderer& owner, std::uint6
            ALNativeFrameBudget* budget, std::string* error)
 {
     mImpl->mDecline = Decline::unavailable;
-    if (active() || !mImpl->mContext || !packet || !target) return false;
+    if (active() || !mImpl->mContext || !packet || !target || packet->mCPUReservation) return false;
     auto job = std::make_unique<Impl::Job>();
+    ALNativeFrameBudget::Lease credit;
     const auto packet_bytes = packet->ownedCPUBytes();
     constexpr auto unknown = ALNativeFrameBudget::unknown_bytes;
     job->retained_cpu_bytes = packet_bytes > unknown - sizeof(Impl::Job)
         ? unknown : packet_bytes + sizeof(Impl::Job);
     if (budget)
     {
-        job->credit = budget->tryAcquire(ALNativeFrameBudget::Work::preparation,
-                                         job->retained_cpu_bytes).credit;
-        if (!job->credit) { mImpl->mDecline = Decline::budget; return false; }
+        credit = budget->tryAcquire(ALNativeFrameBudget::Work::preparation,
+                                    job->retained_cpu_bytes).credit;
+        if (!credit) { mImpl->mDecline = Decline::budget; return false; }
     }
     auto group = dispatch_group_create();
     if (!group) { mImpl->mDecline = Decline::native_group; return false; }
@@ -88,6 +91,10 @@ bool ALMetalShadowViewTask::start(ALMetalWorldGBufferRenderer& owner, std::uint6
         { mImpl->mDecline = Decline::adoption; dispatch_release(group); return false; }
     }
     catch (...) { dispatch_release(group); throw; }
+    // No fallible work remains after adoption. Keep the combined job/byte
+    // reservation with CPU storage through completion, Outcome moves and
+    // caller retirement; GPU resource owners deliberately never retain it.
+    packet->mCPUReservation = std::move(credit);
     job->context = mImpl->mContext.get();
     job->owner_thread = std::this_thread::get_id();
     job->packet = std::move(packet); job->target = std::move(target); job->slice = slice;

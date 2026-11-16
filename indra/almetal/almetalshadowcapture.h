@@ -80,6 +80,7 @@ private:
             owners->body_palettes.swap(body_palettes);
             packet->mBatches.swap(batches);
             if (queries) packet->mQueries.swap(*queries);
+            packet->mQueriesRecycled = packet->mQueries.capacity() == 0;
             packet->mOwners = std::move(owners);
             return packet;
         }
@@ -115,7 +116,10 @@ public:
         if (!empty_capture.empty()) return false;
         mBatches.clear();
         mBatches.swap(empty_capture);
+        Batches{}.swap(mBatches); // Discard incoming empty destination capacity before retiring debt.
         mOwners.reset();
+        mBatchesRecycled = true;
+        releaseCPUReservationIfRecycled();
         return true;
     }
 
@@ -123,6 +127,9 @@ public:
     {
         if (!empty_capture.empty()) return false;
         mQueries.clear(); mQueries.swap(empty_capture);
+        Queries{}.swap(mQueries);
+        mQueriesRecycled = true;
+        releaseCPUReservationIfRecycled();
         return true;
     }
     // Packet/job admission declined after snapshot: restore the untouched CPU
@@ -132,6 +139,9 @@ public:
     {
         if (!empty_batches.empty() || !empty_queries.empty()) return false;
         mBatches.swap(empty_batches); mQueries.swap(empty_queries);
+        Batches{}.swap(mBatches); Queries{}.swap(mQueries);
+        mBatchesRecycled = mQueriesRecycled = true;
+        mCPUReservation.reset();
         return true;
     }
     // Owner-only, before dispatch. The render command retains this same
@@ -143,11 +153,12 @@ public:
         return true;
     }
     // Logical CPU-owned packet capacity, not native/physical resident RAM.
-    // Shared producer records, native resources and pose values are excluded:
-    // this charges the extra arrays retained while the next capture allocates.
+    // Shared producer/native/pose owners and CompletionOwners (including its
+    // BODY pointer array) are GPU-lifetime owners and excluded. This charges
+    // only the CPU packet wrapper and arrays held while next capture allocates.
     std::uint64_t ownedCPUBytes() const noexcept
     {
-        std::uint64_t bytes = sizeof(*this) + sizeof(CompletionOwners);
+        std::uint64_t bytes = sizeof(*this);
         const auto add = [&](std::size_t count, std::size_t stride)
         {
             constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
@@ -156,7 +167,6 @@ public:
         };
         add(mBatches.capacity(), sizeof(ALMetalWorldSpotShadowBatch));
         add(mQueries.capacity(), sizeof(ALMetalWorldVisibilityQuery));
-        if (mOwners) add(mOwners->body_palettes.capacity(), sizeof(BodyPalettes::value_type));
         return bytes;
     }
 
@@ -179,10 +189,19 @@ private:
         mScene.visibility_bounds = nullptr;
     }
 
+    void releaseCPUReservationIfRecycled() noexcept
+    {
+        if (mBatchesRecycled && mQueriesRecycled) mCPUReservation.reset();
+    }
+    // This reservation must NOT enter CompletionOwners/scene.source_owner.
+    // Declared first so destruction releases it after the CPU arrays die.
+    std::shared_ptr<const void> mCPUReservation;
     ALMetalWorldSpotShadowScene mScene;
     Batches mBatches;
     Queries mQueries;
     std::shared_ptr<CompletionOwners> mOwners;
+    bool mBatchesRecycled = false, mQueriesRecycled = false;
+    friend class ALMetalShadowViewTask;
 };
 
 // A view-local candidate, used synchronously while the source matrix is live.

@@ -5,10 +5,9 @@ The owner has now supplied quiet-house and teleport/club runtime samples; see
 [the two-scene analysis](../../research/integrated-build-69122-quiet-club-20261115.md).
 Detached render-preparation counters stayed0 in both, so useful parallel-render
 benefit is unproved despite implemented callsites. Cache turnover also needs
-Architecture Session follow-through. Earlier blocked status below is historical. The named Goals1–5 mechanisms are implemented and integrated; a
-bounded [source audit](../../research/apple-first-engineering-delivery-20261115.md)
-found no additional required implementation callsite. This does not establish
-a whole-viewer performance gain or complete the product release gates.
+Architecture Session follow-through. Earlier blocked status below is historical. Goals1–5 landed ownership/admission foundations, but ordinary-scene useful parallel rendering was still missing in69122. The earlier
+[source audit](../../research/apple-first-engineering-delivery-20261115.md) did not establish that outcome; treating the remaining work as only owner acceptance understated the implementation gap.
+Producer refresh and upload follow-through is delivered in69134; production owned-view capture/encoding overlap is now integrated in source, still defaultOFF and awaiting the current build/correctness/complete-cost gate. No whole-viewer performance gain or completed release gate is claimed.
 
 Owner-profiled source: **beb6837b71f0429f116fef8e2ad7cc5d166bc010**, build
 **26.4.0.69122**, experiment branch `codex/apple-first-native-cohort-consumption`.
@@ -50,11 +49,7 @@ geometry sizes. Exact receipts and failed attempts remain in the
 
 ## What remains
 
-Evaluate the combined viewer with the owner across busy, quiet, loading,
-turning and teleport scenes:
-frame times/tails, input latency, physical memory, stability and retained SL
-features. No new speculative architecture or shadow-only work is a prerequisite.
-Any reproducible failure creates a concrete repair item. Whole-viewer performance,
+Finish and validate useful owned CPU/native overlap on the actual small-view workloads, with original command admission, query/projector settlement, lifecycle joins and retained CPU-byte bounds. Keep rejected small-family preparation and SSAO fusion evidence; select work only on complete-path results. Then evaluate the combined viewer with the owner across busy, quiet, loading, turning and teleport scenes: frame times/tails, input latency, physical memory, stability and retained SL features. Any reproducible failure creates a concrete repair item. Whole-viewer performance,
 feature parity and `VALIDATION.md` release gates remain open. No viewer launch,
 login, live profile, push or release was performed in this continuation.
 

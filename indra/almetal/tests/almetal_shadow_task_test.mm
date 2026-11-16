@@ -281,10 +281,14 @@ TEST_CASE("almetal: production shadow task adopts one command while the owner ca
         CHECK_FALSE(outcome.worker_is_owner); CHECK(outcome.completion == original);
         CHECK(ALMetalDevice::committedCommandBufferCount() == before + 1);
         CHECK(committed == 1); CHECK(f.renderer->commandBatchActive()); CHECK_FALSE(f.renderer->shadowEncodingActive());
-        CHECK(budget.snapshot().preparation_in_flight == 0); CHECK_FALSE(original->isComplete());
+        CHECK(budget.snapshot().preparation_in_flight == 1);
+        CHECK(budget.snapshot().preparation_bytes_in_flight == outcome.retained_cpu_bytes);
+        CHECK_FALSE(original->isComplete());
         CHECK_FALSE(weak_submission.expired());
         CHECK(outcome.packet->scene().visibility_queries[1].batch_offset == plan.records.size() / 2);
         REQUIRE(outcome.packet->recycleBatches(capture.batches)); REQUIRE(outcome.packet->recycleQueries(capture.queries));
+        CHECK(budget.snapshot().preparation_in_flight == 0);
+        CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
         CHECK(capture.batches.data() == old_storage); outcome.packet.reset();
         const auto overlap = std::min(producer_end, outcome.encode_finished_ns) > std::max(producer_start, outcome.encode_started_ns)
             ? std::min(producer_end, outcome.encode_finished_ns) - std::max(producer_start, outcome.encode_started_ns) : 0;
@@ -306,6 +310,107 @@ TEST_CASE("almetal: production shadow task adopts one command while the owner ca
         REQUIRE(f.renderer->renderSpotShadow(*expected_target, 1, next_reference, &f.error));
         CHECK(f.read(*target, 1) == f.read(*expected_target, 1));
         CHECK_FALSE(task->finish().submitted);
+    }
+}
+
+TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and retires before GPU completion",
+          "[almetal][shadow-view-task]")
+{
+    @autoreleasepool
+    {
+        Fixture f; Plan plan(f, 867); Capture first, next;
+        auto first_task = f.task(), next_task = f.task(); auto target = f.target();
+        REQUIRE(f.renderer->beginShadowFrameBatch(1, "Retained completed CPU packet", &f.error));
+        plan.produce(first, 0, true);
+        const auto first_query_bytes = first.queries.capacity() * sizeof(ALMetalWorldVisibilityQuery);
+        auto packet = first.take(f.error);
+        const auto packet_capacity = packet->ownedCPUBytes();
+        ALNativeFrameBudget::Limits limits; limits.preparation_jobs = 2;
+        limits.preparation_bytes_in_flight = packet_capacity * 2;
+        ALNativeFrameBudget budget(limits); budget.beginFrame(ALNativeFrameBudget::FrameInputs{});
+        const auto original = f.renderer->commandBatchCompletion();
+        GPUGate gate(*f.device);
+        const auto committed = ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(first_task->start(*f.renderer, 1, packet, target, 0, &budget, &f.error));
+        // Observe the Dispatch completion fence, never mutable worker fields.
+        // The owner has not called finish, submitted, or recovered the packet.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!first_task->encodingComplete() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::yield();
+        REQUIRE(first_task->encodingComplete()); CHECK(first_task->active());
+        CHECK(ALMetalDevice::committedCommandBufferCount() == committed);
+        const auto retained_bytes = budget.snapshot().preparation_bytes_in_flight;
+        REQUIRE(retained_bytes > packet_capacity); CHECK(budget.snapshot().preparation_in_flight == 1);
+        REQUIRE(f.renderer->beginShadowFrameBatch(1, "Next capture sees retained debt", &f.error));
+        plan.produce(next, 1, true);
+        const auto next_batch_bytes = next.batches.capacity() * sizeof(Batch);
+        auto next_packet = next.take(f.error);
+        const auto next_command = f.renderer->commandBatchCompletion();
+        auto* next_identity = next_packet.get();
+        CHECK_FALSE(next_task->start(*f.renderer, 1, next_packet, target, 1, &budget, &f.error));
+        CHECK(next_task->lastDecline() == ALMetalShadowViewTask::Decline::budget);
+        CHECK(next_packet.get() == next_identity); CHECK(f.renderer->commandBatchCompletion() == next_command);
+        CHECK(budget.snapshot().preparation_bytes_in_flight == retained_bytes);
+        f.renderer->cancelCommandBatch();
+        auto outcome = first_task->finish(true, &f.error); REQUIRE(outcome.submitted);
+        CHECK(outcome.retained_cpu_bytes == retained_bytes);
+        auto held_packet = std::move(outcome.packet);
+        outcome = {}; first_task.reset(); // Neither move nor task death releases CPU storage debt.
+        CHECK(budget.snapshot().preparation_bytes_in_flight == retained_bytes);
+        CHECK_FALSE(original->isComplete()); // GPU remains blocked independently.
+        Packet::Batches batches; Packet::Queries queries;
+        batches.reserve(4096); queries.reserve(64); // Empty may still own substantial capacity.
+        REQUIRE(held_packet->recycleBatches(batches));
+        CHECK(held_packet->ownedCPUBytes() == sizeof(Packet) + first_query_bytes);
+        CHECK(budget.snapshot().preparation_bytes_in_flight == retained_bytes); // Queries still retained.
+        REQUIRE(held_packet->recycleQueries(queries));
+        CHECK(held_packet->ownedCPUBytes() == sizeof(Packet));
+        CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+        CHECK(budget.snapshot().preparation_in_flight == 0);
+        CHECK_FALSE(original->isComplete()); // CPU recycle never waits on GPU retirement.
+        held_packet.reset(); CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+        // The preserved candidate can now admit. Reverse recycling order and
+        // reserved-empty destinations must not leave hidden packet capacity.
+        REQUIRE(f.renderer->beginShadowFrameBatch(1, "Capacity after CPU recycle", &f.error));
+        REQUIRE(next_task->start(*f.renderer, 1, next_packet, target, 1, &budget, &f.error));
+        auto canceled = next_task->finish(false, &f.error); REQUIRE(canceled.packet);
+        CHECK(budget.snapshot().preparation_bytes_in_flight == canceled.retained_cpu_bytes);
+        CHECK_FALSE(canceled.submitted);
+        Packet::Queries reverse_queries; reverse_queries.reserve(64);
+        Packet::Batches reverse_batches; reverse_batches.reserve(4096);
+        REQUIRE(canceled.packet->recycleQueries(reverse_queries));
+        CHECK(canceled.packet->ownedCPUBytes() == sizeof(Packet) + next_batch_bytes);
+        CHECK(budget.snapshot().preparation_bytes_in_flight == canceled.retained_cpu_bytes);
+        REQUIRE(canceled.packet->recycleBatches(reverse_batches));
+        CHECK(canceled.packet->ownedCPUBytes() == sizeof(Packet));
+        canceled.packet.reset();
+        CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+        CHECK(budget.snapshot().preparation_in_flight == 0);
+        for (const bool restore : {true, false})
+        {
+            Capture capture; plan.produce(capture, 2, true); auto candidate = capture.take(f.error);
+            REQUIRE(f.renderer->beginShadowFrameBatch(1, "CPU restore or packet destruction", &f.error));
+            REQUIRE(next_task->start(*f.renderer, 1, candidate, target, 2, &budget, &f.error));
+            auto discarded = next_task->finish(false, &f.error); REQUIRE(discarded.packet);
+            CHECK(budget.snapshot().preparation_bytes_in_flight == discarded.retained_cpu_bytes);
+            if (restore)
+            {
+                const auto frozen = discarded.packet->scene();
+                Packet::Batches restored_batches; restored_batches.reserve(4096);
+                Packet::Queries restored_queries; restored_queries.reserve(64);
+                REQUIRE(discarded.packet->restoreCPUStorage(restored_batches, restored_queries));
+                CHECK(discarded.packet->ownedCPUBytes() == sizeof(Packet));
+                CHECK(restored_batches.data() == frozen.batches);
+                CHECK(restored_queries.data() == frozen.visibility_queries);
+                CHECK(restored_batches.size() == frozen.batch_count);
+                CHECK(restored_queries.size() == frozen.visibility_query_count);
+                CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+            }
+            discarded.packet.reset(); // Destruction without recycle also retires once.
+            CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+            CHECK(budget.snapshot().preparation_in_flight == 0);
+        }
+        gate.release(); settle(original);
     }
 }
 
