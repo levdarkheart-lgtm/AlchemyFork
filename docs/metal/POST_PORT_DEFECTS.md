@@ -5841,6 +5841,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-16 frozen author context `a14d07eba067fed770a5038c0db9b03eff0517dc` copied exactly (world.h2d08fbdb0290…, world.cppce369bc74dbc…, native test e22017b11eb7…). It builds a shadow-only peer by sharing immutable shadow PSO/depth/library owners; mutable arena/material/indirect/depth/command state stays private. It does not call the full world factory, swap shared Impl, dispatch workers, or issue its own main shadow-frame admission ticket. Explicit outer submission owner and nonblocking local one-command bound are required. Root adds the four native context cases to CMake; these are unexecuted pending frozen76 build. CPU packet59/3 remains separate evidence. Parent reload/anisotropy snapshots, prefix cancellation and simultaneous native context encoding are specified by actual API tests, not yet observed. Production queue/admission/settlement integration and profitable useful overlap remain open.
 
+- 2026-11-16 first post-integration documentation harness check rejected CURRENT161lines and active ledger181lines, one over each limit. Preserved all content while joining one existing wrapped line per file; rerun required before frozen76. No renderer/build/test failure implied.
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating
