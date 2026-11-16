@@ -31,8 +31,7 @@ extending [raster/float/reflection and fixture admission](native-raster-and-lega
 [RLVa mapping](rlva-native-owner-cleanup.md) and
 [developer diagnostics](developer-metal-diagnostics.md).
 
-Retain native world/material/avatar/terrain/shadow/sky/water/effects, UI/font/
-HUD/media and original-mapped fixes. Network/inventory/editing/simulation/voice
+Retain native world/material/avatar/terrain/shadow/sky/water/effects, UI/font/HUD/media and original-mapped fixes. Network/inventory/editing/simulation/voice
 remain in scope. No fallback renderer or translation backend.
 
 Integrated foundation: original polygon offset/flush/target extent; always-float
