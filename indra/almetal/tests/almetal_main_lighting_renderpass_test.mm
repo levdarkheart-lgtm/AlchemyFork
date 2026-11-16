@@ -90,7 +90,10 @@ struct Inputs
         for (auto& query : visibility)
         {
             sky_test::identity(query.modelview_projection);
-            query.center[0] = .5f; query.center[3] = 1.f;
+            // visibility_vertex uses native [0,1] depth for reverse-Z and
+            // converts GL clip depth for forward-Z. Keep the entire proxy
+            // inside either clip volume before testing positive visibility.
+            query.center[0] = .5f; query.center[2] = .5f; query.center[3] = 1.f;
             query.half_extent[0] = query.half_extent[1] = query.half_extent[2] = .2f;
             query.fan = 7;
         }
@@ -295,7 +298,9 @@ Observed observe(sky_test::Fixture& f, ALMetalWorldGBufferRenderer& renderer,
         RestoreTiming() { ALMetalDevice::setCommandTimingEnabled(true); }
         ~RestoreTiming() { ALMetalDevice::setCommandTimingEnabled(old); }
     } restore;
-    auto window = ALMetalStageTimingWindow::create(*f.device, 16, &f.error); REQUIRE(window);
+    // Pipeline identities are opt-in frame-profile data. This is only the
+    // untimed execution census; measure() never installs this instrumentation.
+    auto window = ALMetalStageTimingWindow::create(*f.device, 16, &f.error, true); REQUIRE(window);
     const auto draws = ALMetalDevice::encodedDrawCallCount();
     const auto commits = ALMetalDevice::committedCommandBufferCount();
     REQUIRE(renderer.beginCommandBatch("Untimed matching main lighting execution census", &f.error));
@@ -459,9 +464,30 @@ TEST_CASE("almetal: shared main encoder preserves projector cookies, shadow slic
             const auto depth = f.read<std::uint32_t>(*actual->depthStencilTexture());
             const auto stencil = f.stencil(*actual->depthStencilTexture());
             ALMetalWorldOpaquePostDeferredScene continuation;
-            continuation.gbuffer = inputs.gbuffer.get(); continuation.composed_lighting = actual.get();
+            continuation.gbuffer = inputs.gbuffer.get();
             continuation.width = 31; continuation.height = 27;
             continuation.reverse_z = reverse; continuation.hdr = true;
+            // Original1eb44 alrender/alwaterstencil.h:32 and main display's
+            // llviewerdisplay.cpp:1065 start water bits from cleared stencil.
+            // The established native renderOpaquePostDeferred initial pass
+            // clears stencil to 0 (world.cpp:20544), loading color and depth.
+            // Preserve the strict lighting-only 0x5A checks above, then compare
+            // both native continuations against their existing clear contract.
+            continuation.composed_lighting = expected.get();
+            auto baseline = f.renderer->renderOpaquePostDeferred(
+                continuation, std::move(expected), &f.error);
+            INFO(f.error); REQUIRE(baseline);
+            const auto baseline_stencil = f.stencil(*baseline->depthStencilTexture());
+            CHECK(std::all_of(baseline_stencil.begin(), baseline_stencil.end(),
+                [](std::uint8_t value) { return value == 0; }));
+            CHECK(inputs.pixels(*baseline) == color);
+            CHECK(f.read<std::uint32_t>(*baseline->depthStencilTexture()) == depth);
+            // Both targets borrow the same depth. Restore the authored seed
+            // before the candidate so each continuation must perform its own
+            // actual clear rather than inherit the baseline's result.
+            f.stampStencil(*inputs.gbuffer);
+            CHECK(f.stencil(*actual->depthStencilTexture()) == stencil);
+            continuation.composed_lighting = actual.get();
             auto continued = f.renderer->renderOpaquePostDeferred(
                 continuation, std::move(actual), &f.error);
             INFO(f.error); REQUIRE(continued);
@@ -469,7 +495,7 @@ TEST_CASE("almetal: shared main encoder preserves projector cookies, shadow slic
             CHECK(continued->depthStencilTexture() == inputs.gbuffer->depthStencilTexture());
             CHECK(inputs.pixels(*continued) == color);
             CHECK(f.read<std::uint32_t>(*continued->depthStencilTexture()) == depth);
-            CHECK(f.stencil(*continued->depthStencilTexture()) == stencil);
+            CHECK(f.stencil(*continued->depthStencilTexture()) == baseline_stencil);
         }
     }
 }
