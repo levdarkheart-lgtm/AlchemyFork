@@ -4,6 +4,62 @@ This document defines the evidence contract and the implemented development-view
 
 ## Implemented per-frame collector
 
+### Quiet startup diagnosis (separate from the strict benchmark)
+
+The owner-scoped quiet-FPS investigation uses the default-off startup path in
+`alquietdiagnostics.*` and `almetaldiagnostictelemetry.*`. It starts at the actual
+app iteration before login, does not wait for probe/benchmark readiness, and
+does not enable commandTimingEnabled or stage-timing scopes. Normal batches,
+worker overlap, settings and admission remain unchanged.
+
+- `ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY` requests an existing owned absolute
+  mode0700 directory. The new exclusive `diagnostic.jsonl` contains source/build,
+  process PID, UTC/Mach calibration, raw app iteration/display/state records,
+  explicit view tags, command lifecycle/GPU timestamps/existing waits, CPU
+  owner spans and numeric scene/light/probe/SSR/cache/upload/resource counters.
+  App iterations are not presented-frame/scanout measurements. Unscoped workers
+  remain unknown rather than being assigned a guessed frame.
+- `ALCHEMY_METAL_QUIET_CAPTURE=auto` additionally requests two short device
+  captures, with `MTL_CAPTURE_ENABLED=1` required at process launch. Early is at
+  two seconds of world eligibility; slow capture is after60 seconds with two
+  stable10-second windows at >=1.35 times initial period, or a labelled90-second
+  fallback. First-world markers are emitted in telemetry-only `off` mode too.
+  Capture directories are reserved exclusively, cover complete display
+  intervals and intervening queues/probes/uploads, and retain actual CPU
+  start/stop bounds. Two attempts maximum; world invalidation or sink failure
+  cannot silently rearm a late capture elsewhere.
+- The sink uses bounded nonblocking producers and a utility-priority CPU
+  writer: default8192 records,64MiB and600 seconds. Its footer explicitly
+  reports drops, I/O/cutoff and pending commands. GPU timestamps are read after
+  completion. Command start/end envelopes can overlap and contain stalls;
+  neither their sum nor union is hardware GPU busy time or frame duration.
+- Use optimized shaders with `AL_METAL_RECORD_SHADER_SOURCES=ON` for source-line
+  inspection. This adds supported line/source metadata without selecting an
+  unoptimized shader path. Capture mode69200 was verified with API/GPU validation
+  layers unset; the actual native fixture reports NotSupported when those
+  layers are enabled. Run correctness with validation separately.
+- `tools/metal/quiet_capture.py preflight` inspects installed capabilities only.
+  Its `record` operation attaches to an explicitly supplied existing PID and
+  exact executable/hash/source; it never launches or logs in. A Darwin start
+  notification plus owned live recorder/raw data precedes the Login cue.
+  Recorder exit, finite finalization/size and actual retained CPU plus separate
+  positive target GPU Begin-to-End/Active-Time families are checked. Requested
+  native telemetry must match PID/source and calibrated FRAME coverage; later
+  command/footer timestamps cannot conceal early frame cutoff.
+- Continuous Overview stays separate from optional scheduler detail.
+  `--thread-states` is limited to five seconds: the controlled three-second
+  fixture showed approximately31 times sampled raw growth. Root-only
+  `--powermetrics` is optional and never invokes sudo. Available1Hz thermal
+  pressure is not measured GPU frequency; report unavailable MHz honestly.
+
+Private captures remain under ignored `artifacts/metal/`. Existing failures,
+source hashes and raw rows must survive correction. Capture startup/stop and
+the first following frame are excluded from capture-free control summaries;
+if the capture changes settling, use a same-binary capture-off reproduction.
+Fixture correctness/tool availability does not prove actual viewer coverage,
+observer overhead or the cause of the quiet decline. See the
+[active diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md).
+
 Commit `3b8997edd7` implements an opt-in collector in `indra/newview/almetalbenchmark.*`; commit `14adac8c70` adds the per-frame native-wrapper command-buffer submission delta. The current collector also enables native command-completion timing only while an explicit run is active. The viewer calls the collector from macOS builds, including optimized download/Release builds, after a complete display iteration. With no environment request it allocates no recorder, installs no timing completion handlers and writes nothing. Previously the download-build compile guard silently omitted the collector from the measured Release viewer despite its benchmark environment; this prevented the requested CSV from being produced.
 
 Arm collection with all three required values:

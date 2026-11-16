@@ -8,9 +8,11 @@ its full text. Original architecture implementation remains paused by owner
 instruction. This ledger records the new sole objective: explain the quiet Home scene's approximately 24–25 to 14 FPS
 decline, with evidence identifying the growing critical path and its cause.
 
-Engine source stays `92ddb0966c21677956eab3ecfe8dbee44a9ab813`, build 69187.
-No new renderer change, viewer launch, login, profile or push occurred during
-this discussion. Architecture implementation remains paused.
+Preserved baseline is `92ddb0966c21677956eab3ecfe8dbee44a9ab813`, build 69187.
+Diagnostic-only engine is frozen at `fd5e8e088e1224e150e7ae71a17f827faa18249e`,
+build 69200. Architecture implementation remains paused. The new native
+instrumentation is integrated, built and separately staged; no viewer launch,
+login, viewer profile or push occurred during preparation.
 
 ## Evidence and missing boundary
 
@@ -70,15 +72,73 @@ or buffered-frame elapsed intervals cannot simply be added to this budget.
   `xcrun --find gpudebug` fails; use the installed Xcode Metal debugger for replay.
   Verify M1 Max counter availability; newer GPU-only features cannot be assumed.
 
-Diagnostic-only preparation is now in progress: independent agents own native
-command telemetry, repeatable device capture/trigger policy, and the attach-only
-external recorder. Root exclusively owns viewer hooks, build registration and
-integration. No renderer optimization is selected. No viewer recording is
-authorized by this preparation step.
+## Implemented and checked preparation
 
-Next action: diagnostic-only instrumentation/collector preparation and actual
-start/stop/retention checks before an owner runtime session. Capture method is
-specified; preparation, new runtime and causal explanation remain incomplete.
+- The default-off bounded asynchronous JSONL sink records raw app iterations,
+  explicit frame/view tags, command create/commit/GPU start/end/completion,
+  existing command waits, CPU owner/join spans and workload/resource counters.
+  PID/source/build and UTC-to-Mach calibration bind it to the actual process.
+  Its producer never waits for a file, another producer or GPU completion;
+  drops/cutoff/pending commands remain explicit. No benchmark timing or stage
+  scope is enabled, preserving ordinary workers, batches and queue limits.
+- Automatic device captures use real startup/cadence: early at 2 seconds and
+  at least four normal entries; late after 60 seconds and two adjacent stable
+  10-second slow windows (period >=1.35 times baseline, means within10%), or a
+  labelled 90-second fallback. Maximum two attempts, one complete display
+  interval each, heartbeat cancellation at five seconds, transient actual
+  teleport/disconnect/logout invalidation and focus/cadence checks. All device
+  queues are captured; actual create/commit boundaries remain inspectable.
+- Attach-only `quiet_capture.py` requires exact PID/executable hash/source and
+  real notification plus live owned raw data before the Login cue. Recorder
+  parent status/finalization, size limits and actual CPU plus separate positive
+  GPU metric-family ranges are checked. Requested native input must match PID,
+  source and calibrated FRAME coverage. A cutoff cannot masquerade as success.
+- Two real 3-second nonviewer recorder fixtures prove readiness/CPU retention;
+  optional scheduler tracing proves blocked/runnable/preempted data but has
+  approximately31x sampled raw growth. It is restricted to <=5 seconds rather
+  than used continuously. These do not prove viewer GPU retention/overhead.
+- Combined doctor/configure/build pass. API/GPU-validation native diagnostics
+  and policy:1207 assertions/13 cases; completion/submission/main admission/
+  lighting/shadow overlap:10161/24. Actual controller, each fresh process:
+  default-off12/1, early-stop/invalidation45/1, collision25/1, cutoff33/1.
+  Source full app-hook execution awaits the owner viewer session.
+- Capture with API+GPU validation layers returned native NotSupported(1) in
+  the actual controller fixture. The intended profiling mode with those layers
+  unset passes all three native controller cases. Preserve both results;
+  do not silently label the unsupported combination a successful capture.
+- Static source3608/zero blockers/errors,346 ARM64 Mach-O/signatures/owned
+  imports/104 retained feature rows and codec/media/voice provenance pass.
+  All8273 staged app nodes match bytes/links/modes; strict stage signature pass.
+  Optimized offline shaders carry source/line metadata; shader math/settings
+  remain the baseline. Staged app: private
+  `artifacts/metal/quiet-fps-diagnostic-preparation-20261116/candidate-26.4.0.69200/Alchemy Metal Alpha G2G5.app`.
+- Xcode26.6 on this M1 Max replays the tiny retained native fixture and exposes
+  counters/limiters, shader registers/spills, full MSL and source-line profiling.
+  Replay stopped, original trace hashes unchanged. Actual viewer/render-draw
+  replay has not occurred. Native timestamp envelopes are not hardware busy
+  time, occupancy or additive frame costs.
+- Tiny4KiB native blit prototype observer costs retain every adverse pair and
+  both cohorts: utility writer owner median+0.205us/+2.57%, settled+4.332us/+2.12%.
+  Their exact modified-unit/binary hashes are in handoff receipts; they precede
+  final startup-only corrections and do not measure whole-viewer overhead.
+- `powermetrics` MHz sampling requires root, unavailable to the current UID501
+  session. NSProcessInfo thermal pressure is recorded at1Hz. Do not claim GPU
+  frequencies were collected. Same-binary capture-off controls remain available
+  if capture changes the decline or its timing.
+
+Evidence root: private `artifacts/metal/quiet-fps-diagnostic-preparation-20261116/`:
+`build-{first,second,third}.json`, `correctness/`, `static/`,
+`preparation-receipts.json` and `next-owner-run.json`. Initial two compile
+failures and first incorrect test-path attempt remain preserved. PPD-320/321
+retain diagnostic lifecycle repairs; PPD-314/318 need actual viewer retest.
+
+Next action: only on explicit owner instruction, launch exact staged69200 with
+the prepared native environment, attach the recorder immediately, then cue
+Login after actual readiness. Owner selects quiet Home and drives the viewer.
+Collect the initial fast state and later slow state before any teleport.
+The diagnosis remains incomplete until those measurements explain the change
+and a contained causal check supports the explanation. Original architecture
+work remains paused; no push is authorized.
 
 Success requires an early-versus-late critical-path explanation, exact source
 and evidence, and a contained causal check. A suspect list, another club trace,

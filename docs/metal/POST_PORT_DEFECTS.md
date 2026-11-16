@@ -7540,6 +7540,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 implementation halted when owner rejects profiling rabbit-hole. Isolated codex/apple-first-continuous-frame-telemetry at254b74538a has uncommitted apphook/CMake/newmodule/test files. StandaloneCPU compile and119assertions/9cases passed; apphook compilation/fullbuild/runtime and peerreview remain unverified. Not integrated into69172; no further telemetry work or live jobs. Preserve files, do not represent as delivered viewer work.
 
+- 2026-11-16 owner explicitly activates quiet-FPS diagnosis. New default-off native JSONL sink and actual LLAppViewer iteration hook are compiled into separately verified69200/fd5e8e088e, preserving the old halted worktree. It records raw Mach start/end/display IDs/startup/teleport/focus/window state without the strict benchmark gate; existing CPU spans and actual command timestamps are separate fields. Native serializer/controller cases pass, but real app-hook coverage, cadence and owner runtime remain unverified until the authorized viewer session. See [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md); no closure or performance claim.
+
 ## PPD-315 — Main-frame admission throttles three transactions as two commands
 
 - Status: investigating
@@ -7630,6 +7632,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 active diagnostic preparation implements attach-only notification-based recorder readiness with retained parent status and bounded exports. Two real3s nonviewer fixtures establish startup/CPU retention; optional scheduler mode has approximately31x sampled raw growth and is limited to5s rather than used continuously. Independent integration review finds two new qualification gaps before owner runtime: a native duration cutoff with zero drop counters could be called complete without full frame coverage, and mixed CPU/display/GPU Overview rows could satisfy the GPU gate. Require UTC-calibrated native FRAME overlap and separate positive target GPU Begin-to-End/Active-Time family coverage; preserve prior runs and label incomplete coverage. Corrections/tests in progress; no new viewer run or PPD-319 cause claim.
 
+- 2026-11-16 collector qualification corrections and explicit native PID binding pass154 tool tests/38 collector tests on the tool branch; installed3s CPU/scheduler proofs retain their actual earlier hashes rather than being relabelled final-source runtime. Existing21370 Overview is rechecked offline: each required GPU family has1864 positive rows/465.686s coverage, so old evidence remains valid. Root actual controller capture with API+GPU layers enabled returns NotSupported(1); intended profiling mode with those layers unset passes early/stop/invalidation45, collision25 and cutoff33 assertions. Both attempts retained; prepared launch explicitly clears validation and benchmark/stage settings. Exact69200/fd5 app is staged/verified, no viewer launch or recorder attachment yet.
+
 ## PPD-319 — Quiet frame cadence declines after login as completion latency grows
 
 - Status: investigating
@@ -7651,14 +7655,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex quiet diagnostic integration
 - Discovered: 2026-11-16
 - Original reference: New uncommitted diagnostic-only alquietdiagnostics.cpp heartbeat returns when no capture is active, so it cannot terminate an already-started quiet sequence on an app-iteration transition between early/late captures. Hook invalidation tests only gTeleportDisplay; LLAgent TELEPORT_LOCAL can transition without that screen. No original renderer behavior is changed by these hooks.
 - Evidence: Independent integration source review of the in-progress quiet diagnostic controller and actual llagent.cpp local teleport path; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md).
-- Next action: Feed heartbeat invalidation to the trigger policy even between captures, include actual non-NONE teleport state, and test the actual controller body with transient invalidation. Retain finite attempts and normal rendering.
-- Verification: Source-only discovery before the first diagnostic viewer build/run. No live miscapture, FPS cause, successful repair or owner acceptance is claimed.
+- Next action: Retest the exact staged69200/fd5 controller with the owner quiet-scene session. Preserve finite attempts, normal rendering and explicit cutoff/invalidity; no architecture changes or automatic launch.
+- Verification: Actual production controller links/executes in the new native fixture: early-stop/between-capture invalidation45 assertions, collision25, active sink-cutoff33 and default-off12 pass in separate processes. Retained native traces/JSONL and exact commands are in private preparation correctness/. Compilation, fixture repairs and profiling-layer incompatibility are retained below; real viewer activation and owner acceptance remain pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7672,19 +7676,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 second combined2568ddc9e6 build compiles the production controller but fails its new Objective-C++ fixture: generic normal() helper conflicts with an SDK normal enumerator. Preserve build-second.json/log; rename the fixture helper to quietNormalDisplay without changing production behavior. Native telemetry header gains explicit process_id so collector can bind the file to the exact attached viewer PID, in addition to external executable hash/source provenance. New build and actual-controller execution pending.
 
+- 2026-11-16 combinedfd5 build69200 passes with diagnostic-only code and optimized source-recorded shaders. Actual fresh-process controller checks above confirm transient invalidation between captures and asynchronous sink cutoff cancel/terminate correctly. No retry/overwrite or GPU wait added. App entry invokes the cheap heartbeat even after sink disable; normal world scopes/batches/worker overlap remain unchanged. Ready for owner runtime; not a PPD-319 cause/fix or closure.
+
 ## PPD-321 — New diagnostic telemetry allocates while disabled and mishandles startup failure
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex quiet diagnostic telemetry
 - Discovered: 2026-11-16
 - Original reference: In-progress default-off native diagnostic sink calls its allocating state() accessor from stop()/statistics(); new viewer cleanup would allocate the ring despite no collection request. Independent review also finds header-write/allocation startup failure needs descriptor RAII and active-session publication must follow successful writer creation. These are new diagnostic-only lifecycle defects, not an original renderer or measured FPS cause.
 - Evidence: [Diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md), root and independent source review of isolated codex/quiet-gpu-telemetry; retained native/core/observer-cost fixtures under private artifacts/metal/quiet-diagnostic-telemetry-20261116T160407Z and preparation receipts.
-- Next action: Integrate the corrected lazy existing-state lookup, descriptor ownership and writer-start handoff; rerun contained disabled/failure/session/native completion checks, then verify actual diagnostic viewer build before owner capture.
-- Verification: Agent reports corrections and component tests in progress. Original and utility-QoS tiny native-blit cost results are retained, including adverse pairs; they do not prove viewer overhead or explain PPD-319. No viewer launch/profile occurred.
+- Next action: On explicit instruction run the verified69200/fd5 viewer and check actual activation/output/cutoff and observer cost across the quiet decline. Do not resume architecture optimization or push.
+- Verification: Corrected lazy existing-state lookup, descriptor RAII and writer-start handoff integrated. Combined native diagnostics plus policy1207 assertions/13 cases and renderer completion/submission/admission/lighting/shadow lifecycle10161/24 pass with API/GPU validation. Default-off controller12 assertions passes. Exact stage/static gates pass; original/utility-QoS prototype cost pairs are retained and do not prove viewer overhead or explain PPD-319. No viewer launch/profile occurred.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-16 component lifecycle review findings retained during preparation. Original architecture work stays paused; no architecture optimization selected.
+
+- 2026-11-16 corrected sink integrated and combined-tested in fd5/69200. No ring allocation from never-started stop/statistics, no native object/asset ownership in queued records and no GPU wait for diagnostics. API/GPU-validation correctness is separate from frame capture with those layers unset. Ready for actual owner runtime, not owner-verified/closed.
