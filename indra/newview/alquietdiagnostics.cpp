@@ -9,6 +9,7 @@
 #include "../almetal/almetalframecapture.h"
 #include "../almetal/almetalquietcapturepolicy.h"
 #include "llversioninfo.h"
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -77,6 +78,22 @@ void alQuietDiagnosticsInitialize() noexcept
         config.path = (std::filesystem::path(directory) / "diagnostic.jsonl").string();
         config.source_sha = version.getSourceRevision();
         config.build_id = version.getVersion() + "-" + version.getBuildConfig();
+        // An opt-in session may need more retained events at a higher FPS.
+        // Parse once at startup; the ring and all producer paths stay fixed.
+        if (const char* requested = std::getenv("ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB");
+            requested && *requested)
+        {
+            const std::string_view budget(requested);
+            std::uint32_t mib = 0;
+            const auto parsed = std::from_chars(budget.data(), budget.data() + budget.size(), mib);
+            if (parsed.ec != std::errc{} || parsed.ptr != budget.data() + budget.size() ||
+                mib < 64 || mib > 256)
+            {
+                warning("Diagnostic byte budget must be an integer from 64 through 256 MiB; collection disabled");
+                return;
+            }
+            config.max_bytes = std::uint64_t(mib) * 1024u * 1024u;
+        }
         std::string error;
         if (!D::start(config, &error))
         { warning("Could not start private diagnostic telemetry; collection disabled"); return; }

@@ -7796,6 +7796,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 registered on first actual native viewer workload. The independent180.692s Overview recording survives the native cutoff. Preserve the completed run; this limitation does not invalidate its observed24→14FPS reproduction.
 
+- 2026-11-16 preparing the first quality-preserving Homecandidate: startup-only ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB permits explicit64–256MiB, default64 unchanged; ring/producer/writer schedule unchanged. Invalid/out-of-range input disables collection before output rather than silently running an unintended budget. Actualcontroller header/activation checks added for freshprocess selectors; compile/runtimepending. This prevents an improvedFPS candidate from exhausting the old64MiB budget before its late window; it does not change renderer admission or shader timing.
+
 ## PPD-327 — Native probe accumulator codegen and alpha shader spilling need qualification
 
 - Status: investigating

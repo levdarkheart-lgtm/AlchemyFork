@@ -31,12 +31,13 @@ namespace D = ALMetalDiagnosticTelemetry;
 
 struct Environment
 {
-    const char* names[4]{"ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY", "ALCHEMY_METAL_QUIET_CAPTURE",
+    const char* names[5]{"ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY", "ALCHEMY_METAL_QUIET_CAPTURE",
+        "ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB",
         ALMetalFrameCapture::directory_environment, ALMetalFrameCapture::mode_environment};
-    std::optional<std::string> previous[4];
+    std::optional<std::string> previous[5];
     Environment()
     {
-        for (unsigned i = 0; i < 4; ++i)
+        for (unsigned i = 0; i < 5; ++i)
         {
             if (const char* value = std::getenv(names[i])) previous[i] = value;
             REQUIRE(unsetenv(names[i]) == 0);
@@ -44,7 +45,7 @@ struct Environment
     }
     ~Environment()
     {
-        for (unsigned i = 0; i < 4; ++i)
+        for (unsigned i = 0; i < 5; ++i)
             if (previous[i]) setenv(names[i], previous[i]->c_str(), 1);
             else unsetenv(names[i]);
     }
@@ -122,6 +123,36 @@ void reachFirstAttempt(ALMetalDevice& device, Shutdown& shutdown)
 
 // The controller intentionally initializes ONCE per process, as the viewer
 // does. Run each selector below in a separate process; do not combine filters.
+TEST_CASE("quiet controller: startup byte budget is bounded and published in the actual header",
+          "[.][quiet-controller-budget]")
+{
+    Environment environment;
+    Directory directory;
+    Shutdown shutdown;
+    REQUIRE(setenv("ALCHEMY_METAL_QUIET_CAPTURE", "off", 1) == 0);
+    const char* requested = std::getenv("ALCHEMY_METAL_TEST_DIAGNOSTIC_MAX_MIB");
+    if (requested) REQUIRE(setenv("ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB", requested, 1) == 0);
+    const bool accepted = !requested || std::strcmp(requested, "64") == 0 ||
+        std::strcmp(requested, "128") == 0 ||
+        std::strcmp(requested, "256") == 0;
+    alQuietDiagnosticsInitialize();
+    CHECK(D::enabled() == accepted);
+    alQuietDiagnosticsShutdown(shutdown.frame);
+    const auto output = directory.path / "diagnostic.jsonl";
+    CHECK(fs::exists(output) == accepted);
+    if (accepted)
+    {
+        std::ifstream input(output);
+        std::string header;
+        REQUIRE(static_cast<bool>(std::getline(input, header)));
+        const auto mib = requested && std::strcmp(requested, "256") == 0 ? 256ull :
+            requested && std::strcmp(requested, "128") == 0 ? 128ull : 64ull;
+        const auto bytes = mib * 1024 * 1024;
+        CHECK(header.find("\"max_bytes\":" + std::to_string(bytes)) != std::string::npos);
+        CHECK_FALSE(alQuietDiagnosticsStatistics().automatic);
+    }
+}
+
 TEST_CASE("quiet controller: unset directory leaves the actual controller disabled",
           "[.][quiet-controller-off]")
 {
