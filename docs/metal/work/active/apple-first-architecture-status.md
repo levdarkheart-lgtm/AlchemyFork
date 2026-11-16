@@ -465,3 +465,46 @@ Current308 correctness exposed a real missing-library binding in lazy cloned
 PSO descriptors before activation. Correct that implementation defect, finish
 quality/lifecycle checks, and use component cost only to assess the mechanism
 and whether it warrants a whole-viewer trial. Do not call it an FPS gain.
+
+## 2026-11-16 — Coherent69172 candidate ready for owner evaluation
+
+Source350b803597e48a8c0e6b26b1050a47a5ae41e2ee, local tested branch
+codex/apple-first-integrated-candidate-69172. Doctor/configure/build pass; current
+native5627/5, modern-sky242875/13, full34renderer1135022/375 and exactapp/static/
+strict3602zero pass. Earlier94compile/95library/96fixture failures and repairs
+remain inPPD308. No failed source was staged.
+
+Actual encoder census is2/3/3/4→1 over empty/point/projector/mixed families,
+with identical2/11/6/15draws and one original command commit. Pixel/depth/
+stencil/query/positive-light and native-prefix cancellation/retry checks pass.
+Eight native cost cells retain176 cold/warmup/measured observations; diagnostic
+exact lighting-command GPU medians are2.42–17.99% shorter in the fixture.
+Live collection, publication, G-buffer/lightmap/assets and ordinary frame
+overlap are outside that fixture. Its idle barrier also limits elapsed timing.
+This does not demonstrate whole-viewer FPS, pacing or physical tile traffic.
+
+The single separately staged app is artifacts/metal/
+apple-first-persistent-native-scene-20261114/architecture-combined-69172/.
+All8273 app nodes match the passed source bundle, and21checksum entries pass.
+Main executable SHA256 is b8e5596c3abcc69403a36d9bdb7935a991877edbc1f792b4513f2f161b41e9e4.
+Primary launcher enables308 as a provisional owner comparison; baseline launcher
+targets the identical app with only RenderMetalMainLightingRenderPass=false.
+A live OFF/ON/OFF debug-control comparison avoids restarting/loading differences.
+Both preserve scene publication/stability, selected large-shadow overlap,
+resource/admission/retirement and existing features;307/banks/visibility
+experiments remainOFF. The terrain omission repair is included, runtime recovery
+unverified. Earlier owner apps remain untouched; no viewer was launched.
+
+Reassessment uses existing full69122 frame/CPU/GPU/loading evidence and69151
+activation/short-trace limits. It does not identify a new critical-path cause
+from cache counts or overlapped envelopes. The next whole-engine question is
+whether308 improves cadence while real shadows, probes, avatars and asset
+loading continue. Repeatedly unsuccessful tiny-work/ICB variants stop here.
+Owner feedback can answer this without another recording; detailed profiling
+is targeted help when available. Quality/features/loading, frame tails,
+physical memory and long-session stability remain open. Goal remainsactive and
+architecture/performance acceptance partial; no product completion or push.
+
+Evidence: combined-stage-97-final.json, combined-selection-97.json,
+main-lighting-renderpass-cost-97-summary.json, current native/build receipts,
+whole-viewer-reassessment-97-20261116.md and staged provenance/AB-CONTROLS.json.
