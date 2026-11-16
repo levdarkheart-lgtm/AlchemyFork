@@ -2682,3 +2682,46 @@ Allthreeauthorsdisjointworktrees/files; rootintegrationonlysharedpipeline.
 Nextfreeze75→required/static/strict→newhelper/image/segmenttests, fullnative
 regressionandcorrected108cost once. No liveviewer/profile/push; staged69122
 and69129 unchanged. Wholearchitecture/realusefulG3/performanceacceptancepartial.
+
+
+## Source75 validated and separately staged —2026-11-16
+
+Exact `a5ea338f22d2ef3b419e6ff47c3cc7cb625695ce`,69134. Required doctor,
+configure and full build exit0; build816.447s. Static verification0; strict
+3595files/0blockers/0errors. All34 renderer scopes pass under API/GPU validation:
+1,130,416 assertion-executions/349 case-executions,166.108s. New helper tests
+378/7, full native-image/upload coverage6464/34 and corrected segment876100/1
+pass. Scope overlaps retained. Both new diagnostic strings verified in the
+exact executable. Independent read-only297 integration review finds no API,
+format, NPOT, byte-layout or counter-assumption blocker.
+
+Corrected G3 preparation cost rerun6388/1 PASS,6.408s.108 triples/324 arms/
+8748 raw rows validated; aggregate serial andDispatch each0/108 median wins.
+Dispatch overhead867/1158/8192:45.16%/40.89%/35.27%. Keep production thresholds
+and existing downstream certificate specialization. Old74 measurements retained;
+no repeated RGB/topology timing matrix was needed because measured production
+helper hashes match the frozen integrated source exactly.
+
+`combined-component-cost-gate-75.json` records exact helper identities, current
+correctness receipts, component scope, cold/topology debts and unknown activation
+frequency. The pure RGB helper is unchanged; counters are outside its measured
+scope. Source75 uses the same explicit renderer policy as69122/69129.
+`architecture-combined-69134/provenance.json` VERIFIED:8,273 identical inventory
+nodes, staged native static/deep signature and evidence checksums PASS.
+ExecutableSHA2566320a5c589bd55b0a72758c67d35d5d068c02e186cee405bed9882c1cfef41d2.
+No launcher/viewer execution;69122 and69129 preserved.
+
+PPD241 records the read-only native-encoding overlap audit: current mutable
+renderer/FrameData/command/callback state prevents a batch-only worker. Separate
+body palette owners, stable destination ownership and owner settlement are also
+required; terrain/native leases already pin their inputs. Global frame admission
+is mutex-protected, but admission closures are context-private. One non-query
+independent view is the restrictable boundary; query/borrowed probe transactions
+need broader ordering treatment. No worker race introduced or gain inferred.
+
+Current status and exact owner launcher: [architecture status](apple-first-architecture-status.md).
+Architecture/performance acceptance remains partial and goal active. Next
+unresolved implementation decision is useful owned encoding work versus its
+eligible transaction coverage and isolation cost; do not force small-family
+jobs or duplicate mutable renderer state. Owner runtime acceptance is separate.
+No further viewer launch/login/live profiling/push authorized here.
