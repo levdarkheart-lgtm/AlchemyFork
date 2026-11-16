@@ -31,6 +31,7 @@
 
 #include "pipeline.h"
 #include "../almetal/almetalworldanimated.h"
+#include "../almetal/almetaldiagnostictelemetry.h"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -3026,6 +3027,32 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
     const bool main_world_capture = !probe_face && isMainWorldPass() &&
         mRT == &mMainRT;
+    if (main_world_capture && ALMetalDiagnosticTelemetry::enabled())
+    {
+        static std::uint64_t last_diagnostic_ns = 0;
+        const auto now = ALMetalDiagnosticTelemetry::machTimeNs();
+        if (!last_diagnostic_ns || now - last_diagnostic_ns >= 1'000'000'000ull)
+        {
+            last_diagnostic_ns = now;
+            const ALMetalDiagnosticTelemetry::FrameTag tag{gFrameCount,
+                ALMetalDiagnosticTelemetry::ViewKind::main, -1};
+            const auto cache = sNativeSceneSources.stats();
+            ALMetalDiagnosticTelemetry::recordMetrics(tag, "source_cache",
+                {cache.entries, cache.unique_resources, cache.estimated_bytes, cache.max_bytes,
+                    cache.capacity_rejections[2], cache.capacity_rejections[3],
+                    cache.capacity_evictions, cache.new_retains});
+            const auto uploads = LLVertexBuffer::metalUploadStats();
+            ALMetalDiagnosticTelemetry::recordMetrics(tag, "vertex_uploads",
+                {uploads.full_uploads, uploads.partial_uploads, uploads.uploaded_bytes,
+                    uploads.recycled_generations, uploads.leased_orphans, 0, 0, 0});
+            const auto textures = LLImageGL::metalPublicationStats();
+            ALMetalDiagnosticTelemetry::recordMetrics(tag, "texture_publication",
+                {textures.cow_attempts, textures.cow_replacements, textures.cow_encoded_bytes,
+                    textures.worker_uploads, textures.worker_batch_commits,
+                    textures.worker_batch_failures, textures.immediate_upload_commits,
+                    textures.immediate_upload_failures});
+        }
+    }
     if (snapshot_request && !main_world_capture)
     {
         // A normal snapshot owns only the main-world transaction. Reflection

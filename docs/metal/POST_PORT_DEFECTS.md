@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-320 -->
+<!-- next-defect-id: PPD-322 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7628,6 +7628,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 initial collector start failed on duplicate name argument; synthetic parser/size tests had not exercised actual start path. Owner stopped the later direct partial trace and closed the viewer. On explicit restart instruction, direct Overview attach was started before Login cue; faulty expected readiness text caused unnecessary delay but live child ktrace data proved recording before owner login. Full restarted run is usable with precise phase/exit-status limits. The later requested3s detail exceeds1GiB raw guard;1.662047s is retained with failed-size status. A206ms trace-start worker stall is attributable to AGX resource/signpost enumeration, not ordinary rendering cost. No engineering/profiling restart after owner requests discussion.
 
+- 2026-11-16 active diagnostic preparation implements attach-only notification-based recorder readiness with retained parent status and bounded exports. Two real3s nonviewer fixtures establish startup/CPU retention; optional scheduler mode has approximately31x sampled raw growth and is limited to5s rather than used continuously. Independent integration review finds two new qualification gaps before owner runtime: a native duration cutoff with zero drop counters could be called complete without full frame coverage, and mixed CPU/display/GPU Overview rows could satisfy the GPU gate. Require UTC-calibrated native FRAME overlap and separate positive target GPU Begin-to-End/Active-Time family coverage; preserve prior runs and label incomplete coverage. Corrections/tests in progress; no new viewer run or PPD-319 cause claim.
+
 ## PPD-319 — Quiet frame cadence declines after login as completion latency grows
 
 - Status: investigating
@@ -7646,3 +7648,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 owner report registered and confirmed by restarted recording. Renderer contract repair PPD315 is active, PPD316 subscription dedup runs, and PPD317 covered recipes restore without failure; those facts do not close this performance report. Source byte-pressure churn persists at3.892GB logical cap. Lateclub CPU remains shadow/geometry/lighting/probe dominated while GPU lighting/haze/SSAO/shadow work is material.223structured warnings/0ERROR/FATAL plus3PNGstderr notices are exhaustively source-mapped; actual asset failures remain functional/loading concerns without demonstrated causation of the quiet FPS decline. Viewer normal Goodbye15:12:57; no further code change or profile after owner discussion request.
 
 - 2026-11-16 owner explicitly pauses the original architecture goal and makes explaining this quiet decline the sole current objective. [Diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md) records the capture method and incomplete preparation. Source inspection confirms existing capture/stage timing are post-benchmark gated and stage timing excludes ordinary shadow overlap; do not reuse that altered schedule as representative startup evidence. Prepare bounded early/late quiet capture, workload/resource evolution and available GPU limiter/frequency/thermal evidence. No new renderer change, launch or profile during discussion; cause and owner acceptance remain open.
+
+## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex quiet diagnostic integration
+- Discovered: 2026-11-16
+- Original reference: New uncommitted diagnostic-only alquietdiagnostics.cpp heartbeat returns when no capture is active, so it cannot terminate an already-started quiet sequence on an app-iteration transition between early/late captures. Hook invalidation tests only gTeleportDisplay; LLAgent TELEPORT_LOCAL can transition without that screen. No original renderer behavior is changed by these hooks.
+- Evidence: Independent integration source review of the in-progress quiet diagnostic controller and actual llagent.cpp local teleport path; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md).
+- Next action: Feed heartbeat invalidation to the trigger policy even between captures, include actual non-NONE teleport state, and test the actual controller body with transient invalidation. Retain finite attempts and normal rendering.
+- Verification: Source-only discovery before the first diagnostic viewer build/run. No live miscapture, FPS cause, successful repair or owner acceptance is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before repair. This is capture attribution correctness, separate from the unresolved viewer decline PPD-319 and old collector lifecycle PPD-318. Original architecture work remains paused.
+
+- 2026-11-16 repair draft feeds between-capture invalidation, observes non-NONE teleport state, and separates expected sequence invalidation from capture failure. Peer review additionally finds an asynchronously bounded telemetry sink can disable between iterations, skipping the previous enabled-only heartbeat. Add an unconditional cheap heartbeat at app entry and an actual-controller sink-cutoff test. No diagnostic viewer execution or repair acceptance yet.
+
+## PPD-321 — New diagnostic telemetry allocates while disabled and mishandles startup failure
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex quiet diagnostic telemetry
+- Discovered: 2026-11-16
+- Original reference: In-progress default-off native diagnostic sink calls its allocating state() accessor from stop()/statistics(); new viewer cleanup would allocate the ring despite no collection request. Independent review also finds header-write/allocation startup failure needs descriptor RAII and active-session publication must follow successful writer creation. These are new diagnostic-only lifecycle defects, not an original renderer or measured FPS cause.
+- Evidence: [Diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md), root and independent source review of isolated codex/quiet-gpu-telemetry; retained native/core/observer-cost fixtures under private artifacts/metal/quiet-diagnostic-telemetry-20261116T160407Z and preparation receipts.
+- Next action: Integrate the corrected lazy existing-state lookup, descriptor ownership and writer-start handoff; rerun contained disabled/failure/session/native completion checks, then verify actual diagnostic viewer build before owner capture.
+- Verification: Agent reports corrections and component tests in progress. Original and utility-QoS tiny native-blit cost results are retained, including adverse pairs; they do not prove viewer overhead or explain PPD-319. No viewer launch/profile occurred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 component lifecycle review findings retained during preparation. Original architecture work stays paused; no architecture optimization selected.

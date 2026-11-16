@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "almetalshadowtask.h"
+#include "almetaldiagnostictelemetry.h"
 #include <dispatch/dispatch.h>
 #include <chrono>
 #include <thread>
@@ -22,12 +23,14 @@ struct ALMetalShadowViewTask::Impl
         std::uint64_t encode_started_ns = 0, encode_finished_ns = 0;
         std::uint64_t retained_cpu_bytes = 0;
         std::thread::id owner_thread;
+        ALMetalDiagnosticTelemetry::FrameTag diagnostic_frame;
         bool worker_is_owner = false;
         std::string error;
     };
     static void run(void* opaque) noexcept
     {
         auto& job = *static_cast<Job*>(opaque);
+        ALMetalDiagnosticFrameScope diagnostic_scope(job.diagnostic_frame);
         const auto started = std::chrono::steady_clock::now();
         job.encode_started_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(started.time_since_epoch()).count();
         job.worker_is_owner = std::this_thread::get_id() == job.owner_thread;
@@ -97,6 +100,9 @@ bool ALMetalShadowViewTask::start(ALMetalWorldGBufferRenderer& owner, std::uint6
     packet->mCPUReservation = std::move(credit);
     job->context = mImpl->mContext.get();
     job->owner_thread = std::this_thread::get_id();
+    if (ALMetalDiagnosticTelemetry::enabled())
+        job->diagnostic_frame = {frame, ALMetalDiagnosticTelemetry::ViewKind::shadow,
+            static_cast<std::int32_t>(slice)};
     job->packet = std::move(packet); job->target = std::move(target); job->slice = slice;
     mImpl->mJob = std::move(job); mImpl->mGroup = group;
     mImpl->mDecline = Decline::none;
@@ -109,7 +115,13 @@ ALMetalShadowViewTask::Outcome ALMetalShadowViewTask::finish(bool submit, std::s
 {
     Outcome outcome;
     if (!mImpl->mJob) return outcome;
+    const auto diagnostic_start = ALMetalDiagnosticTelemetry::enabled()
+        ? ALMetalDiagnosticTelemetry::machTimeNs() : 0;
     dispatch_group_wait(mImpl->mGroup, DISPATCH_TIME_FOREVER);
+    if (diagnostic_start)
+        ALMetalDiagnosticTelemetry::recordMetrics(mImpl->mJob->diagnostic_frame,
+            "cpu_shadow_encoding_join", {diagnostic_start,
+                ALMetalDiagnosticTelemetry::machTimeNs(), 0, 0, 0, 0, 0, 0});
     dispatch_release(mImpl->mGroup); mImpl->mGroup = nullptr;
     outcome.encoded = mImpl->mJob->encoded; outcome.encode_ns = mImpl->mJob->encode_ns;
     outcome.encode_started_ns = mImpl->mJob->encode_started_ns;

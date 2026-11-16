@@ -156,6 +156,7 @@ if(AL_BUILD_VIEWER)
     aldroptarget.cpp
     alfarplaneoverlay.cpp
     almetalbenchmark.cpp
+    alquietdiagnostics.cpp
     alprobereadiness.cpp
     alfloaterblocked.cpp
     alfloaterdirectory.cpp
@@ -1036,6 +1037,7 @@ if(AL_BUILD_VIEWER)
     aldroptarget.h
     alfarplaneoverlay.h
     almetalbenchmark.h
+    alquietdiagnostics.h
     alprobereadiness.h
     alfloaterblocked.h
     alfloaterdirectory.h
@@ -2767,6 +2769,16 @@ if(AL_BUILD_TESTS)
   # llui's headers, which the viewer's precompiled header names, without its
   # library, whose code they stub.
   set(llui_headers $<TARGET_PROPERTY:llui,INTERFACE_INCLUDE_DIRECTORIES>)
+  al_add_test_binary(
+    alquietdiagnostics_controller_test
+    PROJECT ${test_project}
+    SOURCES tests/alquietdiagnostics_controller_test.mm
+    UNIT alquietdiagnostics.cpp llversioninfo.cpp
+    LIBRARIES almetal ${test_libs}
+    INCLUDES ${llui_headers}
+  )
+  set_source_files_properties(tests/alquietdiagnostics_controller_test.mm
+      PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   al_add_test_binary(
     lldateutil_test
     PROJECT ${test_project}

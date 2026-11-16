@@ -33,6 +33,7 @@
 #include "alframeend.h"
 #include "alhuddepth.h"
 #include "almetalbenchmark.h"
+#include "alquietdiagnostics.h"
 #include "alprobereadiness.h"
 #if LL_DARWIN
 #include "../almetal/almetaldevice.h"
@@ -1530,6 +1531,34 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     const bool metal_normal_display =
         !for_snapshot && !gSnapshot && !gCubeSnapshot &&
         !LLPipeline::sRenderingHUDs && zoom_factor == 1.f && subfield == 0;
+    // Before any new display commands. This diagnostic path has no benchmark
+    // prerequisite, renderer mode or stage scope; ordinary overlap stays active.
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        ALQuietDiagnosticDisplay quiet;
+        quiet.frame = static_cast<std::uint64_t>(gFrameCount) + 1;
+        quiet.normal_display = metal_normal_display;
+        quiet.world_invalidated = gTeleportDisplay ||
+            gAgent.getTeleportState() != LLAgent::TELEPORT_NONE || gDisconnected ||
+            LLAppViewer::instance()->logoutRequestSent() || LLApp::isExiting();
+        quiet.world_ready = LLStartUp::getStartupState() >= STATE_STARTED &&
+            !quiet.world_invalidated && !display_window_hidden() &&
+            !gPipeline.windowResizePending();
+        quiet.cadence_valid = quiet.world_ready && gFocusMgr.getAppHasFocus() &&
+            !gNonInteractive;
+        ALMetalDevice* device = nullptr;
+        if (gViewerWindow && gViewerWindow->getWindow())
+        {
+            device = gViewerWindow->getWindow()->getMetalDevice();
+            quiet.width = llmax(gViewerWindow->getWindowWidthRaw(), 0);
+            quiet.height = llmax(gViewerWindow->getWindowHeightRaw(), 0);
+        }
+        quiet.tracked_texture_bytes = LLImageGL::getTextureBytesAllocated();
+        quiet.tracked_device_bytes = LLImageGL::getDeviceBytesAllocated();
+        quiet.object_count = llmax(gObjectList.getNumObjects(), 0);
+        alQuietDiagnosticsAdvanceDisplay(device, quiet);
+    }
+    std::optional<ALMetalDiagnosticFrameScope> quiet_main_scope;
     advance_metal_frame_capture(metal_normal_display);
     advance_metal_stage_timing(metal_normal_display);
     std::optional<ALMetalStageTimingScope> stage_snapshot_guard;
@@ -1730,6 +1759,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     gPipeline.mBackfaceCull = true;
     gFrameCount++;
 #if LL_DARWIN
+    if (metal_normal_display && ALMetalDiagnosticTelemetry::enabled())
+        quiet_main_scope.emplace(ALMetalDiagnosticTelemetry::FrameTag{gFrameCount,
+            ALMetalDiagnosticTelemetry::ViewKind::main, -1});
     // display entry observes the preceding frame index; the actual world
     // commands below belong to this newly incremented main display.
     if (metal_normal_display && sMetalFrameCaptureMainEligible)

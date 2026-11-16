@@ -30,6 +30,9 @@
 
 #include "llappviewer.h"
 #include "alnativeframeplan.h"
+#if LL_DARWIN
+#include "alquietdiagnostics.h"
+#endif
 
 #include "alcrashreporter.h"
 
@@ -1375,9 +1378,96 @@ void LLAppViewer::initMaxHeapSize()
 }
 
 
+#if LL_DARWIN
+namespace
+{
+namespace QD = ALMetalDiagnosticTelemetry;
+
+// These are observed state bits, not successful presentation or readiness.
+std::uint64_t quiet_diagnostic_flags(LLAppViewer& app) noexcept
+{
+    std::uint64_t flags = 1; // State reader reached this app iteration.
+    flags |= std::uint64_t(gFocusMgr.getAppHasFocus()) << 1;
+    flags |= std::uint64_t(gTeleportDisplay) << 2;
+    flags |= std::uint64_t(gDisconnected) << 3;
+    flags |= std::uint64_t(app.logoutRequestSent()) << 4;
+    flags |= std::uint64_t(LLApp::isExiting()) << 5;
+    flags |= std::uint64_t(gNonInteractive) << 6;
+    if (gViewerWindow && gViewerWindow->getWindow())
+    {
+        flags |= 1ull << 7;
+        flags |= std::uint64_t(gViewerWindow->getWindow()->getVisible()) << 8;
+        flags |= std::uint64_t(gViewerWindow->getWindow()->getMinimized()) << 9;
+        flags |= std::uint64_t(gViewerWindow->getActive()) << 10;
+    }
+    return flags;
+}
+
+class QuietDiagnosticIteration final
+{
+public:
+    explicit QuietDiagnosticIteration(LLAppViewer& app) noexcept : mApp(app)
+    {
+        alQuietDiagnosticsInitialize();
+        // A bounded sink can disable between app iterations while its Metal
+        // capture is still open. Cleanup must not depend on another enabled
+        // telemetry iteration or display entry.
+        alQuietDiagnosticsHeartbeat(gFrameCount, false);
+        if (!QD::enabled()) return;
+        mEnabled = true;
+        mUncaught = std::uncaught_exceptions();
+        mFrame.start_mach_ns = QD::machTimeNs();
+        static std::uint64_t iteration = 0;
+        mFrame.iteration_id = ++iteration;
+        mFrame.begin_display_frame = gFrameCount;
+        mFrame.begin_startup_state = LLStartUp::getStartupState();
+        mFrame.begin_teleport_state = gAgent.getTeleportState();
+        mFrame.begin_flags = quiet_diagnostic_flags(app);
+        mFrame.outcome = QD::FrameOutcome::incomplete;
+    }
+    ~QuietDiagnosticIteration()
+    {
+        if (!mEnabled) return;
+        mFrame.end_mach_ns = QD::machTimeNs();
+        mFrame.end_display_frame = gFrameCount;
+        mFrame.end_startup_state = LLStartUp::getStartupState();
+        mFrame.end_teleport_state = gAgent.getTeleportState();
+        mFrame.end_flags = quiet_diagnostic_flags(mApp);
+        if (std::uncaught_exceptions() > mUncaught)
+            mFrame.outcome = QD::FrameOutcome::exception;
+        if (gViewerWindow && gViewerWindow->getWindow())
+        {
+            mFrame.drawable_width = llmax(gViewerWindow->getWindowWidthRaw(), 0);
+            mFrame.drawable_height = llmax(gViewerWindow->getWindowHeightRaw(), 0);
+        }
+        mFrame.native_exact = mFrame.end_display_frame != mFrame.begin_display_frame &&
+            mFrame.end_startup_state >= STATE_STARTED && gPipeline.metalWorldPresentationCurrent();
+        mFrame.quality = gSavedSettings.getU32("RenderQualityPerformance");
+        QD::recordFrame(mFrame);
+        alQuietDiagnosticsHeartbeat(gFrameCount, gTeleportDisplay ||
+            gAgent.getTeleportState() != LLAgent::TELEPORT_NONE || gDisconnected ||
+            mApp.logoutRequestSent() || LLApp::isExiting(),
+            gFocusMgr.getAppHasFocus() && gViewerWindow && gViewerWindow->getWindow() &&
+                gViewerWindow->getWindow()->getVisible() &&
+                !gViewerWindow->getWindow()->getMinimized() && !gNonInteractive);
+    }
+    void completed() noexcept
+    { if (mEnabled) mFrame.outcome = QD::FrameOutcome::completed; }
+private:
+    LLAppViewer& mApp;
+    QD::FrameRecord mFrame;
+    int mUncaught = 0;
+    bool mEnabled = false;
+};
+}
+#endif
+
 // externally visible timers
 bool LLAppViewer::frame()
 {
+#if LL_DARWIN
+    QuietDiagnosticIteration quiet_iteration(*this);
+#endif
     bool ret = false;
 
     if (gSimulateMemLeak)
@@ -1385,6 +1475,9 @@ bool LLAppViewer::frame()
         try
         {
             ret = doFrame();
+#if LL_DARWIN
+            quiet_iteration.completed();
+#endif
         }
         catch (const LLContinueError&)
         {
@@ -1407,6 +1500,9 @@ bool LLAppViewer::frame()
         {
             const auto start = std::chrono::steady_clock::now();
             ret = doFrame();
+#if LL_DARWIN
+            quiet_iteration.completed();
+#endif
             const auto end = std::chrono::steady_clock::now();
             const U64 doframe_time_us = (U64)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
             LLTrace::sample(LLStatViewer::DOFRAME_TIME_US, doframe_time_us);
@@ -1552,6 +1648,9 @@ bool LLAppViewer::doFrame()
                 {
                     LLPerfStats::RecordSceneTime T (LLPerfStats::StatType_t::RENDER_IDLE);
                     LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df idle");
+#if LL_DARWIN
+                    ALQuietDiagnosticSpan quiet_idle("cpu_idle");
+#endif
                     idle();
                 }
 
@@ -1582,9 +1681,16 @@ bool LLAppViewer::doFrame()
                 pingMainloopTimeout("Main:Display");
                 gGLActive = true;
 
+#if LL_DARWIN
+                {
+                    ALQuietDiagnosticSpan quiet_display("cpu_display_and_end_frame");
+#endif
                 display();
                 // The frame display() showed, if paced, ends here: the main loop's work in its slack, then the wait.
                 display_end_frame();
+#if LL_DARWIN
+                }
+#endif
                 // Ordinary probes consume the current required-main cost;
                 // destructor records the full outer frame, excluding CPU
                 // spent inside explicitly admitted optional update groups.
@@ -1602,6 +1708,11 @@ bool LLAppViewer::doFrame()
                     // them, so their captures would be GPU work for nothing.
                     if (!display_window_hidden())
                     {
+#if LL_DARWIN
+                        ALMetalDiagnosticFrameScope quiet_probe_frame({gFrameCount,
+                            QD::ViewKind::ordinary_probe, -1});
+                        ALQuietDiagnosticSpan quiet_probes("cpu_ordinary_probes");
+#endif
                         gPipeline.mReflectionMapManager.update();
                     }
                     LLFloaterSnapshot::update(); // take snapshots
@@ -1816,6 +1927,11 @@ void LLAppViewer::flushLFSIO()
 
 bool LLAppViewer::cleanup()
 {
+#if LL_DARWIN
+    // Close our own capture and CPU writer before viewer/global teardown.
+    // Pending native commands remain pending in diagnostics; no GPU drain is added.
+    alQuietDiagnosticsShutdown(gFrameCount);
+#endif
     // No later display tick is required to drain active streaming/preparation.
     ALNativeFrameBudget::instance().beginDrain();
 #if LL_VELOPACK

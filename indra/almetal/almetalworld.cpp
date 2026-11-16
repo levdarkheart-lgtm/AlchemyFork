@@ -9,6 +9,7 @@
  */
 
 #include "almetalworld.h"
+#include "almetaldiagnostictelemetry.h"
 #include "almetalworldprepare.h"
 #include "almetalworldvisibility.h"
 #include "almetalworldmaterialdata.h"
@@ -12675,6 +12676,18 @@ bool ALMetalWorldGBufferRenderer::encodeLocalLighting(
     const auto* specular = scene.gbuffer->colorTexture(1);
     const auto* normal = scene.gbuffer->colorTexture(2);
     const auto* depth = scene.gbuffer->depthStencilTexture();
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        std::uint64_t bounded_area = 0;
+        for (std::size_t index = 0; index < scene.bounded_light_count; ++index)
+            bounded_area += std::uint64_t(scene.lights[index].screen_rect[2]) *
+                scene.lights[index].screen_rect[3];
+        ALMetalDiagnosticTelemetry::recordMetrics(
+            ALMetalDiagnosticTelemetry::currentFrameTag(), "local_light_workload",
+            {scene.light_count, scene.bounded_light_count,
+                scene.light_count - scene.bounded_light_count, bounded_area,
+                input.width, input.height, with_depth, 0});
+    }
     bool encoded = true;
     if (scene.light_count != 0)
     {
@@ -12995,6 +13008,23 @@ bool ALMetalWorldGBufferRenderer::encodeProjectorLighting(
 {
     if (scene.light_count == 0) return true;
     const auto& input = scene.gbuffer->descriptor();
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        std::uint64_t area = 0, shadowed = 0, full_screen = 0;
+        for (std::size_t index = 0; index < scene.light_count; ++index)
+        {
+            const auto& light = scene.lights[index];
+            const bool bounded = light.screen_rect[2] && light.screen_rect[3];
+            area += bounded ? std::uint64_t(light.screen_rect[2]) * light.screen_rect[3] :
+                std::uint64_t(input.width) * input.height;
+            shadowed += light.shadow_channel >= 0;
+            full_screen += !bounded;
+        }
+        ALMetalDiagnosticTelemetry::recordMetrics(
+            ALMetalDiagnosticTelemetry::currentFrameTag(), "projector_workload",
+            {scene.light_count, shadowed, full_screen, area,
+                input.width, input.height, with_depth, needs_shadows});
+    }
     const auto* albedo = scene.gbuffer->colorTexture(0);
     const auto* specular = scene.gbuffer->colorTexture(1);
     const auto* normal = scene.gbuffer->colorTexture(2);
@@ -25707,6 +25737,26 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     {
         setError(error, "Metal world base-light G-buffer is incompatible");
         return nullptr;
+    }
+
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        auto tag = ALMetalDiagnosticTelemetry::currentFrameTag();
+        if (scene.diagnostic_view.view_kind >= 1 && scene.diagnostic_view.view_kind <= 3)
+            tag = {scene.diagnostic_view.frame_index,
+                static_cast<ALMetalDiagnosticTelemetry::ViewKind>(scene.diagnostic_view.view_kind),
+                scene.diagnostic_view.view_kind == 1 ? -1 :
+                    static_cast<std::int32_t>(scene.diagnostic_view.face_index)};
+        // Configured scene inputs, not the number of accepted probes/rays at
+        // each pixel. Replay counters/source profiling establish that work.
+        ALMetalDiagnosticTelemetry::recordMetrics(tag, "base_lighting_features",
+            {input.width, input.height,
+                scene.reflection_probes ? static_cast<std::uint64_t>(scene.reflection_probes->constants.config[0]) : 0,
+                scene.hero_probe ? scene.hero_probe->constants.config[1] : 0,
+                scene.screen_space_reflections ? scene.screen_space_reflections->constants.config[1] : 0,
+                scene.screen_space_reflections ? static_cast<std::uint64_t>(scene.screen_space_reflections->constants.trace[0]) : 0,
+                scene.screen_space_reflections ? static_cast<std::uint64_t>(scene.screen_space_reflections->constants.sampling[0]) : 0,
+                tile_light_map != nullptr});
     }
 
     ALMetalRenderTargetDescriptor output_descriptor;

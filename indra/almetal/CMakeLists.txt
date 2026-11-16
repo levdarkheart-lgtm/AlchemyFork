@@ -95,6 +95,7 @@ target_sources(
   almetal
   PRIVATE
     almetaldevice.mm
+    almetaldiagnostictelemetry.mm
     almetalavatarresources.cpp
     almetalframe.mm
     almetalframeadmission.cpp
@@ -134,10 +135,12 @@ target_sources(
     FILE_SET HEADERS
     FILES
       almetaldevice.h
+      almetaldiagnostictelemetry.h
       almetalavatarresources.h
       almetalframe.h
       almetalframeadmission.h
       almetalframecapture.h
+      almetalquietcapturepolicy.h
       almetalpbrpreview.h
       almetalpipeline.h
       almetalpipelinecache.h
@@ -296,6 +299,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_gbuffer_constants_test.mm
             tests/almetal_probe_workload_test.mm
             tests/almetal_frame_capture_test.mm
+            tests/almetal_quiet_capture_policy_test.cpp
+            tests/almetal_diagnostic_telemetry_test.mm
             tests/almetal_function_constants_test.mm
             tests/almetal_source_row_draw_test.mm
             tests/almetal_world_source_pages_test.mm
@@ -370,6 +375,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_probe_workload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_frame_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_diagnostic_telemetry_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_function_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
     # Exercise the same offline asset lookup as the viewer. CTest executes
