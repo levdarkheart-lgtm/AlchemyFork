@@ -175,3 +175,66 @@ Exact receipts under the existing private evidence root:
 `strict-source-75.json`, `stage-75-sha256sum-check.json` and the staged
 `architecture-combined-69134/provenance.json`. Owner whole-viewer feature,
 loading, memory, frame-time and stability acceptance remains pending.
+
+
+## 2026-11-16 — Actual owned native overlap delivered in69149
+
+Frozen source `1f83c401af038e4d5140e3a7963cb7a8f02a746a`, local experiment branch
+`codex/apple-first-native-cohort-consumption`; execution tree has this exact SHA.
+Production captures the next view while a single worker encodes the preceding
+owned packet in private mutable native state. It adopts the original command,
+completion and shared2-group×6-view admission rather than creating another
+transaction. Native query arrays are frozen; query tickets, projector validity,
+commit/cancel and callbacks settle on the owner after join. Main G-buffer,
+query reads, reset/reload/swap/readback and teardown drain outstanding work.
+Borrowed probe/hero transactions retain ordinary native rendering.
+
+CPU packet arrays carry their preparation reservation through encoding, joins,
+result moves and partial recycling, separately from GPU-owned generations.
+The common policy bounds startup jobs and32MiB logical packet capacity; this is
+not physical RAM or another charge for shared native geometry/textures.
+Reserved-empty recycling and GPU-independent retirement are native-tested.
+
+Unconditional overlap at256 draws lost17.9–19.1% owner-phase wall and7–7.7%
+settled time in source79, with almost all real overlap missed. Preserve that
+failure. Source80 uses one shared cheap native-batch work gate BEFORE context,
+snapshot or dispatch. Below1024, requested overlap keeps the ordinary serial
+route;1024+ uses actual packet/adoption/worker/join. Dedicated logs report work,
+budget/adoption/timing/readback/borrowed denials and logical CPU packet debt.
+
+The complete12-cell native comparison covers32/256/867/1024/1158/4096 native
+batches, query/nonquery, three authored views, cold+warmup+8 counterbalanced
+pairs,240 raw samples. All pixel/query comparisons and20476 assertions pass.
+All six eligible medians improve owner-phase9.0–16.4% and settled6.5–12.8%,
+with real worker/next-producer intersection in every measured eligible sample.
+The six smaller cells prove0workers/context; their timing variation remains in
+full. Owner-phase is elapsed wall, not summed CPU-core time. GPU-sum at4096
+nonquery rises10.16% while GPU envelope and settled wall fall; cause and
+competition with a full busy-scene GPU workload remain unknown.
+
+These are32×32 shared-geometry component costs. Live LL traversal/culling,
+asset publication, pose solve and the LL query-ticket pool are excluded.
+This selects an OWNER trial, not a viewer FPS or completed product claim.
+The earlier295/296/297 measured files and all prior input hashes are unchanged;
+`component-cost-reuse-80.json` records that limited reuse explicitly.
+
+Doctor/configure/build, static ARM64/signature/import/media/voice/codec gates,
+strict3597files/0blockers/0errors and full34renderer scopes1130524 assertion-
+executions/356 case-executions pass. New task2424/5, bytes49/4, packet59/3,
+context392/5 and shared-shadow/material/reload18390/29 also pass; counts overlap.
+
+[Launch Apple First Combined.command](</Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-combined-69149/Launch Apple First Combined.command>)
+requests the selected1024+ policy on the separately staged69149 app; use this
+launcher to exercise the selection. Provenance is VERIFIED;8273 inventory
+nodes match, staged static verification and all checksum rows pass. Executable
+SHA256 `b0de99a90277f19c12f9a93edc59f9b6d8ecd73a2d3e3f0e0b672cc8cceb6745`.
+The app/launcher were not executed;69122/69129/69134 stay untouched.
+
+Exact private receipts: `frozen-source-build-80.json`, `native-correctness-80.json`,
+`native-shadow-task-80.json`, `native-preparation-bytes-80.json`,
+`shadow-task-cost-80{,-summary}.json`, `static-native-80.json`,
+`strict-source-80.json`, `stage-80-delivery-check.json` and staged provenance.
+PPD241/299 remain owner-pending. Next assess exact69149 runtime activation,
+frame tails, full GPU competition, queries/projectors/probes, loading and
+stability. The69122 profile cannot establish69149 performance. No new viewer
+launch/login/live profile or push; original whole-engine goal remains active.

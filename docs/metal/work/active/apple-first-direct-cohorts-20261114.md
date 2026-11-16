@@ -2903,3 +2903,21 @@ retirement, startup bounds, memory-pressure admission and checked arithmetic.
 CPU-busy alone must not deny useful preparation. Dedicated actual helper test
 will verify byte-denial leaves packet and original admitted command untouched.
 No runtime memory regression or FPS attribution inferred from source.
+
+
+## 2026-11-16 — Actual owned native overlap delivered in69149
+
+Frozen80 `1f83c401af038e4d5140e3a7963cb7a8f02a746a` /69149 is separately
+staged VERIFIED8273 nodes; app/launcher unexecuted and prior owner apps preserved.
+Production adopts original shared admission/command/completion, freezes native
+query inputs, overlaps next capture and settles query/projector/lifecycle on
+owner join. Packet-owned CPU debt repairs299 independently of GPU lifetime.
+Unconditional256-draw dispatch loses; selected owner policy gates before
+context/snapshot below1024. Complete12cell/240row gate20476/1 passes; eligible
+owner-phase9–16%/settled6–13% medians improve. Smaller views remain serial;
+GPU-sum4096/nonquery+10.16% and all adverse/cold samples remain explicit.
+Required build/static/strict and full34scopes1130524/356 pass; new native task
+2424/5 and bytes49/4 pass. No viewer FPS/feature/stability acceptance inferred.
+Full ownership/cost/receipt/launcher details: [current delivery](apple-first-architecture-status.md#2026-11-16--actual-owned-native-overlap-delivered-in69149).
+Next: exact69149 owner runtime activation/full-engine evidence, not69122 reuse.
+No launch/login/live profile/push; PPD241/299 and original goal remain active.
