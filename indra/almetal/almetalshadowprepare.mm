@@ -174,6 +174,121 @@ ALMetalShadowSourceRecord::ALMetalShadowSourceRecord(
       mTextures(std::move(textures)), mRequiresPalette(rigged)
 {}
 
+namespace
+{
+std::uint64_t shadowTextureBytes(const ALMetalTexture& texture) noexcept
+{
+    const auto multiply = [](std::uint64_t a, std::uint64_t b)
+    {
+        constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+        return b && a > maximum / b ? maximum : a * b;
+    };
+    const auto& descriptor = texture.descriptor();
+    std::uint64_t bytes = 0;
+    // Certified source textures are 2D. Keep the descriptor's actual array
+    // and sample counts in the same logical byte operand as source accounting.
+    const auto slices = std::max<std::uint64_t>(descriptor.array_length, 1);
+    const auto samples = std::max<std::uint64_t>(descriptor.sample_count, 1);
+    const auto block_width = std::max<std::uint64_t>(texture.blockWidth(), 1);
+    const auto block_height = std::max<std::uint64_t>(texture.blockHeight(), 1);
+    for (std::uint32_t mip = 0; mip < descriptor.mipmap_level_count; ++mip)
+    {
+        auto level = multiply((std::uint64_t(texture.width(mip)) + block_width - 1) / block_width,
+                              (std::uint64_t(texture.height(mip)) + block_height - 1) / block_height);
+        level = multiply(multiply(level, texture.bytesPerBlock()), multiply(slices, samples));
+        if (level > std::numeric_limits<std::uint64_t>::max() - bytes)
+            return std::numeric_limits<std::uint64_t>::max();
+        bytes += level;
+    }
+    return bytes;
+}
+}
+
+ALMetalShadowSourceRecipe::ALMetalShadowSourceRecipe(const ALMetalShadowSourceRecord& record)
+    : mCertifiedGeneration(record.mGeneration), mPrototype(record.mPrototype),
+      mVertices(record.mVertices), mIndices(record.mIndices),
+      mVertexBytes(record.mVertices->length()), mIndexBytes(record.mIndices->length()),
+      mRequiresPalette(record.mRequiresPalette)
+{
+    mTextures.reserve(record.mTextures.size());
+    for (const auto& texture : record.mTextures)
+        mTextures.push_back({texture, shadowTextureBytes(*texture)});
+}
+
+std::shared_ptr<const ALMetalShadowSourceRecipe> ALMetalShadowSourceRecipe::create(
+    const ALMetalShadowSourceRecord& record, std::string* error)
+{
+    try
+    {
+        return std::shared_ptr<const ALMetalShadowSourceRecipe>(new ALMetalShadowSourceRecipe(record));
+    }
+    catch (const std::bad_alloc&)
+    {
+        fail(error, "Could not allocate CPU shadow restoration recipe");
+        return {};
+    }
+}
+
+std::shared_ptr<const ALMetalShadowSourceRecord> ALMetalShadowSourceRecipe::restore(
+    std::uint64_t generation, std::string* error) const
+{
+    if (generation <= mCertifiedGeneration)
+    {
+        fail(error, "Shadow recipe needs a newer nonzero publication generation");
+        return {};
+    }
+    auto vertices = mVertices.lock();
+    auto indices = mIndices.lock();
+    if (!vertices || !indices || vertices.get() != mPrototype.vertices || indices.get() != mPrototype.indices)
+    {
+        fail(error, "Shadow recipe backing generation expired");
+        return {};
+    }
+    try
+    {
+        std::vector<std::shared_ptr<const ALMetalTexture>> textures;
+        textures.reserve(mTextures.size());
+        const auto& coverage = mPrototype.coverageData();
+        for (std::size_t slot = 0; slot < mTextures.size(); ++slot)
+        {
+            auto texture = mTextures[slot].allocation.lock();
+            if (!texture || texture.get() != coverage.textures[slot])
+            {
+                fail(error, "Shadow recipe texture generation expired");
+                return {};
+            }
+            textures.push_back(std::move(texture));
+        }
+        // Only this certified recipe can enter the private constructor. The
+        // exact weak wrapper control blocks, immutable layout and coverage
+        // are unchanged; no raw prototype or substitute resource is accepted.
+        // In particular, a rigged recipe stays pose-free and still REQUIRES
+        // the current per-instance certified palette during preparation.
+        return std::shared_ptr<const ALMetalShadowSourceRecord>(new ALMetalShadowSourceRecord(
+            generation, mPrototype, std::move(vertices), std::move(indices),
+            std::move(textures), mRequiresPalette));
+    }
+    catch (const std::bad_alloc&)
+    {
+        fail(error, "Could not restore immutable shadow source");
+        return {};
+    }
+}
+
+std::uint64_t ALMetalShadowSourceRecipe::ownedBytes() const noexcept
+{
+    // Account the shared coverage conservatively even while an active record
+    // shares it. This CPU charge never pins or charges the native resources.
+    constexpr std::uint64_t shared_control_block = 4 * sizeof(void*);
+    return sizeof(*this) + shared_control_block + mTextures.capacity() * sizeof(Texture) +
+        (mPrototype.sharedCoverageData() ? sizeof(ALMetalWorldSpotShadowBatch::CoverageData) + shared_control_block : 0);
+}
+
+std::uint64_t ALMetalShadowSourceRecipe::textureBytes(std::size_t slot) const noexcept
+{
+    return slot < mTextures.size() ? mTextures[slot].bytes : 0;
+}
+
 bool ALMetalShadowSourceRecord::matchesStableInputs(
     const ALMetalWorldSpotShadowBatch& batch) const noexcept
 {

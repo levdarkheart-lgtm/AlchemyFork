@@ -12,6 +12,7 @@
 #include <span>
 
 class ALNativeFrameBudget;
+class ALMetalShadowSourceRecipe;
 
 // Published by the render owner after resolving mutable viewer state. A lease
 // must exclude backing-store reuse, not only keep an Objective-C name alive.
@@ -32,6 +33,9 @@ public:
     std::uint64_t generation() const noexcept { return mGeneration; }
     const ALMetalWorldSpotShadowBatch& prototype() const noexcept { return mPrototype; }
     bool requiresPalette() const noexcept { return mRequiresPalette; }
+    const std::shared_ptr<const ALMetalBuffer>& vertexLease() const noexcept { return mVertices; }
+    const std::shared_ptr<const ALMetalBuffer>& indexLease() const noexcept { return mIndices; }
+    std::span<const std::shared_ptr<const ALMetalTexture>> textureLeases() const noexcept { return mTextures; }
     // Cheap certification of the exact immutable geometry/material tuple.
     // View MVP, current pose and animated texture matrix are deliberately NOT
     // certified here. Shared producer-independent sources supply identity UV;
@@ -43,6 +47,7 @@ public:
     bool matchesStableInputs(const ALMetalWorldSpotShadowBatch&) const noexcept;
 
 private:
+    friend class ALMetalShadowSourceRecipe;
     ALMetalShadowSourceRecord(std::uint64_t, ALMetalWorldSpotShadowBatch,
         std::shared_ptr<const ALMetalBuffer>, std::shared_ptr<const ALMetalBuffer>,
         std::vector<std::shared_ptr<const ALMetalTexture>>, bool);
@@ -52,6 +57,46 @@ private:
     const std::shared_ptr<const ALMetalBuffer> mIndices;
     const std::vector<std::shared_ptr<const ALMetalTexture>> mTextures;
     const bool mRequiresPalette;
+};
+
+// CPU-only restoration certificate, made exclusively from a fully validated
+// source record. It keeps copied stable values/immutable coverage and WEAK
+// exact native generations; it owns no record, pose, viewer or native resource.
+// The scene owner must independently prove that the producer identity/revision
+// is still current before and after restoring. Cache eviction is not such a
+// mutation, while resource/geometry/material writes invalidate that producer.
+class ALMetalShadowSourceRecipe final
+{
+public:
+    static std::shared_ptr<const ALMetalShadowSourceRecipe> create(
+        const ALMetalShadowSourceRecord&, std::string* error = nullptr);
+    std::shared_ptr<const ALMetalShadowSourceRecord> restore(
+        std::uint64_t new_generation, std::string* error = nullptr) const;
+    ALMetalShadowSourceRecipe(const ALMetalShadowSourceRecipe&) = delete;
+    ALMetalShadowSourceRecipe& operator=(const ALMetalShadowSourceRecipe&) = delete;
+    bool requiresPalette() const noexcept { return mRequiresPalette; }
+    std::uint64_t certifiedGeneration() const noexcept { return mCertifiedGeneration; }
+    // Logical CPU allocation charge and cached logical native byte operands,
+    // not physical RAM/residency. Native descriptors are inspected only once
+    // when creating the recipe, never by restore(). Repeated texture roles
+    // remain ordered; the caller's native union deduplicates their owners.
+    std::uint64_t ownedBytes() const noexcept;
+    std::uint64_t vertexBytes() const noexcept { return mVertexBytes; }
+    std::uint64_t indexBytes() const noexcept { return mIndexBytes; }
+    std::uint64_t textureBytes(std::size_t slot) const noexcept;
+private:
+    struct Texture
+    {
+        std::weak_ptr<const ALMetalTexture> allocation;
+        std::uint64_t bytes = 0;
+    };
+    explicit ALMetalShadowSourceRecipe(const ALMetalShadowSourceRecord&);
+    const std::uint64_t mCertifiedGeneration;
+    const ALMetalWorldSpotShadowBatch mPrototype;
+    const std::weak_ptr<const ALMetalBuffer> mVertices, mIndices;
+    const std::uint64_t mVertexBytes, mIndexBytes;
+    const bool mRequiresPalette;
+    std::vector<Texture> mTextures;
 };
 
 inline constexpr std::array<float, 16> alMetalShadowIdentity = {
