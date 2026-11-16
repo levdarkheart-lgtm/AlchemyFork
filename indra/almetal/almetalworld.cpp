@@ -178,6 +178,15 @@ namespace
     constexpr std::uint32_t probe_shadow_function_constant = 0;
     // Matches almetal_world_presentation_cutout_coverage in the same module.
     constexpr std::uint32_t presentation_cutout_function_constant = 1;
+    // Matches almetal_directional_shadow_high in the same module. Other
+    // qualities retain the generic shader and its runtime filter selection.
+    constexpr std::uint32_t high_shadow_function_constant = 3;
+
+    bool highShadowQuality(const ALMetalWorldDirectionalShadowConstants& shadows)
+    {
+        return (shadows.config[3] &
+                ALMetalWorldDirectionalShadowConstants::filter_quality_mask) == 2u;
+    }
 
     void setError(std::string* destination, const std::string& message)
     {
@@ -2670,7 +2679,11 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         projector_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        high_projector_light_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         main_local_light_pipelines, main_projector_light_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        high_main_projector_light_pipelines;
     bool fail_main_lighting_after_base = false;
     std::array<std::array<
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
@@ -2811,6 +2824,11 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<
         std::array<OpaqueForwardRiggedPipelines, 3>, 2>, 2>
         pre_water_simple_pipelines;
+    // HDR x coverage x runtime/probe shadow mode x rigged. The unshadowed
+    // entry point does not consume the optional shadow function constant.
+    std::array<std::array<
+        std::array<OpaqueForwardRiggedPipelines, 2>, 2>, 2>
+        high_pre_water_simple_pipelines;
     // HDR x coverage x shadows x rigid/skinned/cloth system-avatar mesh x
     // color-write state. The latter keeps the middle pass of three-pass
     // hair/skirt depth-only without changing its alpha-cutout shader.
@@ -2820,7 +2838,11 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         pre_water_material_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
+        high_pre_water_material_pipelines;
+    std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         pre_water_pbr_pipelines;
+    std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
+        high_pre_water_pbr_pipelines;
     // Lazily created only for the explicit experiment: HDR x coverage x rigged.
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         probe_pre_water_pbr_pipelines;
@@ -2835,6 +2857,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<OpaqueForwardRiggedPipelines, 2>
         post_water_pbr_glow_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> high_light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> modern_sky_pipeline, modern_cube_pipeline, meter_water_pipeline;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 3> modern_star_pipelines;
@@ -2928,6 +2951,19 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> inactive_ssr_color;
     std::unique_ptr<ALMetalTexture> inactive_ssr_depth;
     ALMetalWorldScreenSpaceReflectionConstants inactive_ssr_constants{};
+
+    std::unique_ptr<ALMetalRenderPipeline> highShadowPipeline(
+        const ALMetalRenderPipeline& original, std::string* error) const
+    {
+        auto descriptor = original.descriptor();
+        // Stored descriptors omit the borrowed library pointer. Preserve all
+        // formats, blending, depth and existing function constants verbatim.
+        descriptor.library = library.get();
+        descriptor.fragment_bool_constants.push_back(
+            {high_shadow_function_constant, true});
+        descriptor.label += " (High shadow quality)";
+        return ALMetalRenderPipeline::create(*device, descriptor, error);
+    }
 
     ALMetalRenderPipeline* probeAboveWaterPipeline(
         bool hdr, bool waves, std::string* error)
@@ -4596,6 +4632,12 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+    impl->high_light_map_pipeline = impl->highShadowPipeline(
+        *impl->light_map_pipeline, error);
+    if (!impl->high_light_map_pipeline)
+    {
+        return nullptr;
+    }
     light_map_descriptor.fragment_function =
         "almetal_world_light_map_blur_fragment";
     light_map_descriptor.label = "Alchemy world SSAO bilateral-blur pipeline";
@@ -5656,6 +5698,34 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+        impl->high_projector_light_pipelines[hdr] = impl->highShadowPipeline(
+            *impl->projector_light_pipelines[hdr], error);
+        if (!impl->high_projector_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        // The combined main pass carries G-buffer depth. Build both quality
+        // variants here rather than creating an executable inside a frame.
+        auto main_projector_descriptor =
+            impl->projector_light_pipelines[hdr]->descriptor();
+        main_projector_descriptor.library = impl->library.get();
+        main_projector_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        main_projector_descriptor.label =
+            "Alchemy main-pass projector-light pipeline";
+        impl->main_projector_light_pipelines[hdr] = ALMetalRenderPipeline::create(
+            device, main_projector_descriptor, error);
+        if (!impl->main_projector_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
+        impl->high_main_projector_light_pipelines[hdr] = impl->highShadowPipeline(
+            *impl->main_projector_light_pipelines[hdr], error);
+        if (!impl->high_main_projector_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
 
         // The following owners replace the fragment function and do not
         // accumulate multiple draws into one target.
@@ -6447,6 +6517,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     {
                         return nullptr;
                     }
+                    if (shadows != 0)
+                    {
+                        auto& high = impl->high_pre_water_simple_pipelines
+                            [hdr][coverage][shadows - 1][rigged];
+                        high = impl->highShadowPipeline(
+                            *impl->pre_water_simple_pipelines
+                                [hdr][coverage][shadows][rigged], error);
+                        if (!high)
+                        {
+                            return nullptr;
+                        }
+                    }
                 }
 
                 alpha_descriptor.fragment_bool_constants.clear();
@@ -6466,6 +6548,14 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 {
                     return nullptr;
                 }
+                impl->high_pre_water_material_pipelines[hdr][coverage][rigged] =
+                    impl->highShadowPipeline(
+                        *impl->pre_water_material_pipelines[hdr][coverage][rigged],
+                        error);
+                if (!impl->high_pre_water_material_pipelines[hdr][coverage][rigged])
+                {
+                    return nullptr;
+                }
 
                 alpha_descriptor.vertex_function = rigged
                     ? "almetal_world_pbr_skinned_vertex"
@@ -6480,6 +6570,13 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                         device, alpha_descriptor, error);
                 if (!impl->pre_water_pbr_pipelines
                         [hdr][coverage][rigged])
+                {
+                    return nullptr;
+                }
+                impl->high_pre_water_pbr_pipelines[hdr][coverage][rigged] =
+                    impl->highShadowPipeline(
+                        *impl->pre_water_pbr_pipelines[hdr][coverage][rigged], error);
+                if (!impl->high_pre_water_pbr_pipelines[hdr][coverage][rigged])
                 {
                     return nullptr;
                 }
@@ -13042,12 +13139,17 @@ bool ALMetalWorldGBufferRenderer::encodeProjectorLighting(
         needs_shadows
             ? scene.projector_shadows->constants
             : mImpl->unshadowed_constants;
+    const auto& projector_pipelines = highShadowQuality(projector_shadows)
+        ? (with_depth ? mImpl->high_main_projector_light_pipelines
+                      : mImpl->high_projector_light_pipelines)
+        : (with_depth ? mImpl->main_projector_light_pipelines
+                      : mImpl->projector_light_pipelines);
     bool encoded =
         encoder.setViewport(viewport, error) &&
         encoder.setScissor(scissor, error) &&
         encoder.setCullMode(ALMetalCullMode::none, error) &&
         encoder.setPipeline(
-            *(with_depth ? mImpl->main_projector_light_pipelines[scene.hdr ? 1 : 0] : mImpl->projector_light_pipelines[scene.hdr ? 1 : 0]), error) &&
+            *projector_pipelines[scene.hdr ? 1 : 0], error) &&
         encoder.setFragmentTexture(0, albedo, error) &&
         encoder.setFragmentTexture(1, specular, error) &&
         encoder.setFragmentTexture(2, normal, error) &&
@@ -21773,6 +21875,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             alpha_environment.water_fog[3] =
                 batch.pre_water_minimum_alpha;
 
+            // Select from the same immutable pack subsequently bound at
+            // fragment buffer 3. Validation above established every required
+            // live pack; unshadowed batches keep their original fallback.
+            const ALMetalWorldDirectionalShadowConstants& alpha_shadow_constants =
+                batch.pre_water_shadows
+                    ? scene.alpha_directional_shadows->constants
+                    : mImpl->unshadowed_constants;
             const bool standard_blend =
                 batch.pre_water_source_rgb ==
                     ALMetalBlendFactor::source_alpha &&
@@ -21874,6 +21983,36 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                           [rigged ? 1 : 0].get();
             }
 
+            // Custom blends and avatar/depth-only owners retain their generic
+            // pipelines. No pipeline creation or cache insertion occurs here.
+            if (standard_blend && !batch.avatar_alpha &&
+                !batch.post_water_depth_only && highShadowQuality(alpha_shadow_constants))
+            {
+                if (batch.pre_water_pbr)
+                {
+                    alpha_pipeline = mImpl->high_pre_water_pbr_pipelines
+                        [scene.hdr ? 1 : 0]
+                        [batch.pre_water_alpha_writes_coverage ? 1 : 0]
+                        [rigged ? 1 : 0].get();
+                }
+                else if (batch.pre_water_material)
+                {
+                    alpha_pipeline = mImpl->high_pre_water_material_pipelines
+                        [scene.hdr ? 1 : 0]
+                        [batch.pre_water_alpha_writes_coverage ? 1 : 0]
+                        [rigged ? 1 : 0].get();
+                }
+                else if (batch.pre_water_simple &&
+                         simple_shadow_mode != Impl::SimpleShadowMode::none)
+                {
+                    alpha_pipeline = mImpl->high_pre_water_simple_pipelines
+                        [scene.hdr ? 1 : 0]
+                        [batch.pre_water_alpha_writes_coverage ? 1 : 0]
+                        [static_cast<std::size_t>(simple_shadow_mode) - 1]
+                        [rigged ? 1 : 0].get();
+                }
+            }
+
             if (probe_pbr_shadow && standard_blend)
             {
                 alpha_pipeline = mImpl->probePBRAlphaPipeline(
@@ -21953,9 +22092,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         ? scene.alpha_directional_shadows->depth_texture
                         : mImpl->unshadowed_depth.get();
                 const ALMetalWorldDirectionalShadowConstants&
-                    directional_constants = batch.pre_water_shadows
-                        ? scene.alpha_directional_shadows->constants
-                        : mImpl->unshadowed_constants;
+                    directional_constants = alpha_shadow_constants;
                 encoded =
                     encoder->setVertexBuffer(
                         8, *batch.vertices,
@@ -22040,9 +22177,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         ? scene.alpha_directional_shadows->depth_texture
                         : mImpl->unshadowed_depth.get();
                 const ALMetalWorldDirectionalShadowConstants&
-                    directional_constants = batch.pre_water_shadows
-                        ? scene.alpha_directional_shadows->constants
-                        : mImpl->unshadowed_constants;
+                    directional_constants = alpha_shadow_constants;
                 encoded =
                     encoder->setVertexBuffer(
                         8, *batch.vertices, batch.tangent_offset, error) &&
@@ -22106,9 +22241,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             error) &&
                         mImpl->setFragmentData(*encoder, *command,
                             3,
-                            &scene.alpha_directional_shadows->constants,
-                            sizeof(scene.alpha_directional_shadows
-                                       ->constants),
+                            &alpha_shadow_constants,
+                            sizeof(alpha_shadow_constants),
                             error);
                 }
             }
@@ -24107,6 +24241,9 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         directional_shadows && scene.directional_shadows
             ? scene.directional_shadows->constants
             : mImpl->unshadowed_constants;
+    const auto* light_map_pipeline = highShadowQuality(shadow_constants)
+        ? mImpl->high_light_map_pipeline.get()
+        : mImpl->light_map_pipeline.get();
     const ALMetalTexture* shadow_texture =
         directional_shadows && scene.directional_shadows
             ? scene.directional_shadows->depth_texture
@@ -24122,7 +24259,7 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->light_map_pipeline, error) &&
+        encoder->setPipeline(*light_map_pipeline, error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->setFragmentBytes(
@@ -25849,16 +25986,6 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
             auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, point, error);
             if (!pipeline) return nullptr;
             mImpl->main_local_light_pipelines[variant] = std::move(pipeline);
-        }
-        if (projector->light_count && !mImpl->main_projector_light_pipelines[variant])
-        {
-            auto spot = mImpl->projector_light_pipelines[variant]->descriptor();
-            spot.library = mImpl->library.get();
-            spot.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
-            spot.label = "Alchemy main-pass projector-light pipeline";
-            auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, spot, error);
-            if (!pipeline) return nullptr;
-            mImpl->main_projector_light_pipelines[variant] = std::move(pipeline);
         }
     }
 
