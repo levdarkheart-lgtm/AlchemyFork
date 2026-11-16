@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-322 -->
+<!-- next-defect-id: PPD-323 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7698,3 +7698,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 component lifecycle review findings retained during preparation. Original architecture work stays paused; no architecture optimization selected.
 
 - 2026-11-16 corrected sink integrated and combined-tested in fd5/69200. No ring allocation from never-started stop/statistics, no native object/asset ownership in queued records and no GPU wait for diagnostics. API/GPU-validation correctness is separate from frame capture with those layers unset. Ready for actual owner runtime, not owner-verified/closed.
+
+## PPD-322 — Manual Xcode launch rejected by document-versioning debug argument
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex manual capture workflow
+- Discovered: 2026-11-16
+- Original reference: Viewer LLCommandLineParser rejects an unrecognized -NSDocumentRevisionsDebugMode argument before world startup. Installed Xcode26.6 IDEFoundation contains the literal injected argument pair and DebugDocumentVersioning scheme property. Original-upstream handling comparison has not been performed; no parser code fix is selected.
+- Evidence: Owner screenshot2026-11-16 at16:44:38 and observed Xcode console for exact staged69200 startup16:44:30, parse warning/OSMessageBox and killed launch; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md). Installed IDEFoundation strings verify -NSDocumentRevisionsDebugMode YES.
+- Next action: Disable document-versioning debugging in the manual Run scheme Options, retain Metal GPU capture, and let the owner retry. The owner closed the temporary debug workspace during inspection, so no scheme change or relaunch was performed by Codex.
+- Verification: Error reproduced before login/world rendering; no new quiet GPU capture, FPS attribution, native GPU failure or accepted workaround yet. Original architecture remains paused.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered after the owner reports the manual launch dialog. Prior manual instructions omitted this Xcode default; correct the setup guidance before retry. No viewer binary/settings/source modification, launch or profiling by Codex.

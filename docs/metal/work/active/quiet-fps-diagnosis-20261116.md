@@ -165,6 +165,13 @@ instruction. Do not launch, profile, restart architecture work or invent the
 cause to bypass this boundary. Resume the diagnostic objective when that input
 arrives; the staged viewer and all earlier evidence remain intact.
 
+Owner manual launch16:44:30 fails before world startup because Xcode injects
+`-NSDocumentRevisionsDebugMode YES` (PPD-322). Screenshot and Xcode console
+confirm the parser rejection; installed IDEFoundation confirms the argument
+and DebugDocumentVersioning property. Disable that scheme option and keep GPU
+Frame Capture=Metal. Owner closed the temporary debug workspace during
+inspection; Codex changed no scheme option and launched/profiled nothing.
+
 Success requires an early-versus-late critical-path explanation, exact source
 and evidence, and a contained causal check. A suspect list, another club trace,
 or preparation alone does not complete this objective.
