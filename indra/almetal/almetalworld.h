@@ -2783,6 +2783,8 @@ struct ALMetalWorldMainFrameStats
 {
     std::uint64_t committed = 0, completed = 0, failed = 0, canceled = 0;
     std::uint64_t older_group_waits = 0, wait_nanoseconds = 0, width_denials = 0;
+    // Unretired admission entries, not a live GPU-backlog census. Commands
+    // may already have completed before the next owner-side prune runs.
     std::size_t pending_groups = 0, pending_commands = 0, reservations = 0;
     std::size_t peak_pending_groups = 0, peak_pending_commands = 0;
 };

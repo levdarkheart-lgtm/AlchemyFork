@@ -10,8 +10,9 @@ owner-tested `350b803597` / 69172 app and all existing evidence.
 
 The [successful Overview assessment](integrated-build-69172-overview-quiet-club-20261116.md)
 contains two valid >300-second CPU/GPU recordings. The prior oversized trace was
-owner-discarded; its jobs are no longer running. No recovery, new viewer launch,
-login, live profile or push is authorized by this takeover.
+owner-discarded; its jobs are no longer running. No recovery of the discarded trace is authorized. Initial takeover also prohibited
+new viewer launch/login/profiling; subsequent owner checkpoint steering below
+authorizes bounded runtime evaluation. Push remains unauthorized.
 
 Independent audit confirms 14.849/20.706 FPS layer cadence, main running CPU
 28.57%/62.12%, and persistent publication/cache/encoding work after club decoding
@@ -123,3 +124,45 @@ already-completed commands. They must not be interpreted as live GPU debt.
 The independent frame-budget audit found no observed window-capacity-full
 samples in69172, so no new probe/upload throttle is justified from those
 counters. Shared producer recipes are the next supported implementation work.
+
+### First recipe cost observation — broad SIMPLE route not selected
+
+Seven actual-body cases pass332assertions under native validation. The initial
+five-cell fixture reports native-denied4source/3view SIMPLE owner preparation
+7.34795→8.39605µs (+14.26%). Its settled render/readback998.617→992.056µs
+cannot establish a viewer gain. Cold/warm/protected-denial owner differences are
+small; PBR producer churn50.0272→51.3166µs also needs qualification. Preserve
+these adverse observations and narrow the candidate instead of enabling every
+restoration path. Timing is elapsed owner wall, not sampled/thread CPU. Initial
+cost1 retained medians only; raw per-iteration observations were discarded and
+cannot be reconstructed. The already planned follow-up must persist them.
+
+## Selected source and recurring owner checkpoints
+
+Full world/material restoration proposal `eb7d7aac13c142ab57e57ff2ad7af64ee2dcadc2`
+is retained on `codex/source-recipes-full-proposal-20261116`. The selected
+follow-up `49a31097de6839ff9d1fd3e8c457caa3b260f48e` removes those unqualified
+world/SIMPLE/opaque routes. Only covered shadows, including rigged variants,
+use the new weak CPU recipe. Main/probe world publication keeps its existing
+path and coexists with the covered recipe. Shared CPU bounds/group priority,
+current producer/pose/UV/resource and native completion semantics remain.
+
+Selected actual-body335assertions/7cases pass with native validation. Exact
+selected byte-pressure qualification has192raw iteration rows and16counter
+receipts: every arm72byte rejections/64residententries/262144logicalbytes,
+without entry/oversize rejection or eviction. Owner wall5.99605→4.78750µs
+(-20.156%,8/8paired-block wins); settled957.90205→932.22710µs
+(-2.680%,6/8wins). This is a tiny contained native workload, not a viewer FPS
+result. Earlier adverse, invalid and unselected runs remain separate. Exact
+receipts/hashes: successful69172 Overview private `ppd317-source-recipes/`.
+
+Owner steering now authorizes a repeated validation cadence after several
+coherent implementation groups: pause code changes, verify/stage the combined
+app, launch its exact executable, let the owner log in, then always sample quiet
+in front of home → teleport/loading into the busy club → settled club after
+one to two minutes. Keep lightweight CPU/GPU/log/position capture continuous
+across the transition, with explicit timestamps and phase markers. Use brief
+detailed GPU/thread timelines separately, with byte/time/finalization limits;
+never an unrestricted multi-minute detailed recording. Owner drives login and
+teleport. No push or private-evidence upload is authorized. Assess each group
+before choosing the next. Architecture and performance acceptance stay partial.

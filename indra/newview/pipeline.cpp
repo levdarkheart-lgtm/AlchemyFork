@@ -3597,6 +3597,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", shadow_factory(payload/variant/promotion)=" << source_misses.shadow_misses[0]
                 << '/' << source_misses.shadow_misses[1] << '/' << source_misses.shadow_misses[2]
                 << ", scope=getter_and_factory_calls_not_unique_objects" << LL_ENDL;
+            const auto& recipes = ALScenePublicationNative::recipe_statistics;
+            LL_INFOS("MetalScene") << "Native CPU source recipes: published/covered_shadow_restored="
+                << recipes.publications << '/' << recipes.shadow_restores
+                << ", expired_backing/failures/stale=" << recipes.expired_backing
+                << '/' << recipes.failures << '/' << recipes.stale
+                << ", cache_entries/rows/estimated_bytes=" << layouts.recipe_entries
+                << '/' << layouts.recipe_rows << '/' << layouts.recipe_bytes
+                << ", evictions/rejections=" << layouts.recipe_evictions << '/' << layouts.recipe_rejections
+                << ", shared_cpu_estimated_bytes=" << layouts.total_bytes << LL_ENDL;
             const auto compilation = ALSceneGroupCompilationNative::statistics;
             LL_INFOS("MetalFramePlan") << "CPU cohort compilation: candidates/duplicate_views=" << compilation.candidates << '/' << compilation.duplicate_views
                 << ", admitted/denied/published/failed=" << compilation.admitted << '/' << compilation.denied << '/' << compilation.published << '/' << compilation.failed
