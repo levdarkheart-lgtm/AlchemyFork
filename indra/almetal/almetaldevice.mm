@@ -9,6 +9,7 @@
  */
 
 #include "almetaldevice.h"
+#include "almetaldiagnostictelemetry.h"
 #include "almetalpipelinecache.h"
 
 #import <Foundation/Foundation.h>
@@ -202,6 +203,7 @@ struct ALMetalCommandBuffer::Impl
     id<MTLDevice> device = nil;
     id<MTLCommandBuffer> command_buffer = nil;
     bool committed = false;
+    ALMetalDiagnosticTelemetry::CommandToken diagnostic;
     std::shared_ptr<const ALMetalCommandCompletion> completion;
     // Empty commands allocate no owner list or completion callback.
     std::shared_ptr<std::vector<std::shared_ptr<const void>>> resource_owners;
@@ -220,6 +222,8 @@ ALMetalCommandBuffer::ALMetalCommandBuffer(std::unique_ptr<Impl> impl)
 
 ALMetalCommandBuffer::~ALMetalCommandBuffer()
 {
+    if (mImpl && !mImpl->committed)
+        ALMetalDiagnosticTelemetry::commandAbandoned(mImpl->diagnostic);
     if (mImpl && !mImpl->committed && mImpl->completion)
     {
         mImpl->completion->mImpl->abandoned.store(
@@ -349,9 +353,28 @@ bool ALMetalCommandBuffer::commit(std::string* error)
             }];
     }
 
+    const auto diagnostic = mImpl->diagnostic;
+    if (ALMetalDiagnosticTelemetry::commandTokenActive(diagnostic))
+    {
+        [mImpl->command_buffer addCompletedHandler:^(id<MTLCommandBuffer> completed_command)
+        {
+            // Diagnostic observation only. Apple exposes GPUStart/EndTime in
+            // system mach seconds after completion; never read them early or
+            // wait for them. No native object is retained by the JSONL sink.
+            const auto status = completed_command.status;
+            const bool completed = status == MTLCommandBufferStatusCompleted;
+            ALMetalDiagnosticTelemetry::commandCompleted(diagnostic,
+                static_cast<std::uint32_t>(status),
+                completed ? completed_command.GPUStartTime : 0.0,
+                completed ? completed_command.GPUEndTime : 0.0,
+                status == MTLCommandBufferStatusError ? completed_command.error.code : 0);
+        }];
+        ALMetalDiagnosticTelemetry::commandCommitBegin(diagnostic);
+    }
     [mImpl->command_buffer commit];
     mImpl->committed = true;
     committed_command_buffers.fetch_add(1, std::memory_order_relaxed);
+    ALMetalDiagnosticTelemetry::commandCommitEnd(diagnostic);
     return true;
 }
 
@@ -368,7 +391,10 @@ bool ALMetalCommandBuffer::waitUntilCompleted(std::string* error)
         return false;
     }
 
+    ALMetalDiagnosticTelemetry::commandWaitBegin(mImpl->diagnostic);
     [mImpl->command_buffer waitUntilCompleted];
+    ALMetalDiagnosticTelemetry::commandWaitEnd(mImpl->diagnostic,
+        static_cast<std::uint32_t>(mImpl->command_buffer.status));
     if (mImpl->command_buffer.status != MTLCommandBufferStatusCompleted)
     {
         std::string description = describeNSError(mImpl->command_buffer.error);
@@ -611,14 +637,17 @@ std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(
 {
     @autoreleasepool
     {
+        const auto diagnostic = ALMetalDiagnosticTelemetry::commandCreateBegin(label.c_str());
         if (!mImpl || !mImpl->command_queue)
         {
+            ALMetalDiagnosticTelemetry::commandCreateEnd(diagnostic, false);
             setError(error, "Metal command queue is unavailable");
             return nullptr;
         }
         id<MTLCommandBuffer> command = [mImpl->command_queue commandBuffer];
         if (!command)
         {
+            ALMetalDiagnosticTelemetry::commandCreateEnd(diagnostic, false);
             setError(error, "Metal command queue returned no command buffer");
             return nullptr;
         }
@@ -630,6 +659,8 @@ std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(
         auto impl = std::make_unique<ALMetalCommandBuffer::Impl>();
         impl->device = mImpl->device;
         impl->command_buffer = command;
+        impl->diagnostic = diagnostic;
+        ALMetalDiagnosticTelemetry::commandCreateEnd(diagnostic, true);
         auto result = std::unique_ptr<ALMetalCommandBuffer>(new ALMetalCommandBuffer(std::move(impl)));
         const auto& owner = ALMetalSubmissionScope::current();
         if (owner && !result->retainUntilCompletion(owner, error)) return nullptr;
