@@ -8334,6 +8334,9 @@ static bool almetal_shadow_map_built(
 // Other pipelines retain the runtime flag and the complete main-view filter.
 constant bool almetal_probe_shadow_single_tap [[function_constant(0)]];
 
+// Optional exact High-quality specialization; unset consumers keep runtime filtering.
+constant bool almetal_directional_shadow_high [[function_constant(3)]];
+
 static float almetal_filter_directional_shadow(
     texture2d_array<float> shadow_maps, uint cascade,
     float4 light_position, float4 light_dx, float4 light_dy,
@@ -8343,7 +8346,10 @@ static float almetal_filter_directional_shadow(
     const float inverse_w = 1.0 / light_position.w;
     float3 uvz = light_position.xyz * inverse_w;
     uvz.z += constant_bias;
-    const uint quality = shadows.config.w & 0x3u;
+    const bool force_high =
+        is_function_constant_defined(almetal_directional_shadow_high)
+            ? almetal_directional_shadow_high : false;
+    const uint quality = force_high ? 2u : (shadows.config.w & 0x3u);
     const uint2 resolution = uint2(shadows.resolution.xy);
     const bool probe_pipeline =
         is_function_constant_defined(almetal_probe_shadow_single_tap)

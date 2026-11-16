@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-329 -->
+<!-- next-defect-id: PPD-331 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7840,3 +7840,42 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before repair. This secondary source difference does not explain the dominant simple-alpha probe cost by itself. No quality change or architecture activation selected.
+
+
+## PPD-329 — Native simple-alpha loses the reference compile-time classic variant
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home shader repair
+- Discovered: 2026-11-16
+- Original reference: Pinned1eb44 class2/deferred/alphaF.glsl43–47 and class3/deferred/reflectionProbeF.glsl47–55 define classic_mode through CLASSIC_MODE, not a runtime uniform. llviewershadermgr.cpp922–940 builds a separate suffixed classic feature copy; original alpha shader uses that compile-time mode for sun/ambient/local-light math and SH eligibility.
+- Evidence: [Home repair ledger](work/active/quiet-home-performance-fix-20261116.md); direct git show/grep mapping. Current almetal_builtin.metal simple_lighting uses lighting.parameters.w at runtime; saved Home logs prove classic_lighting0. Private optional-constant2 shader source/compile receipts at quiet-home-fix-20261116T183158Z/simple-classic-specialization-compile.json, source-only proposal compiled0 before discovery of original macro mapping, no engine integration yet.
+- Next action: Qualify optional Metal bool function constant2 with exact modern-mode shadowed PSO parity/cost. If useful, prebuild both finite classic modes at renderer initialization and select using the same validated alpha-lighting value bound to buffer2; keep avatar/custom callers on original optional fallback until qualified. Preserve full main shadow filter and all modern SH work.
+- Verification: Original/current compile-time boundary difference confirmed; no runtime divergence within a draw, because the original native flag is uniform. Register/spill/whole-frame/FPS contribution unproved. Native specialization is a candidate to restore compiler visibility, not permission to change lighting mode, precision or probe count.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 source difference registered before actual renderer/PSO integration. Optional private source keeps undefined-constant fallback identical to original native uniform, with index0 shadow filtering unchanged. Initial PPD-327 shadow fixture loader omitted empty optional-constant specialization and correctly aborted API validation before cost; fixture now matches production loader, failed receipt retained. No viewer launch or accepted gain.
+
+
+## PPD-330 — Native directional shadows lose the reference compile-time quality filter
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home shadow shader repair
+- Discovered: 2026-11-16
+- Original reference: Pinned1eb44 llviewershadermgr.cpp865–878 selects SHADOW_PCF_KERNEL2/4/6/4 and SHADOW_PCSS for quality3; shadowUtil.glsl compile-time branches select one filter. Native almetal_filter_directional_shadow reads quality from shadows.config.w and retains both PCSS and variable-width PCF, including thread-private wx[6]/wy[6] indexed loops.
+- Evidence: [Home repair ledger](work/active/quiet-home-performance-fix-20261116.md); exact original/current source audit. Saved quiet-qy viewer.log graphics statistic AlchemyRenderShadowFilterQuality2, not inferred from Q6. Runtime producer/bound-pack audit under way. Prior synthetic shadow costs used quality3 and remain stress evidence only; parity covered2/3.
+- Next action: Test optional bool function constant3 almetal_directional_shadow_high, true selects exact quality2, false/unset retains runtime quality. Specialize only the PSO actually paired with quality2 pack; generic quality3/other consumers retain fallback. Measure High2 count20 repeated blended draws separately from classic constant2.
+- Verification: Lost compile-time quality boundary source-confirmed; High2 specialization may remove PCSS and make six-wide PCF indices constant, but generated registers/spills/cost and Home FPS effect are unproved. Reverse-Z is shadows.config.z and must remain paired with its projection/bias; it is not depth clamp. No owner graphics setting or renderer PSO integration changed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before private High2 shader implementation/integration. Original quality remains preserved. First synthetic Ultra3 timings do not establish a matched Home cost/gain; all raw observations retained. Next two-cell overdraw check targets saved High2 rather than assuming preset Q6 means Ultra3.
+
+
+- 2026-11-16 selected after actual saved late Home source A/B/A: 142.99→119.21→140.90 ms, Medium/Overlapping; installed original 140.89 ms. Fixed-quality2 shared-filter source intervention shortens replay 15.39–16.63% against adjacent recompiled controls, not live FPS. Simple-alpha registers245→224 but304-byte spill persists; light map/projector registers improve, PBRspill80→32/material32→0. Separate High2 overdraw fixture: 36 exact images, all60pairs favorable (~11–13%). Both saved logs report quality2; producer/pack chain verified. Earlier quality3 timings remain stress checks. Optional3 MSL local; exclusive world.cpp integration preparing37prebuilt matching-pack PSOs with generic fallback. Original logic restored before StopGPU/Don'tSave. Build, engine qualification, staging and owner Home acceptance pending. [Recorded evidence](research/quiet-home-shadow-specialization-20261116.md).

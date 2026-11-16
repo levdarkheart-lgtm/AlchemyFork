@@ -111,3 +111,49 @@ elimination atsimplealpha. These are codegen hypotheses; call ABI may instead
 spill and cost more. Allprivate source/library/command receipts retained. No
 engine shader selection until actualshadowedPSO correctness/cost qualification;
 ownerHome acceptance remains required.
+
+
+Fullproduction compiler audit complete: all367function definitions andinstruction/
+attribute/debug metadata are byte-identical default versus explicit-O2; only
+recorded commandmetadata differs. 93940lines/8.54MiB outputs and normalizedhash
+receipts at compiler-audit/full-source/. The scalar frontend DOES change five
+runtime accumulator GEPs to constantfield accesses; finalbackend may further
+inline/scalarize. Thus it is a legitimate optimization candidate whose measured
+cost, not source appearance or frontend alone, determines selection.
+
+New actualshadowPSO fixture integrated7a724de0eb and emptyoptionalconstant loader
+ae16761fee; first APIvalidationabort preserved before loaderrepair. Scalar
+repaired run7556assertions/2cases parity PASS;488costassertions PASS. Count20
+paired mediansautomatic-0.78%/mixed+0.50%;39automatic+4.99%/mixed+4.47%, so no
+usefulshadowedscalar gain established. Remaining variants use newhash-pinned
+binary; no precedingbinary substitutes for changedsource evidence.
+
+PPD-329 original mapping: pinned1eb44 CLASSIC_MODE compile-time macros in
+class2/alphaF43–47/reflectionProbeF47–55, separate suffixedfeature compilation
+llviewershadermgr922–940. Native simplelighting uniformbranch is source-confirmed
+loss of that compiler visibility. Private simple-classic-specialization source
+adds optionalboolconstant2, originalfallbackifundefined. Actual Homefalse PSO
+canremoveunreachableclassic blocks without removing activeSH/shadowmath. If
+measured useful, finite24→48 prebuilt simplePSOs andvalidatedscene.alpha_lighting
+parameters[3] lookup; no new draw-time compilation or avatar/custom cache changes.
+No benefit claim or actualengineactivation yet.
+
+
+## Selected proposed repair after actual recording
+
+[Recorded-scene results](../../research/quiet-home-shadow-specialization-20261116.md)
+distinguish fixture and actual owner capture. High2 seven-layer fixture: 36 exact
+images, 60/60 favorable pairs, 11–13% median GPU reduction. Actual saved late
+Home source A/B/A: 142.99→119.21→140.90 ms at Medium/Overlapping. Raw observations
+and source-edit hashes: private recording-replay/observations.json. B specializes
+all shared filter consumers; the proposed viewer uses optional constant 3 only
+when the exact bound pack is High2. No hardcoded-quality shader ships.
+
+Root MSL now matches private High2 source SHA256
+f05d83a1b4a3f96159d7a1750c035afab67db423f0d239c1cd496c1e1143f33d.
+Exclusive world.cpp integration prepares 37 High2 PSOs for light map, projector,
+simple/material/PBR alpha; other consumers retain generic behavior. Build,
+engine qualification, staging and owner Home acceptance remain pending.
+Simple-alpha 304-byte spill persists. Growing probe work remains a measured
+limiter. The actual live FPS effect and original architecture acceptance remain
+partial. GPU replay stopped, source edits discarded, input audit pending aliases.
