@@ -2769,3 +2769,65 @@ second full-world factory or shared Impl mutation. Next: frozen76 required
 build, new native context + packet + existing shadow/reload/admission checks,
 then relevant integrated renderer regressions. Production scheduling/settlement
 is a separate still-required integration, not implied by these helper APIs.
+
+
+## Main SSAO final-blur/base-light tile candidate —doing, PPD298
+
+Bounded independent source reader audit identifies one additional main-view
+GPU boundary, beyond shadows/probe fusion. Preserve raw light-map and horizontal
+RG8 blur; execute final vertical blur into memoryless RG8 in the base-light
+pass, then read its quantized tile value for the unchanged geometry lighting.
+The final map has one runtime consumer. Sky/debug/exposure/local/projector/
+composition readers do not require it. This removes one target/store/reload,
+not blur arithmetic. Source contract supports it; net GPU cost is unknown.
+Exclusive author world.h/cpp/builtinMSL/newtest is assigned a separate worktree;
+root retains pipeline/CMake/docs and all execution. No shader quality change,
+no SSAO/probe cadence reduction, and no production selection before actual
+pixel and complete raw+horizontal+final/base GPU checks. Private native context
+work remains required; this does not redefine the whole-engine goal.
+
+
+## Frozen76 native ownership validation —PASS
+
+Execution3d6e6004d0ddff4a06286f41016e6920072c05be /build69137, identical
+committed tree to integrator3ed2540223 (source-tree-identity-76.json). Required
+doctor/configure/build0, build173.145s; static andstrict3595files/0blockers/
+0errors PASS. New context348/4, existing shadow/material/reload/admission18390/29,
+new/helper/image preflights andfull34renderer scopes1130475/352 PASS under
+API/GPU validation. Separate covered-reload extension44/1 PASS at exact frozen76
+native library/metallib; source80fc60b5ebd9… and all object/library inputs are
+recorded in shadow-context-covered-20261116T005033Z/receipt.json. That test now
+enters the next formal combined build. No context worker or global admission
+integration has been activated. No additional viewer launch/profile/push.
+
+## Source77 preparation: actual main SSAO caller —doing
+
+Frozen author68eaa4ba5a four files copied exactly before root adds complete-API
+transaction guard and prefix-commit test under298. Root pipeline holds the
+pending main LightMapScene only for actual main+SSAO+atmospheric base execution,
+resets it with every corresponding pending probe boundary, consumes the new API
+synchronously and logs requested/capable/encoded(tile/separate). Diagnostic
+RenderMetalMainSSAOBlurLighting is nonpersistent/defaultOFF, XML parsed. Public
+separate map, SSAO-disabled, probe and unsupported paths remain existing native
+behavior. New caller/shader code is not yet built or selected. Existing native
+base capture will encompass the deferred raw/H/final/base chain when this path
+is requested; it is no longer a base-only interval in that diagnostic mode.
+
+Root review adds GBufferFailureScope around all combined API returns: malformed
+base input after raw/H cannot leave a borrowed prefix committable. New actual
+prefix counter case covers eligible and separate branches. Author baseline is
+retained; guard/test are unexecuted until77. The original test fixture uses
+legacy environment; active-probe pixel parity and the same 2sizes×2shadow×2env
+complete batched cost frontier are being added in separate exclusive test tree
+/private/tmp/alchemy-apple-first-main-ssao-probe-checks. Root must not edit that
+test file until its author freezes; all execution remains root-only. Both cost
+arms must have identical enclosing native batching; constructors/PSOs/G-buffer
+publication are outside timings and startup/FPS benefit remains unproved.
+
+
+Active-probe fixture now frozen/copied as c819c58bf454813c14b68cc4d44635aef028e41326afe48cd896df309010cb5a.
+It retains root prefix case, adds actual two-probe SH/radiance data and positive
+2→1 count RGB contribution check, then exact fused/reference parity. Cost rows
+now explicitly identify legacy/probe;8cells only,2warmup/8paired measurements.
+No source execution claim until77. All exclusive authors released their files;
+root owns final integration and the current source is coherent for freezing.

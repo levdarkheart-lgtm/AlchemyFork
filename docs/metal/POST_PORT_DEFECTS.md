@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-298 -->
+<!-- next-defect-id: PPD-299 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5843,6 +5843,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-16 first post-integration documentation harness check rejected CURRENT161lines and active ledger181lines, one over each limit. Preserved all content while joining one existing wrapped line per file; rerun required before frozen76. No renderer/build/test failure implied.
 
+- 2026-11-16 frozen76 source3d6e6004d0ddff4a06286f41016e6920072c05be, app69137: doctor/configure/build0 (build173.145s), native context348/4 and existing extended-shadow/material/reload/admission18390/29 PASS with API/GPU validation. Full34 renderer scopes1130475assertion-executions/352case-executions, native bundle/strict3595files0blockers0errors PASS. Integrator3ed2540223 has the identical tracked tree1afcd4254376ad054a7d3ed2f2998f7e0d34876f; receipt source-tree-identity-76.json records this distinction. No runtime worker or extra global admission is implied.
+
+- 2026-11-16 independent review gap closed with one additional real cutout/sampler test: source80fc60b5ebd9… passes44assertions/1case via optimized test object linked against frozen76 native objects and exact76 metallib, API/GPU validation enabled. Both old/new contexts match direct scalar alpha-discard pixels after parent reload/anisotropy4/destruction and material-buffer first use. Private shadow-context-covered-20261116T005033Z/receipt.json preserves all input hashes/commands. Formal future combined build includes this added case; this evidence is not a new full app build or FPS claim. Production outer-admission and owner settlement remain open.
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating
@@ -7088,3 +7092,29 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 RGB297 source helperb453c0ba7895…/owningCPP27cc8ac2fa75…/test1f81205940c8… copied exactly before integration additions. Actual-inl optimized andASan/UBSan checks3376assertions/4cases PASS including guard pages. One serialized120cell/9paired-block cost matrix outputparity andallpairedmedians improve; fresh4096² median acrossformat/stride58.115ms→2.665ms, scopeCPUstage only. FirstwrongCatch2linkpath failure retained; correctedstandalonebuildPASS. Format mix/wholeviewer benefit remain unknown. Root adds activation counters outside measured purehelper at actualnativeupload wrapper and actualGPUreadback/counter tests; rows/mips/subregions are calls, notuniqueimages orGPUcommits. No per-pixel atomics or format/policy change. Full integrated build/nativechecks pending.
 
 - 2026-11-16 integrated source75/build69134: native image/upload coverage6464assertions/34cases PASS, including actual RGB/RGBA/BGRA create/upload/readback, alpha255,17×2 vector+tail dimensions, swap false/true and exact cumulative counter deltas. Existing fixture disables upload workers, so exact deltas are coherent. Read-only independent integration review found no format/layout/counter blocker. Full34 renderer scopes1130416/349 PASS; doctor/configure/build, native static/strict PASS. RGB pure helper remains exactly the measuredb453c0ba7895… source; root wrapper diagnostics are outside its timing scope. Both new diagnostic strings occur in the exact executable. No runtime format mix, whole-viewer FPS gain, owner closure or push is claimed.
+
+
+## PPD-298 — Final SSAO blur materializes a target with only one runtime reader
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native main-lighting integration
+- Discovered: 2026-11-16
+- Original reference: Inspect original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 light-map blur/base-light ordering before implementation. Preserve SSAO/sun-shadow math, RG8 conversion, alpha, sky, PBR/legacy/probe/projector/SSR and setting behavior. Native tile fusion is a new ownership mechanism, not a new quality algorithm.
+- Evidence: [Whole-engine continuation](work/active/apple-first-direct-cohorts-20261114.md). Source3ed2540223 world.cpp23782–23839 renders horizontal and vertical blur to separate RG8 targets; pipeline17718 is the final-map runtime reader. MSL vertical blur13431–13483 filters only.g and retains center.r. Base geometry already accepts the resulting float2. Native debug, local/projector, sky/composition/exposure readers do not require a persistent final map.
+- Next action: Implement a bounded main-view SSAO-enabled final-blur/base-light tile path with a memoryless RG8 attachment, preserving the hardware quantization boundary. Keep raw and horizontal stages, public renderLightMap/readback and existing noneligible paths. Require actual pixel equivalence and complete raw+horizontal+final/base GPU comparison before selection.
+- Verification: Source-supported performance candidate only. No GPU timing, runtime regression or net benefit proved. Extra tile attachment pressure could offset the removed store/load.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation. Independent reader audit confirms final target is consumed only by base light; sky never samples it, alpha stays0, modern sky follows, local/projector stages consume base color, and debug reads other attachments. Direct float inlining would remove RG8 quantization and is explicitly rejected. Exclusive author world.h/cpp/builtinMSL/new test in a separate worktree; root owns pipeline/CMake/docs/build/execution. No viewer/profile/push authorization change.
+
+
+- 2026-11-16 root pre-build review of frozen author68eaa4ba5a finds a draft transaction gap: raw/horizontal work can enter an enclosing batch before base validation fails, but the combined wrapper lacks a guard covering those early returns. Add existing noexcept GBufferFailureScope around the complete new API and mark only successful returned targets; add an actual commit-count prefix rejection test before first77 build. This is source-confirmed in new unexecuted code, not an owner regression. Original unguarded author snapshot/hashes retained.
+
+- 2026-11-16 registration initially failed the next-ID harness check because the marker was not advanced with298; corrected marker to299 and harness33 PASS before author implementation. Root caller draft now carries a pending main scene only for main+SSAO+RenderDeferredAtmospheric+capability, resets it at all matching capture boundaries, and records actual tile/separate encoded paths. New diagnostic is nonpersistent/defaultOFF until complete costs pass. Public separate light-map behavior and probe path remain intact. Obsolete GL-fallback wording at the touched failure paths is replaced with accurate native-encoding failure text; fail-closed behavior is unchanged.
+
+
+- 2026-11-16 active-probe validation extension sourcec819c58bf454… replaces the legacy-only draft test while preserving the original seven cases, sky/malformed/prefix tests. Adds real packed-half SH/default+manual local radiance probes and a count2→1 RGB control before fused/reference exact parity. Cost frontier is8cells (2sizes×2shadow×legacy/probe), identical enclosing batching,2warmups+8alternating pairs; rows name environment. No execution yet. Root reviewed guard/caller ownership and freezes complete77 source next; no selection or FPS claim.

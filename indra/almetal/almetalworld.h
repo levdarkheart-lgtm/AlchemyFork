@@ -2589,6 +2589,10 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
 };
 
 enum class ALMetalProbeLightingPath : std::uint8_t { none, separate_passes, memoryless_tile };
+enum class ALMetalMainSSAOLightingPath : std::uint8_t
+{
+    none, separate_passes, memoryless_final_blur
+};
 
 struct ALMetalWorldBaseLightingScene
 {
@@ -3266,6 +3270,19 @@ public:
         ALMetalProbeLightingPath* path = nullptr);
     bool supportsProbeLightingFusion() const noexcept;
 
+    // Main-view SSAO only: retain the raw/horizontal RG8 stages, then write
+    // the final vertical blur to memoryless RG8 in the base-light pass. The
+    // base draw reads the hardware-quantized value, preserving the ordinary
+    // final-map contract. Other valid views/settings/libraries use the full
+    // separate chain. External final maps remain authoritative. This does
+    // not change SSAO quality, cadence, sky, or downstream lighting owners.
+    std::unique_ptr<ALMetalRenderTarget> renderMainSSAOLighting(
+        const ALMetalWorldLightMapScene& light_map,
+        const ALMetalWorldBaseLightingScene& base,
+        std::string* error = nullptr,
+        ALMetalMainSSAOLightingPath* path = nullptr);
+    bool supportsMainSSAOFusion() const noexcept;
+
     // Composite supported post-deferred impostor owners into an existing
     // native G-buffer target. Attachment zero and depth are loaded in place;
     // the remaining attachments are preserved byte-for-byte. Callers may
@@ -3285,6 +3302,11 @@ private:
     std::unique_ptr<ALMetalRenderTarget> renderBaseLightingInternal(
         const ALMetalWorldBaseLightingScene& scene,
         const ALMetalWorldLightMapScene* tile_light_map,
+        std::string* error,
+        const ALMetalTexture* final_blur_source = nullptr);
+    std::unique_ptr<ALMetalRenderTarget> renderLightMapInternal(
+        const ALMetalWorldLightMapScene& scene,
+        bool horizontal_only,
         std::string* error);
     std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(
         const ALMetalWorldExposureScene& scene, bool meter_only,
