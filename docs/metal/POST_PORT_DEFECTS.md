@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-307 -->
+<!-- next-defect-id: PPD-308 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7237,7 +7237,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Original reference: Original1eb44bbd ordered LLDrawInfo/pass capture, indexed type/offset, raster and occlusion-query boundaries remain authoritative. Native compute-written retained commands are new; no original GPU command equivalent exists. Static opaque submission and material/lighting outputs must remain equivalent.
 - Evidence: [Architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). Current9a6bc0b92d static prepareCohortForCommand cold-encodes full-count calls and renderer skips actual CPU rows using ordered executeRange; scene.native_visibility explicitly declines banks. Animated preparation already uses same-command compute to update ordered ICB counts without resetting bindings. Source41/42/50 full warm bank hits still incur GPU penalties, so reducing metadata alone cannot establish useful native visibility/submission. PPD301 early classification does not remove CPU bindings and failed costs.
 - Next action: Add a distinct visibility-qualified DIRECT bank mode with immutable cold bounds/index descriptors, current fixed-slot region/globals input and same-command GPU count updates. Preserve full-count banks, current native generations/base instances, sparse query/raster ranges, bounded publication and no CPU readiness wait. Compare against selected stable retained-direct with actual small/mixed groups, cold/warm/churn, all-visible/partial rows and complete GPU/owner/settlement costs before any enabled policy.
-- Verification: Source audits only; no new code/native output/performance claim for this boundary yet.
+- Verification: Implemented and current88 native/actual-producer/full34 correctness PASS. Actual qualified bounds observed in92 cost samples (4816/4816 encodedrows). Complete cost does not establish an enabled advantage; keep modeOFF. No viewer or FPS claim.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7258,6 +7258,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 Apple official GPU-ICB sample and optimizeIndirectCommandBuffer documentation reviewed: optimization constrains executable range boundaries; indiscriminate fullbank optimization would violate retained query/raster-split execution. No optimization call is added on that assumption. Preserve exact spans/retained bindings; any future optimization requires an explicit valid-range contract and reset/re-encoding semantics, not just API activation. Sources: [Apple GPU ICB sample](https://developer.apple.com/documentation/metal/encoding-indirect-command-buffers-on-the-gpu) and [Apple optimize range contract](https://developer.apple.com/documentation/metal/mtlblitcommandencoder/optimizeindirectcommandbuffer:withrange:).
 
 - 2026-11-16 PPD302 qualification observability now source-authored: cold Bank row loop caches qualified count; each successful compute dispatch adds that constant in cumulative encoded-qualified statistics (not visible/executed draws). Warm preparation adds no per-row host work. Native four-case counter tests and actual-producer warm8-row assertion plus24cell parser now require observed qualified inputs. GPU kernel, admission, lifecycle and range algorithm are byte-unchanged from87; only host census/log/tests differ. Freeze88 to test producer qualification before selecting or blaming the GPU route.
+
+- 2026-11-16 qualification88 source24fe03/build69160: doctor/configure/build0/0/0; native2848/4, certificate609/4, producer3029/2, early500/4, full34renderer1134237/364, exactapp/static and strict3598zero PASS. Complete24cell720row cost and strict parser PASS;92 classified samples contain4816qualified/4816encodedrows. This rules out absent qualified producer bounds in the tested cost route, not all possible shader/culling failures. Independent native synthetic-bounds oracle proves actual zero-count writes. In common256warmhits6–9, visible owner medians about−43%, GPU+22.30%(allinside)/+20.99%(halfoutside), settled+6.97%/−0.05%; fullbank GPU+15.71%/+26.13%, settled+6.55%/+8.84%. Requestedwarm medians retain genuine publication debt; no quota override or untimedpreseal. OFF decision recorded static-visibility-command-selection-88.json. No further repeated cost run justified without a new algorithm or identified defect.
 
 ## PPD-303 — Source FrameView declaration proof uses a recyclable native encoder address
 
@@ -7337,3 +7339,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 source warning review retained per-phase counts and original callsites. HTTP/asset403/timeout/GLTF failures remain actual delivery failures with cause unproved (PPD122), embedded_items remains PPD127, map cleanup remains PPD294; none is dismissed merely as a harmless warning or attributed to the renderer without evidence.
+
+## PPD-307 — Main G-buffer encoding cannot overlap independent point-light preparation
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex main light packet implementation / root integration
+- Discovered: 2026-11-16
+- Original reference: Original1eb44bbd ordered point-light limit, fades, frustum rejection, ordinary/projector separation and bounded/fullscreen grouping remain authoritative. Nearby-light updates and projector priority/cookie/shadow work retain their original traversal boundaries.
+- Evidence: [Architecture implementation status](work/active/apple-first-architecture-status.md); current24fe03 endMetalWorldGBufferCapture seals owned inputs then synchronously calls renderOwnedInputs; point-value gathering in renderMetalWorldLocalLights runs later on the same owner. No independently owned early point packet or useful main encoding/owner-gather overlap exists. This is a remaining architecture boundary, not an observed crash or proved frame-rate cause.
+- Next action: Separate exact CPU point-value gathering into an owned bounded packet. Optionally encode the preopened main command with one exclusive worker while the owner gathers values; join before any renderer statistics, sky, commit, query settlement or target publication. Preserve serial route and avoid OFF-route packet/task allocation. Decline active stage diagnostics; rebind original submission ownership; preserve renderer/TLS state and exception joins. DefaultOFF until actual producer/native correctness and complete cost justify selection.
+- Verification: Source/design review only. Projector and native resource work stay serial. Early packet validates exact frame/camera/dimensions/light scale/count/attachment policy before reuse; deferred constants are consumed only at the original downstream boundary. No implementation execution, speedup or runtime acceptance claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before edits in isolated codex/apple-first-main-light-packet at24fe03. Main author exclusively owns prospective pipeline main-light/encoding hunks and new helpers/tests/settings; root terrain census hunks already committed separately3adb360d38. Root owns documentation, integration and sole executiontree builds. Preserve actual query/commit failure semantics and no replay after partial native encoding.

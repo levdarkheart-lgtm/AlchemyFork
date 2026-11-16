@@ -334,3 +334,47 @@ constraints; another early-dispatch-only variant is not selected. Broader GPU-ow
 discovery and original whole-engine runtime/feature/stability acceptance remain
 active and partial. The Testing Integrated Build session retains its separate
 analysis responsibility; no viewer launch/login/profile/push occurred here.
+
+## 2026-11-16 — Qualified native banks tested; main overlap proceeds
+
+Source24fe03/build69160 (88) passes doctor/configure/build, exactapp/static,
+strict3598files/0blockers and current native2848/4, declaration609/4, actual
+producer3029/2, early500/4, plus34renderer scopes1134237assertions/364cases.
+These are executed88 results; earlier85/86 fixture/build failures remain recorded.
+
+The complete24cell/720row comparison now observes4816qualified/4816encoded
+rows across92 actual classification samples. Missing qualified bounds do not
+explain the tested bank cost. The separate native synthetic-bounds oracle
+checks real GPU zero-count writes; a qualified census alone does not prove
+visible counts. Even common256warmhits6–9 retain GPU penalties: visible bank
++22.30% allinside/+20.99% halfoutside; owner medians−43.36%/−42.91%,
+settled+6.97%/−0.05%. Fullbank GPU+15.71%/+26.13%, settled+6.55%/+8.84%.
+Small4/8row visible banks also lose. Requestedwarm loading, startup, churn,
+default16 publication quota and all adverse pairs remain in the full result.
+Banks stayOFF; no viewer FPS or universal GPU conclusion follows this fixture.
+The tested submission boundary is implemented, but useful selected native
+visibility remains open. Another identical run is not the next action.
+
+Owner69151 quiet/club recordings retain full logs but under2seconds actual
+CPU/GPU data because the detailed template used a rolling window (PPD305).
+They cannot establish a five-minute bottleneck, phase comparison or FPS gain.
+Independent continuous-template20s CPU retention now passes20.803s; no viewer
+was relaunched. Owner clarified a new capture is optional help, not a gate.
+All186 wrapper warnings were mapped to source;0ERROR/FATAL. Terrain null-buffer
+omission differs from original and is repaired locally underPPD125 with three
+actual-body cases, awaiting frozen build/tests. Other warnings remain recorded
+underPPD122/127/294/306 without unsupported renderer attribution.
+
+Full log telemetry also confirms selected1024-threshold ShadowViewOverlap
+actually activated; counter deltas span log telemetry, not retained trace or
+requested300s. Final activation review retains exact spans and cumulative/reset
+semantics. Activation alone does not prove a speedup. Main-view encoding
+overlap with an owned CPU point-light packet is the next implementation
+boundary (PPD307); projector/native resources remain serial, original nearby
+light updates remain ordered, and join precedes sky/commit/query/publication.
+
+Evidence: artifacts/metal/apple-first-persistent-native-scene-20261114/
+static-visibility-command-cost-88{,-summary}.json and selection-88.json;
+architecture-69151-warning-review-20261116T072955Z;
+capture-retention-preflight-20261116. Preserved owner69151 and older staged
+apps are untouched. Goal remainsactive/partial; no launch, push or new staged app.
