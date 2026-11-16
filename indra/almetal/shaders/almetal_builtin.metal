@@ -13428,14 +13428,13 @@ static ALMetalWorldLightMapBlurPixel almetal_world_light_map_blur_pixel(
     return result;
 }
 
-fragment float2 almetal_world_light_map_blur_fragment(
-    ALMetalWorldLocalLightVaryings input [[stage_in]],
-    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
-    constant float4& blur_delta [[buffer(1)]],
-    texture2d<float> light_map [[texture(0)]],
-    texture2d<float> normal_texture [[texture(1)]],
-    texture2d<float> depth_texture [[texture(2)]],
-    sampler point_sampler [[sampler(0)]])
+static float2 almetal_world_light_map_blur_value(
+    ALMetalWorldLocalLightVaryings input,
+    constant ALMetalWorldLightMapConstants& constants,
+    float2 blur_delta,
+    texture2d<float> light_map,
+    texture2d<float> normal_texture,
+    texture2d<float> depth_texture)
 {
     const int2 pixel = int2(input.position.xy);
     const float2 center = light_map.read(uint2(pixel)).rg;
@@ -13448,7 +13447,7 @@ fragment float2 almetal_world_light_map_blur_fragment(
 
     const ALMetalWorldLightMapBlurPixel blur =
         almetal_world_light_map_blur_pixel(
-            pixel, blur_delta.xy, center_depth,
+            pixel, blur_delta, center_depth,
             normal_texture, constants);
     float defined_weight = constants.blur_taps[0].y;
     float ambient_occlusion = defined_weight * center.y;
@@ -13481,6 +13480,39 @@ fragment float2 almetal_world_light_map_blur_fragment(
     }
     return float2(
         center.r, max(ambient_occlusion / defined_weight, 0.0));
+}
+
+fragment float2 almetal_world_light_map_blur_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
+    constant float4& blur_delta [[buffer(1)]],
+    texture2d<float> light_map [[texture(0)]],
+    texture2d<float> normal_texture [[texture(1)]],
+    texture2d<float> depth_texture [[texture(2)]],
+    sampler point_sampler [[sampler(0)]])
+{
+    return almetal_world_light_map_blur_value(
+        input, constants, blur_delta.xy, light_map, normal_texture, depth_texture);
+}
+
+struct ALMetalWorldSSAOFinalBlurOutput
+{
+    float2 visibility [[color(1), raster_order_group(0)]];
+};
+
+fragment ALMetalWorldSSAOFinalBlurOutput almetal_world_ssao_final_blur_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
+    constant float4& blur_delta [[buffer(1)]],
+    texture2d<float> light_map [[texture(0)]],
+    texture2d<float> normal_texture [[texture(1)]],
+    texture2d<float> depth_texture [[texture(2)]],
+    sampler point_sampler [[sampler(0)]])
+{
+    ALMetalWorldSSAOFinalBlurOutput result;
+    result.visibility = almetal_world_light_map_blur_value(
+        input, constants, blur_delta.xy, light_map, normal_texture, depth_texture);
+    return result;
 }
 
 static float almetal_world_ssao_visibility(

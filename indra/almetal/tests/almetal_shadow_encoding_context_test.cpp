@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <barrier>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -332,4 +333,97 @@ TEST_CASE("almetal: shadow contexts retain their executable generation after ren
     const auto old_pixels = fixture.read(*target, 0);
     CHECK(old_pixels == fixture.read(*target, 1));
     CHECK(std::abs(old_pixels[16 * 32 + 16] - .5f) < 1e-6f);
+}
+
+TEST_CASE("almetal: covered shadow contexts preserve cutout sampling after reload and renderer destruction",
+          "[almetal][shadow-encoding-context][shadow-context-covered]")
+{
+    Fixture fixture;
+    constexpr std::uint32_t width = 32, height = 32;
+    const float texture_index = std::bit_cast<float>(std::uint32_t{1});
+    const std::array<std::array<float, 4>, 4> positions{{
+        {{-.75f, -.75f, 0.f, texture_index}}, {{.75f, -.75f, 0.f, texture_index}},
+        {{-.75f, .75f, 0.f, texture_index}}, {{.75f, .75f, 0.f, texture_index}}}};
+    const std::array<std::array<float, 2>, 4> uv{{
+        {{0.f, 0.f}}, {{1.f, 0.f}}, {{0.f, 1.f}}, {{1.f, 1.f}}}};
+    const std::array<std::uint8_t, 16> colors{
+        255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255};
+    constexpr auto uv_offset = sizeof(positions);
+    constexpr auto color_offset = uv_offset + sizeof(uv);
+    std::array<std::uint8_t, color_offset + sizeof(colors)> bytes{};
+    std::memcpy(bytes.data(), positions.data(), sizeof(positions));
+    std::memcpy(bytes.data() + uv_offset, uv.data(), sizeof(uv));
+    std::memcpy(bytes.data() + color_offset, colors.data(), sizeof(colors));
+    ALMetalBufferDescriptor buffer_descriptor; buffer_descriptor.length = bytes.size();
+    auto vertices = ALMetalBuffer::create(*fixture.device, buffer_descriptor, &fixture.error);
+    REQUIRE(vertices); REQUIRE(vertices->write(0, bytes.data(), bytes.size(), &fixture.error));
+    fixture.vertices = std::move(vertices);
+    const std::array<std::uint16_t, 6> indices{0,1,2, 1,3,2};
+    buffer_descriptor.length = sizeof(indices);
+    auto elements = ALMetalBuffer::create(*fixture.device, buffer_descriptor, &fixture.error);
+    REQUIRE(elements); REQUIRE(elements->write(0, indices.data(), sizeof(indices), &fixture.error));
+    fixture.indices = std::move(elements);
+
+    ALMetalTextureDescriptor texture_descriptor; texture_descriptor.width = 2;
+    auto transparent = ALMetalTexture::create(*fixture.device, texture_descriptor, &fixture.error);
+    auto cutout = ALMetalTexture::create(*fixture.device, texture_descriptor, &fixture.error);
+    REQUIRE(transparent); REQUIRE(cutout);
+    const std::array<std::uint8_t, 8> rejected{255,255,255,0, 255,255,255,0};
+    const std::array<std::uint8_t, 8> split{255,255,255,0, 255,255,255,255};
+    auto upload = fixture.device->makeCommandBuffer("Context cutout fixtures", &fixture.error);
+    REQUIRE(upload);
+    REQUIRE(transparent->upload(*upload, 0, 0, {}, rejected.data(), 8, &fixture.error));
+    REQUIRE(cutout->upload(*upload, 0, 0, {}, split.data(), 8, &fixture.error));
+    REQUIRE(upload->commitAndWait(&fixture.error));
+    struct Lease
+    {
+        std::shared_ptr<const ALMetalBuffer> vertices, indices;
+        std::shared_ptr<const ALMetalTexture> transparent, cutout;
+    };
+    auto owner = std::make_shared<const Lease>(Lease{
+        fixture.vertices, fixture.indices, std::move(transparent), std::move(cutout)});
+    auto batch = fixture.batch(); batch.vertex_count = 4; batch.index_count = 6;
+    auto scene = fixture.scene(batch, width, height); scene.source_owner = owner;
+    scene.bulk_draws = false;
+    auto reference = fixture.target(width, height);
+    constexpr auto discarded_pixel = 16 * width + 8;
+    constexpr auto covered_pixel = 16 * width + 24;
+    // Both probes lie inside the quad: a clear left probe below must therefore
+    // come from alpha rejection, rather than missing geometry.
+    REQUIRE(fixture.renderer->renderSpotShadow(*reference, 0, scene, &fixture.error));
+    const auto opaque = fixture.read(*reference, 0);
+    REQUIRE(std::abs(opaque[discarded_pixel] - .5f) < 1e-6f);
+    REQUIRE(std::abs(opaque[covered_pixel] - .5f) < 1e-6f);
+    batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
+    batch.texcoord_offset = uv_offset; batch.color_offset = color_offset;
+    batch.texture_count = 2;
+    batch.coverageData().textures[0] = owner->transparent.get();
+    batch.coverageData().textures[1] = owner->cutout.get();
+    batch.coverageData().alpha_cutoffs[0] = batch.coverageData().alpha_cutoffs[1] = .5f;
+    REQUIRE(fixture.renderer->renderSpotShadow(*reference, 0, scene, &fixture.error));
+    const auto expected = fixture.read(*reference, 0);
+    REQUIRE(expected[discarded_pixel] == 1.f);
+    REQUIRE(std::abs(expected[covered_pixel] - .5f) < 1e-6f);
+
+    auto old_context = fixture.renderer->createShadowEncodingContext(&fixture.error);
+    REQUIRE(old_context);
+    REQUIRE(fixture.renderer->setAnisotropy(4, &fixture.error));
+    REQUIRE(fixture.renderer->reloadShaders(&fixture.error));
+    auto new_context = fixture.renderer->createShadowEncodingContext(&fixture.error);
+    REQUIRE(new_context);
+    REQUIRE(fixture.renderer->renderSpotShadow(*reference, 1, scene, &fixture.error));
+    REQUIRE(fixture.read(*reference, 1) == expected);
+    fixture.renderer.reset(); fixture.main_data.reset();
+
+    // The contexts first create/use their covered material resources only
+    // after the parent renderer and its frame arena have been destroyed.
+    scene.material_buffers = true;
+    auto target = fixture.target(width, height);
+    REQUIRE(old_context->begin(1, owner, "Old cutout context", &fixture.error));
+    REQUIRE(new_context->begin(1, owner, "Reloaded cutout context", &fixture.error));
+    REQUIRE(old_context->encode(*target, 0, scene, &fixture.error));
+    REQUIRE(new_context->encode(*target, 1, scene, &fixture.error));
+    REQUIRE(old_context->commit(&fixture.error)); REQUIRE(new_context->commit(&fixture.error));
+    CHECK(fixture.read(*target, 0) == expected);
+    CHECK(fixture.read(*target, 1) == expected);
 }
