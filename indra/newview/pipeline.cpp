@@ -1122,6 +1122,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     TerrainPreflightSnapshot first_terrain_preflight_failure;
     TerrainPreflightSnapshot recent_terrain_preflight_failure;
     U64 terrain_preflight_failures=0;
+    U64 terrain_preflight_unready_skips=0;
 
     ALMetalWorldSpotShadowBatch* appendSeparateShadowBatch(U32 source_line)
     {
@@ -3481,9 +3482,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", direct_only/gpu_ready_source_publications=" << ALScenePublicationNative::animated_direct_source_publications << '/' << ALScenePublicationNative::animated_gpu_source_publications << LL_ENDL;
             const auto log_terrain_preflight=[](const char* owner,const MetalWorldSimpleCapture* source)
             {
-                if(!source || !source->terrain_preflight_failures)return;
+                if(!source || (!source->terrain_preflight_failures &&
+                    !source->terrain_preflight_unready_skips))return;
                 LL_INFOS("MetalScene") << "Native terrain preflight: capture_owner=" << owner
                     << ", failures=" << source->terrain_preflight_failures
+                    << ", unready_buffer_skips=" << source->terrain_preflight_unready_skips
                     << ", recent={" << source->recent_terrain_preflight_failure << '}' << LL_ENDL;
             };
             log_terrain_preflight("main",&capture);

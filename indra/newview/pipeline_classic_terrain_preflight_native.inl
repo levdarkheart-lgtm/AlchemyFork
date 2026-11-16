@@ -44,6 +44,15 @@
         if(!std::isfinite(triplanar_blend)||triplanar_blend<=0.f)return Reason::triplanar_blend;
         return Reason::ready;
     }();
+    if(preflight_reason==TerrainPreflightReason::missing_buffer)
+    {
+        // The original LLFace::renderIndexed emits nothing for a face whose
+        // vertex buffer is not ready. Preserve that omission only after all
+        // preceding owner prerequisites; a nonnull native failure still
+        // invalidates the transaction through the unchanged path below.
+        ++capture.terrain_preflight_unready_skips;
+        return;
+    }
     if(preflight_reason!=TerrainPreflightReason::ready)
     {
         preflight.reason=preflight_reason;preflight.frame=gFrameCount;

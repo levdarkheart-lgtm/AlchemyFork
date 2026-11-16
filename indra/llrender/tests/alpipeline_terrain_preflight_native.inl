@@ -50,6 +50,7 @@ struct Capture : Inputs::Capture
 {
     TerrainPreflightSnapshot first_terrain_preflight_failure,recent_terrain_preflight_failure;
     U64 terrain_preflight_failures=0;
+    U64 terrain_preflight_unready_skips=0;
     U32 incomplete_owner_line=0;
     void markIncomplete(U32 line){incomplete_owner_line=line;Inputs::Capture::markIncomplete(line);}
     bool hero_probe_face_capture=false,reflection_probe_face_capture=false;
@@ -203,4 +204,73 @@ TEST_CASE("Actual ready classic terrain preflight preserves current native captu
     CHECK(inputs.buffer_value.prepare_calls==1);CHECK_FALSE(inputs.buffer_value.require_indices);
     CHECK(inputs.face_value.count_reads==1);CHECK(inputs.face_value.index_reads==1);
     CHECK(storage->getMetalVertexPublicationRevision()==revision);
+}
+
+TEST_CASE("Actual classic terrain null-buffer omission preserves the accepted prefix without later reads",
+          "[almetal][pipeline-buffer-publication][terrain-preflight]")
+{
+    using namespace TerrainPreflightTest;
+    Publication f;const auto storage=terrainBuffer();OwnerInputs inputs(storage.get());GuardedPhases inaccessible;
+    inputs.buffer=nullptr;inputs.detail_phase=inaccessible.unreadable();
+    inputs.buffer_value.forbid_prepare=true;inputs.face_value.forbid_geometry=true;
+    REQUIRE_NOTHROW(inputs.evaluate());
+    CHECK(inputs.capture.complete);REQUIRE(inputs.capture.batches.size()==1);
+    CHECK(inputs.capture.batches[0].index_count==91);CHECK(inputs.capture.draw_order==std::vector<ALMetalWorldDrawIndex>{0});
+    CHECK(inputs.capture.terrain_preflight_unready_skips==1);CHECK(inputs.capture.terrain_preflight_failures==0);
+    CHECK(inputs.capture.first_terrain_preflight_failure.reason==TerrainPreflightReason::not_evaluated);
+    CHECK(inputs.capture.recent_terrain_preflight_failure.reason==TerrainPreflightReason::not_evaluated);
+    CHECK(inputs.capture.incomplete_owner_line==0);CHECK(inputs.ready_fallthroughs==0);
+    CHECK(inputs.buffer_value.prepare_calls==0);CHECK(inputs.face_value.count_reads==0);CHECK(inputs.face_value.index_reads==0);
+    // The missing buffer cannot bypass an earlier pointer prerequisite.
+    inputs.detail_textures=nullptr;
+    REQUIRE_NOTHROW(inputs.evaluate());
+    CHECK_FALSE(inputs.capture.complete);CHECK(inputs.capture.batches.empty());CHECK(inputs.capture.draw_order.empty());
+    CHECK(inputs.capture.terrain_preflight_unready_skips==1);CHECK(inputs.capture.terrain_preflight_failures==1);
+    CHECK(inputs.capture.first_terrain_preflight_failure.reason==TerrainPreflightReason::missing_details);
+}
+
+TEST_CASE("Actual classic terrain ready-null-ready progression retains earlier draws and resumes preflight",
+          "[almetal][pipeline-buffer-publication][terrain-preflight]")
+{
+    using namespace TerrainPreflightTest;
+    Publication f;const auto storage=terrainBuffer();OwnerInputs inputs(storage.get());
+    REQUIRE_NOTHROW(inputs.evaluate());REQUIRE(inputs.ready_fallthroughs==1);
+    // Packing after this preflight is outside the fixture. Add an accepted
+    // prefix entry to check the actual production clearDraws boundary below.
+    inputs.capture.batches.emplace_back().index_count=47;inputs.capture.draw_order.push_back(1);
+    inputs.buffer=nullptr;REQUIRE_NOTHROW(inputs.evaluate());
+    CHECK(inputs.ready_fallthroughs==1);CHECK(inputs.capture.complete);
+    inputs.buffer=&inputs.buffer_value;REQUIRE_NOTHROW(inputs.evaluate());
+    CHECK(inputs.ready_fallthroughs==2);CHECK(inputs.capture.complete);REQUIRE(inputs.capture.batches.size()==2);
+    CHECK(inputs.capture.batches[0].index_count==91);CHECK(inputs.capture.batches[1].index_count==47);
+    CHECK((inputs.capture.draw_order==std::vector<ALMetalWorldDrawIndex>{0,1}));
+    CHECK(inputs.capture.terrain_preflight_unready_skips==1);CHECK(inputs.capture.terrain_preflight_failures==0);
+    CHECK(inputs.capture.first_terrain_preflight_failure.reason==TerrainPreflightReason::not_evaluated);
+    CHECK(inputs.buffer_value.prepare_calls==2);CHECK(inputs.face_value.count_reads==2);CHECK(inputs.face_value.index_reads==2);
+}
+
+TEST_CASE("Actual classic terrain null omission cannot hide a later nonnull native publication failure",
+          "[almetal][pipeline-buffer-publication][terrain-preflight]")
+{
+    using namespace TerrainPreflightTest;
+    Publication f;MissingPublisher missing(f.device.get());const auto storage=terrainBuffer(false);
+    REQUIRE_FALSE(storage->hasPublishedMetalVertexBuffer());OwnerInputs inputs(storage.get());GuardedPhases inaccessible;
+    inputs.buffer=nullptr;inputs.detail_phase=inaccessible.unreadable();
+    inputs.buffer_value.forbid_later=true;inputs.face_value.forbid_geometry=true;
+    REQUIRE_NOTHROW(inputs.evaluate());CHECK(inputs.capture.complete);REQUIRE(inputs.capture.batches.size()==1);
+    inputs.buffer=&inputs.buffer_value;REQUIRE_NOTHROW(inputs.evaluate());
+    CHECK_FALSE(inputs.capture.complete);CHECK(inputs.capture.batches.empty());CHECK(inputs.capture.draw_order.empty());
+    CHECK(inputs.capture.terrain_preflight_unready_skips==1);CHECK(inputs.capture.terrain_preflight_failures==1);
+    CHECK(inputs.capture.first_terrain_preflight_failure.reason==TerrainPreflightReason::native_vertex_not_current);
+    CHECK(inputs.capture.recent_terrain_preflight_failure.reason==TerrainPreflightReason::native_vertex_not_current);
+    CHECK(inputs.capture.first_terrain_preflight_failure.observed==1);CHECK(inputs.capture.incomplete_owner_line==inputs.preflight_owner_line);
+    CHECK(inputs.buffer_value.prepare_calls==1);CHECK(inputs.buffer_value.position_reads==0);CHECK(inputs.buffer_value.vertex_reads==0);
+    CHECK(inputs.ready_fallthroughs==0);
+    // A subsequent omission preserves the already-failed transaction and its
+    // real first/recent failure; it cannot declare the capture complete again.
+    inputs.buffer=nullptr;REQUIRE_NOTHROW(inputs.evaluate());
+    CHECK_FALSE(inputs.capture.complete);CHECK(inputs.capture.batches.empty());
+    CHECK(inputs.capture.terrain_preflight_unready_skips==2);CHECK(inputs.capture.terrain_preflight_failures==1);
+    CHECK(inputs.capture.first_terrain_preflight_failure.reason==TerrainPreflightReason::native_vertex_not_current);
+    CHECK(inputs.capture.recent_terrain_preflight_failure.reason==TerrainPreflightReason::native_vertex_not_current);
 }

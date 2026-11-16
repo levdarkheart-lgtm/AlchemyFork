@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-305 -->
+<!-- next-defect-id: PPD-307 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3492,6 +3492,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15 source audit of exact69065 anded235 confirms classic terrain compound preflight precedes all texture/map/material checks. GroupSources eligibility is PARTITION_VOLUME and cannot convert terrain face pools; shared timing/allocation interaction remains unproved. Successfulsixface publication preceded later aborts; no permanent mirror-failure claim. First predicate is unobserved; bounded first-reason diagnostics are next, preserving prepare-once evaluation and incomplete/clear/cancel/retry. No guard relaxation or stale resource recovery authorized by this evidence.
 
 - 2026-11-15 69085 owner profile imported: exact6af/40700 measurement09:57:14.760–10:02:16.447UTC has no hero/mirror warnings; earlier startup snapshot has20warnings with renderer0/GBuffer0/line0, distinct from69065terrain guard. Absence of later warnings does not prove mirror recovery. New typed classic preflight diagnostics and actual ordered-guard tests integrated for next source; original root cause remains unknown.
+
+- 2026-11-16 owner69151 whole-session warnings confirm classic-terrain missing_buffer during a second landmark teleport07:11:32–35, after the requested busy recording stopped. Exact2038 helper returns before native preparation and clears the hero-face transaction. Original1eb44 lldrawpoolterrain.cpp353 calls LLFace::renderIndexed, whose llface.cpp1969–1975 skips a face with no vertex buffer. This is a source-confirmed transition-handling difference: no GPU buffer exists to render in either path. Register before narrow parity repair. Omit only an otherwise qualified face with a null geometry buffer, preserving every other owner/preparation/range/material guard and retaining already-captured draws. Add explicit skipped-unready census and actual-body ready/null/mixed/native-prepare-failure tests. Successful publication between warnings does not prove final recovery; owner runtime acceptance remains pending.
+
+- 2026-11-16 narrow parity repair integrated from d9eccdef2c: ordered missing_buffer skips only the current face and increments a capture-owned cumulative census; preceding pointer failures and every nonnull native-publication/range/material guard retain incomplete/clear behavior. Previously accepted draws remain owned. Production diagnostics now print unready_buffer_skips even without failures. Three new actual-body cases exercise protected phase memory, ready/null/ready progress and nullskip followed by real missing-publisher failure; no viewer/runtime recovery claim. Build/native execution pending on next frozen source.
 
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
@@ -7296,3 +7300,40 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 frozen86/source1c0035d301 doctor/configure/build PASS154.308s. Actual static GPU native4cases2810assertions PASS with API/GPU validation, including synthetic16/32 zero-count oracle, correct material/index/ranges and pending ownership. Certificate scope executes4cases583assertions:3cases582assertions pass, ordinary-table case line158 returns null during table preparation. No error context was printed; source/fixture cause unproved. Register before investigation/repair; producer author checks actual Resources preflight contract and adds context before any REQUIRE. No cost/full34/native completion claim for failed scope. Failed86 receipt retained.
 
 - 2026-11-16 failed86 ordinary-table fixture cause is confirmed: its default ALMetalSamplerDescriptor had support_argument_buffers=false, correctly rejected by Resources::preflight; production SourcePages already enables that capability. Test-only sampler flag/INFO repair preserves4cases, renderer/caps unchanged. Actual-producer86 independently PASS2952assertions/2cases with API/GPU validation. No full34 or costs run; freeze87 for complete corrected native validation.
+
+
+## PPD-305 — Detailed profiling template retains a short window despite five-minute recording
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex profiling workflow
+- Discovered: 2026-11-16
+- Original reference: Owner requests full five-minute quiet and busy CPU/GPU/log evidence. A recording time limit and successful CLI exit do not prove retained sample duration. The previously used Overview template has windowLimit0; installed detailed Game Performance has windowLimit5000000000.
+- Evidence: [Performance evidence contract](PERFORMANCE.md). Exact69151/PID73806 captures return0 but TOCs report10seconds/Windowed5seconds; actual exported CPU ranges are only1.407quiet and1.166busy seconds. Full log/process streams remain preserved. Detailed template window mode was not preflighted before attaching; this is an agent capture-configuration defect, not a viewer defect. Quiet recorder also has221 DWARF cursor diagnostics, busy0; debug-map completeness is a separate limitation.
+- Next action: Preserve both traces and all raw logs as limited evidence and retain the verified continuous template for a future specific measurement. Owner clarified additional recording was offered as help, not a prerequisite; continue architecture implementation without asking for another run. A future capture must verify retained coverage, exact executable and phase boundaries before use.
+- Verification: Original capture0/TOC0/exports0 are genuine; five-minute CPU/GPU coverage FAIL. Derived CPU1.407/1.166s and GPU1.431/1.167s; raw CPU tails remain under2s. Copied installed detailed template changes only global windowLimit5000000000→0. Independent /usr/bin/yes20s test record/export exits0: Deferred mode,21.087841s metadata,12616 CPU rows spanning20.803002667s. retention-verification.json reports retention_pass=true; no viewer was launched. This proves controlled CPU retention, not a replacement five-minute viewer/GPU run.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before template repair. Build88 exactprocesssubtree remains SIGSTOPsuspended; no fresh viewer launched or settings changed. Owner closed69151 after requested busy measurement, so a new viewer launch requires owner action/fresh authorization. All original artifacts/recorder diagnostics and warning streams retained. Root owns capture repair and integration; agents own offline CPU/GPU/warning analysis only.
+
+- 2026-11-16 PPD305 controlled nonviewer retention PASS (20.803s CPU span), original traces and all221 quiet DWARF diagnostics retained. CPU/GPU/warning reviews complete; no replacement viewer recording requested. Owner clarification keeps profiling optional for the active implementation goal. Build88 exact saved20process subtree resumed after full PID/args/ancestry verification, with receipt; no restart or viewer operation.
+
+## PPD-306 — Texture preview requests absent controls and creates dummy controls
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning review
+- Discovered: 2026-11-16
+- Original reference: Original1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 and owner candidate2038c60c365b63d6b55e705cb0660efb781106b2 have identical texture-preview XML and corresponding LLPreviewTexture requests for buttons_panel/aspect_ratio. Those names are absent from the XML. desc exists in XML and its generic floater lookup is a separate unresolved ownership question.
+- Evidence: [Architecture execution ledger](work/active/apple-first-architecture-status.md); private artifacts/metal/architecture-69151-warning-review-20261116T072955Z/combined-source-warning-review.{json,md}, busy/warning-analysis.{json,md}; all186 wrapper warnings reviewed,0ERROR/FATAL.
+- Next action: Audit live floater/control ownership before changing XML or lookup behavior; preserve texture preview functionality. This potential inherited contract issue is independent of the main renderer architecture and does not require another recording.
+- Verification: Six dummy-control warnings observed in the full busy wrapper, including later activity. Source name mismatch is confirmed; visible loss of functionality, Metal regression and performance impact are unproved. No repair or runtime closure claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 source warning review retained per-phase counts and original callsites. HTTP/asset403/timeout/GLTF failures remain actual delivery failures with cause unproved (PPD122), embedded_items remains PPD127, map cleanup remains PPD294; none is dismissed merely as a harmless warning or attributed to the renderer without evidence.
