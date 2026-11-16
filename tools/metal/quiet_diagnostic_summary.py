@@ -20,11 +20,12 @@ from pathlib import Path
 import tempfile
 
 MAX_BYTES = 64 * 1024 * 1024
+MAX_INPUT_BYTES = 256 * 1024 * 1024
 MAX_LINE = 16 * 1024
 MAX_COMMANDS = 8192
 MAX_RECENT = 1024
 MAX_FRAMES = 100000
-MAX_SEQUENCES = 1000000
+MAX_SEQUENCES = 4000000  # Finite bitset covers the explicit 256MiB input ceiling.
 MAX_UNION_INTERVALS = 100000
 MAX_PERIOD_SAMPLES = 50000
 MAX_GROUPS = 512
@@ -386,6 +387,8 @@ class Command:
 class Analyzer:
     def __init__(self, path, *, maximum=MAX_BYTES, phases=DEFAULT_PHASES,
                  world_start=None, capture_directory=None, started_state=24, bin_seconds=10):
+        if not 0 < maximum <= MAX_INPUT_BYTES:
+            raise ValueError("maximum input bytes must be 1..268435456")
         self.path = Path(path)
         self.maximum = maximum
         self.phase_specs = phases
@@ -968,7 +971,8 @@ def parser():
     p.add_argument("--world-start-mach-ns", type=int)
     p.add_argument("--phase", action="append", type=phase_spec)
     p.add_argument("--capture-directory", type=Path)
-    p.add_argument("--max-bytes", type=int, default=MAX_BYTES)
+    p.add_argument("--max-bytes", type=int, default=MAX_BYTES,
+                   help="explicit bounded input prefix in bytes (at most 268435456; default 67108864)")
     p.add_argument("--started-state", type=int, default=24)
     p.add_argument("--bin-seconds", type=float, default=10)
     return p
@@ -996,8 +1000,8 @@ def safe_write(path, text, input_path):
 def main(argv=None):
     p = parser()
     args = p.parse_args(argv)
-    if not 0 < args.max_bytes <= MAX_BYTES or not math.isfinite(args.bin_seconds) or not 0 < args.bin_seconds <= 3600:
-        p.error("max-bytes must be1..67108864 and bin-seconds must be positive and at most3600")
+    if not 0 < args.max_bytes <= MAX_INPUT_BYTES or not math.isfinite(args.bin_seconds) or not 0 < args.bin_seconds <= 3600:
+        p.error("max-bytes must be 1..268435456 and bin-seconds must be positive and at most 3600")
     if args.world_start_mach_ns is not None and not 0 < args.world_start_mach_ns < (1 << 64):
         p.error("world-start-mach-ns must be a positive uint64")
     phases = args.phase or DEFAULT_PHASES

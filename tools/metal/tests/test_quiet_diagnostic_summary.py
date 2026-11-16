@@ -272,6 +272,48 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(output.read_bytes(),original_output)
         self.assertEqual(self.path.read_bytes(),original)
 
+    def test_explicit_larger_prefix_cap_and_sequence_tracking_remain_bounded(self):
+        stream = Stream(); stream.marker("quiet_world_started", 0)
+        stream.frame(1, .1)
+        stream.write(self.path)
+        rows = [json.loads(line) for line in self.path.read_text().splitlines()]
+        frame = next(row for row in rows if row["event"] == "frame")
+        frame["sequence"] = 1_000_001
+        # Sparse oversized line keeps allocation small while putting a real
+        # serialized frame beyond the default64MiB input prefix.
+        with self.path.open("wb") as handle:
+            handle.write((json.dumps(rows[0]) + "\n").encode())
+            handle.write((json.dumps(rows[1]) + "\n").encode())
+            handle.seek(65 * 1024 * 1024 - 1)
+            handle.write(b"\n")
+            handle.write((json.dumps(frame) + "\n" + json.dumps(rows[-1]) + "\n").encode())
+        default = summary.Analyzer(self.path).run()
+        self.assertIsNone(default["input_identity"]["sha256"])
+        self.assertEqual(0, default["frame_totals"].get("frame_rows", 0))
+        expanded = summary.Analyzer(self.path, maximum=summary.MAX_INPUT_BYTES).run()
+        self.assertIsNotNone(expanded["input_identity"]["sha256"])
+        self.assertEqual(1, expanded["frame_totals"]["frame_rows"])
+        self.assertNotIn("sequence_outside_tracking_bound", expanded["record_problems"])
+        self.assertEqual(1, expanded["parse_errors"]["oversized_line"])
+        for value in (0, summary.MAX_INPUT_BYTES + 1):
+            with self.assertRaises(ValueError):
+                summary.Analyzer(self.path, maximum=value)
+
+    def test_cli_explicit_input_ceiling_keeps_default64_mib(self):
+        stream = Stream(); stream.marker("quiet_world_started", 0); stream.write(self.path)
+        self.assertEqual(64 * 1024 * 1024, summary.parser().parse_args(
+            [str(self.path), "--output", str(self.directory / "unused.json")]).max_bytes)
+        output = self.directory / "expanded.json"
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, summary.main([str(self.path), "--output", str(output),
+                                             "--max-bytes", str(256 * 1024 * 1024)]))
+        self.assertEqual(json.loads(output.read_text())["provenance"]["source_sha"], "b" * 40)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped:
+            summary.main([str(self.path), "--output", str(self.directory / "rejected.json"),
+                          "--max-bytes", str(256 * 1024 * 1024 + 1)])
+        self.assertEqual(2, stopped.exception.code)
+        self.assertFalse((self.directory / "rejected.json").exists())
+
     def test_invalid_header_missing_gpu_values_and_malformed_tail_fail_closed(self):
         stream=Stream();stream.marker("quiet_world_started",0)
         stream.rows[0]["cpu_clock"]="unverified_clock"

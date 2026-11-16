@@ -240,6 +240,44 @@ class CollectorTests(unittest.TestCase):
         self.assertIn("missing_uncalibrated_or_source_mismatch", receipt["failure"])
         self.assertIn("coverage", receipt)
 
+    def native_size_fixture(self):
+        source = self.parent / "native-sized.jsonl"
+        rows = [{"event": "header", "schema": 1, "cpu_clock": "mach_absolute_time_ns",
+                 "calibration_before_mach_ns": 100, "calibration_unix_ns": 200,
+                 "calibration_after_mach_ns": 101, "source_sha": self.args.source_sha, "process_id": 12345},
+                {"event": "frame", "start_mach_ns": 100, "end_mach_ns": 3_000_000_100,
+                 "mach_ns": 3_000_000_100},
+                {"event": "metrics", "mach_ns": 101, "padding": "x" * 600}]
+        source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        self.args.diagnostic_jsonl = source
+        return source
+
+    def test_explicit_native_cap_reaches_live_guard_and_final_read_only_coverage(self):
+        source = self.native_size_fixture()
+        self.args.diagnostic_cap_mib = 256
+        original = source.read_bytes()
+        # Scale only byte units; exercise the real live/final size guards and
+        # parser without allocating a256MiB test input or starting a profiler.
+        with mock.patch.object(capture, "MIB", 8):
+            self.assertGreater(len(original), 64 * capture.MIB)
+            self.assertLess(len(original), 256 * capture.MIB)
+            code, receipt, _, _ = self.run_collector()
+        self.assertEqual(0, code)
+        self.assertEqual(256, receipt["limits"]["diagnostic_cap_mib"])
+        self.assertEqual(256 * 8, receipt["diagnostic_coverage"]["maximum_input_bytes"])
+        self.assertTrue(receipt["native_coverage"]["covered"])
+        self.assertEqual(original, source.read_bytes())
+
+    def test_default_native_cap_still_rejects_oversized_input_and_preserves_it(self):
+        source = self.native_size_fixture()
+        original = source.read_bytes()
+        with mock.patch.object(capture, "MIB", 8):
+            code, receipt, _, _ = self.run_collector()
+        self.assertEqual(1, code)
+        self.assertIn("native diagnostic input exceeds", receipt["failure"])
+        self.assertEqual(64, receipt["limits"]["diagnostic_cap_mib"])
+        self.assertEqual(original, source.read_bytes())
+
     def test_existing_run_is_never_overwritten(self):
         self.args.output.mkdir()
         sentinel = self.args.output / "keep"
@@ -405,6 +443,21 @@ class DataTests(unittest.TestCase):
         self.assertEqual(1, code)
         collector.assert_not_called()
 
+    def test_cli_native_cap_is_explicit_and_bounded_before_start(self):
+        command = ["record", "--pid", "12345", "--executable", "/exact/viewer",
+                   "--exe-sha256", "a" * 64, "--source-sha", "b" * 40,
+                   "--output", "/absolute/new-run"]
+        self.assertEqual(64, capture.parser().parse_args(command).diagnostic_cap_mib)
+        for cap in (0, 63, 257, 999999):
+            with self.subTest(cap=cap), mock.patch.object(capture, "Collector") as collector, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(1, capture.main(command + ["--diagnostic-cap-mib", str(cap)]))
+                collector.assert_not_called()
+        with mock.patch.object(capture, "Collector") as collector:
+            collector.return_value.run.return_value = 0
+            self.assertEqual(0, capture.main(command + ["--diagnostic-cap-mib", "256"]))
+            self.assertEqual(256, collector.call_args.args[0].diagnostic_cap_mib)
+
     def test_qualifier_rejects_middle_gap_despite_matching_first_last_range(self):
         args = argparse.Namespace(output=self.directory, pid=8, thread_states=False,
                                   export_timeout=1, export_cap_mib=1)
@@ -513,7 +566,8 @@ class CoverageContractTests(unittest.TestCase):
         self.assertTrue(result["covered"])
         self.assertEqual("covered_footer_duration_limit", result["native_coverage_status"])
 
-    def export_fixture(self, families, gpu_pid=8, partial_family=None, zero_frames=False):
+    def export_fixture(self, families, gpu_pid=8, partial_family=None, zero_frames=False,
+                       bucket_rows=None):
         def exported(_trace, output, _selector, _deadline, _cap):
             if output.name == "toc.xml":
                 output.write_text('<trace-toc><run number="1"><info><target><process pid="8"/>'
@@ -526,11 +580,14 @@ class CoverageContractTests(unittest.TestCase):
                 rows = []
                 for family in names:
                     count = 4 if family == partial_family else 10
-                    for second in range(count):
+                    buckets = ([(second * 1_000_000_000, 1_000_000_000,
+                                 "0" if zero_frames else "1", "3.5") for second in range(count)]
+                               if bucket_rows is None or family == "time-profile" else bucket_rows)
+                    for start, duration, frames, metric in buckets:
                         owner = 8 if family in ("time-profile", "CPU Begin to Display") else gpu_pid
-                        rows.append('<row><time>' + str(second * 1_000_000_000) + '</time>'
-                            '<duration>1000000000</duration><name>' + family + '</name>'
-                            '<frames>' + ('0' if zero_frames else '1') + '</frames><value>3.5</value>'
+                        rows.append('<row><time>' + str(start) + '</time>'
+                            '<duration>' + str(duration) + '</duration><name>' + family + '</name>'
+                            '<frames>' + str(frames) + '</frames><value>' + str(metric) + '</value>'
                             '<process><pid>' + str(owner) + '</pid></process></row>')
                 output.write_text('<trace-query-result><schema>' + ''.join('<col><mnemonic>' + name +
                     '</mnemonic></col>' for name in ("start", "duration", "name", "number-of-frames", "value-in-ms", "process")) +
@@ -561,7 +618,63 @@ class CoverageContractTests(unittest.TestCase):
                 capture.qualify(self.args, 10)
 
     def test_zero_frame_gpu_buckets_do_not_qualify(self):
-        with self.export_fixture(capture.GPU_FAMILIES, zero_frames=True):
+        zeros = [(second * 1_000_000_000, 1_000_000_000, "0", "0") for second in range(10)]
+        with self.export_fixture(capture.GPU_FAMILIES, bucket_rows=zeros):
+            with self.assertRaisesRegex(RuntimeError, "GPU family coverage"):
+                capture.qualify(self.args, 10)
+
+    def actual_gap_buckets(self):
+        # Retained l9 PID62863 mean-variant bucket values around the original
+        # false5.016658s gap, translated by the first positive start. No export.
+        origin = 68_289_391_583
+        return [(start - origin, duration, frames, value) for start, duration, frames, value in (
+            (68_289_391_583, 1_002_749_333, 11, "116.154428148"),
+            (69_292_140_958, 1_002_569_417, 0, "0.000000000"),
+            (70_348_624_083, 948_794_083, 0, "0.000000000"),
+            (71_358_381_583, 941_668_250, 0, "0.000000000"),
+            (72_308_519_291, 994_220_417, 0, "0.000000000"),
+            (73_306_049_583, 999_297_708, 8, "125.510348938"),
+            (74_305_347_333, 1_002_828_750, 16, "119.883648352"))]
+
+    def test_retained_four_zero_buckets_bridge_actual_positive_frame_gap(self):
+        with self.export_fixture(capture.GPU_FAMILIES, bucket_rows=self.actual_gap_buckets()):
+            result = capture.qualify(self.args, 10)
+        self.assertEqual("verified_target_timestamp_ranges", result["status"])
+        families = result["ranges"][capture.SCHEMAS[1]]["gpu_families"]
+        for family in capture.GPU_FAMILIES:
+            rows = families[family]
+            self.assertEqual((7, 3, 4, 0), tuple(rows[k] for k in
+                ("target_rows", "positive_frame_rows", "zero_frame_rows", "invalid_rows")))
+            self.assertAlmostEqual(5.016658, rows["maximum_positive_frame_start_gap_seconds"])
+            self.assertLess(rows["maximum_consecutive_start_gap_seconds"], 1.057)
+
+    def test_missing_buckets_cannot_borrow_cpu_or_other_family_timestamps(self):
+        missing = [row for row in self.actual_gap_buckets() if row[2] > 0]
+        with self.export_fixture(capture.GPU_FAMILIES, bucket_rows=missing):
+            with self.assertRaisesRegex(RuntimeError, "GPU family coverage|timestamp gap"):
+                capture.qualify(self.args, 10)
+
+    def test_malformed_gpu_buckets_do_not_bridge_or_hide_behind_valid_rows(self):
+        invalid = [("0", "NaN"), ("-1", "0"), ("bad", "0"), ("0", "3.5")]
+        for frames, metric in invalid:
+            with self.subTest(frames=frames, metric=metric):
+                rows = self.actual_gap_buckets()
+                start, duration, _, _ = rows[2]
+                rows[2] = (start, duration, frames, metric)
+                with self.export_fixture(capture.GPU_FAMILIES, bucket_rows=rows):
+                    with self.assertRaisesRegex(RuntimeError, "malformed actual target GPU family"):
+                        capture.qualify(self.args, 10)
+        for start, duration in (("bad", 1_000_000_000), (-1, 1_000_000_000), (2_000_000_000, 0)):
+            rows = self.actual_gap_buckets()
+            rows[2] = (start, duration, "0", "0")
+            with self.subTest(start=start, duration=duration), \
+                    self.export_fixture(capture.GPU_FAMILIES, bucket_rows=rows):
+                with self.assertRaisesRegex(RuntimeError, "malformed actual target GPU family"):
+                    capture.qualify(self.args, 10)
+
+    def test_zero_buckets_of_other_pid_cannot_bridge_target_family(self):
+        with self.export_fixture(("CPU Begin to Display", *capture.GPU_FAMILIES),
+                                 gpu_pid=99, bucket_rows=self.actual_gap_buckets()):
             with self.assertRaisesRegex(RuntimeError, "GPU family coverage"):
                 capture.qualify(self.args, 10)
 

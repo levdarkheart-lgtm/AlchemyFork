@@ -19,8 +19,10 @@ trigger them. All collector output is private (0700 directory/0600 files).
 Observed size limits are sampled, including owned recorder-child raw files, and
 checked again after exit; they are not a kernel-enforced peak-allocation limit.
 Actual exported target timestamps, not the requested duration, qualify retention.
-GPU coverage requires positive-frame GPU Begin to End and GPU Active Time rows
-separately. A requested native stream must cover those ranges and CPU samples
+GPU coverage requires both GPU Begin to End and GPU Active Time families to
+contain positive-frame observations. Valid zero-associated-frame buckets retain
+timestamp coverage and are counted separately; missing/malformed buckets do not.
+A requested native stream must cover those ranges and CPU samples
 with calibrated FRAME iteration bounds (one-second boundary tolerance). A live
 prefix can cover the interval while its final loss/cutoff census remains unknown.
 Powermetrics is off by default; enabling it requires existing root privilege and
@@ -51,6 +53,8 @@ MIB = 1024 ** 2
 GIB = 1024 ** 3
 SCHEMAS = ("time-profile", "metal-perf-overview-layer-duration-metric")
 GPU_FAMILIES = ("GPU Begin to End", "GPU Active Time")
+DEFAULT_DIAGNOSTIC_CAP_MIB = 64
+MAX_DIAGNOSTIC_CAP_MIB = 256
 NATIVE_COVERAGE_TOLERANCE_NS = 1_000_000_000  # Writer/app-iteration/Overview bucket boundaries.
 OVERVIEW_ID = "com.apple.dt.instruments.metal-perf-overview"
 OVERVIEW_INSTRUMENTS = {OVERVIEW_ID, "com.apple.xray.instrument-type.device-thermal-state",
@@ -297,13 +301,15 @@ class Tail:
                 "sha256": sha256(self.destination) if self.destination.exists() else None}
 
 
-def diagnostic_coverage(path, cap=64 * MIB):
+def diagnostic_coverage(path, cap=DEFAULT_DIAGNOSTIC_CAP_MIB * MIB):
+    if not 0 < cap <= MAX_DIAGNOSTIC_CAP_MIB * MIB:
+        raise ValueError("native diagnostic size cap must be positive and at most 256MiB")
     result = {"records": 0, "malformed": 0, "events": {}, "first_mach_ns": None,
               "last_mach_ns": None, "header": None, "partial_final_line": False,
               "path": str(path), "present": path.exists(), "read_only": True,
               "markers": [], "footer": None, "frame_records": 0, "invalid_frame_records": 0,
               "first_frame_start_mach_ns": None, "last_frame_end_mach_ns": None,
-              "maximum_frame_gap_ns": 0}
+              "maximum_frame_gap_ns": 0, "maximum_input_bytes": cap}
     previous_frame_end = None
     counts = collections.Counter()
     if not path.exists():
@@ -496,8 +502,17 @@ def table_coverage(path, pid):
             values = dict(zip(columns, map(resolve, element)))
             if pid in [value[1] for key, value in values.items() if key in ("thread", "process")]:
                 matched += 1
+                family = values.get("name", (None, None))[0]
+                item = None
+                if family in GPU_FAMILIES:
+                    item = gpu_families.setdefault(family, {"target_rows": 0,
+                        "positive_frame_rows": 0, "zero_frame_rows": 0, "invalid_rows": 0,
+                        "first_ns": None, "last_end_ns": None,
+                        "maximum_consecutive_start_gap_seconds": 0,
+                        "maximum_positive_frame_start_gap_seconds": 0,
+                        "previous": None, "previous_positive": None})
                 value = next((values[key][0] for key in ("start", "time", "timestamp") if key in values), "")
-                if value.lstrip("-").isdigit():
+                if value.isdigit():
                     start = int(value)
                     duration = values.get("duration", ("0", None))[0]
                     end = start + (int(duration) if duration.isdigit() else 0)
@@ -506,32 +521,47 @@ def table_coverage(path, pid):
                     if previous is not None:
                         maximum_gap = max(maximum_gap, start - previous)
                     previous = start
-                    family = values.get("name", (None, None))[0]
-                    frames = values.get("number-of-frames", ("0", None))[0]
+                    frames = values.get("number-of-frames", ("", None))[0]
                     metric = values.get("value-in-ms", ("", None))[0]
                     try:
-                        valid_gpu = (int(frames) > 0 and math.isfinite(float(metric)) and float(metric) >= 0
+                        frame_count, milliseconds = int(frames), float(metric)
+                        valid_gpu = (frame_count >= 0 and math.isfinite(milliseconds) and milliseconds >= 0
+                                     and (frame_count > 0 or milliseconds == 0)
                                      and duration.isdigit() and int(duration) > 0)
                     except ValueError:
                         valid_gpu = False
-                    if family in GPU_FAMILIES and valid_gpu:
-                        item = gpu_families.setdefault(family, {"target_rows": 0, "first_ns": start,
-                            "last_end_ns": end, "maximum_consecutive_start_gap_seconds": 0, "previous": start})
+                    if item is not None and valid_gpu:
                         item["target_rows"] += 1
-                        item["first_ns"] = min(item["first_ns"], start)
-                        item["last_end_ns"] = max(item["last_end_ns"], end)
-                        item["maximum_consecutive_start_gap_seconds"] = max(
-                            item["maximum_consecutive_start_gap_seconds"], (start - item["previous"]) / 1e9)
+                        item["first_ns"] = start if item["first_ns"] is None else min(item["first_ns"], start)
+                        item["last_end_ns"] = end if item["last_end_ns"] is None else max(item["last_end_ns"], end)
+                        if item["previous"] is not None:
+                            item["maximum_consecutive_start_gap_seconds"] = max(
+                                item["maximum_consecutive_start_gap_seconds"], (start - item["previous"]) / 1e9)
                         item["previous"] = start
+                        if frame_count > 0:
+                            item["positive_frame_rows"] += 1
+                            if item["previous_positive"] is not None:
+                                item["maximum_positive_frame_start_gap_seconds"] = max(
+                                    item["maximum_positive_frame_start_gap_seconds"],
+                                    (start - item["previous_positive"]) / 1e9)
+                            item["previous_positive"] = start
+                        else:
+                            item["zero_frame_rows"] += 1
+                    elif item is not None:
+                        item["invalid_rows"] += 1
+                elif item is not None:
+                    item["invalid_rows"] += 1
             element.clear()
     for item in gpu_families.values():
         item.pop("previous")
-        item["span_seconds"] = (item["last_end_ns"] - item["first_ns"]) / 1e9
+        item.pop("previous_positive")
+        item["span_seconds"] = (None if item["first_ns"] is None else
+                                (item["last_end_ns"] - item["first_ns"]) / 1e9)
     return {"rows": rows, "target_rows": matched, "first_ns": first, "last_end_ns": last,
             "span_seconds": None if first is None else (last - first) / 1e9,
             "maximum_consecutive_start_gap_seconds": maximum_gap / 1e9,
             "gpu_families": gpu_families,
-            "limitation": "Timestamp span is not continuity, hardware occupancy, or wall-frame quantiles"}
+            "limitation": "Valid zero-frame GPU buckets retain timestamp coverage, not GPU activity. Row counts include metric variants. Timestamp span is not hardware occupancy or wall-frame quantiles"}
 
 
 def qualify(args, expected_seconds):
@@ -564,9 +594,12 @@ def qualify(args, expected_seconds):
             if schema == "metal-perf-overview-layer-duration-metric":
                 for family in GPU_FAMILIES:
                     item = ranges[schema]["gpu_families"].get(family)
-                    if (item is None or item["span_seconds"] < result["required_span_seconds"] or
+                    if item is not None and item["invalid_rows"]:
+                        raise RuntimeError(f"malformed actual target GPU family rows: {family}")
+                    if (item is None or not item["positive_frame_rows"] or
+                            (item["span_seconds"] or 0) < result["required_span_seconds"] or
                             item["maximum_consecutive_start_gap_seconds"] > 5):
-                        raise RuntimeError(f"insufficient actual positive-frame target GPU family coverage: {family}")
+                        raise RuntimeError(f"insufficient actual target GPU family coverage: {family}")
         clock_ranges = [("time-profile", ranges["time-profile"])] if "time-profile" in ranges else []
         gpu = ranges.get("metal-perf-overview-layer-duration-metric", {}).get("gpu_families", {})
         clock_ranges.extend((family, gpu[family]) for family in GPU_FAMILIES if family in gpu)
@@ -677,7 +710,7 @@ class Collector:
                     if args.diagnostic_jsonl and args.diagnostic_jsonl.exists():
                         native_size = args.diagnostic_jsonl.stat().st_size
                         self.state["diagnostic_observed_bytes"] = native_size
-                        if native_size > 64 * MIB:
+                        if native_size > args.diagnostic_cap_mib * MIB:
                             raise RuntimeError("native diagnostic input exceeds its declared size cap")
                     self.save()
                 if code is not None:
@@ -775,7 +808,7 @@ class Collector:
                               inputs=[tail.receipt() for tail in self.tails])
             if args.diagnostic_jsonl:
                 try:
-                    coverage = diagnostic_coverage(args.diagnostic_jsonl)
+                    coverage = diagnostic_coverage(args.diagnostic_jsonl, args.diagnostic_cap_mib * MIB)
                     self.state["diagnostic_coverage"] = coverage
                     native = qualify_native(coverage, self.state.get("coverage", {}), args.source_sha, args.pid)
                     self.state["native_coverage"] = native
@@ -812,6 +845,8 @@ def parser():
     record.add_argument("--export-cap-mib", type=int, default=512)
     record.add_argument("--log", type=Path)
     record.add_argument("--diagnostic-jsonl", type=Path)
+    record.add_argument("--diagnostic-cap-mib", type=int, default=DEFAULT_DIAGNOSTIC_CAP_MIB,
+                        help="explicit native JSONL input cap in MiB (64..256; default 64); does not configure its writer")
     mark = commands.add_parser("mark", help="record an operator observation; phase stop requests graceful recorder stop")
     mark.add_argument("--output", type=Path, required=True)
     mark.add_argument("--phase", required=True)
@@ -848,6 +883,8 @@ def main(argv=None):
             raise RuntimeError("--seconds must be between 1 and 600")
         if args.thread_states and args.seconds > 5:
             raise RuntimeError("--thread-states is limited to <=5 seconds; measured scheduler raw-data cost forbids continuous use")
+        if not DEFAULT_DIAGNOSTIC_CAP_MIB <= args.diagnostic_cap_mib <= MAX_DIAGNOSTIC_CAP_MIB:
+            raise RuntimeError("--diagnostic-cap-mib must be between 64 and 256")
         for key in ("start_timeout", "finalize_timeout", "raw_cap_mib", "export_timeout", "export_cap_mib"):
             if not 1 <= getattr(args, key) <= (4096 if key.endswith("mib") else 180):
                 raise RuntimeError(f"invalid finite limit: {key}")
