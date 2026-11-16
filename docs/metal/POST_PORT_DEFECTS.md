@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-299 -->
+<!-- next-defect-id: PPD-300 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7128,3 +7128,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-16 runtime source restore completed from pre-candidate3ed2540223 for world.h/cpp, builtinMSL, CMake, settings and pipeline, retaining accurate native failure messages plus independent context/packet/coverage and covered tests. The unselected SSAO test is removed from the active build/tree and retained in the rejected branch/artifact. New frozen core build will validate the restored source before any further integration. No existing viewer feature or earlier accepted optimization was removed.
+
+
+## PPD-299 — Preparation credits ignore byte debt and startup job bounds
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex coarse native encoding integration
+- Discovered: 2026-11-16
+- Original reference: The shared native frame budget is new to this fork; original viewer work queues are the nearest producer/consumer boundary. Preserve render completeness with same-Metal owner execution when optional CPU jobs decline, while bounding admitted asynchronous CPU work and lifetime.
+- Evidence: [Original architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). At restored-coredd2a3ba0dd, Work::preparation job check is inside initialized-only branch in alnativeframebudget.cpp390; supplied logical_bytes never enter preparation stats/denial and Credit retirement only decrements job count. Shadow snapshots enable another CPU batch/query array while prior packet is retained. No measured physical-memory/COW incident is attributed to this source gap.
+- Next action: Add an explicit32MiB default logical preparation packet capacity cap, checked job/byte admission even before frame initialization, outstanding-byte stats and exact CPU-completion retirement. Preserve CPU-busy preparation; deny nonzero additional metadata under actual memory pressure. Snapshot failure/denial must retain packet/original admitted command for existing native execution. Native resource residency is accounted separately and must not be double-charged as packet CPU bytes.
+- Verification: Source inspection confirms missing enforcement, not a runtime performance result. Common/native helper tests and integrated build remain required.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before budget changes. Exclusive overlap author now also owns common budget h/cpp and its test file; root owns CMake/docs/execution. Test real byte denial, startup count, checked arithmetic, shared-credit retirement, frame transitions/drain/pressure and original-command preservation. No app/policy cap increase based on nominal64GB; this is a temporary CPU packet bound.

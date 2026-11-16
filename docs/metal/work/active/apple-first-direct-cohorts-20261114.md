@@ -2883,3 +2883,23 @@ Root prepares required build78 for restored core while author works separately.
 Independent source-only UMA audit checks source-cache charging/dedup/COW and
 metadata rebuilding under existing capacity rejections; no cap increase or
 memory policy change is authorized by nominal RAM or overlapping ledger bytes.
+
+
+Source review before overlap freeze: original command/admission sharing and
+owner-only publication/query/cache settlement look coherent. Author adds a
+structural CPU query-capture close before deferral (normal producer already
+closes it), and drains same-camera pending results before cull reads that could
+expire unattached tickets. StageTimingWindow is explicitly owner-thread-only;
+only active timing windows choose logged serial diagnostics; nullptr suppression
+scopes stay eligible. Original process render counters/submission owner remain
+with adopted command. Dispatch implementation moves to one .cpp behind an
+opaque header to avoid C++ versus ARC ownership/ODR differences.
+
+PPD299 newly records source-confirmed preparation policy gap: supplied bytes
+were ignored and even job-count bound was skipped before first beginFrame.
+Author now exclusively owns common budget h/cpp/tests too. Add32MiB logical
+CPU packet capacity cap (separate native allocations), exact shared-credit
+retirement, startup bounds, memory-pressure admission and checked arithmetic.
+CPU-busy alone must not deny useful preparation. Dedicated actual helper test
+will verify byte-denial leaves packet and original admitted command untouched.
+No runtime memory regression or FPS attribution inferred from source.
