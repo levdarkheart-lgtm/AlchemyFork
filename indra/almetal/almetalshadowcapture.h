@@ -14,7 +14,109 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <new>
+#include <utility>
 #include <vector>
+
+// The CPU packet and the native completion owner have different lifetimes.
+// An encoding job owns this packet until it joins. Its command only retains
+// CompletionOwners, so GPU latency does not pin the large CPU batch array or
+// prevent its capacity from returning to the next capture.
+class ALMetalCapturedShadowView final
+{
+public:
+    using Batches = std::vector<ALMetalWorldSpotShadowBatch>;
+    using BodyPalettes =
+        std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>>;
+
+    // Called by the capture owner before dispatch. The producer lease already
+    // pins raw geometry, covered textures, source records and attachment poses;
+    // BODY poses are the separate capture-owned vector transferred here.
+    // Query/visibility spans need their own transaction handoff and deliberately
+    // remain on the existing owner path. Rejection never consumes either input.
+    static std::unique_ptr<ALMetalCapturedShadowView> take(
+        const ALMetalWorldSpotShadowScene& scene, Batches& batches,
+        BodyPalettes& body_palettes, std::string* error = nullptr)
+    {
+        if (!scene.width || !scene.height || scene.batch_count != batches.size() ||
+            (scene.batch_count && scene.batches != batches.data()) ||
+            (scene.batch_count && !scene.source_owner) ||
+            scene.visibility_query_count || scene.visibility_bounds_count ||
+            scene.native_visibility || scene.gpu_visibility || scene.metal4_visibility)
+        {
+            if (error) *error = "Captured shadow packet requires owned non-query inputs";
+            return nullptr;
+        }
+        try
+        {
+            // Complete all fallible allocations before transferring capture
+            // storage. The caller can still use its ordinary native path if
+            // packet admission fails.
+            auto owners = std::make_shared<CompletionOwners>();
+            owners->producer = scene.source_owner;
+            auto packet = std::unique_ptr<ALMetalCapturedShadowView>(
+                new ALMetalCapturedShadowView(scene));
+            owners->body_palettes.swap(body_palettes);
+            packet->mBatches.swap(batches);
+            packet->mOwners = std::move(owners);
+            return packet;
+        }
+        catch (const std::bad_alloc&)
+        {
+            if (error) *error = "Captured shadow packet allocation failed";
+            return nullptr;
+        }
+    }
+
+    ALMetalCapturedShadowView(const ALMetalCapturedShadowView&) = delete;
+    ALMetalCapturedShadowView& operator=(const ALMetalCapturedShadowView&) = delete;
+
+    // The span is valid only while this CPU packet is retained and unrecycled.
+    // The result's source_owner independently protects every native generation
+    // and body pose through uncommitted work and actual command completion.
+    ALMetalWorldSpotShadowScene scene() const noexcept
+    {
+        auto result = mScene;
+        result.batches = mBatches.data();
+        result.batch_count = mBatches.size();
+        result.source_owner = mOwners;
+        return result;
+    }
+
+    // Owner-only, after the encoding job has joined. Refuse to overwrite the
+    // next view's populated capture. Recycling need not wait for GPU completion.
+    bool recycleBatches(Batches& empty_capture) noexcept
+    {
+        if (!empty_capture.empty()) return false;
+        mBatches.clear();
+        mBatches.swap(empty_capture);
+        mOwners.reset();
+        return true;
+    }
+
+private:
+    struct CompletionOwners
+    {
+        std::shared_ptr<const void> producer;
+        BodyPalettes body_palettes;
+    };
+
+    explicit ALMetalCapturedShadowView(const ALMetalWorldSpotShadowScene& scene)
+        : mScene(scene)
+    {
+        // Never retain borrowed pointers to capture scratch, including empty
+        // vectors whose data() can remain nonnull after an earlier view.
+        mScene.batches = nullptr;
+        mScene.source_owner.reset();
+        mScene.visibility_queries = nullptr;
+        mScene.visibility_bounds = nullptr;
+    }
+
+    ALMetalWorldSpotShadowScene mScene;
+    Batches mBatches;
+    std::shared_ptr<const CompletionOwners> mOwners;
+};
 
 // A view-local candidate, used synchronously while the source matrix is live.
 // Only the static opaque producer may construct one: covered, rigged, terrain

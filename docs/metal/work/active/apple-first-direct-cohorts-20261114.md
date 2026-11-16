@@ -2725,3 +2725,47 @@ unresolved implementation decision is useful owned encoding work versus its
 eligible transaction coverage and isolation cost; do not force small-family
 jobs or duplicate mutable renderer state. Owner runtime acceptance is separate.
 No further viewer launch/login/live profiling/push authorized here.
+
+
+## Private native encoding context implementation —doing
+
+Previous goal turn is progress: source75 built/validated/staged and reduced the
+remaining threading question to concrete shared renderer state. Continue under
+PPD241 rather than another worker-threshold experiment. Author has exclusive
+almetalworld.h/cpp and a new native-context test file in
+`/private/tmp/alchemy-apple-first-shadow-encoding-context`; root owns pipeline,
+CMake, docs and all execution. First boundary: a private independent non-query
+shadow context with immutable executable sharing and private arena/cache/
+command state. Owner joins, commits and settles; no activation until contained
+correctness/cost evidence. Query and parent-command transactions preserve their
+current owner execution initially. This is an unfinished implementation item,
+not a speedup or whole-architecture completion claim.69134 stays immutable.
+
+
+Captured-view packet implementation and first contained check: actual root
+header/test optimized object links against frozen75 native test objects, all
+59 assertions/3cases PASS in0.012s. Sources and all linked native object/library
+hashes frozen in `shadow-captured-view-20261116T002516Z/receipt.json`; compile/
+link4.082s/0.188s. Separate CPU batch storage and completion producer/body owners
+are tested through capture reuse, refused overwrite, empty all-far metadata,
+unsupported handoff and late completion-owner retirement. No GPU execution or
+product-build claim. Native context author still owns only world.h/cpp/newtest.
+Root also instruments actual encoding-class calls/successes/batches/logical
+sources/maxima and wall time, using existing periodic main/probe logging.
+Independent non-query coverage must be observed rather than assumed; borrowed
+transactions and actual query lists remain explicit boundaries. No source or
+frame scheduling policy changes have been made.
+
+
+Private context author `a14d07eba0` is frozen and copied byte-identical to root.
+World.h2d08fbdb0290…, world.cppce369bc74dbc…, new native teste22017b11eb7…;
+root CMake includes it without PCH. Four actual API cases exercise simultaneous
+main/two-context encoding, three target sizes and both depth conventions,
+poison/cancel commit counts, borrowed generations/pose lifetime and parent
+shader reload/destruction/anisotropy snapshots. Not yet executed. Context has
+no independent main shadow admission ticket; it requires explicit outer owner
+and one nonblocking local slot. Immutable shadow executables are shared; no
+second full-world factory or shared Impl mutation. Next: frozen76 required
+build, new native context + packet + existing shadow/reload/admission checks,
+then relevant integrated renderer regressions. Production scheduling/settlement
+is a separate still-required integration, not implied by these helper APIs.
