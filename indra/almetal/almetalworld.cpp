@@ -2198,8 +2198,16 @@ struct ALMetalWorldGBufferRenderer::Impl
         ALMetalFrameAdmission::Ticket ticket;
         std::unique_ptr<ALMetalCommandBuffer> command;
     };
-    std::deque<PendingShadowBatch> pending_shadow_batches;
-    ALMetalFrameAdmission shadow_admission{2, 6};
+    // All independent shadow encoders use this ONE submission-owner authority.
+    // Workers encode only their adopted command; reserve/commit/cancel/prune
+    // remain on the original owner thread, including shader-generation changes.
+    struct ShadowSubmissions
+    {
+        std::deque<PendingShadowBatch> pending;
+        ALMetalFrameAdmission admission{2, 6};
+        std::size_t adopted = 0;
+    };
+    std::shared_ptr<ShadowSubmissions> shadow_submissions = std::make_shared<ShadowSubmissions>();
     ALMetalFrameAdmission::Ticket shadow_reservation = 0;
     std::vector<CommandSettlementObserver> command_settlement_observers;
     std::shared_ptr<std::uint64_t> settlement_observer_failures = std::make_shared<std::uint64_t>(0);
@@ -2355,7 +2363,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     {
         std::vector<ALMetalFrameAdmission::CompletionReceipt> receipts;
         std::string first_failure;
-        for (const auto& pending : pending_shadow_batches)
+        for (const auto& pending : shadow_submissions->pending)
         {
             const auto status = pending.command->status();
             if (status == ALMetalCommandStatus::completed)
@@ -2369,8 +2377,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         }
         if (!receipts.empty())
         {
-            const auto retired = shadow_admission.prune(receipts);
-            std::erase_if(pending_shadow_batches, [&](const auto& pending) {
+            const auto retired = shadow_submissions->admission.prune(receipts);
+            std::erase_if(shadow_submissions->pending, [&](const auto& pending) {
                 return std::any_of(receipts.begin(), receipts.end(), [&](const auto& receipt) {
                     return receipt.ticket == pending.ticket;
                 });
@@ -2387,7 +2395,7 @@ struct ALMetalWorldGBufferRenderer::Impl
         for (;;)
         {
             if (!pruneShadowBatches(error)) return 0;
-            const auto decision = shadow_admission.reserve(frame);
+            const auto decision = shadow_submissions->admission.reserve(frame);
             if (decision) return decision.reservation;
             if (decision.outcome != ALMetalFrameAdmission::Outcome::wait_for_prior_frame)
             {
@@ -2403,10 +2411,10 @@ struct ALMetalWorldGBufferRenderer::Impl
             }
             // Wait only on the complete older frame group selected by policy.
             // Repeated views of this frame never wait on their own submissions.
-            const auto tickets = shadow_admission.submittedTickets(decision.blocking_frame);
+            const auto tickets = shadow_submissions->admission.submittedTickets(decision.blocking_frame);
             bool waited = false;
             std::string first_failure;
-            for (auto& pending : pending_shadow_batches)
+            for (auto& pending : shadow_submissions->pending)
             {
                 if (std::find(tickets.begin(), tickets.end(), pending.ticket) == tickets.end()) continue;
                 waited = true;
@@ -2548,7 +2556,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::array<NormalPipelines, 2> visibility_pipelines;
-    std::unique_ptr<ALMetalRenderPipeline> shadow_visibility_pipeline;
+    std::shared_ptr<ALMetalRenderPipeline> shadow_visibility_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         local_light_accumulation_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -3107,12 +3115,13 @@ struct ALMetalShadowEncodingContext::Impl
     std::unique_ptr<ALMetalWorldGBufferRenderer> peer;
     std::shared_ptr<const ALMetalCommandCompletion> completion;
     bool encode_attempted = false;
+    bool adopted = false;
 };
 
 ALMetalShadowEncodingContext::ALMetalShadowEncodingContext(
     std::unique_ptr<Impl> impl) : mImpl(std::move(impl)) {}
 
-ALMetalShadowEncodingContext::~ALMetalShadowEncodingContext() = default;
+ALMetalShadowEncodingContext::~ALMetalShadowEncodingContext() { cancel(); }
 
 std::unique_ptr<ALMetalShadowEncodingContext>
 ALMetalWorldGBufferRenderer::createShadowEncodingContext(std::string* error) const
@@ -3128,6 +3137,8 @@ ALMetalWorldGBufferRenderer::createShadowEncodingContext(std::string* error) con
     peer->shader_generation = mImpl->shader_generation;
     peer->private_library = mImpl->private_library;
     peer->max_anisotropy = mImpl->max_anisotropy;
+    peer->shadow_submissions = mImpl->shadow_submissions;
+    peer->shadow_visibility_pipeline = mImpl->shadow_visibility_pipeline;
     peer->spot_shadow_pipelines = mImpl->spot_shadow_pipelines;
     peer->spot_shadow_indirect_pipelines = mImpl->spot_shadow_indirect_pipelines;
     peer->spot_shadow_coverage_pipelines = mImpl->spot_shadow_coverage_pipelines;
@@ -3157,6 +3168,38 @@ ALMetalWorldGBufferRenderer::createShadowEncodingContext(std::string* error) con
 bool ALMetalShadowEncodingContext::slotAvailable() const noexcept
 {
     return mImpl && mImpl->peer->commandBatchSlotAvailable(1);
+}
+
+bool ALMetalShadowEncodingContext::adopt(ALMetalWorldGBufferRenderer& owner,
+    std::uint64_t frame, std::string* error)
+{
+    auto* source = owner.mImpl.get();
+    auto* target = mImpl ? mImpl->peer->mImpl.get() : nullptr;
+    if (!source || !target || active() || !source->command_batch ||
+        !source->shadow_reservation || !source->command_batch_valid ||
+        source->command_batch_generates_brdf_lut ||
+        source->shadow_submissions != target->shadow_submissions ||
+        source->library != target->library ||
+        source->shader_generation != target->shader_generation ||
+        source->max_anisotropy != target->max_anisotropy)
+    {
+        setError(error, "Metal shadow adoption requires the matching independent admitted command");
+        return false;
+    }
+    // Finish fallible arena maintenance before taking any command ownership.
+    target->frame_data->beginFrame(frame);
+    mImpl->completion = source->command_batch->completionToken();
+    if (!mImpl->completion) return false;
+    target->command_batch = std::move(source->command_batch);
+    target->shadow_reservation = std::exchange(source->shadow_reservation, 0);
+    target->command_settlement_observers.swap(source->command_settlement_observers);
+    target->settlement_observer_failures = source->settlement_observer_failures;
+    target->command_batch_valid = true;
+    target->command_batch_failure.clear();
+    mImpl->encode_attempted = false;
+    mImpl->adopted = true;
+    ++target->shadow_submissions->adopted;
+    return true;
 }
 
 bool ALMetalShadowEncodingContext::begin(std::uint64_t frame,
@@ -3189,8 +3232,10 @@ bool ALMetalShadowEncodingContext::begin(std::uint64_t frame,
 
 bool ALMetalShadowEncodingContext::encode(ALMetalTexture& destination,
     std::uint32_t destination_slice, const ALMetalWorldSpotShadowScene& scene,
-    std::string* error)
+    std::string* error,
+    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
+    if (visibility_results) visibility_results->reset();
     if (!active())
     {
         setError(error, "Metal shadow context is not active");
@@ -3203,19 +3248,19 @@ bool ALMetalShadowEncodingContext::encode(ALMetalTexture& destination,
     ALMetalWorldGBufferRenderer::Impl::GBufferFailureScope failure(&state, error);
     const bool already_attempted = mImpl->encode_attempted;
     mImpl->encode_attempted = true;
-    if (already_attempted || scene.visibility_query_count || scene.native_visibility ||
+    if (already_attempted || scene.native_visibility ||
         scene.visibility_bounds_count ||
         scene.gpu_visibility || scene.metal4_visibility ||
         (scene.batch_count && !scene.source_owner))
     {
-        setError(error, "Metal shadow context requires one owned non-query view");
+        setError(error, "Metal shadow context requires one owned view without experimental visibility");
         return false;
     }
     bool encoded = false;
     try
     {
         encoded = mImpl->peer->renderSpotShadow(
-            destination, destination_slice, scene, error);
+            destination, destination_slice, scene, error, visibility_results);
     }
     catch (...)
     {
@@ -3238,6 +3283,12 @@ bool ALMetalShadowEncodingContext::commit(std::string* error)
         setError(error, "Metal shadow context has no encoded view");
         return false;
     }
+    // CPU encoding has joined. Shared admission/observers are owner-only.
+    if (mImpl->adopted)
+    {
+        --mImpl->peer->mImpl->shadow_submissions->adopted;
+        mImpl->adopted = false;
+    }
     try { return mImpl->peer->commitCommandBatch(error); }
     catch (...)
     {
@@ -3249,7 +3300,13 @@ bool ALMetalShadowEncodingContext::commit(std::string* error)
 
 void ALMetalShadowEncodingContext::cancel() noexcept
 {
-    if (mImpl) mImpl->peer->cancelCommandBatch();
+    if (!mImpl) return;
+    if (mImpl->adopted)
+    {
+        --mImpl->peer->mImpl->shadow_submissions->adopted;
+        mImpl->adopted = false;
+    }
+    mImpl->peer->cancelCommandBatch();
 }
 
 bool ALMetalShadowEncodingContext::active() const noexcept
@@ -3281,7 +3338,7 @@ bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
 
 bool ALMetalWorldGBufferRenderer::reloadShaders(const std::string& library_path, std::string* error)
 {
-    if (!mImpl || !mImpl->device || mImpl->command_batch)
+    if (!mImpl || !mImpl->device || mImpl->command_batch || mImpl->shadow_submissions->adopted)
     {
         setError(error, "Metal world shader reload requires an idle renderer");
         return false;
@@ -3410,10 +3467,9 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.frame_data = mImpl->frame_data;
     next.render_target_pool = mImpl->render_target_pool;
     next.pending_command_batches.swap(mImpl->pending_command_batches);
-    next.pending_shadow_batches.swap(mImpl->pending_shadow_batches);
+    next.shadow_submissions = mImpl->shadow_submissions;
     next.shadow_data_slabs.swap(mImpl->shadow_data_slabs);
     next.shadow_data_statistics = mImpl->shadow_data_statistics;
-    next.shadow_admission = std::move(mImpl->shadow_admission);
     next.settlement_observer_failures = mImpl->settlement_observer_failures;
     next.probe_workload.swap(mImpl->probe_workload);
     next.opaque_family_split_requested = mImpl->opaque_family_split_requested;
@@ -3457,7 +3513,7 @@ try
     for (std::size_t index = 0; index < owners.size(); ++index)
     {
         const auto* owner = owners[index];
-        if (!owner || !owner->mImpl || owner->mImpl->command_batch ||
+        if (!owner || !owner->mImpl || owner->mImpl->command_batch || owner->shadowEncodingActive() ||
             owner->mImpl->device != data.mImpl->device ||
             owner->mImpl->frame_data.get() != &data ||
             std::find(owners.begin(), owners.begin() + index, owner) != owners.begin() + index)
@@ -3730,7 +3786,7 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     mImpl->command_batch_generates_brdf_lut = false;
     if (!valid)
     {
-        if (shadow_ticket) mImpl->shadow_admission.cancel(shadow_ticket);
+        if (shadow_ticket) mImpl->shadow_submissions->admission.cancel(shadow_ticket);
         mImpl->shadow_reservation = 0;
         command.reset();
         setError(error, failure.empty()
@@ -3747,8 +3803,8 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     ALMetalCommandBuffer* queued = nullptr;
     if (shadow_ticket)
     {
-        mImpl->pending_shadow_batches.push_back({shadow_ticket, std::move(command)});
-        queued = mImpl->pending_shadow_batches.back().command.get();
+        mImpl->shadow_submissions->pending.push_back({shadow_ticket, std::move(command)});
+        queued = mImpl->shadow_submissions->pending.back().command.get();
     }
     else
     {
@@ -3764,13 +3820,13 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     {
         if (committed)
         {
-            if (!mImpl->shadow_admission.submitted(shadow_ticket))
+            if (!mImpl->shadow_submissions->admission.submitted(shadow_ticket))
                 std::fprintf(stderr, "Alchemy Metal committed shadow lost its reservation\n");
         }
         else
         {
-            mImpl->pending_shadow_batches.pop_back();
-            mImpl->shadow_admission.cancel(shadow_ticket);
+            mImpl->shadow_submissions->pending.pop_back();
+            mImpl->shadow_submissions->admission.cancel(shadow_ticket);
         }
     }
     else if (!committed) mImpl->pending_command_batches.pop_back();
@@ -3791,7 +3847,7 @@ void ALMetalWorldGBufferRenderer::cancelCommandBatch()
     {
         mImpl->command_batch.reset();
         if (mImpl->shadow_reservation)
-            mImpl->shadow_admission.cancel(mImpl->shadow_reservation);
+            mImpl->shadow_submissions->admission.cancel(mImpl->shadow_reservation);
         mImpl->shadow_reservation = 0;
         mImpl->command_batch_valid = true;
         mImpl->command_batch_failure.clear();
@@ -3817,12 +3873,12 @@ bool ALMetalWorldGBufferRenderer::beginShadowFrameBatch(
     try { command = mImpl->device->makeCommandBuffer(label, error); }
     catch (...)
     {
-        mImpl->shadow_admission.cancel(ticket);
+        mImpl->shadow_submissions->admission.cancel(ticket);
         throw;
     }
     if (!command)
     {
-        mImpl->shadow_admission.cancel(ticket);
+        mImpl->shadow_submissions->admission.cancel(ticket);
         return false;
     }
     mImpl->shadow_reservation = ticket;
@@ -3849,6 +3905,9 @@ bool ALMetalWorldGBufferRenderer::commandBatchActive() const
 {
     return mImpl && static_cast<bool>(mImpl->command_batch);
 }
+
+bool ALMetalWorldGBufferRenderer::shadowEncodingActive() const noexcept
+{ return mImpl && mImpl->shadow_submissions->adopted != 0; }
 
 bool ALMetalWorldGBufferRenderer::commandBatchSlotAvailable(
     std::size_t max_pending) const noexcept

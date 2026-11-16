@@ -2838,6 +2838,8 @@ public:
     bool commitCommandBatch(std::string* error = nullptr);
     void cancelCommandBatch();
     bool commandBatchActive() const;
+    // Owner-only: detached shadow commands are still active transactions.
+    bool shadowEncodingActive() const noexcept;
     // Profiling only starts when it can submit without waiting for a prior
     // graph. The completion receipt outlives this renderer and its wrapper.
     bool commandBatchSlotAvailable(std::size_t max_pending = 2) const noexcept;
@@ -3316,7 +3318,7 @@ private:
     friend class ALMetalShadowEncodingContext;
 };
 
-// One independent non-query shadow view, with explicit ownership handoff.
+// One independent shadow view, with explicit ownership handoff.
 // The owner begins, transfers exclusive context/scene access to its encoder,
 // joins that encoder, then commits/cancels. No method dispatches a worker or
 // synchronizes concurrent calls on this same context. Immutable executable
@@ -3328,20 +3330,30 @@ public:
     ALMetalShadowEncodingContext& operator=(const ALMetalShadowEncodingContext&) = delete;
     ~ALMetalShadowEncodingContext();
 
-    // Nonblocking local bound: at most one uncompleted command per context.
+    // Standalone begin's nonblocking local bound: at most one uncompleted
+    // standalone command per context. Adopt uses the original shared authority.
     // This is NOT global shadow admission. The caller must acquire its outer
     // frame/submission budget before begin and pass that exact lifetime owner;
     // a separate context never grants another main-renderer admission ticket.
     bool slotAvailable() const noexcept;
     bool begin(std::uint64_t frame, std::shared_ptr<const void> submission_owner,
                const std::string& label, std::string* error = nullptr);
+    // Owner-only alternative to begin: transfer the EXACT already-admitted
+    // independent shadow command, ticket, completion and settlement observers.
+    // Both serial and private consumers retain the original 2-group x6 bound;
+    // adopted commands never use the preliminary standalone local-one cap.
+    // A borrowed world/probe transaction is rejected without consuming it.
+    bool adopt(ALMetalWorldGBufferRenderer& owner, std::uint64_t frame,
+               std::string* error = nullptr);
     // One captured view per begin. Nonempty views require source_owner; it
     // pins all borrowed batches' native generations and poses. CPU batches
-    // need survive only this call. Query/visibility inputs are rejected.
+    // need survive only this call. Frozen queries are supported; query tickets
+    // and pool mutations stay with the caller. Experimental visibility declines.
     // Any failure poisons the transaction, including preflight failures.
     bool encode(ALMetalTexture& destination, std::uint32_t destination_slice,
                 const ALMetalWorldSpotShadowScene& scene,
-                std::string* error = nullptr);
+                std::string* error = nullptr,
+                std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results = nullptr);
     bool commit(std::string* error = nullptr);
     void cancel() noexcept;
     bool active() const noexcept;

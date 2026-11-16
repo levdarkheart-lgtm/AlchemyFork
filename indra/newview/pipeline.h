@@ -1040,6 +1040,7 @@ public:
     void captureMetalShadowScene(LLCamera* shadow_camera = nullptr,
                                 S32 occlusion = 0);
     void endMetalSpotShadowCapture();
+    void finishMetalShadowEncoding(bool submit = true);
     void setMetalSpotShadowCoverage(
         ALMetalWorldSpotShadowCoverage coverage);
     void captureMetalSpotShadowOpaqueBatch(

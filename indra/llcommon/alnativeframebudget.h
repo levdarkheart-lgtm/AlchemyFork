@@ -42,6 +42,9 @@ public:
         std::uint64_t maintenance_bytes_in_flight = 32ULL * 1024 * 1024;
         unsigned optional_views_per_frame = 2;
         unsigned preparation_jobs = 2;
+        // Logical retained CPU packet capacities while the next producer
+        // allocates; exclude already-owned native resources/physical RAM.
+        std::uint64_t preparation_bytes_in_flight = 32ULL * 1024 * 1024;
         Frame maximum_deferral_frames = 8;
     };
     struct FrameInputs
@@ -78,6 +81,7 @@ public:
         unsigned maintenance_in_flight = 0;
         std::uint64_t maintenance_bytes_in_flight = 0;
         unsigned preparation_in_flight = 0;
+        std::uint64_t preparation_bytes_in_flight = 0;
         unsigned optional_views_in_flight = 0;
         unsigned uploads_this_frame = 0;
         unsigned scene_publications_this_frame = 0;

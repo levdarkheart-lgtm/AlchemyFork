@@ -15,6 +15,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <limits>
 #include <new>
 #include <utility>
 #include <vector>
@@ -27,25 +28,44 @@ class ALMetalCapturedShadowView final
 {
 public:
     using Batches = std::vector<ALMetalWorldSpotShadowBatch>;
+    using Queries = std::vector<ALMetalWorldVisibilityQuery>;
     using BodyPalettes =
         std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>>;
 
     // Called by the capture owner before dispatch. The producer lease already
     // pins raw geometry, covered textures, source records and attachment poses;
     // BODY poses are the separate capture-owned vector transferred here.
-    // Query/visibility spans need their own transaction handoff and deliberately
-    // remain on the existing owner path. Rejection never consumes either input.
+    // The overload with Queries moves the exact native query span. Query
+    // tickets and pool mutations are deliberately absent from this packet.
+    // Rejection never consumes any input.
     static std::unique_ptr<ALMetalCapturedShadowView> take(
         const ALMetalWorldSpotShadowScene& scene, Batches& batches,
         BodyPalettes& body_palettes, std::string* error = nullptr)
     {
+        return takeOwned(scene, batches, body_palettes, nullptr, error);
+    }
+    static std::unique_ptr<ALMetalCapturedShadowView> take(
+        const ALMetalWorldSpotShadowScene& scene, Batches& batches,
+        BodyPalettes& body_palettes, Queries& queries, std::string* error = nullptr)
+    {
+        return takeOwned(scene, batches, body_palettes, &queries, error);
+    }
+
+private:
+    static std::unique_ptr<ALMetalCapturedShadowView> takeOwned(
+        const ALMetalWorldSpotShadowScene& scene, Batches& batches,
+        BodyPalettes& body_palettes, Queries* queries, std::string* error)
+    {
         if (!scene.width || !scene.height || scene.batch_count != batches.size() ||
             (scene.batch_count && scene.batches != batches.data()) ||
             (scene.batch_count && !scene.source_owner) ||
-            scene.visibility_query_count || scene.visibility_bounds_count ||
+            (scene.visibility_query_count && (!queries ||
+                scene.visibility_query_count != queries->size() ||
+                scene.visibility_queries != queries->data())) ||
+            (queries && scene.visibility_query_count != queries->size()) || scene.visibility_bounds_count ||
             scene.native_visibility || scene.gpu_visibility || scene.metal4_visibility)
         {
-            if (error) *error = "Captured shadow packet requires owned non-query inputs";
+            if (error) *error = "Captured shadow packet requires owned batch/query inputs";
             return nullptr;
         }
         try
@@ -59,6 +79,7 @@ public:
                 new ALMetalCapturedShadowView(scene));
             owners->body_palettes.swap(body_palettes);
             packet->mBatches.swap(batches);
+            if (queries) packet->mQueries.swap(*queries);
             packet->mOwners = std::move(owners);
             return packet;
         }
@@ -69,6 +90,7 @@ public:
         }
     }
 
+public:
     ALMetalCapturedShadowView(const ALMetalCapturedShadowView&) = delete;
     ALMetalCapturedShadowView& operator=(const ALMetalCapturedShadowView&) = delete;
 
@@ -80,6 +102,8 @@ public:
         auto result = mScene;
         result.batches = mBatches.data();
         result.batch_count = mBatches.size();
+        result.visibility_queries = mQueries.data();
+        result.visibility_query_count = mQueries.size();
         result.source_owner = mOwners;
         return result;
     }
@@ -95,10 +119,52 @@ public:
         return true;
     }
 
+    bool recycleQueries(Queries& empty_capture) noexcept
+    {
+        if (!empty_capture.empty()) return false;
+        mQueries.clear(); mQueries.swap(empty_capture);
+        return true;
+    }
+    // Packet/job admission declined after snapshot: restore the untouched CPU
+    // arrays for ordinary synchronous encoding. A copied scene() owner keeps
+    // the separate BODY completion lease; no per-draw reconstruction is needed.
+    bool restoreCPUStorage(Batches& empty_batches, Queries& empty_queries) noexcept
+    {
+        if (!empty_batches.empty() || !empty_queries.empty()) return false;
+        mBatches.swap(empty_batches); mQueries.swap(empty_queries);
+        return true;
+    }
+    // Owner-only, before dispatch. The render command retains this same
+    // completion aggregate, including the exact destination generation.
+    bool retainTarget(std::shared_ptr<const void> target) noexcept
+    {
+        if (!mOwners || !target) return false;
+        mOwners->target = std::move(target);
+        return true;
+    }
+    // Logical CPU-owned packet capacity, not native/physical resident RAM.
+    // Shared producer records, native resources and pose values are excluded:
+    // this charges the extra arrays retained while the next capture allocates.
+    std::uint64_t ownedCPUBytes() const noexcept
+    {
+        std::uint64_t bytes = sizeof(*this) + sizeof(CompletionOwners);
+        const auto add = [&](std::size_t count, std::size_t stride)
+        {
+            constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+            if (count > (maximum - bytes) / stride) bytes = maximum;
+            else bytes += count * stride;
+        };
+        add(mBatches.capacity(), sizeof(ALMetalWorldSpotShadowBatch));
+        add(mQueries.capacity(), sizeof(ALMetalWorldVisibilityQuery));
+        if (mOwners) add(mOwners->body_palettes.capacity(), sizeof(BodyPalettes::value_type));
+        return bytes;
+    }
+
 private:
     struct CompletionOwners
     {
         std::shared_ptr<const void> producer;
+        std::shared_ptr<const void> target;
         BodyPalettes body_palettes;
     };
 
@@ -115,7 +181,8 @@ private:
 
     ALMetalWorldSpotShadowScene mScene;
     Batches mBatches;
-    std::shared_ptr<const CompletionOwners> mOwners;
+    Queries mQueries;
+    std::shared_ptr<CompletionOwners> mOwners;
 };
 
 // A view-local candidate, used synchronously while the source matrix is live.

@@ -101,6 +101,7 @@
 #include "../almetal/almetalshadowindirect.h"
 #include "../almetal/almetalshadowmaterials.h"
 #include "../almetal/almetalshadowcapture.h"
+#include "../almetal/almetalshadowtask.h"
 #include "alhexlattice.h"
 #include "alwaterheightbake.h"
 #include "alterrainsurfacemaps.h"
@@ -562,9 +563,83 @@ struct LLPipeline::MetalWorldSimpleCapture
         std::shared_ptr<ShadowInvocation> invocation;
         U64 revision = 0;
     };
+    struct PendingShadowEncoding
+    {
+        bool directional = false;
+        U32 map = 0, query_camera = LLViewerCamera::NUM_CAMERAS;
+        U64 revision = 0;
+        std::size_t encoding_class = 0, query_count = 0;
+        std::shared_ptr<ShadowInvocation> invocation;
+        std::vector<ALQueryTicket> tickets;
+        std::function<void(bool)> publish, remember;
+    };
+    std::unique_ptr<ALMetalShadowViewTask> shadow_view_task;
+    std::unique_ptr<PendingShadowEncoding> pending_shadow_encoding;
+    ALMetalCapturedShadowView::Batches recycled_shadow_batches;
+    ALMetalCapturedShadowView::Queries recycled_shadow_queries;
+    struct ShadowOverlapDiagnostics
+    {
+        U64 considered = 0, eligible = 0, disabled = 0, borrowed = 0, diagnostic = 0, timing = 0,
+            declined = 0, budget_denied = 0, adoption_denied = 0, jobs = 0, queries = 0, encoded = 0, submitted = 0,
+            canceled = 0, failed = 0, join_ns = 0, cpu_packet_bytes = 0, max_cpu_packet_bytes = 0;
+    } shadow_overlap_diagnostics;
+
+    void finishShadowEncoding(bool submit = true) noexcept
+    {
+        if (!pending_shadow_encoding) return;
+        auto pending = std::move(pending_shadow_encoding);
+        const auto start = std::chrono::steady_clock::now();
+        std::string error;
+        auto outcome = shadow_view_task->finish(submit, &error);
+        auto& diagnostics = shadow_overlap_diagnostics;
+        diagnostics.join_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        diagnostics.encoded += outcome.encoded; diagnostics.submitted += outcome.submitted;
+        diagnostics.cpu_packet_bytes += outcome.retained_cpu_bytes;
+        diagnostics.max_cpu_packet_bytes = std::max<U64>(diagnostics.max_cpu_packet_bytes, outcome.retained_cpu_bytes);
+        diagnostics.canceled += !submit; diagnostics.failed += submit && !outcome.submitted;
+        shadow_encoding_diagnostics.encoded[pending->encoding_class] += outcome.encoded;
+        shadow_encoding_diagnostics.wall_ns[pending->encoding_class] += outcome.encode_ns;
+        const bool published = outcome.submitted && (!pending->invocation || pending->invocation->complete);
+        // These callbacks and every ALQueryPool operation run ONLY on this
+        // owner, after join and actual commit. Never attach an old query set
+        // to the next view's currently-open main command.
+        try
+        {
+            if (pending->publish) pending->publish(published);
+            if (pending->remember) pending->remember(published);
+        }
+        catch (...) { std::fputs("Alchemy Metal shadow owner settlement failed\n", stderr); }
+        const bool queries_complete = published && outcome.visibility_results &&
+            outcome.visibility_results->resultCount() == pending->tickets.size() &&
+            pending->query_count == pending->tickets.size();
+        try
+        {
+            for (std::size_t index = 0; index < pending->tickets.size(); ++index)
+            {
+                if (!queries_complete || !gGL.queries().attachVisibilityResult(
+                        pending->tickets[index], outcome.visibility_results, index))
+                    gGL.queries().discard(pending->tickets[index]);
+            }
+        }
+        catch (...)
+        {
+            for (const auto& ticket : pending->tickets) gGL.queries().discard(ticket);
+            std::fputs("Alchemy Metal shadow overlap queries discarded after settlement failure\n", stderr);
+        }
+        if (outcome.packet)
+        {
+            outcome.packet->recycleBatches(recycled_shadow_batches);
+            outcome.packet->recycleQueries(recycled_shadow_queries);
+        }
+        if (submit && !outcome.submitted)
+            std::fprintf(stderr, "Alchemy Metal shadow overlap failed: %s\n", error.c_str());
+    }
+
 
     ~MetalWorldSimpleCapture()
     {
+        finishShadowEncoding(false);
         // Settlement callbacks borrow this capture. Cancel while every member
         // is still alive, before the renderer member's later destruction.
         if (renderer) renderer->cancelCommandBatch();
@@ -659,8 +734,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool modern_sky_valid = false;
     bool modern_sky_drawn = false;
     bool modern_sky_composited = false;
-    std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
-    std::unique_ptr<ALMetalTexture> direct_directional_shadow_texture;
+    std::shared_ptr<ALMetalTexture> direct_projector_shadow_texture;
+    std::shared_ptr<ALMetalTexture> direct_directional_shadow_texture;
     ALMetalWorldDirectionalShadows projector_shadows;
     U32 projector_shadow_frame = std::numeric_limits<U32>::max();
     std::array<bool, 2> direct_projector_shadow_valid{};
@@ -1999,6 +2074,7 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
         return false;
     }
 
+    finishMetalShadowEncoding();
     std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
     if (!mMetalWorldSimpleCapture)
     {
@@ -2165,6 +2241,7 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.frame_active = false;
     capture.pass_active = false;
 
+    finishMetalShadowEncoding();
     std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
     mMetalHeroWorldCaptureActive = false;
     return published;
@@ -2246,6 +2323,7 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
         return false;
     }
 
+    finishMetalShadowEncoding();
     std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
     if (!mMetalWorldSimpleCapture)
     {
@@ -2346,6 +2424,7 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.frame_active = false;
     capture.pass_active = false;
 
+    finishMetalShadowEncoding();
     std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
     mMetalReflectionWorldCaptureActive = false;
     return published;
@@ -2450,12 +2529,20 @@ static U32 effectiveMetalWorldAnisotropy()
         llclamp(ll_round(descriptor.mMaxAnisotropy), 1, 16));
 }
 
+void LLPipeline::finishMetalShadowEncoding(bool submit)
+{
+    for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
+        if (owner) owner->finishShadowEncoding(submit);
+}
+
 void LLPipeline::initializeMetalWorldCaptureDevice(
     MetalWorldSimpleCapture& capture, const ALMetalDevice* device,
     bool main_world_capture)
 {
     if (capture.device != device)
     {
+        capture.finishShadowEncoding(false);
+        capture.shadow_view_task.reset();
         capture.renderer.reset();
         capture.renderer_error.clear();
         capture.startup_world_context.reset();
@@ -2749,6 +2836,7 @@ void LLPipeline::prewarmMetalWorldRenderer()
 
 void LLPipeline::resetMetalStartupWorld()
 {
+    finishMetalShadowEncoding();
     ++mMetalStartupWorldEpoch;
     mMetalStartupWorldStartFrame = gFrameCount;
     for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
@@ -2810,6 +2898,7 @@ ALMetalTexture* LLPipeline::metalSkyEnvironment()
 
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
+    finishMetalShadowEncoding();
     // Bound cached generations by the actual Apple GPU working-set advice.
     // Count shared native resources once; active command leases are separate.
     if (const auto* device = getViewerMetalDevice())
@@ -3078,6 +3167,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_opaque("main", indirect);
             log_opaque("probe", probe_indirect);
+            if (capture.shadow_view_task && !capture.shadow_view_task->active())
+                log_opaque("main_worker", capture.shadow_view_task->shadowIndirectStats());
             const auto log_sources = [](const char* owner, const MetalWorldSimpleCapture* source)
             {
                 if (!source) return;
@@ -3133,6 +3224,18 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_shadow_encoding("main", &capture);
             log_shadow_encoding("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto& overlap = capture.shadow_overlap_diagnostics;
+            LL_INFOS("MetalShadowSources") << "Native shadow view overlap: requested="
+                << gSavedSettings.getBOOL("RenderMetalShadowViewOverlap")
+                << ", considered/eligible=" << overlap.considered << '/' << overlap.eligible
+                << ", declined(disabled/borrowed/readback/timing/job)=" << overlap.disabled << '/'
+                << overlap.borrowed << '/' << overlap.diagnostic << '/' << overlap.timing << '/' << overlap.declined
+                << ", budget/adoption_denials=" << overlap.budget_denied << '/' << overlap.adoption_denied
+                << ", jobs/queries=" << overlap.jobs << '/' << overlap.queries
+                << ", outcomes(encoded/submitted/canceled/failed)=" << overlap.encoded << '/'
+                << overlap.submitted << '/' << overlap.canceled << '/' << overlap.failed
+                << ", logical_cpu_packet_bytes(total/max)=" << overlap.cpu_packet_bytes << '/' << overlap.max_cpu_packet_bytes
+                << ", owner_join_ns=" << overlap.join_ns << LL_ENDL;
             const auto log_publication = [](const char* view, const MetalWorldSimpleCapture* value)
             {
                 if (!value) return;
@@ -4106,6 +4209,7 @@ void LLPipeline::beginMetalWorldImpostorPass()
 void LLPipeline::beginMetalImpostorBakeCapture(
     const LLUUID& avatar_id, U32 width, U32 height, bool for_profile)
 {
+    finishMetalShadowEncoding();
     if (width == 0 || height == 0)
     {
         return;
@@ -4131,6 +4235,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     }
     if (capture.device != device)
     {
+        capture.finishShadowEncoding(false);
+        capture.shadow_view_task.reset();
         capture.renderer.reset();
         capture.renderer_error.clear();
         capture.startup_world_context.reset();
@@ -10480,6 +10586,7 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
 
 bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
 {
+    finishMetalShadowEncoding();
     const auto fail = [error](const char* message)
     {
         if (error)
@@ -12831,6 +12938,7 @@ void LLPipeline::retireMetalHeroProbeResources()
             mMetalWorldSimpleCapture->hero_probe_face_capture = false;
             mMetalWorldSimpleCapture->hero_forward_capture_reserved = false;
         }
+        finishMetalShadowEncoding(false);
         std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
         mMetalHeroWorldCaptureActive = false;
         mRT = &mMainRT;
@@ -12879,6 +12987,7 @@ void LLPipeline::retireMetalHeroProbeResources()
 
 bool LLPipeline::fillMetalImpostorDirectionalShadows()
 {
+    finishMetalShadowEncoding();
     if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->device)
     {
         return false;
@@ -14622,18 +14731,31 @@ void LLPipeline::endMetalSpotShadowCapture()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    // End the CPU query recorder structurally before any packet is deferred.
+    // Existing closed tickets/descriptions remain intact; an accidentally open
+    // ticket is discarded by the pool, as in ordinary capture settlement.
+    if (capture.shadow_visibility_capture_active)
+    {
+        gGL.queries().endVisibilityCapture();
+        capture.shadow_visibility_capture_active = false;
+    }
+    capture.finishShadowEncoding();
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
     struct SettleShadowVisibility
     {
         MetalWorldSimpleCapture& capture;
         std::shared_ptr<ALMetalVisibilityResultBatch>& results;
+        bool deferred = false;
         ~SettleShadowVisibility()
         {
             // An early return/exception abandons only this independently owned
             // view. A probe/hero transaction remains its caller's responsibility.
-            capture.cancelOwnedShadowViewBatch();
-            capture.settleShadowVisibility(capture.spot_shadow_encoded_ok
-                ? std::move(results) : nullptr);
+            if (!deferred)
+            {
+                capture.cancelOwnedShadowViewBatch();
+                capture.settleShadowVisibility(capture.spot_shadow_encoded_ok
+                    ? std::move(results) : nullptr);
+            }
             // Native commands have retained the immutable packet. Stale CPU
             // scratch must not keep old stores pinned into next frame's writes.
             capture.spot_shadow_admitted_sources.clear();
@@ -14732,7 +14854,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     descriptor.label = directional
         ? "Alchemy direct raw directional-shadow maps"
         : "Alchemy direct raw projector-shadow maps";
-    std::unique_ptr<ALMetalTexture>& retained_texture = directional
+    std::shared_ptr<ALMetalTexture>& retained_texture = directional
         ? capture.direct_directional_shadow_texture
         : capture.direct_projector_shadow_texture;
     const ALMetalTextureDescriptor* existing =
@@ -14763,6 +14885,40 @@ void LLPipeline::endMetalSpotShadowCapture()
         }
     }
 
+    auto& publication = capture.shadowPublication(directional, map);
+    const U64 revision = publication.revision;
+    const auto invocation = capture.shadow_invocation;
+    const auto publish = [this, owner = &capture, directional, map,
+                          revision, invocation](bool submitted)
+    {
+        auto& current = owner->shadowPublication(directional, map);
+        if (current.revision != revision) return;
+        const bool valid = submitted && (!invocation || invocation->complete);
+        current.completion.reset();
+        current.invocation.reset();
+        if (directional)
+        {
+            owner->direct_directional_shadow_valid[map] = valid;
+            owner->impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
+            if (valid && !mMetalDirectionalShadowReported)
+            {
+                mMetalDirectionalShadowReported = true;
+                LL_INFOS("Metal") << "Direct Metal directional-shadow slices committed from native casters" << LL_ENDL;
+            }
+        }
+        else
+        {
+            owner->direct_projector_shadow_valid[map] = valid;
+            owner->projector_shadow_frame = std::numeric_limits<U32>::max();
+            if (!valid) owner->direct_projector_shadow_cache.invalidate(map);
+            if (valid && !mMetalProjectorShadowReported)
+            {
+                mMetalProjectorShadowReported = true;
+                LL_INFOS("Metal") << "Direct Metal projector-shadow slices committed from native casters" << LL_ENDL;
+            }
+        }
+    };
+
     const std::size_t encoding_class = (capture.spot_shadow_owns_batch ? 0 : 2) +
         (scene.visibility_query_count ? 1 : 0);
     auto& encoding = capture.shadow_encoding_diagnostics;
@@ -14773,6 +14929,72 @@ void LLPipeline::endMetalSpotShadowCapture()
     encoding.logical_sources[encoding_class] += scene.source_batch_count;
     encoding.max_logical_sources[encoding_class] = std::max<U64>(
         encoding.max_logical_sources[encoding_class], scene.source_batch_count);
+    auto& overlap = capture.shadow_overlap_diagnostics;
+    ++overlap.considered;
+    static LLCachedControl<bool> overlap_requested(gSavedSettings, "RenderMetalShadowViewOverlap", false);
+    std::unique_ptr<ALMetalCapturedShadowView> snapshot;
+    if (!overlap_requested()) ++overlap.disabled;
+    else if (!capture.spot_shadow_owns_batch || mRT != &mMainRT || sImpostorRender || sRenderingHUDs ||
+             gCubeSnapshot || mMetalHeroWorldCaptureActive || mMetalReflectionWorldCaptureActive)
+        ++overlap.borrowed;
+    else if (shadow_diagnostics) ++overlap.diagnostic;
+    // A null-window suppression scope has no counter owner and stays eligible.
+    // Real StageTimingWindow mutation/poll/seal is submission-owner-only.
+    else if (ALMetalStageTimingScope::current() && ALMetalStageTimingScope::current()->window())
+        ++overlap.timing;
+    else
+    {
+        ++overlap.eligible;
+        try
+        {
+            if (!capture.shadow_view_task ||
+                capture.shadow_view_task->shaderGeneration() != capture.renderer->shaderGeneration() ||
+                capture.shadow_view_task->anisotropy() != capture.renderer->anisotropy())
+            {
+                capture.shadow_view_task.reset();
+                auto context = capture.renderer->createShadowEncodingContext(&error);
+                if (context) capture.shadow_view_task = std::make_unique<ALMetalShadowViewTask>(std::move(context));
+            }
+            auto pending = std::make_unique<MetalWorldSimpleCapture::PendingShadowEncoding>();
+            pending->directional = directional; pending->map = map; pending->revision = revision;
+            pending->invocation = invocation; pending->publish = publish;
+            pending->encoding_class = encoding_class; pending->query_count = scene.visibility_query_count;
+            pending->query_camera = capture.shadow_visibility_camera;
+            snapshot = ALMetalCapturedShadowView::take(scene, capture.spot_shadow_batches,
+                capture.spot_shadow_avatar_palettes, capture.shadow_visibility_queries, &error);
+            const auto command = capture.renderer->commandBatchCompletion();
+            if (capture.shadow_view_task && snapshot && capture.shadow_view_task->start(
+                    *capture.renderer, gFrameCount, snapshot, retained_texture, map,
+                    &ALNativeFrameBudget::instance(), &error))
+            {
+                pending->tickets.swap(capture.shadow_visibility_tickets);
+                capture.shadow_visibility_camera = LLViewerCamera::NUM_CAMERAS;
+                publication.completion = command; publication.invocation = invocation;
+                capture.spot_shadow_owns_batch = false; // Exact command now belongs to private encoder.
+                capture.pending_shadow_encoding = std::move(pending);
+                capture.spot_shadow_batches.swap(capture.recycled_shadow_batches);
+                capture.shadow_visibility_queries.swap(capture.recycled_shadow_queries);
+                settle_visibility.deferred = true;
+                ++overlap.jobs; overlap.queries += scene.visibility_query_count;
+                return;
+            }
+        }
+        catch (...) { error.clear(); }
+        ++overlap.declined;
+        if (capture.shadow_view_task)
+        {
+            overlap.budget_denied += capture.shadow_view_task->lastDecline() == ALMetalShadowViewTask::Decline::budget;
+            overlap.adoption_denied += capture.shadow_view_task->lastDecline() == ALMetalShadowViewTask::Decline::adoption;
+        }
+        if (snapshot)
+        {
+            // Preserve ordinary rendering and query order if snapshot/job
+            // admission declines. BODY poses remain in scene's completion owner.
+            scene = snapshot->scene();
+            snapshot->restoreCPUStorage(capture.spot_shadow_batches, capture.shadow_visibility_queries);
+        }
+        error.clear();
+    }
     const auto encode_started = std::chrono::steady_clock::now();
     const bool rendered = capture.renderer->renderSpotShadow(
         *retained_texture, map, scene, &error, &visibility_results);
@@ -15002,44 +15224,11 @@ void LLPipeline::endMetalSpotShadowCapture()
     capture.spot_shadow_batches.clear();
     capture.spot_shadow_avatar_palettes.clear();
     capture.spot_shadow_encoded_ok = true;
-    auto& publication = capture.shadowPublication(directional, map);
-    const U64 revision = publication.revision;
-    const auto invocation = capture.shadow_invocation;
     if (capture.renderer->commandBatchActive())
     {
         publication.completion = capture.renderer->commandBatchCompletion();
         publication.invocation = invocation;
     }
-    const auto publish = [this, owner = &capture, directional, map,
-                          revision, invocation](bool submitted)
-    {
-        auto& current = owner->shadowPublication(directional, map);
-        if (current.revision != revision) return;
-        const bool valid = submitted && (!invocation || invocation->complete);
-        current.completion.reset();
-        current.invocation.reset();
-        if (directional)
-        {
-            owner->direct_directional_shadow_valid[map] = valid;
-            owner->impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
-            if (valid && !mMetalDirectionalShadowReported)
-            {
-                mMetalDirectionalShadowReported = true;
-                LL_INFOS("Metal") << "Direct Metal directional-shadow slices committed from native casters" << LL_ENDL;
-            }
-        }
-        else
-        {
-            owner->direct_projector_shadow_valid[map] = valid;
-            owner->projector_shadow_frame = std::numeric_limits<U32>::max();
-            if (!valid) owner->direct_projector_shadow_cache.invalidate(map);
-            if (valid && !mMetalProjectorShadowReported)
-            {
-                mMetalProjectorShadowReported = true;
-                LL_INFOS("Metal") << "Direct Metal projector-shadow slices committed from native casters" << LL_ENDL;
-            }
-        }
-    };
     if (capture.renderer->commandBatchActive())
     {
         if (!capture.renderer->observeCommandBatchSettlement(publish, &error))
@@ -15054,6 +15243,7 @@ void LLPipeline::endMetalSpotShadowCapture()
 
 bool LLPipeline::fillMetalWorldProjectorShadows()
 {
+    finishMetalShadowEncoding();
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->device)
     {
@@ -16787,6 +16977,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
         {
             ALNativeFrameBudget::Lease credit;
             if (preparation->jobCount() > 1)
+                // Both ranges share the input and output arrays allocated by
+                // create() above; this synchronous fork adds no owned snapshot
+                // while another capture allocates. Zero charges a JOB only,
+                // not the preexisting world ticket's total CPU storage.
                 credit = ALNativeFrameBudget::instance().tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
             if (credit)
             {
@@ -17956,6 +18150,7 @@ void LLPipeline::markRenderInputsDirty(ALRenderInputRequests::Change change)
 
 bool LLPipeline::reloadMetalShaders(std::string* error)
 {
+    finishMetalShadowEncoding();
     // Programs are rebuilt before this frame starts recording any world/UI
     // commands. Targets, exposure histories and published avatar resources
     // remain owned by their existing capture/resource owners.
@@ -18718,6 +18913,7 @@ void LLPipeline::refreshCachedSettings()
 
 void LLPipeline::releaseAllRenderResources()
 {
+    finishMetalShadowEncoding(false);
     mSky.releaseNative();
     mMetalSkyEnvironment.reset();
     mMetalSkyEnvironmentDevice = nullptr;
@@ -18782,6 +18978,7 @@ void LLPipeline::releaseAllRenderResources()
 
 void LLPipeline::releaseRenderTargets()
 {
+    finishMetalShadowEncoding(false);
     using Plan = ALRenderResourcePlan;
     for (size_t i = 0; i < Plan::ID_COUNT; ++i)
     {
@@ -18823,6 +19020,7 @@ void LLPipeline::releaseRenderTargets()
 
 void LLPipeline::releaseDepthDependents()
 {
+    finishMetalShadowEncoding(false);
     mWaterSurface.release();
 
     if (ALSelectionOutline::instanceExists())
@@ -24889,6 +25087,7 @@ bool LLPipeline::getScopePixel(S32 scaled_x, S32 scaled_y, LLColor4U& out) const
 
 void LLPipeline::captureScopeSample()
 {
+    finishMetalShadowEncoding();
     if (!sScopeCapture || gCubeSnapshot)
     {
         return;
@@ -26228,6 +26427,14 @@ inline float sgn(float a)
 
 void LLPipeline::sortShadow(LLCamera& shadow_cam, LLCullResult& result, bool do_cull, S32 occlusion)
 {
+    // A closed ticket without an attached native result is Expired in the
+    // query pool. Different cascades use separate camera slots and may overlap;
+    // a repeated camera must settle before its cull polls that same ticket.
+    if (mMetalWorldSimpleCapture && mMetalWorldSimpleCapture->pending_shadow_encoding &&
+        mMetalWorldSimpleCapture->pending_shadow_encoding->query_count &&
+        mMetalWorldSimpleCapture->pending_shadow_encoding->query_camera == LLViewerCamera::sCurCameraID)
+        mMetalWorldSimpleCapture->finishShadowEncoding();
+
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
     LLPipeline::sShadowRender = true;
@@ -26739,6 +26946,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         explicit ShadowInvocationScope(MetalWorldSimpleCapture* owner) : capture(owner)
         {
             if (!capture || !capture->renderer) return;
+            capture->finishShadowEncoding();
             previous = capture->shadow_invocation;
             previous_group = capture->shadow_current_group;
             if (capture->renderer->commandBatchActive())
@@ -26748,11 +26956,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             capture->shadow_invocation = invocation;
             ready = true;
         }
-        void finish() { if (invocation) invocation->complete = true; }
+        void finish() { capture->finishShadowEncoding(); if (invocation) invocation->complete = true; }
         ~ShadowInvocationScope()
         {
             if (ready)
             {
+                capture->finishShadowEncoding(false);
                 capture->shadow_invocation = std::move(previous);
                 capture->shadow_current_group = previous_group;
             }
@@ -27815,7 +28024,11 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
 #if LL_DARWIN
                     auto& shadow_owner = *mMetalWorldSimpleCapture;
-                    if (shadow_owner.spot_shadow_encoded_ok)
+                    const bool pending_key = shadow_owner.pending_shadow_encoding &&
+                        !shadow_owner.pending_shadow_encoding->directional &&
+                        shadow_owner.pending_shadow_encoding->map == i &&
+                        shadow_owner.pending_shadow_encoding->revision == shadow_owner.shadowPublication(false, i).revision;
+                    if (shadow_owner.spot_shadow_encoded_ok || pending_key)
                     {
                         const U64 revision = shadow_owner.shadowPublication(false, i).revision;
                         const auto invocation = shadow_owner.shadow_invocation;
@@ -27828,7 +28041,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                                 owner->direct_projector_shadow_cache.drawn(i, key);
                             else owner->direct_projector_shadow_cache.invalidate(i);
                         };
-                        if (shadow_owner.renderer->commandBatchActive())
+                        if (pending_key)
+                            shadow_owner.pending_shadow_encoding->remember = remember;
+                        else if (shadow_owner.renderer->commandBatchActive())
                         {
                             if (!shadow_owner.renderer->observeCommandBatchSettlement(remember))
                                 remember(false);
@@ -28032,6 +28247,7 @@ void LLPipeline::readAttachmentTimes()
 
 void LLPipeline::processMetalAvatarProfiles()
 {
+    finishMetalShadowEncoding();
     // At most one isolated subject per main frame. Requests made before the
     // renderer warms remain queued; no synchronous compilation or GPU wait.
     if (mMetalAvatarProfileRequests.empty() || !isMainWorldPass()) return;

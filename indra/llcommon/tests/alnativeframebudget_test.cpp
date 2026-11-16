@@ -10,6 +10,8 @@
 #include <array>
 #include <memory>
 #include <vector>
+#include <limits>
+#include <thread>
 
 namespace
 {
@@ -967,4 +969,113 @@ TEST_CASE("Oversize maintenance is exclusive and checked debt retires without a 
     auto active=budget.tryAcquire(Budget::Work::native_maintenance,4);REQUIRE(active);budget.beginDrain();
     CHECK_FALSE(budget.tryAcquire(Budget::Work::native_maintenance,1));active.credit.reset();
     CHECK(budget.snapshot().maintenance_in_flight==0);CHECK(budget.snapshot().maintenance_bytes_in_flight==0);
+}
+
+TEST_CASE("Retained preparation packets share hard startup job and byte bounds",
+          "[native-frame-budget][preparation-bytes]")
+{
+    Budget::Limits limits;
+    limits.preparation_jobs = 2;
+    limits.preparation_bytes_in_flight = 10;
+    Budget budget(limits); // No beginFrame: startup is bounded too.
+    auto first = budget.tryAcquire(Budget::Work::preparation, 6);
+    REQUIRE(first);
+    CHECK(first.credit->logicalBytes() == 6);
+    auto too_large = budget.tryAcquire(Budget::Work::preparation, 5);
+    CHECK_FALSE(too_large); CHECK(too_large.reason == Budget::Reason::in_flight);
+    auto second = budget.tryAcquire(Budget::Work::preparation, 4);
+    REQUIRE(second);
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 10);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::preparation)); // Legacy zero still needs a job slot.
+    first.credit.reset();
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 4);
+    auto zero = budget.tryAcquire(Budget::Work::preparation);
+    REQUIRE(zero);
+    CHECK(budget.snapshot().preparation_in_flight == 2);
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 4);
+    second.credit.reset(); zero.credit.reset();
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+    CHECK(budget.snapshot().preparation_in_flight == 0);
+}
+
+TEST_CASE("Preparation byte debt retires once on the actual last CPU owner across threads and frames",
+          "[native-frame-budget][preparation-bytes]")
+{
+    Budget::Limits limits;
+    limits.preparation_jobs = 3; limits.preparation_bytes_in_flight = 16;
+    Budget budget(limits); budget.beginFrame(frame(1));
+    auto first = budget.tryAcquire(Budget::Work::preparation, 10);
+    auto second = budget.tryAcquire(Budget::Work::preparation, 6);
+    REQUIRE(first); REQUIRE(second);
+    auto retained = first.credit;
+    std::thread worker([lease = std::move(first.credit)]() mutable { lease.reset(); });
+    std::thread other([lease = retained]() mutable { lease.reset(); });
+    worker.join(); other.join();
+    CHECK(budget.snapshot().preparation_in_flight == 2);
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 16);
+    budget.beginFrame(frame(2));
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::preparation, 1)); // A new frame cannot refill active capacity.
+    retained.reset();
+    CHECK(budget.snapshot().preparation_in_flight == 1);
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 6);
+    auto next = budget.tryAcquire(Budget::Work::preparation, 10); REQUIRE(next);
+    std::thread complete([lease = std::move(second.credit)]() mutable { lease.reset(); });
+    complete.join();
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 10);
+    budget.beginDrain();
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::preparation));
+    next.credit.reset();
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
+    CHECK(budget.snapshot().preparation_in_flight == 0);
+    Budget::Lease late;
+    { Budget owner; late = owner.tryAcquire(Budget::Work::preparation, 7).credit; REQUIRE(late); }
+    std::thread retire_after_owner([lease = std::move(late)]() mutable { lease.reset(); });
+    retire_after_owner.join();
+}
+
+TEST_CASE("Retained packet bytes respect memory pressure while useful CPU preparation survives a busy frame",
+          "[native-frame-budget][preparation-bytes]")
+{
+    Budget::Limits limits; limits.preparation_jobs = 4; limits.preparation_bytes_in_flight = 16;
+    Budget budget(limits);
+    auto busy = frame(1); busy.required_main_cpu_ns = busy.frame_interval_ns;
+    budget.beginFrame(busy); REQUIRE(budget.snapshot().main_busy);
+    auto useful = budget.tryAcquire(Budget::Work::preparation, 8); REQUIRE(useful);
+    auto pressure = frame(2); pressure.os_available_bytes = 1;
+    budget.beginFrame(pressure); REQUIRE(budget.snapshot().memory_pressure);
+    auto denied = budget.tryAcquire(Budget::Work::preparation, 1);
+    CHECK_FALSE(denied); CHECK(denied.reason == Budget::Reason::memory_pressure);
+    auto legacy = budget.tryAcquire(Budget::Work::preparation); REQUIRE(legacy);
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 8); // Active jobs are not revoked.
+    useful.credit.reset(); legacy.credit.reset();
+    budget.beginFrame(frame(3));
+    CHECK_FALSE(budget.snapshot().memory_pressure);
+    auto recovered = budget.tryAcquire(Budget::Work::preparation, 16); REQUIRE(recovered);
+    CHECK(budget.snapshot().preparation_bytes_in_flight == 16);
+    recovered.credit.reset();
+}
+
+TEST_CASE("Preparation byte admission rejects unknown oversize and overflowing capacities without phantom debt",
+          "[native-frame-budget][preparation-bytes]")
+{
+    Budget::Limits limits; limits.preparation_jobs = 3; limits.preparation_bytes_in_flight = 8;
+    Budget bounded(limits);
+    CHECK_FALSE(bounded.tryAcquire(Budget::Work::preparation, Budget::unknown_bytes));
+    CHECK_FALSE(bounded.tryAcquire(Budget::Work::preparation, 9));
+    CHECK(bounded.snapshot().preparation_in_flight == 0);
+    CHECK(bounded.snapshot().preparation_bytes_in_flight == 0);
+    limits.preparation_bytes_in_flight = std::numeric_limits<std::uint64_t>::max();
+    Budget large(limits);
+    auto first = large.tryAcquire(Budget::Work::preparation, Budget::unknown_bytes - 1); REQUIRE(first);
+    CHECK_FALSE(large.tryAcquire(Budget::Work::preparation, 2));
+    CHECK(large.snapshot().preparation_bytes_in_flight == Budget::unknown_bytes - 1);
+    auto legacy = large.tryAcquire(Budget::Work::preparation); REQUIRE(legacy);
+    first.credit.reset();
+    CHECK(large.snapshot().preparation_bytes_in_flight == 0);
+    CHECK(large.snapshot().preparation_in_flight == 1);
+    legacy.credit.reset();
+    CHECK(large.snapshot().preparation_in_flight == 0);
+    Budget defaults;
+    auto full = defaults.tryAcquire(Budget::Work::preparation, 32ULL * 1024 * 1024); REQUIRE(full);
+    CHECK_FALSE(defaults.tryAcquire(Budget::Work::preparation, 1));
 }

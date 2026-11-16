@@ -27,6 +27,7 @@ struct ALNativeFrameBudget::State
         limits.maintenance_bytes_in_flight = std::max<std::uint64_t>(limits.maintenance_bytes_in_flight, 1);
         limits.optional_views_per_frame = std::max(limits.optional_views_per_frame, 1u);
         limits.preparation_jobs = std::max(limits.preparation_jobs, 1u);
+        limits.preparation_bytes_in_flight = std::max<std::uint64_t>(limits.preparation_bytes_in_flight, 1);
         limits.maximum_deferral_frames = std::max<Frame>(limits.maximum_deferral_frames, 1);
     }
     mutable std::mutex mutex;
@@ -257,7 +258,10 @@ ALNativeFrameBudget::Credit::~Credit()
         --stats.uploads_in_flight;
         stats.upload_bytes_in_flight -= mBytes;
         break;
-    case Work::preparation: --stats.preparation_in_flight; break;
+    case Work::preparation:
+        --stats.preparation_in_flight;
+        stats.preparation_bytes_in_flight -= mBytes;
+        break;
     case Work::native_maintenance:
         --stats.maintenance_in_flight;
         stats.maintenance_bytes_in_flight -= mBytes;
@@ -362,6 +366,19 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         if (bytes > unknown_bytes - stats.scene_bytes_this_frame)
             return deny(Reason::frame_work);
     }
+    else if (work == Work::preparation)
+    {
+        // A retained CPU packet competes with the next capture's arrays.
+        // Hard bounds also apply before the first frame plan. Optional
+        // parallelism has an ordinary serial path, so oversize never borrows
+        // an unbounded progress lane. Zero-byte legacy callers keep their
+        // established CPU-busy/pressure behavior within the shared job cap.
+        if (stats.preparation_in_flight >= limits.preparation_jobs ||
+            bytes == unknown_bytes || bytes > limits.preparation_bytes_in_flight ||
+            stats.preparation_bytes_in_flight > limits.preparation_bytes_in_flight - bytes)
+            return deny(Reason::in_flight);
+        if (bytes && stats.memory_pressure) return deny(Reason::memory_pressure);
+    }
     else if (stats.initialized && !stats.draining)
     {
         if (work == Work::upload)
@@ -386,11 +403,6 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
                     return deny(stats.memory_pressure ? Reason::memory_pressure : Reason::frame_work);
                 reason = Reason::progress;
             }
-        }
-        else if (work == Work::preparation)
-        {
-            if (stats.preparation_in_flight >= limits.preparation_jobs)
-                return deny(Reason::in_flight);
         }
         else
         {
@@ -432,7 +444,11 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
         stats.upload_bytes_this_frame = bytes > unknown_bytes - stats.upload_bytes_this_frame
             ? unknown_bytes : stats.upload_bytes_this_frame + bytes;
     }
-    else if (work == Work::preparation) ++stats.preparation_in_flight;
+    else if (work == Work::preparation)
+    {
+        ++stats.preparation_in_flight;
+        stats.preparation_bytes_in_flight += bytes;
+    }
     else if (work == Work::scene_publication)
     {
         ++stats.scene_publications_in_flight;
