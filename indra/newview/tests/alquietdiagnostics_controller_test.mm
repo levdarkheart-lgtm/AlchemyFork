@@ -13,6 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -52,17 +53,35 @@ struct Environment
 struct Directory
 {
     fs::path path;
+    bool preserve = false;
     Directory()
     {
-        char pattern[] = "/private/tmp/alquiet-controller-test.XXXXXX";
-        const char* result = mkdtemp(pattern);
+        fs::path parent = "/private/tmp";
+        if (const char* requested = std::getenv("ALCHEMY_METAL_TEST_ARTIFACT_DIRECTORY");
+            requested && *requested)
+        {
+            struct stat status{};
+            REQUIRE(*requested == '/');
+            REQUIRE(lstat(requested, &status) == 0);
+            REQUIRE(S_ISDIR(status.st_mode));
+            REQUIRE(status.st_uid == geteuid());
+            REQUIRE((status.st_mode & 07777) == 0700);
+            parent = requested;
+            preserve = true;
+        }
+        std::string pattern = (parent / "alquiet-controller-test.XXXXXX").string();
+        const char* result = mkdtemp(pattern.data());
         REQUIRE(result);
         path = result;
         REQUIRE(chmod(path.c_str(), 0700) == 0);
         REQUIRE(setenv("ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY", path.c_str(), 1) == 0);
         REQUIRE(setenv("ALCHEMY_METAL_QUIET_CAPTURE", "auto", 1) == 0);
     }
-    ~Directory() { std::error_code ignored; fs::remove_all(path, ignored); }
+    ~Directory()
+    {
+        if (preserve) std::printf("quiet_controller_retained_artifacts=%s\n", path.c_str());
+        else { std::error_code ignored; fs::remove_all(path, ignored); }
+    }
 };
 
 struct Shutdown
