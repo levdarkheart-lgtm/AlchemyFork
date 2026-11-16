@@ -385,7 +385,7 @@ def utc_unix_ns(value):
     return (delta.days * 86400 + delta.seconds) * 1_000_000_000 + delta.microseconds * 1000
 
 
-def qualify_native(coverage, overview, source_sha):
+def qualify_native(coverage, overview, source_sha, expected_pid):
     """Qualify actual FRAME iteration bounds; completion timestamps cannot fill holes."""
     result = {"native_coverage_status": "unavailable", "covered": False,
               "tolerance_ns": NATIVE_COVERAGE_TOLERANCE_NS,
@@ -397,6 +397,13 @@ def qualify_native(coverage, overview, source_sha):
     if (not coverage.get("present") or not coverage.get("calibration_available") or
             header.get("source_sha", "").lower() != source_sha.lower()):
         result["native_coverage_status"] = "missing_uncalibrated_or_source_mismatch"
+        return result
+    result.update(expected_process_id=expected_pid, native_process_id=header.get("process_id"))
+    if not isinstance(header.get("process_id"), int) or header["process_id"] <= 1:
+        result["native_coverage_status"] = "native_binding_unproved"
+        return result
+    if header["process_id"] != expected_pid:
+        result["native_coverage_status"] = "native_pid_mismatch"
         return result
     if coverage["malformed"] or coverage["invalid_frame_records"]:
         result["native_coverage_status"] = "malformed"
@@ -770,7 +777,7 @@ class Collector:
                 try:
                     coverage = diagnostic_coverage(args.diagnostic_jsonl)
                     self.state["diagnostic_coverage"] = coverage
-                    native = qualify_native(coverage, self.state.get("coverage", {}), args.source_sha)
+                    native = qualify_native(coverage, self.state.get("coverage", {}), args.source_sha, args.pid)
                     self.state["native_coverage"] = native
                     if not native["covered"]:
                         raise RuntimeError("requested native diagnostic stream incomplete: " + native["native_coverage_status"])

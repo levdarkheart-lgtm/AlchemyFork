@@ -219,7 +219,7 @@ class CollectorTests(unittest.TestCase):
         source = self.parent / "native.jsonl"
         data = {"event": "header", "schema": 1, "cpu_clock": "mach_absolute_time_ns",
                 "calibration_before_mach_ns": 100, "calibration_unix_ns": 200,
-                "calibration_after_mach_ns": 101, "source_sha": self.args.source_sha}
+                "calibration_after_mach_ns": 101, "source_sha": self.args.source_sha, "process_id": 12345}
         source.write_text(json.dumps(data) + "\n")
         with source.open("a") as stream:
             stream.write(json.dumps({"event": "frame", "start_mach_ns": 100,
@@ -449,6 +449,7 @@ class CoverageContractTests(unittest.TestCase):
     def native(self, seconds, footer=None, partial=False, command_tail_seconds=0):
         path = self.directory / "native.jsonl"
         rows = [{"event": "header", "schema": 1, "source_sha": self.source_sha,
+                 "process_id": 8,
                  "cpu_clock": "mach_absolute_time_ns", "calibration_before_mach_ns": 100_000_000_000,
                  "calibration_unix_ns": self.origin, "calibration_after_mach_ns": 100_000_000_000}]
         for second in range(seconds):
@@ -464,7 +465,25 @@ class CoverageContractTests(unittest.TestCase):
         summary = capture.diagnostic_coverage(path)
         overview = {"target_clock_bounds": {"first_unix_ns": self.origin,
                                              "last_end_unix_ns": self.origin + 20_000_000_000}}
-        return summary, capture.qualify_native(summary, overview, self.source_sha)
+        return summary, capture.qualify_native(summary, overview, self.source_sha, 8)
+
+    def test_legacy_native_stream_without_pid_is_not_process_bound(self):
+        summary, _ = self.native(20)
+        summary["header"].pop("process_id")
+        overview = {"target_clock_bounds": {"first_unix_ns": self.origin,
+                                             "last_end_unix_ns": self.origin + 20_000_000_000}}
+        result = capture.qualify_native(summary, overview, self.source_sha, 8)
+        self.assertFalse(result["covered"])
+        self.assertEqual("native_binding_unproved", result["native_coverage_status"])
+
+    def test_other_native_pid_does_not_bind_same_source_and_clock(self):
+        summary, _ = self.native(20)
+        summary["header"]["process_id"] = 99
+        overview = {"target_clock_bounds": {"first_unix_ns": self.origin,
+                                             "last_end_unix_ns": self.origin + 20_000_000_000}}
+        result = capture.qualify_native(summary, overview, self.source_sha, 8)
+        self.assertFalse(result["covered"])
+        self.assertEqual("native_pid_mismatch", result["native_coverage_status"])
 
     def test_duration_limit_zero_drops_before_overview_end_is_incomplete(self):
         summary, result = self.native(10, footer="duration_limit", command_tail_seconds=25)
