@@ -154,8 +154,9 @@ TEST_CASE("almetal: ordinary resource tables redeclare after encoder end without
           "[almetal][cohort-declaration][world-resources]")
 {
     PageFixture f;auto tables=ALMetalWorldResources::create(*f.device,*f.library,{},&f.error);REQUIRE(tables);
-    ALMetalSamplerDescriptor sd;auto sampler=ALMetalSamplerState::create(*f.device,sd,&f.error);REQUIRE(sampler);
-    auto table=tables->prepare(f.cpu->source.native_resource_source,*sampler,&f.error);REQUIRE(table);
+    ALMetalSamplerDescriptor sd;sd.support_argument_buffers=true;
+    auto sampler=ALMetalSamplerState::create(*f.device,sd,&f.error);INFO(f.error);REQUIRE(sampler);
+    auto table=tables->prepare(f.cpu->source.native_resource_source,*sampler,&f.error);INFO(f.error);REQUIRE(table);
     auto command=f.device->makeCommandBuffer("Ordinary table encoder lifetime",&f.error);REQUIRE(command);
     std::uint64_t once=0;
     {
