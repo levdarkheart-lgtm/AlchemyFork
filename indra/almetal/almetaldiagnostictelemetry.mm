@@ -509,6 +509,7 @@ bool start(const Config& config, std::string* error) noexcept
         s.start_ns = after;
         std::ostringstream header;
         header << "{\"event\":\"header\",\"schema\":1,\"session_id\":" << s.session_id
+            << ",\"process_id\":" << ::getpid()
             << ",\"source_sha\":" << quoted(config.source_sha.c_str()) << ",\"build_id\":" << quoted(config.build_id.c_str())
             << ",\"cpu_clock\":\"mach_absolute_time_ns\",\"gpu_clock\":\"system_mach_seconds\""
             << ",\"calibration_before_mach_ns\":" << before << ",\"calibration_unix_ns\":" << utc_ns

@@ -7670,6 +7670,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 first combined99a3d7e6c4 build fails in new diagnostic controller: helper session() conflicts with POSIX struct session introduced by the actual viewer PCH. Preserve build-first.json/log. Rename only the private helper to quietSession(); do not infer runtime correctness from prior standalone helper compilation. Actual viewer hooks and retained controller tests remain pending. Add first-world/invalidated markers in telemetry-only mode for equal same-binary capture-cost controls.
 
+- 2026-11-16 second combined2568ddc9e6 build compiles the production controller but fails its new Objective-C++ fixture: generic normal() helper conflicts with an SDK normal enumerator. Preserve build-second.json/log; rename the fixture helper to quietNormalDisplay without changing production behavior. Native telemetry header gains explicit process_id so collector can bind the file to the exact attached viewer PID, in addition to external executable hash/source provenance. New build and actual-controller execution pending.
+
 ## PPD-321 — New diagnostic telemetry allocates while disabled and mishandles startup failure
 
 - Status: investigating

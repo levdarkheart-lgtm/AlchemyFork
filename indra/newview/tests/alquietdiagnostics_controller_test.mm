@@ -96,7 +96,7 @@ bool nativeRequested()
     return flag && std::strcmp(flag, "1") == 0;
 }
 
-ALQuietDiagnosticDisplay normal(std::uint64_t frame)
+ALQuietDiagnosticDisplay quietNormalDisplay(std::uint64_t frame)
 {
     ALQuietDiagnosticDisplay result;
     result.frame = frame;
@@ -112,7 +112,7 @@ void reachFirstAttempt(ALMetalDevice& device, Shutdown& shutdown)
     // This is a correctness fixture, never a frame-rate/performance benchmark.
     while (!alQuietDiagnosticsStatistics().attempts && std::chrono::steady_clock::now() < deadline)
     {
-        alQuietDiagnosticsAdvanceDisplay(&device, normal(++shutdown.frame));
+        alQuietDiagnosticsAdvanceDisplay(&device, quietNormalDisplay(++shutdown.frame));
         if (!alQuietDiagnosticsStatistics().attempts)
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
@@ -129,7 +129,7 @@ TEST_CASE("quiet controller: unset directory leaves the actual controller disabl
     Shutdown shutdown;
     REQUIRE_FALSE(D::enabled());
     alQuietDiagnosticsInitialize();
-    alQuietDiagnosticsAdvanceDisplay(nullptr, normal(++shutdown.frame));
+    alQuietDiagnosticsAdvanceDisplay(nullptr, quietNormalDisplay(++shutdown.frame));
     alQuietDiagnosticsHeartbeat(shutdown.frame, true);
     const auto stats = alQuietDiagnosticsStatistics();
     CHECK_FALSE(stats.automatic);
@@ -179,13 +179,13 @@ TEST_CASE("quiet controller: actual early capture stops then heartbeat invalidat
                    range:NSMakeRange(0,4) value:0x74];
         [blit endEncoding];
         REQUIRE(command->commit(&error));
-        alQuietDiagnosticsAdvanceDisplay(device.get(), normal(shutdown.frame));
+        alQuietDiagnosticsAdvanceDisplay(device.get(), quietNormalDisplay(shutdown.frame));
         CHECK(alQuietDiagnosticsStatistics().capture_active); // Duplicate cannot stop.
-        auto nested = normal(++shutdown.frame);
+        auto nested = quietNormalDisplay(++shutdown.frame);
         nested.normal_display = false;
         alQuietDiagnosticsAdvanceDisplay(device.get(), nested);
         CHECK(alQuietDiagnosticsStatistics().capture_active);
-        alQuietDiagnosticsAdvanceDisplay(device.get(), normal(++shutdown.frame));
+        alQuietDiagnosticsAdvanceDisplay(device.get(), quietNormalDisplay(++shutdown.frame));
         CHECK_FALSE(alQuietDiagnosticsStatistics().capture_active);
         CHECK_FALSE(manager.isCapturing);
         REQUIRE(command->waitUntilCompleted(&error)); // Test-only, after controller stop.
@@ -206,7 +206,7 @@ TEST_CASE("quiet controller: actual early capture stops then heartbeat invalidat
         CHECK_FALSE(stats.capture_failed);
         CHECK_FALSE(stats.capture_active);
         CHECK(stats.attempts == 1);
-        alQuietDiagnosticsAdvanceDisplay(device.get(), normal(++shutdown.frame));
+        alQuietDiagnosticsAdvanceDisplay(device.get(), quietNormalDisplay(++shutdown.frame));
         CHECK(alQuietDiagnosticsStatistics().attempts == 1);
         CHECK_FALSE(alQuietDiagnosticsStatistics().capture_active);
         CHECK_FALSE(fs::exists(directory.path / ALMetalFrameCapture::quiet_late_directory));
@@ -243,7 +243,7 @@ TEST_CASE("quiet controller: actual factory collision consumes one failed attemp
         CHECK(contents == "preserved");
         CHECK_FALSE(fs::exists(child / ALMetalFrameCapture::trace_name));
         for (unsigned i = 0; i < 4; ++i)
-            alQuietDiagnosticsAdvanceDisplay(device.get(), normal(++shutdown.frame));
+            alQuietDiagnosticsAdvanceDisplay(device.get(), quietNormalDisplay(++shutdown.frame));
         CHECK(alQuietDiagnosticsStatistics().attempts == 1);
         CHECK_FALSE(fs::exists(directory.path / ALMetalFrameCapture::quiet_late_directory));
     }
@@ -291,7 +291,7 @@ TEST_CASE("quiet controller: telemetry cutoff cancels an active capture without 
         CHECK_FALSE([MTLCaptureManager sharedCaptureManager].isCapturing);
         REQUIRE(command->waitUntilCompleted(&error)); // Test-only preservation check.
         CHECK(*static_cast<const unsigned*>(output->mappedBytes()) == 0x75757575u);
-        alQuietDiagnosticsAdvanceDisplay(device.get(), normal(++shutdown.frame));
+        alQuietDiagnosticsAdvanceDisplay(device.get(), quietNormalDisplay(++shutdown.frame));
         CHECK(alQuietDiagnosticsStatistics().attempts == 1);
         CHECK_FALSE(alQuietDiagnosticsStatistics().capture_active);
         CHECK_FALSE(fs::exists(directory.path / ALMetalFrameCapture::quiet_late_directory));
