@@ -132,8 +132,10 @@ TEST_CASE("quiet controller: startup byte budget is bounded and published in the
     REQUIRE(setenv("ALCHEMY_METAL_QUIET_CAPTURE", "off", 1) == 0);
     const char* requested = std::getenv("ALCHEMY_METAL_TEST_DIAGNOSTIC_MAX_MIB");
     if (requested) REQUIRE(setenv("ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB", requested, 1) == 0);
-    const bool accepted = !requested || std::strcmp(requested, "64") == 0 ||
-        std::strcmp(requested, "128") == 0 ||
+    const bool accepted = !requested || !*requested ||
+        std::strcmp(requested, "64") == 0 || std::strcmp(requested, "00064") == 0 ||
+        std::strcmp(requested, "65") == 0 || std::strcmp(requested, "72") == 0 ||
+        std::strcmp(requested, "128") == 0 || std::strcmp(requested, "255") == 0 ||
         std::strcmp(requested, "256") == 0;
     alQuietDiagnosticsInitialize();
     CHECK(D::enabled() == accepted);
@@ -145,8 +147,7 @@ TEST_CASE("quiet controller: startup byte budget is bounded and published in the
         std::ifstream input(output);
         std::string header;
         REQUIRE(static_cast<bool>(std::getline(input, header)));
-        const auto mib = requested && std::strcmp(requested, "256") == 0 ? 256ull :
-            requested && std::strcmp(requested, "128") == 0 ? 128ull : 64ull;
+        const auto mib = requested && *requested ? std::stoull(requested) : 64ull;
         const auto bytes = mib * 1024 * 1024;
         CHECK(header.find("\"max_bytes\":" + std::to_string(bytes)) != std::string::npos);
         CHECK_FALSE(alQuietDiagnosticsStatistics().automatic);

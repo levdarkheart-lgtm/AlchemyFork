@@ -271,6 +271,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_cohort_renderer_test.mm
             tests/almetal_borrowed_target_test.mm
             tests/almetal_base_lighting_fastpath_test.mm
+            tests/almetal_probe_accumulator_test.mm
             tests/almetal_debug_buffer_test.mm
             tests/almetal_shader_reload_test.mm
             tests/almetal_utility_reload_test.mm

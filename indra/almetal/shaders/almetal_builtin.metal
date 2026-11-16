@@ -6289,16 +6289,13 @@ static float3 almetal_probe_sh_irradiance(
     return mix(ambient, value, min(probes.ref_params[index].x, 1.0));
 }
 
-// Keep automatic (0) and manual (1) accumulators explicit, as in the
-// reference ProbeSums. Runtime indexing makes these thread-private arrays
-// addressable and can introduce scratch traffic in the fragment probe walk.
 struct ALMetalBaseProbeSums
 {
-    float3 ambient0, ambient1;
-    float3 gloss0, gloss1;
-    float3 legacy0, legacy1;
-    float weight0, weight1;
-    float distance_weight0, distance_weight1;
+    float3 ambient[2];
+    float3 gloss[2];
+    float3 legacy[2];
+    float weight[2];
+    float distance_weight[2];
 };
 
 static void almetal_base_probe_tap(
@@ -6314,38 +6311,28 @@ static void almetal_base_probe_tap(
     float distance_weight = 0.0;
     const float weight = almetal_probe_weight(
         index, position, box_position, distance_weight, probes);
-    const bool automatic = clamp(abs(probes.ref_index[index].w), 0, 1) == 0;
-    const float3 ambient_color = sample_ambient
-        ? almetal_probe_sh_irradiance(
-              index, position, box_position, normal, ambient,
-              irradiance, probes) * weight
-        : float3(0.0);
-    const float3 gloss_color = sample_gloss
-        ? almetal_probe_radiance(
-              index, position, box_position, gloss_direction, gloss_lod,
-              false, radiance, probe_sampler, probes) * weight
-        : float3(0.0);
-    const float3 legacy_color = sample_legacy
-        ? almetal_probe_radiance(
-              index, position, box_position, legacy_direction, 0.0,
-              false, radiance, probe_sampler, probes) * weight
-        : float3(0.0);
-    if (automatic)
+    const uint family =
+        clamp(abs(probes.ref_index[index].w), 0, 1) == 0 ? 0u : 1u;
+    if (sample_ambient)
     {
-        if (sample_ambient) sums.ambient0 += ambient_color;
-        if (sample_gloss) sums.gloss0 += gloss_color;
-        if (sample_legacy) sums.legacy0 += legacy_color;
-        sums.weight0 += weight;
-        sums.distance_weight0 += distance_weight;
+        sums.ambient[family] += almetal_probe_sh_irradiance(
+            index, position, box_position, normal, ambient,
+            irradiance, probes) * weight;
     }
-    else
+    if (sample_gloss)
     {
-        if (sample_ambient) sums.ambient1 += ambient_color;
-        if (sample_gloss) sums.gloss1 += gloss_color;
-        if (sample_legacy) sums.legacy1 += legacy_color;
-        sums.weight1 += weight;
-        sums.distance_weight1 += distance_weight;
+        sums.gloss[family] += almetal_probe_radiance(
+            index, position, box_position, gloss_direction, gloss_lod,
+            false, radiance, probe_sampler, probes) * weight;
     }
+    if (sample_legacy)
+    {
+        sums.legacy[family] += almetal_probe_radiance(
+            index, position, box_position, legacy_direction, 0.0,
+            false, radiance, probe_sampler, probes) * weight;
+    }
+    sums.weight[family] += weight;
+    sums.distance_weight[family] += distance_weight;
 }
 
 static float3 almetal_base_probe_mix(
@@ -6356,21 +6343,21 @@ static float3 almetal_base_probe_mix(
     {
         automatic_color = 0.0;
     }
-    if (automatic && sums.weight0 > 0.0)
+    if (automatic && sums.weight[0] > 0.0)
     {
-        automatic_color /= sums.weight0;
-        if (sums.weight1 > 0.0)
+        automatic_color /= sums.weight[0];
+        if (sums.weight[1] > 0.0)
         {
-            manual_color /= sums.weight1;
+            manual_color /= sums.weight[1];
             manual_color = mix(
                 automatic_color, manual_color,
-                min(sums.distance_weight1, 1.0));
+                min(sums.distance_weight[1], 1.0));
             automatic_color = 0.0;
         }
     }
-    else if (sums.weight1 > 0.0)
+    else if (sums.weight[1] > 0.0)
     {
-        manual_color /= sums.weight1;
+        manual_color /= sums.weight[1];
         automatic_color = 0.0;
     }
     return automatic_color + manual_color;
@@ -6481,15 +6468,15 @@ static void almetal_sample_base_probes(
     }
     ambient_environment = sample_ambient
         ? almetal_base_probe_mix(
-              sums.ambient0, sums.ambient1, sums, automatic)
+              sums.ambient[0], sums.ambient[1], sums, automatic)
         : ambient;
     gloss_environment = sample_gloss
         ? almetal_base_probe_mix(
-              sums.gloss0, sums.gloss1, sums, automatic)
+              sums.gloss[0], sums.gloss[1], sums, automatic)
         : float3(0.0);
     legacy_environment = sample_legacy
         ? almetal_base_probe_mix(
-              sums.legacy0, sums.legacy1, sums, automatic)
+              sums.legacy[0], sums.legacy[1], sums, automatic)
         : float3(0.0);
 }
 
@@ -8520,21 +8507,13 @@ static void almetal_water_probe_tap(
     float distance_weight = 0.0;
     const float weight = almetal_probe_weight(
         index, position, box_position, distance_weight, probes);
-    const float3 gloss_color = almetal_probe_radiance(
+    const uint family =
+        clamp(abs(probes.ref_index[index].w), 0, 1) == 0 ? 0u : 1u;
+    sums.gloss[family] += almetal_probe_radiance(
         index, position, box_position, gloss_direction, gloss_lod,
         true, radiance, probe_sampler, probes) * weight;
-    if (clamp(abs(probes.ref_index[index].w), 0, 1) == 0)
-    {
-        sums.gloss0 += gloss_color;
-        sums.weight0 += weight;
-        sums.distance_weight0 += distance_weight;
-    }
-    else
-    {
-        sums.gloss1 += gloss_color;
-        sums.weight1 += weight;
-        sums.distance_weight1 += distance_weight;
-    }
+    sums.weight[family] += weight;
+    sums.distance_weight[family] += distance_weight;
 }
 
 static float3 almetal_sample_water_probes(
@@ -8619,7 +8598,7 @@ static float3 almetal_sample_water_probes(
             radiance, probe_sampler, probes, sums);
     }
     return almetal_base_probe_mix(
-        sums.gloss0, sums.gloss1, sums, true);
+        sums.gloss[0], sums.gloss[1], sums, true);
 }
 
 static float3 almetal_sample_water_environment(
