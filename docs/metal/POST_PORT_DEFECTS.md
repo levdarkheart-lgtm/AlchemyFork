@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-334 -->
+<!-- next-defect-id: PPD-335 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7815,7 +7815,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Pinned1eb44 class3/deferred/reflectionProbeF.glsl601–641 uses named automatic/manual scalar pairs and explicit branches. Native almetal_builtin.metal6293–6338 stores five two-element thread-private arrays and indexes them by runtime family. Source semantics correspond; storage/compiler shape differs. This confirmed difference is a performance hypothesis, not proof of a regression or spill cause.
 - Evidence: [Actual quiet GPU findings](research/quiet-gpu-frame-findings-20261116.md); private quiet-frame-analysis-20261116T174649Z/analysis-gpu source audit and parent-replay-counter-observations.json. Actual early/late captures have mainprobe bounds1/20. Saved late recompiled shader A/B/A default-only traversal control125.57/91.45/121.62ms is a separate workload intervention; it does not rewrite accumulator storage.
-- Next action: Test a bounded scalar-pair/explicit-branch variant against the original algorithm with all probes, weights, lighting/material behavior and representative fragment inputs preserved. Retain exact shader code, compiled registers/spills, pixels, GPU counters/costs and adverse observations. An owner capture-free combined viewer retest is required before accepting any native FPS benefit. No implementation is selected by this record.
+- Next action: Qualify the exact High2 PCF weight-array/unroll boundary against current High2, preserving full6×6 math and generic/probe policy. Remaining wx/wy arrays are observed only in pre-PSO AIR, not proved to cause304Bspill. Dedicated ambient-only/scalar candidates were rejected; forced-SH-inline is fixture-only after PPD334 interrupts its scene check. Verify expensive alpha bindings before any main-only count selector. No new implementation is selected; actual GPU/owner acceptance remains required.
 - Verification: Recompiled original-expression A and runtime-default-only B both report245simple-alpha/214base/254PBR-material registers; Xcode reports SpilledBytes304simple/80PBR/32material, with base blank/unknown. The alpha encoders report~1.05–1.12GiB buffer-device writes despite no explicit device stores in the dominant simple fragment. Addressable private arrays/stack/spills are plausible mechanisms; the counter is not itself a spill-attribution measurement. Installed offline-binary spill penalty, scalar-variant correctness/cost and live FPS effect remain unproved.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7828,6 +7828,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-16 all scalar/narrow-mix variants pass6081assertions/429image comparisons each. Scalar-only and scalar+narrow variants show repeated adverse ambient/PBR-base cells (~3–4% paired); array+narrow is neutral. All rejected, baseline MSL restored exactly in285c85e7df, test retained. Sources/compiled libraries/binary hashes/all160observations per variant and failed/adverse pairs preserved in private quiet-home-fix-20261116T183158Z/probe-accumulator-checks. No evidence accumulator storage causes304B spills or that cleanup fixes Home. Next qualify SH evaluation/live-state change; no viewer launched or gain accepted.
+
+- 2026-11-16 owner requests continued shader-spill/GPU-cost diagnosis alongside useful CPU work during waits. Current simple-alpha passes literalfalse/gloss0/environment0 to the generic helper; retained optimized AIR still has two unused output allocas and generic112byte accumulator/call state. This is front-end evidence, not final backend spill attribution. Register before private experiment: a dedicated ambient-only return value and48byte ambient/weight state, retaining original1eb44modern ambient traversal/mix/SH and generic paths elsewhere. Compare against current819High2, not pre-fix shaders. No engine edit or gain claim yet; new viewer launch/profile/push remains unauthorized.
+
+- 2026-11-16 dedicated ambient-only candidate REJECTED. Both libraries current819High2/same flags; native7584assertions/2cases pass,525comparisons max2.384e-7/0fail/nonfinite underexistingcriteria. ProductionHigh2seven-layer fixture120observations yields paired+3.56%automatic/+3.45%mixed GPUtime (25/30,27/30adverse). Actual savedHome lateframe sourceA/B/A atMediumOverlapping119.35→126.66→124.64ms, B1.62–6.12%slower; B/A2simpleGPR226/224 andboth304Bspill. A1/A2driftretained, no liveFPSclaim. Undorestoresoriginalruntimeexpression; replaystopped/Don'tSave/Replayobserved. Evidence privatequiet-home-ambient-probe-20261116T205907Z and [follow-up](research/home-probe-followup-20261116.md). Noenginechange/launch/push. Nextprobe main-only sampling attribution and actual call/live-SH storage; smallerAIRstate alone rejected as remedy.
+
+- 2026-11-16 optimized AIR comparison identifies a distinct codegen change: baseline generic tap355lines includes inline SH; the ambient candidate creates a separate288line SH function and generic tap75lines now calls it, affecting otherwise source-unchanged consumers too. Ambient helper itself was already inlined. This is intermediate call-graph evidence, not final AGX spill attribution. Register before another private control: force SH evaluator inline in the ambient candidate, then rerun the same currentHigh2 parity/cost gate. No engine selection, viewer recording or accepted improvement yet.
+
+- 2026-11-16 forced-SH-inline private control compiles and removes separate SH definition from optimized AIR; native7584/2 pass. Two arm orders retain240costobservations: paired GPUmedians−2.98/−2.46%, reversed−1.58/−4.78% automatic/mixed. Saved-scene A1High2control118.85ms completed, but Xcode source indexer exited before B timing/counters (PPD334); no exact new spill number or scene gain. Source-current819/library hashes and raw failures retained. Candidate remains unselected; final-device binary/remarks and missing main/alpha binding attribution are next evidence boundaries, not an accepted fix.
+
+- 2026-11-16 native binary archives export/reopen/fail-on-miss successfully for both currentHigh2 arms; actual GPU slices confirmed, but installed dumper cannot print AGX2 ISA/metrics. No new spill number. Owner Apple-input audit identifies PCFwx/wy6 and6dynamiclocalGEPs in pre-PSO AIR; originalkernel6boundary/sourcearrays mapped. Earlier5-indexremoval was accumulator-only. Next exactHigh2PCF representation check is qualified as a hypothesis, not a proved304Bcause. Compute threadgroup knobs do not directly control this raster fragment. All private sources/failures retained; noenginechange/launch/push.
 
 ## PPD-328 — Material-alpha source samples the same SSR ray for two lobes
 
@@ -7940,3 +7950,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-16 PPD333 repair819 passes strict probe fusion1526assertions/3cases plus full corrected renderer2375887/457; productionparity7580/2 and oldlibrary80/1 pass. Cachematrixcorrectmodes5905/6+98/1 pass (PPD332); no archivepolicychange. Budget18actualprocesses, all9acceptedheaders source819 pass. Combined69224 build/app/native gates pass, owner livechecks authorized/completed; Middaydecline27→15 remainsPPD319. Automated parity repairs are ready_for_owner, not closed or FPS-accepted.
+
+## PPD-334 — Xcode source indexing exits during a private shader replay
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex GPU evidence tooling
+- Discovered: 2026-11-16
+- Original reference: External Xcode26.6 GPU debugger, not an original Alchemy behavior or a confirmed viewer defect. Existing private fd5/69200 late capture, M1Max/macOS26.5.2, Medium/Overlapping replay.
+- Evidence: [Home probe follow-up](research/home-probe-followup-20261116.md); private quiet-home-ambient-probe-20261116T205907Z/Xcode-2026-11-16-214738.ips and xcode-exit-summary.json.
+- Next action: Preserve the failed replay and inspect a bounded native binary-archive export/disassembly route for the same production PSO. Do not assume a viewer/GPU execution failure or repeat unbounded source-editor attempts. Actual saved-scene inlined-candidate timing/spills remain missing.
+- Verification: At21:47:23UTC, Xcode reports EXC_BAD_ACCESS/SIGSEGV at clang_getTranslationUnitCursor, GTMSLIndex and GPUShaderProgramSource annotation lookup. CUA isRunningfalse and pgrep exit1 confirm process termination. Native candidate compile/parity/cost succeeded separately; this stack does not establish that source, compiler backend or GPU execution caused the exit. No candidate-B replay result or discard prompt was observed for this attempt. Original owner captures were not edited; the disposable working copy can retain temporary edits.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before tooling workaround. A1High2control118.85ms completed; ambient-plus-forced-inline edits were prepared, then Xcode exited before B produced a result. Raw crash evidence copied privately. Existing first ambient-only ABA/rejection remains valid and separate. No engine source change, viewer launch/recording or push; bounded alternate evidence acquisition proceeds independently of this external-tool failure.
+
+- 2026-11-16 bounded workaround exports both nativePSO archives and verifies strict archive hits; actualGPUobject code present. Installed native dumper/explicitAGX2 cannot print this GPU ISA, so spill/call metrics remain unavailable. No new draw/replay/profile occurred, inputs unchanged. Preserve this partial tooling success; no Xcode repair or second-candidate scene acceptance is claimed.
