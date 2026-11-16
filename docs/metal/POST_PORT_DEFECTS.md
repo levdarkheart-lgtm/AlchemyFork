@@ -7284,3 +7284,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before implementation alongside302/303. Producer author exclusively owns sourcepages h/mm, resources h/mm and dedicated certificate/lifetime tests. No cap inflation or removal of declarations/native readers. This is support for the actual GPU-command consumer, not a substitute for that boundary.
+
+- 2026-11-16 frozen85/sourceb7043e4efc doctor/configure PASS; build fails59.420s on new certificate test line160 using undefined viewer-only U64 in isolated almetal target. Native renderer/SourceCommands/SourcePages/Resources and MSL compile before this failure; no GPU tests or cost run. Register before root integration repair: use std::uint64_t in that test, preserving all cases and assertions, freeze86 and continue the same execution tree. Failed85 receipt/log retained.

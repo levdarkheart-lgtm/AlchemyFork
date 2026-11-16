@@ -157,7 +157,7 @@ TEST_CASE("almetal: ordinary resource tables redeclare after encoder end without
     ALMetalSamplerDescriptor sd;auto sampler=ALMetalSamplerState::create(*f.device,sd,&f.error);REQUIRE(sampler);
     auto table=tables->prepare(f.cpu->source.native_resource_source,*sampler,&f.error);REQUIRE(table);
     auto command=f.device->makeCommandBuffer("Ordinary table encoder lifetime",&f.error);REQUIRE(command);
-    U64 once=0;
+    std::uint64_t once=0;
     {
         DeclarationEncoder first(f,*command);
         REQUIRE(tables->bind(*first.encoder,*command,f.cpu->source.native_resource_source,table,&f.error));
