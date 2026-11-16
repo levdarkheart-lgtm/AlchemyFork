@@ -1,6 +1,6 @@
 /**
  * @file almetalframeadmission.h
- * @brief Pure render-owner policy for bounded, frame-tagged shadow submissions.
+ * @brief Pure render-owner policy for bounded, frame-tagged submissions.
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Copyright (C) 2026, Alchemy Viewer Project
  * $/LicenseInfo$
@@ -11,8 +11,9 @@
 #include <span>
 #include <vector>
 
-// This tracks SHADOW transactions only. The renderer keeps its separate
-// full-world graph budget and owns the native commands/completion receipts.
+// Each render owner supplies its own authority and finite transaction width:
+// ordinary-main and shadow groups never share reservations. The native owner
+// keeps the commands and supplies their actual completion receipts.
 // Call only from that renderer's submission owner; this class does not wait,
 // submit work, infer GPU completion or invoke callbacks during destruction.
 class ALMetalFrameAdmission final

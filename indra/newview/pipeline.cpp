@@ -760,6 +760,44 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool spot_shadow_owns_batch = false;
     U64 shadow_group_serial = 0;
     U64 shadow_current_group = 0;
+    // Budget identity for the normal main graph, independent of simulation
+    // frame numbering and of the separately swapped probe/capture owners.
+    U64 main_group_serial = 0;
+    U32 main_group_frame = std::numeric_limits<U32>::max();
+    U32 main_admission_report_frame = std::numeric_limits<U32>::max();
+    bool beginMainViewBatch(const std::string& label, std::string* error,
+                            bool first_transaction = false)
+    {
+        if (!renderer) return false;
+        if (first_transaction || !main_group_serial || main_group_frame != gFrameCount)
+        {
+            if (main_group_serial == std::numeric_limits<U64>::max())
+            {
+                if (error) *error = "Native main frame group serial is exhausted";
+                return false;
+            }
+            ++main_group_serial;
+            main_group_frame = gFrameCount;
+        }
+        const bool admitted = renderer->beginMainFrameBatch(main_group_serial, label, error);
+        if (main_admission_report_frame == std::numeric_limits<U32>::max() ||
+            gFrameCount - main_admission_report_frame >= 120)
+        {
+            main_admission_report_frame = gFrameCount;
+            const auto stats = renderer->mainFrameStats();
+            LL_INFOS("Metal") << "Native logical main admission: group=" << main_group_serial
+                << ", committed=" << stats.committed << ", completed=" << stats.completed
+                << ", failed=" << stats.failed << ", canceled=" << stats.canceled
+                << ", older_group_waits=" << stats.older_group_waits
+                << ", wait_ms=" << static_cast<double>(stats.wait_nanoseconds) / 1000000.0
+                << ", width_denials=" << stats.width_denials
+                << ", pending_groups=" << stats.pending_groups
+                << ", pending_commands=" << stats.pending_commands
+                << ", peak_groups=" << stats.peak_pending_groups
+                << ", peak_commands=" << stats.peak_pending_commands << LL_ENDL;
+        }
+        return admitted;
+    }
     bool beginShadowViewBatch(std::string* error)
     {
         spot_shadow_owns_batch = false;
@@ -8752,10 +8790,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         if (batch_main_post)
         {
             std::string post_batch_error;
-            opaque_post_batch_active =
-                capture.renderer->beginCommandBatch(
-                    "Alchemy native world opaque and optical post",
-                    &post_batch_error);
+            opaque_post_batch_active = !gSnapshot
+                ? capture.beginMainViewBatch(
+                    "Alchemy native world opaque and optical post", &post_batch_error)
+                : capture.renderer->beginCommandBatch(
+                    "Alchemy native world opaque and optical post", &post_batch_error);
             if (!opaque_post_batch_active)
             {
                 LL_WARNS_ONCE("Metal")
@@ -17072,8 +17111,13 @@ void LLPipeline::endMetalWorldGBufferCapture()
     bool command_batch_active = false;
     if (batch_main_world)
     {
-        command_batch_active = capture.renderer->beginCommandBatch(
-            "Alchemy native world G-buffer and ordered sky", &error);
+        const bool normal_main = !gSnapshot && !sCutoutRender &&
+            !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive;
+        command_batch_active = normal_main
+            ? capture.beginMainViewBatch(
+                "Alchemy native world G-buffer and ordered sky", &error, true)
+            : capture.renderer->beginCommandBatch(
+                "Alchemy native world G-buffer and ordered sky", &error);
         if (!command_batch_active)
         {
             LL_WARNS_ONCE("Metal")
@@ -26445,8 +26489,11 @@ void LLPipeline::renderDeferredLighting()
             metal_base_capture_ready();
         if (batch_main_lighting && !capture_main_base)
         {
-            lighting_batch_active =
-                mMetalWorldSimpleCapture->renderer->beginCommandBatch(
+            lighting_batch_active = !gSnapshot
+                ? mMetalWorldSimpleCapture->beginMainViewBatch(
+                    "Alchemy native world light-map and deferred-light chain",
+                    &lighting_batch_error)
+                : mMetalWorldSimpleCapture->renderer->beginCommandBatch(
                     "Alchemy native world light-map and deferred-light chain",
                     &lighting_batch_error);
             if (!lighting_batch_active)

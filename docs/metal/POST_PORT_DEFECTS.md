@@ -7557,6 +7557,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 registered before implementation after valid300s quiet/club evidence. Frozen69172/source350b803597 remains the baseline; no source repair/build/performance win claimed. Existing shadow ALMetalFrameAdmission{2,6} provides a local ownership precedent, not permission to change unrelated admission/drawable/upload limits.
 
+- 2026-11-16 takeover independently re-confirms the normal three-transaction/two-command path. Native repair is isolated in codex/main-admission-takeover; root pipeline integration uses an explicit owner-local group serial and retains snapshot/probe/hero/diagnostic policies. Event-gated native validation and combined build pending. No live incidence, FPS benefit, owner acceptance or push.
+
 ## PPD-316 — Repeated dependency roles rescan the same Signal subscription
 
 - Status: investigating
@@ -7573,3 +7575,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before implementation. The apparent double world/shadow observation calls already have a revision guard and can be required after reentrant buffer publication; do not remove them. This bounded secondary candidate does not replace the primary frame-overlap work.
+
+- 2026-11-16 takeover integrates reviewed local4050b02a88 as3c52f5dd29. Independent actual-body baseline has8assertion failures/4failed cases; candidate318assertions/9cases passes, including identical-unique-set duplicate order/multiplicity, invalidation, reentrancy and transactional failures. Full production test TU compiles. Private ppd316-takeover-validation receipts retained under successful69172 Overview evidence. Combined build and owner acceptance remain pending; no FPS claim or push.
