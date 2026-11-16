@@ -177,6 +177,7 @@ U64 sNativeSceneSerial=0;
 U32 gFrameCount=1;
 #include "../../newview/pipeline_scene_publication_native.inl"
 #include "../../newview/pipeline_group_publication_native.inl"
+#include "../../newview/pipeline_early_visibility_native.inl"
 #include "../../newview/pipeline_cohort_compilation_native.inl"
 struct Settings {bool native_visibility=false,native_resources=false,native_groups=false;} gSavedSettings;
 template<class T> struct LLCachedControl
@@ -4384,3 +4385,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_animated_gpu_records_native.inl"
 
 #include "alpipeline_dependency_topology_native.inl"
+
+#include "alpipeline_early_visibility_native.inl"

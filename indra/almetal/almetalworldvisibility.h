@@ -88,6 +88,8 @@ struct ALMetalWorldVisibilityStats
     ALMetalWorldVisibilityFailure last_fallback = ALMetalWorldVisibilityFailure::none;
 };
 class ALMetalWorldVisibility;
+class ALMetalWorldEarlyVisibilityArguments;
+class ALMetalWorldEarlyVisibilityRead;
 class ALMetalWorldVisibilityView final
 {
 public:
@@ -123,6 +125,46 @@ private:
     std::shared_ptr<Impl> mImpl;
     std::shared_ptr<const ALMetalWorldVisibilityView::Impl> mView;
     friend class ALMetalWorldVisibility;
+    friend class ALMetalWorldEarlyVisibilityArguments;
+    friend class ALMetalWorldEarlyVisibilityRead;
+};
+
+// A later command's immutable qualified argument read. Only successful
+// producer completion can create it. Raw gaps and changed/unqualified groups
+// keep their required direct draw; no CPU source/native geometry owner is
+// retained here. The actual rendering packet owns those generations.
+class ALMetalWorldEarlyVisibilityRead final
+{
+public:
+    ~ALMetalWorldEarlyVisibilityRead();
+    bool appliesToCohort(std::size_t logical_index, std::uint32_t index_count,
+                        const ALMetalWorldSourceCohortView&) const noexcept;
+    bool drawIndexed(ALMetalRenderEncoder&, ALMetalCommandBuffer&,
+        std::size_t logical_index, ALMetalIndexType, const ALMetalBuffer& indices,
+        std::size_t index_offset, std::uint32_t index_count, std::string* error = nullptr) const;
+private:
+    struct Impl;
+    explicit ALMetalWorldEarlyVisibilityRead(std::shared_ptr<Impl>);
+    std::shared_ptr<Impl> mImpl;
+    friend class ALMetalWorldEarlyVisibilityArguments;
+};
+
+// Cross-command handoff for cohorts-only visibility. Owns the native argument
+// slot and weak generation identities, never the original View/producer CPU
+// graph or geometry leases. Pending, abandoned and failed producers decline
+// without waiting. Exact late view qualification remaps raw logical gaps.
+class ALMetalWorldEarlyVisibilityArguments final
+{
+public:
+    ~ALMetalWorldEarlyVisibilityArguments();
+    std::shared_ptr<const ALMetalWorldEarlyVisibilityRead> adoptCompleted(
+        ALMetalCommandBuffer&, std::span<const ALMetalWorldSourceCohortView>,
+        std::string* error = nullptr) const;
+private:
+    struct Impl;
+    explicit ALMetalWorldEarlyVisibilityArguments(std::shared_ptr<Impl>);
+    std::shared_ptr<Impl> mImpl;
+    friend class ALMetalWorldVisibility;
 };
 
 // Publication/encoding owner only. CPU jobs may retain immutable View objects,
@@ -154,6 +196,9 @@ public:
     // Same-command compute precedes render; no readback, CPU wait or ICB.
     // nullptr leaves the caller's exact native direct path available.
     static std::shared_ptr<ALMetalWorldVisibilityArguments> encode(
+        ALMetalCommandBuffer&, const ALMetalWorldVisibilityView&, std::string* error = nullptr,
+        ALMetalWorldFrameData* frame_data = nullptr);
+    static std::shared_ptr<const ALMetalWorldEarlyVisibilityArguments> encodeEarly(
         ALMetalCommandBuffer&, const ALMetalWorldVisibilityView&, std::string* error = nullptr,
         ALMetalWorldFrameData* frame_data = nullptr);
     ALMetalWorldVisibilityStats stats() const noexcept;

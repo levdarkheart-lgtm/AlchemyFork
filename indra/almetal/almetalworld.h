@@ -38,6 +38,7 @@ class ALMetalShadowSourceRecord;
 class ALMetalWorldViewInputs;
 class ALMetalPreparedWorldView;
 class ALMetalWorldVisibilityView;
+class ALMetalWorldEarlyVisibilityArguments;
 class ALMetalWorldMaterialSource;
 class ALMetalWorldMaterialDataCache;
 class ALMetalWorldTerrainPass;
@@ -1264,6 +1265,13 @@ struct alignas(16) ALMetalWorldVisibilityQuery
     std::uint32_t count_samples = 0;
 };
 
+// Accepted native encoding only, not GPU completion or executed vertices.
+struct ALMetalWorldEarlyVisibilityStats
+{
+    std::uint64_t requested_views=0,adopted_views=0,requested_cohort_draws=0;
+    std::uint64_t indirect_draws=0,fallback_draws=0;
+};
+
 struct ALMetalWorldGBufferScene
 {
     // Optional copied owner provenance for native GPU source rows. CPU-only;
@@ -1300,6 +1308,9 @@ struct ALMetalWorldGBufferScene
     // slot per original draw; null retains ordinary native encoding. Shadow
     // callers explicitly select scalar mode (all bulk/ICB switches false).
     std::shared_ptr<const ALMetalWorldVisibilityView> native_visibility;
+    // Earlier bounds-only compute may be adopted only after successful GPU
+    // completion and exact current cohort/native/view qualification.
+    std::shared_ptr<const ALMetalWorldEarlyVisibilityArguments> early_visibility;
     // Selected star attachment is black before opaque geometry; -1 keeps ordinary clear.
     std::int32_t sky_star_attachment = -1;
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -2858,6 +2869,7 @@ public:
     ALMetalWorldCohortStats worldCohortStats() const noexcept;
     ALMetalWorldAnimatedStats worldAnimatedStats() const noexcept;
     ALMetalWorldCpuVisibilityStats worldCpuVisibilityStats() const noexcept;
+    ALMetalWorldEarlyVisibilityStats worldEarlyVisibilityStats() const noexcept;
     void clearWorldSourceCommands() noexcept;
     void failNextWorldSourceCommandPublicationForTesting() noexcept;
     void configureWorldResources(ALMetalWorldResourceLimits) noexcept;

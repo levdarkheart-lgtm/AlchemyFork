@@ -270,6 +270,197 @@ bool ALMetalWorldVisibilityArguments::drawIndexed(ALMetalRenderEncoder& encoder,
     return encoder.drawIndexedIndirect(ALMetalPrimitiveType::triangle,type,indices,offset,
         *mImpl->arguments,index*sizeof(ALMetalWorldIndexedArguments),count,error);
 }
+
+namespace
+{
+struct EarlyCohortIdentity
+{
+    std::weak_ptr<const ALMetalWorldSourceCohort> cohort;
+    std::weak_ptr<const void> cpu, native;
+    const void* cohort_pointer = nullptr;
+    const void* cpu_pointer = nullptr;
+    const void* native_pointer = nullptr;
+    ALMetalWorldViewMatrices view;
+    std::size_t first = 0, count = 0;
+    std::uint64_t region = 0;
+
+    bool matches(const ALMetalWorldSourceCohortView& current) const noexcept
+    {
+        const auto exact = [](const auto& expected, const void* pointer, const auto& actual)
+        {
+            return actual && actual.get() == pointer &&
+                !expected.owner_before(actual) && !actual.owner_before(expected);
+        };
+        // Cohort source records own their fixed UV transform. The unused
+        // view.texture_matrix is not a camera/resource-generation identity.
+        return exact(cohort, cohort_pointer, current.cohort) &&
+            exact(cpu, cpu_pointer, current.cpu_owner) && exact(native, native_pointer, current.native_owner) &&
+            current.cohort->size() == count && current.cohort->regionIdentity() == region &&
+            current.cohort->matchesOwners(current.cpu_owner, current.native_owner) &&
+            ALMetalWorldSourceCohort::validView(current.view) &&
+            std::memcmp(view.modelview_projection, current.view.modelview_projection, sizeof(view.modelview_projection)) == 0 &&
+            std::memcmp(view.modelview, current.view.modelview, sizeof(view.modelview)) == 0 &&
+            std::memcmp(view.normal_matrix, current.view.normal_matrix, sizeof(view.normal_matrix)) == 0 &&
+            std::memcmp(view.rigged_normal_matrix, current.view.rigged_normal_matrix, sizeof(view.rigged_normal_matrix)) == 0;
+    }
+};
+}
+
+struct ALMetalWorldEarlyVisibilityArguments::Impl
+{
+    std::shared_ptr<ALMetalWorldVisibilityArguments::Impl> slot;
+    std::vector<EarlyCohortIdentity> cohorts;
+    std::unordered_multimap<const void*, std::size_t> by_cohort;
+};
+struct ALMetalWorldEarlyVisibilityRead::Impl
+{
+    struct Range
+    {
+        EarlyCohortIdentity early;
+        std::size_t first = 0, base_before = 0;
+    };
+    std::shared_ptr<ALMetalWorldVisibilityArguments::Impl> slot;
+    std::shared_ptr<const ALMetalCommandCompletion> consumer;
+    std::vector<Range> ranges;
+    const Range* at(std::size_t logical) const noexcept
+    {
+        const auto after = std::upper_bound(ranges.begin(), ranges.end(), logical,
+            [](std::size_t value, const Range& range) { return value < range.first; });
+        if (after == ranges.begin()) return nullptr;
+        const auto& range = *std::prev(after);
+        return logical - range.first < range.early.count ? &range : nullptr;
+    }
+};
+ALMetalWorldEarlyVisibilityArguments::ALMetalWorldEarlyVisibilityArguments(std::shared_ptr<Impl> impl)
+    : mImpl(std::move(impl)) {}
+ALMetalWorldEarlyVisibilityArguments::~ALMetalWorldEarlyVisibilityArguments() = default;
+ALMetalWorldEarlyVisibilityRead::ALMetalWorldEarlyVisibilityRead(std::shared_ptr<Impl> impl)
+    : mImpl(std::move(impl)) {}
+ALMetalWorldEarlyVisibilityRead::~ALMetalWorldEarlyVisibilityRead() = default;
+
+std::shared_ptr<const ALMetalWorldEarlyVisibilityArguments> ALMetalWorldVisibility::encodeEarly(
+    ALMetalCommandBuffer& command, const ALMetalWorldVisibilityView& view,
+    std::string* error, ALMetalWorldFrameData* frame_data)
+try
+{
+    if (!view.mImpl->members.empty() || view.mImpl->cohorts.empty())
+    {
+        fail(error, "Early visibility requires a cohorts-only immutable view");
+        return {};
+    }
+    auto impl = std::make_shared<ALMetalWorldEarlyVisibilityArguments::Impl>();
+    impl->cohorts.reserve(view.mImpl->cohorts.size());
+    impl->by_cohort.reserve(view.mImpl->cohorts.size());
+    for (const auto& group : view.mImpl->cohorts)
+    {
+        EarlyCohortIdentity identity;
+        identity.cohort = group.cohort; identity.cpu = group.cpu_owner; identity.native = group.native_owner;
+        identity.cohort_pointer = group.cohort.get(); identity.cpu_pointer = group.cpu_owner.get();
+        identity.native_pointer = group.native_owner.get(); identity.view = group.view;
+        identity.first = group.logical_begin; identity.count = group.cohort->size();
+        identity.region = group.cohort->regionIdentity();
+        impl->by_cohort.emplace(group.cohort.get(), impl->cohorts.size());
+        impl->cohorts.push_back(std::move(identity));
+    }
+    auto result = std::shared_ptr<const ALMetalWorldEarlyVisibilityArguments>(
+        new ALMetalWorldEarlyVisibilityArguments(impl));
+    auto arguments = encode(command, view, error, frame_data);
+    if (!arguments) return {};
+    // The temporary same-command facade owns the original View. Keep ONLY
+    // its native slot: producer CPU graphs and geometry do not enter this
+    // ticket or the compute command's native bounds-only retirement owner.
+    impl->slot = arguments->mImpl;
+    return result;
+}
+catch (const std::bad_alloc&) { if (error) error->clear(); return {}; }
+
+std::shared_ptr<const ALMetalWorldEarlyVisibilityRead>
+ALMetalWorldEarlyVisibilityArguments::adoptCompleted(ALMetalCommandBuffer& command,
+    std::span<const ALMetalWorldSourceCohortView> late, std::string* error) const
+try
+{
+    const auto& slot = mImpl->slot;
+    if (!slot || slot->native_command.status != MTLCommandBufferStatusCompleted ||
+        command.isCommitted() || command.nativeDevice() != (__bridge void*)slot->native_command.device ||
+        late.empty() || late.size() > maximum_records)
+        return {};
+    auto consumer = command.completionToken();
+    if (!consumer) return {};
+    auto impl = std::make_shared<ALMetalWorldEarlyVisibilityRead::Impl>();
+    impl->slot = slot; impl->consumer = std::move(consumer); impl->ranges.reserve(late.size());
+    std::size_t previous_end = 0;
+    for (const auto& current : late)
+    {
+        if (!current.cohort) continue;
+        const auto count = current.cohort->size();
+        if (!count || current.logical_begin < previous_end || current.logical_begin > maximum_records ||
+            count > maximum_records - current.logical_begin || current.base_before > current.logical_begin)
+        {
+            fail(error, "Early visibility late cohort order is invalid");
+            return {};
+        }
+        previous_end = current.logical_begin + count;
+        const auto [first, last] = mImpl->by_cohort.equal_range(current.cohort.get());
+        for (auto at = first; at != last; ++at)
+        {
+            const auto& expected = mImpl->cohorts[at->second];
+            if (!expected.matches(current)) continue;
+            impl->ranges.push_back({expected, current.logical_begin, current.base_before});
+            break;
+        }
+    }
+    if (impl->ranges.empty()) return {};
+    auto result = std::shared_ptr<const ALMetalWorldEarlyVisibilityRead>(new ALMetalWorldEarlyVisibilityRead(impl));
+    // Pool reuse/descriptor trimming requires sole slot ownership. The early
+    // ticket, this read and every later consuming command independently keep
+    // it borrowed; producer completion alone can never permit overwriting it.
+    if (!command.retainUntilCompletion(slot, error)) return {};
+    return result;
+}
+catch (const std::bad_alloc&) { if (error) error->clear(); return {}; }
+
+bool ALMetalWorldEarlyVisibilityRead::appliesToCohort(std::size_t logical, std::uint32_t count,
+    const ALMetalWorldSourceCohortView& current) const noexcept
+{
+    const auto* range = mImpl->at(logical);
+    if (!range || current.logical_begin != range->first || current.base_before != range->base_before ||
+        !range->early.matches(current)) return false;
+    const auto local = logical - range->first;
+    return current.cohort->bounds(local).qualified && current.cohort->source(local).index_count == count;
+}
+
+bool ALMetalWorldEarlyVisibilityRead::drawIndexed(ALMetalRenderEncoder& encoder, ALMetalCommandBuffer& command,
+    std::size_t logical, ALMetalIndexType type, const ALMetalBuffer& indices, std::size_t offset,
+    std::uint32_t count, std::string* error) const
+try
+{
+    const auto* range = mImpl->at(logical);
+    auto cohort = range ? range->early.cohort.lock() : nullptr;
+    auto cpu = range ? range->early.cpu.lock() : nullptr;
+    auto native = range ? range->early.native.lock() : nullptr;
+    if (!range || !cohort || !cohort->matchesOwners(cpu, native) || command.isCommitted() ||
+        command.completionToken() != mImpl->consumer || encoder.nativeCommandBufferForIndirect() != command.nativeHandle())
+    {
+        fail(error, "Early visibility read requires its qualified later command and native owners");
+        return false;
+    }
+    const auto local = logical - range->first;
+    const auto& source = cohort->source(local);
+    if (!cohort->bounds(local).qualified || source.index_count != count || source.indices != &indices ||
+        source.index_type != type || source.index_offset != offset)
+    {
+        fail(error, "Early visibility read index generation or range differs from the qualified source");
+        return false;
+    }
+    // Adoption alone adds no geometry pin. Actual emission is a real GPU
+    // reader; retain its exact native tuple, never the CPU producer graph.
+    // The ordinary world owner already retains this identity, so it dedups.
+    if (!command.retainUntilCompletion(native, error)) return false;
+    return encoder.drawIndexedIndirect(ALMetalPrimitiveType::triangle, type, indices, offset,
+        *mImpl->slot->arguments, (range->early.first + local) * sizeof(ALMetalWorldIndexedArguments), count, error);
+}
+catch (const std::bad_alloc&) { if (error) error->clear(); return false; }
+
 ALMetalWorldVisibility::ALMetalWorldVisibility(std::shared_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldVisibility::~ALMetalWorldVisibility()=default;
 std::shared_ptr<ALMetalWorldVisibility> ALMetalWorldVisibility::create(const ALMetalDevice& device,std::string* error)

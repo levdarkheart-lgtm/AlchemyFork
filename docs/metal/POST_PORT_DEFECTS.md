@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-301 -->
+<!-- next-defect-id: PPD-302 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7190,3 +7190,25 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 implementation source frozen: value-only two-phase census reads scheduler stats, last-submitted serial and failure-inclusive retirement with no pointer retention, GPU wait, timing activation or admission mutation. Actual doFrame hooks sample after outer-plan begin and immediately before ordinary probes after display/required-CPU accounting; periodic frame-plan logging labels independent counters and non-scanout scope. New real-device test covers unsubmitted reservation, gated3-submission capacity, retirement, unknown scheduler and unchanged budget/timing/submit counts. Author/peer component review finds no blocker; integrated phase review and frozen81 build/checks next, no execution result claimed.
 
 - 2026-11-16 frozen81 source2038c60c365b63d6b55e705cb0660efb781106b2/app69151 doctor/configure/build0 (32.297s), real native census60/1 and current owner/probe/budget checks PASS with API/GPU validation; native bundle/strict3597zero blockers/errors PASS. Exact scope whitelist proves observer/app hooks/periodiclogger/test-only changes and byte-identical existing FramePlan methods; all three native renderer/common test binaries match80 exactly. Prior80 full34renderer and worker costs are retained as explicit reused evidence, not new81 executions. New combined69151 stage is VERIFIED8273 identical inventory nodes; all19 SHA256SUMS rows pass, executablee7b29adc9214f0851a2089960edb1c422a6b6791e42f656f9a23f224967537c8. Existing69149 and earlier apps preserved. New sampling has no live-viewer performance measurement and no admission/policy/quality change. Owner runtime remains pending; no viewer launch/login/profile/push.
+
+
+## PPD-301 — Early static GPU visibility lacks resident publication and later-consumer ownership
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex original G4 integration
+- Discovered: 2026-11-16
+- Original reference: Original LLSpatialPartition cull, stateSort/postSort pass/occlusion/area policy and ordered queries remain authoritative. This adds speculative native bounds work over existing immutable static producers; it does not replace simulation/selection/asset discovery or reorder alpha/query spans.
+- Evidence: [Original architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). Current5da3a2eb: camera matrices exist before main updateCull, and successful group seal/current publication owns complete static cohorts/native tuples. No weak typed resident-group index is exposed before CPU cull. Native Visibility makeView is built after draw capture; appliesToCohort requires late logical offsets and drawIndexed requires its original command token. Warm retained-direct capture already avoids rebuilding candidate Batches. Moving the old late dispatch alone would not create early GPU/CPU overlap or bypass CPU bindings.
+- Next action: Implement one real main-view early bounds job using a bounded weak typed successful-publication index and current copied region/camera transforms, with no unseen LRU touches/resealing/idle strong readers. Add completed-success-only late adoption with exact cohort/native/view proof, cohort-local offset translation and native argument-slot retention through the later reader. Keep pending/failed/stale/unknown cases direct. Wire the actual before-cull producer and late consumer, then compare with selected stable retained-direct baseline including cold/churn/queries and all prefix/fallback/retirement costs.
+- Verification: Three source audits establish existing owner/matrix prerequisites and missing index/later-consumer API. Existing same-command APIs are correct for their old contract and must retain their checks. No code, native output, performance gain or whole-GPU-owned scene completion is proved for this boundary yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation. Preserve69151 and every prior staged app/receipt. Native author owns visibility h/mm and dedicated test; registry author owns new early-registry helper and two successful seal hooks; root owns app/pipeline/renderer/settings/CMake/docs/integration/execution. Early GPU work is bounds-only and must release CPU/native geometry snapshot owners after encoding; speculative bounds must not become an idle resource pin or force unrelated backing COW. All command-slot trimming/reuse must honor the later reader. New flag stays nonpersistent/defaultOFF pending complete costs. Initial main-view scope preserves existing probe/hero/shadow transactions; original broader goal stays active.
+
+- 2026-11-16 PPD301 source implemented for coherent82 review: successful-seal weak registry, before-main-cull copied region/camera bounds command, completed-success-only later reader, exact owner/control-block/view proof and sparse logical mapping; original same-command and slot pool checks remain. Early tickets shed CPU graphs/native geometry immediately after encoding. Root declines depth prepass and incompatible rendering modes before speculative submission. Real-device four-case native and two-case actual-producer correctness plus approved24-cell cost frontier are authored, unexecuted. Baseline is selected stable retained-direct, candidate factory is lazy/timed, real publication caps/debt and all pending fallbacks are reported. No GPU-owned discovery/CPU binding elimination, physical memory reduction, runtime gain or owner closure claimed; flag stays defaultOFF.
+
+- 2026-11-16 pre-build PPD301 integration peer review finds new cumulative early-adoption counters omitted from commitShaderReload state transfer; a successful reload would reset counters and corrupt unsigned delta diagnostics. Registered before repair. Root carries early_visibility_stats beside existing cohort/CPU visibility statistics; renderer correctness and shader-reload cases must execute before cost work. No viewer-observed incident or successful retest claimed.

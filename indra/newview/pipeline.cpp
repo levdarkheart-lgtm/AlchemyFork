@@ -433,6 +433,7 @@ struct ALViewerMetalShadowSourceCache
 };
 #include "pipeline_scene_publication_native.inl"
 #include "pipeline_group_publication_native.inl"
+#include "pipeline_early_visibility_native.inl"
 #include "pipeline_cohort_compilation_native.inl"
 namespace
 {
@@ -441,6 +442,14 @@ std::optional<U64> sNativeSceneSourceConfiguredBudget;
 U64 sNativeSceneSerial = 0;
 std::shared_ptr<ALMetalWorldVisibility> sNativeSceneVisibility;
 const ALMetalDevice* sNativeSceneVisibilityDevice = nullptr;
+std::shared_ptr<ALMetalWorldVisibility> sNativeEarlySceneVisibility;
+const ALMetalDevice* sNativeEarlySceneVisibilityDevice = nullptr;
+struct EarlyVisibilityProducerStats
+{
+    U64 frames=0,disabled=0,unsupported=0,unavailable=0,empty=0;
+    U64 submitted=0,failed=0,groups=0,draws=0,cpu_bytes=0,max_cpu_bytes=0,owner_ns=0;
+};
+EarlyVisibilityProducerStats sEarlyVisibilityProducerStats;
 void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
 
 #include "pipeline_terrain_preflight_types_native.inl"
@@ -3537,6 +3546,19 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << '/' << unsupported_causes[4] << '/' << unsupported_causes[5] << '/' << unsupported_causes[6] << '/' << unsupported_causes[7]
                 << ", declined_mask_total/aggregate=" << declined_masks << '/' << groups.declined
                 << ", cause_bits_overlap=1" << LL_ENDL;
+            const auto early_index=ALSceneGroupPublicationNative::early::stats();
+            const auto early_consumer=capture.renderer?capture.renderer->worldEarlyVisibilityStats():ALMetalWorldEarlyVisibilityStats{};
+            const auto& early=sEarlyVisibilityProducerStats;
+            LL_INFOS("MetalScene") << "Native early visibility: requested=" << gSavedSettings.getBOOL("RenderMetalEarlyGroupVisibility")
+                << ", frames/disabled/unsupported/unavailable/empty=" << early.frames << '/' << early.disabled << '/' << early.unsupported << '/' << early.unavailable << '/' << early.empty
+                << ", prefixes(submitted/failed)/groups/draws=" << early.submitted << '/' << early.failed << '/' << early.groups << '/' << early.draws
+                << ", owner_ns=" << early.owner_ns
+                << ", cpu_descriptor_closure_bytes(total/max)=" << early.cpu_bytes << '/' << early.max_cpu_bytes
+                << ", registered/denied/pruned=" << early_index.registrations << '/' << early_index.registration_denials << '/' << early_index.stale_pruned
+                << ", index(groups/rows/estimated_closure_bytes)=" << early_index.resident_groups << '/' << early_index.resident_rows << '/' << early_index.resident_estimated_cpu_bytes
+                << ", snapshot(calls/candidates/region_misses/denials)=" << early_index.snapshots << '/' << early_index.candidates << '/' << early_index.region_misses << '/' << early_index.snapshot_denials
+                << ", consumer(requested/adopted/cohort_draws/indirect/fallback)=" << early_consumer.requested_views << '/' << early_consumer.adopted_views << '/' << early_consumer.requested_cohort_draws << '/' << early_consumer.indirect_draws << '/' << early_consumer.fallback_draws
+                << ", indirect_counts_are_encoded_not_executed=1" << LL_ENDL;
             if (sNativeSceneVisibility)
             {
                 const auto visibility=sNativeSceneVisibility->stats();
@@ -11492,6 +11514,83 @@ static bool buildMetalWorldDrawMatrices(
         modelview_projection);
 }
 
+void LLPipeline::beginMetalEarlyWorldVisibility()
+{
+    auto& stats=sEarlyVisibilityProducerStats;
+    ++stats.frames;
+    mMetalEarlyWorldVisibility.reset();
+    static LLCachedControl<bool> requested(gSavedSettings,"RenderMetalEarlyGroupVisibility",false);
+    static LLCachedControl<bool> group_sources(gSavedSettings,"RenderMetalGroupSources",false);
+    ALSceneGroupPublicationNative::early::enable(requested() && group_sources());
+    if (!requested())
+    {
+        ++stats.disabled;
+        sNativeEarlySceneVisibility.reset();sNativeEarlySceneVisibilityDevice=nullptr;
+        return;
+    }
+    if (!group_sources() || !isMainWorldPass() || mRT!=&mMainRT || gSnapshot || gCubeSnapshot ||
+        sShadowRender || sImpostorRender || sRenderingHUDs || mRenderDebugMask || cullingToCutoutSubject() ||
+        gSavedSettings.getBOOL("RenderMetalNativeVisibility") || gSavedSettings.getBOOL("RenderMetalCpuCohortVisibility") ||
+        gSavedSettings.getBOOL("RenderMetalSourceCommandBanks") || gSavedSettings.getBOOL("RenderMetalJoinStaticDraws") ||
+        gSavedSettings.getBOOL("RenderMetalWorldPreparation") || gSavedSettings.getBOOL("RenderDepthPrePass") ||
+        (ALMetalStageTimingScope::current() && ALMetalStageTimingScope::current()->window()))
+    { ++stats.unsupported;return; }
+    auto* device=getViewerMetalDevice();
+    if (!device || LLStartUp::getStartupState()<STATE_STARTED || !mMetalWorldSimpleCapture ||
+        mMetalWorldSimpleCapture->device!=device || !mMetalWorldSimpleCapture->frame_data)
+    { ++stats.unavailable;return; }
+    struct OwnerTime
+    {
+        U64& total;
+        std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
+        ~OwnerTime(){total+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();}
+    } timing{stats.owner_ns};
+    try
+    {
+        std::vector<ALNativeRegionModel::Snapshot> regions;
+        regions.reserve(LLWorld::getInstance()->getRegionList().size());
+        for (const auto* region:LLWorld::getInstance()->getRegionList())
+            if (region) { auto value=region->nativeModelSnapshot();if(value)regions.push_back(value); }
+        auto candidates=ALSceneGroupPublicationNative::early::snapshot(regions);
+        std::vector<ALMetalWorldSourceCohortView> groups;groups.reserve(candidates.size());
+        std::size_t count=0;U64 bytes=0;
+        for (const auto& candidate:candidates)
+        {
+            LLMatrix4a model(candidate.region.model.data()),modelview,inverse,projection;
+            if (!buildMetalWorldDrawMatrices(&model,modelview,inverse,projection)) continue;
+            ALMetalWorldSourceCohortView group;
+            group.logical_begin=count;group.base_before=0;
+            group.cohort=candidate.cohort;group.cpu_owner=candidate.cpu_owner;group.native_owner=candidate.native_owner;
+            std::memcpy(group.view.modelview_projection,projection.getF32ptr(),sizeof(group.view.modelview_projection));
+            std::memcpy(group.view.modelview,modelview.getF32ptr(),sizeof(group.view.modelview));
+            for (U32 column=0;column<3;++column)for(U32 row=0;row<3;++row)
+            {
+                group.view.normal_matrix[column][row]=inverse.getF32ptr()[row*4+column];
+                group.view.rigged_normal_matrix[column][row]=modelview.getF32ptr()[column*4+row];
+            }
+            count+=group.cohort->size();bytes+=candidate.estimated_cpu_bytes;
+            groups.push_back(std::move(group));
+        }
+        if (groups.empty()) { ++stats.empty;return; }
+        if (!sNativeEarlySceneVisibility || sNativeEarlySceneVisibilityDevice!=device)
+        {
+            sNativeEarlySceneVisibility=ALMetalWorldVisibility::create(*device);
+            sNativeEarlySceneVisibilityDevice=device;
+        }
+        std::string error;
+        auto view=sNativeEarlySceneVisibility?sNativeEarlySceneVisibility->makeView({},groups,count,&error):nullptr;
+        auto command=view?device->makeCommandBuffer("Alchemy early resident static bounds",&error):nullptr;
+        auto result=command?ALMetalWorldVisibility::encodeEarly(*command,*view,&error,mMetalWorldSimpleCapture->frame_data.get()):nullptr;
+        if (!result || !command->commit(&error)) { ++stats.failed;return; }
+        mMetalEarlyWorldVisibility=std::move(result);mMetalEarlyWorldVisibilityFrame=gFrameCount;
+        ++stats.submitted;stats.groups+=groups.size();stats.draws+=count;stats.cpu_bytes+=bytes;
+        stats.max_cpu_bytes=std::max(stats.max_cpu_bytes,bytes);
+        // Locals release every producer/native geometry owner before CPU cull.
+        // Only copied bounds buffers and weak proof metadata survive in result.
+    }
+    catch (const std::bad_alloc&) { ++stats.failed; }
+}
+
 #include "pipeline_group_capture_native.inl"
 
 void LLPipeline::invalidateMetalReflectionProbeScene()
@@ -16915,6 +17014,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
             error.clear();
         }
     }
+    if (batch_main_world && mMetalEarlyWorldVisibilityFrame==gFrameCount)
+        scene.early_visibility=std::exchange(mMetalEarlyWorldVisibility,{});
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     const bool qualified_visibility_work=!capture.world_visibility_members.empty() ||
         std::any_of(capture.source_cohorts.begin(),capture.source_cohorts.end(),
@@ -18085,6 +18186,9 @@ void LLPipeline::cleanup()
     ALScenePublicationNative::clearMaterialDataCache();
     sNativeSceneVisibility.reset();
     sNativeSceneVisibilityDevice = nullptr;
+    mMetalEarlyWorldVisibility.reset();
+    sNativeEarlySceneVisibility.reset();sNativeEarlySceneVisibilityDevice=nullptr;
+    ALSceneGroupPublicationNative::early::enable(false);
     mSky.cleanup();
     mMetalSkyEnvironment.reset();
     mMetalSkyEnvironmentDevice = nullptr;
@@ -18933,6 +19037,7 @@ void LLPipeline::refreshCachedSettings()
 
 void LLPipeline::releaseAllRenderResources()
 {
+    mMetalEarlyWorldVisibility.reset();
     finishMetalShadowEncoding(false);
     mSky.releaseNative();
     mMetalSkyEnvironment.reset();
@@ -21888,7 +21993,8 @@ bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& 
     flavor = {};
     static LLCachedControl<bool> gpu_bounds(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> cpu_bounds(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-    flavor.cohort_bounds = gpu_bounds() || cpu_bounds();
+    static LLCachedControl<bool> early_bounds(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
+    flavor.cohort_bounds = gpu_bounds() || cpu_bounds() || early_bounds();
     flavor.native_materials = true;
     for (const auto& pass : LLDrawPoolMaterials::DEFERRED_PASSES)
     {
@@ -21939,7 +22045,8 @@ void LLPipeline::postSort(LLCamera &camera)
     static LLCachedControl<bool> native_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> cpu_cohort_visibility(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility();
+    static LLCachedControl<bool> early_visibility(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
+    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility() || early_visibility();
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
     const bool native_group_view = native_group_sources() &&
         !depth_prepass() &&

@@ -84,6 +84,7 @@ class LLVolumeFace;
 #if LL_DARWIN
 class ALMetalDevice;
 class ALMetalCommandCompletion;
+class ALMetalWorldEarlyVisibilityArguments;
 class ALMetalRenderTarget;
 class ALMetalTexture;
 class ALMetalTextureReadbackRing;
@@ -279,6 +280,8 @@ private:
     U64 mMetalStartupWorldEpoch = 0;
     U32 mMetalStartupWorldStartFrame = 0;
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
+    std::shared_ptr<const ALMetalWorldEarlyVisibilityArguments> mMetalEarlyWorldVisibility;
+    U32 mMetalEarlyWorldVisibilityFrame = 0;
     std::unique_ptr<ALMetalTexture> mMetalSkyEnvironment;
     const ALMetalDevice* mMetalSkyEnvironmentDevice = nullptr;
     std::unique_ptr<MetalWorldSimpleCapture>
@@ -957,6 +960,7 @@ public:
         const ALQueryTicket& ticket, ALQueryKind kind,
         const LLVector4a& center, const LLVector4a& half_extent,
         LLCamera* camera, bool full_box = false);
+    void beginMetalEarlyWorldVisibility();
     void beginMetalWorldGBufferCapture();
     void beginMetalWorldGBufferPass(bool rigged, bool alpha_mask);
     void beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,

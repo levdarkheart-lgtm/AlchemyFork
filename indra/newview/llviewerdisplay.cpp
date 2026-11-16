@@ -1969,6 +1969,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             sMetalBenchmarkProvenance.main_view_captured = true;
         }
 #endif
+        gPipeline.beginMetalEarlyWorldVisibility();
         gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
         stop_glerror();
 
