@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-314 -->
+<!-- next-defect-id: PPD-315 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7506,3 +7506,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before repair. Bounded source comparison exits0; no tests/builds/viewer or application edits performed. Existing palette stabilization tests do not cover LLMeshSkinInfo decoding/default/empty contracts. Numeric hash uses lround then S32 narrowing; do not call a session hash collision or multiplication bug without focused evidence.
+
+## PPD-314 — Multi-scene evaluation lacks continuous timestamped wall-frame telemetry
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrated frame-timing diagnostics
+- Discovered: 2026-11-16
+- Original reference: Exact350b803597 llviewerdisplay.cpp eligibility excludes teleport/logout/hidden/snapshot states; almetalbenchmark.cpp permanently invalidates a post-start ineligible sequence. The strict benchmark intentionally covers one controlled sequence, initializes once and has no UTC frame anchors/rearm API. This is a workflow coverage gap, not a defect in that strict contract.
+- Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); private analysis-frame-csv-audit.md/.json and analysis-frame-stats-report.md retain source and observed rolling-history limits.
+- Next action: Add a small opt-in continuous wall-frame stream at the actual LLAppViewer frame boundary with measured steady/system timestamps and transition/focus status. Preserve strict benchmark semantics, normal rendering/loading, private local output and failure isolation. Keep this diagnostic work isolated until the current assessment is complete.
+- Verification: Existing environment settings cannot provide complete UTC-aligned quiet/teleport/club/logout frame rows. LLStats histories lack frame IDs/timestamps and overlap; selected disjoint histories cover only232/250seconds of the two300s intervals. No completed new stream, runtime capture or whole-viewer improvement is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation. Original69172/source350b803597 candidate and in-progress raw-data analysis remain frozen. Diagnostic correctness/component cost does not establish an architecture FPS gain; no new viewer run/push authorized by this record.
