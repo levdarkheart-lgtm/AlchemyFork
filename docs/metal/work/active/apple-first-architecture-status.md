@@ -1,6 +1,6 @@
 # Apple-first architecture implementation status
 
-Updated2026-11-15. The original whole-engine architecture is **active with runtime-backed follow-up work; acceptance remains partial**.
+Updated2026-11-16. The original whole-engine architecture is **active with runtime-backed follow-up work; acceptance remains partial**.
 The owner has now supplied quiet-house and teleport/club runtime samples; see
 [the two-scene analysis](../../research/integrated-build-69122-quiet-club-20261115.md).
 Detached render-preparation counters stayed0 in both, so useful parallel-render
@@ -99,7 +99,7 @@ within a view, preserving order and bounding all copy/job/join costs. No blind
 threshold reduction or forced worker activation. Tested69122 stays immutable;
 no further launch/login/profile/push authorized by the testing handoff.
 
-## Latest implementation candidate —69129
+## Previous implementation candidate —69129
 
 Source3841527bbd944f9a6283b12ad45acdaa878d073a adds one native-resource vector
 reservation at the first validated unique append. Selected after actual-source
@@ -118,3 +118,65 @@ acceptance remains partial and active. Next priority is actual owned-work
 granularity and retained-source churn, guided by the captured CPU scopes.
 Probe tile fusion already covers all successful sampledprobeviews; no further
 safe probe-pass removal was established. No new live capture is authorized.
+
+
+## Latest integrated candidate —69134
+
+Renderer source `a5ea338f22d2ef3b419e6ff47c3cc7cb625695ce` includes two
+runtime-guided changes across scene publication and texture ingestion:
+
+- PPD296 reuses dependency subscriptions when content changes but the exact
+  State and ordered signal identities are unchanged. Actual notifications and
+  source revisions remain authoritative. The48-cell component comparison shows
+  changed-content savings65.55–99.83% with no allocations. Low-fanout cold and
+  topology replacement remain slower; there is no universal speedup claim.
+- PPD297 uses ARM64 interleaved vector loads/stores for U8 RGB8 storage
+  expansion, preserving RGB/RGBA/BGRA bytes, opaque alpha, padding and tails.
+  All120 paired component medians improve. Fresh4096² conversion changes
+  58.115ms to2.665ms; this excludes viewer/GPU work and does not establish FPS.
+
+Periodic diagnostics report topology refresh/reuse/subscription/failure counts
+and RGB CPU-stage calls/pixels. The latter counts completed CPU staging before
+GPU commit; retries, mips and subregions are not unique images. Both diagnostics
+are compiled into the exact app; runtime frequency remains unknown.
+
+Doctor/configure/build and static ARM64/signature/import/features checks pass.
+Strict source:3595files,0blockers,0errors. Full34 renderer scopes pass with
+Metal API/GPU validation:1,130,416 assertion-executions/349 case-executions.
+Additional source-specific scopes pass: dependency378assertions/7cases,
+image/upload6464/34, corrected segment876100/1. These scopes overlap and should
+not be added as unique coverage. Optimized/sanitized kernel checks and original
+failed attempts remain in the component receipts.
+
+The corrected mixed-family matrix passes108 configuration triples/8748 raw
+samples, with0/108 median wins for either aggregate preparation route against
+current scalar preparation. Dispatch median overhead at867/1158draws is
+45.16%/40.89%. No threshold/queue/feature change follows. Encoding/GPU and
+compact-certificate validation savings are excluded; existing large-family
+specialization is retained.
+
+[Launch Apple First Combined.command](</Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-combined-69134/Launch Apple First Combined.command>)
+selects the same renderer policy as profiled69122 and staged69129. New69134
+provenance is VERIFIED;8,273 app files/modes/symlinks match the built app,
+staged native verification and SHA256SUMS pass. ExecutableSHA256
+`6320a5c589bd55b0a72758c67d35d5d068c02e186cee405bed9882c1cfef41d2`.
+The launcher is unexecuted; both earlier candidates remain unchanged.
+
+Useful render CPU overlap remains a concrete open acceptance item. The bounded
+source audit finds that `renderSpotShadow` consumes explicit native inputs,
+but its renderer command, frame arena, material caches, stats and settlement
+state are shared with subsequent capture. A batch-only worker would race.
+An isolated non-query encoder context plus complete palette/source/target
+ownership and owner-side settlement is needed before testing overlap. Borrowed
+probe/hero commands and query views also have transaction dependencies. This
+is an identified ownership boundary, not an implemented worker or a proven
+profitable next path. No new live capture was taken.
+
+Exact receipts under the existing private evidence root:
+`frozen-source-build-75.json`, `native-correctness-75.json`,
+`native-dependency-topology-75.json`, `native-image-75.json`,
+`native-segments-75.json`, `shadow-segment-costs-75-summary.json`,
+`combined-component-cost-gate-75.json`, `static-native-75.json`,
+`strict-source-75.json`, `stage-75-sha256sum-check.json` and the staged
+`architecture-combined-69134/provenance.json`. Owner whole-viewer feature,
+loading, memory, frame-time and stability acceptance remains pending.
