@@ -281,6 +281,58 @@ std::unique_ptr<ALMetalRenderTarget> submit(sky_test::Fixture& f,
     REQUIRE(renderer.commitCommandBatch(&f.error)); REQUIRE(f.device->waitUntilIdle(&f.error));
     return target;
 }
+struct Observed
+{
+    std::unique_ptr<ALMetalRenderTarget> output;
+    std::uint64_t draws = 0, commits = 0, encoders = 0;
+};
+Observed observe(sky_test::Fixture& f, ALMetalWorldGBufferRenderer& renderer,
+    const Inputs& inputs, bool compound, const char* scenario, unsigned pair)
+{
+    struct RestoreTiming
+    {
+        bool old = ALMetalDevice::commandTimingEnabled();
+        RestoreTiming() { ALMetalDevice::setCommandTimingEnabled(true); }
+        ~RestoreTiming() { ALMetalDevice::setCommandTimingEnabled(old); }
+    } restore;
+    auto window = ALMetalStageTimingWindow::create(*f.device, 16, &f.error); REQUIRE(window);
+    const auto draws = ALMetalDevice::encodedDrawCallCount();
+    const auto commits = ALMetalDevice::committedCommandBufferCount();
+    REQUIRE(renderer.beginCommandBatch("Untimed matching main lighting execution census", &f.error));
+    Observed result;
+    {
+        ALMetalStageTimingScope scope(window.get(), 1, 1, -1);
+        result.output = encode(renderer, inputs, compound, true, &f.error);
+    }
+    INFO(f.error); REQUIRE(result.output); REQUIRE(renderer.commitCommandBatch(&f.error));
+    result.draws = ALMetalDevice::encodedDrawCallCount() - draws;
+    result.commits = ALMetalDevice::committedCommandBufferCount() - commits;
+    result.encoders = window->preparedPassCount();
+    REQUIRE(f.device->waitUntilIdle(&f.error));
+    REQUIRE(window->seal(&f.error)); std::vector<ALMetalStageTimingResult> results;
+    REQUIRE(window->poll(results, &f.error)); CHECK(window->isFinished());
+    if (compound)
+    {
+        std::vector<std::string> fragments;
+        for (const auto& stage : results)
+            for (const auto& pipeline : stage.pipelines) fragments.push_back(pipeline.fragment);
+        for (const char* expected : {"almetal_world_base_light_geometry_fragment", "almetal_world_modern_sky_fragment"})
+            CHECK(std::find(fragments.begin(), fragments.end(), expected) != fragments.end());
+        if (!inputs.point_recipe.empty()) CHECK(std::find(fragments.begin(), fragments.end(),
+            "almetal_world_local_light_fragment") != fragments.end());
+        if (!inputs.projector_recipe.empty()) CHECK(std::find(fragments.begin(), fragments.end(),
+            "almetal_world_projector_light_fragment") != fragments.end());
+    }
+    CHECK(result.draws > 0); CHECK(result.commits == 1);
+    CHECK(result.encoders == (compound ? 1u : 2u + !inputs.point_recipe.empty() + !inputs.projector_recipe.empty()));
+    std::cout << "main_lighting_census scenario=" << scenario << " pair=" << pair
+        << " width=" << inputs.gbuffer->descriptor().width << " height=" << inputs.gbuffer->descriptor().height
+        << " points=" << inputs.point_recipe.size() << " projectors=" << inputs.projector_recipe.size()
+        << " mode=" << compound << " encoders=" << result.encoders << " draws=" << result.draws
+        << " commits=" << result.commits << " scope=untimed_actual_matching_API_before_readbacks\n";
+    return result;
+}
+
 }
 
 TEST_CASE("almetal: one main lighting renderpass preserves serial half output, sky and borrowed stores",
@@ -410,7 +462,6 @@ TEST_CASE("almetal: shared main encoder preserves projector cookies, shadow slic
             continuation.gbuffer = inputs.gbuffer.get(); continuation.composed_lighting = actual.get();
             continuation.width = 31; continuation.height = 27;
             continuation.reverse_z = reverse; continuation.hdr = true;
-            continuation.normal_hdr = inputs.gbuffer->descriptor().colors[2].format == ALMetalPixelFormat::rgba16_unorm;
             auto continued = f.renderer->renderOpaquePostDeferred(
                 continuation, std::move(actual), &f.error);
             INFO(f.error); REQUIRE(continued);
@@ -462,30 +513,14 @@ TEST_CASE("almetal: main chain records one physical render encoder with all ligh
     {
         sky_test::Fixture f; Inputs inputs(f);
         auto warm = submit(f, *f.renderer, inputs, true, true); warm.reset();
-        for (bool compound : {false, true})
+        for (unsigned lists = 0; lists < 4; ++lists)
         {
-            auto window = ALMetalStageTimingWindow::create(*f.device, 16, &f.error); REQUIRE(window);
-            REQUIRE(f.renderer->beginCommandBatch("Physical main lighting render encoder census", &f.error));
-            std::unique_ptr<ALMetalRenderTarget> output;
-            {
-                ALMetalStageTimingScope scope(window.get(), 1, 1, -1);
-                output = encode(*f.renderer, inputs, compound, true, &f.error);
-            }
-            INFO(f.error); REQUIRE(output); REQUIRE(f.renderer->commitCommandBatch(&f.error));
-            REQUIRE(f.device->waitUntilIdle(&f.error));
-            CHECK(window->preparedPassCount() == (compound ? 1u : 4u));
-            REQUIRE(window->seal(&f.error)); std::vector<ALMetalStageTimingResult> results;
-            REQUIRE(window->poll(results, &f.error)); CHECK(window->isFinished());
-            if (compound)
-            {
-                std::vector<std::string> fragments;
-                for (const auto& result : results)
-                    for (const auto& pipeline : result.pipelines) fragments.push_back(pipeline.fragment);
-                for (const char* expected : {"almetal_world_base_light_geometry_fragment",
-                        "almetal_world_modern_sky_fragment", "almetal_world_local_light_fragment",
-                        "almetal_world_projector_light_fragment"})
-                    CHECK(std::find(fragments.begin(), fragments.end(), expected) != fragments.end());
-            }
+            CAPTURE(lists);
+            inputs.populate((lists & 1u) ? 16 : 0, (lists & 2u) ? 4 : 0);
+            auto serial = observe(f, *f.renderer, inputs, false, "normal", lists);
+            auto chain = observe(f, *f.renderer, inputs, true, "normal", lists);
+            CHECK(serial.draws == chain.draws); CHECK(serial.commits == chain.commits);
+            CHECK(inputs.pixels(*serial.output) == inputs.pixels(*chain.output));
         }
     }
 }
@@ -549,10 +584,12 @@ TEST_CASE("almetal: complete serial and single-renderpass native main lighting c
 #endif
     REQUIRE_FALSE(enabled("MTL_DEBUG_LAYER")); REQUIRE_FALSE(enabled("MTL_SHADER_VALIDATION"));
     REQUIRE_FALSE(enabled("MTL_CAPTURE_ENABLED")); REQUIRE_FALSE(enabled("MTL_HUD_ENABLED"));
+    REQUIRE_FALSE(ALMetalDevice::commandTimingEnabled());
     std::cout << "main_lighting_cost_scope includes=native_list_copy_frame_arena_begin_target_acquisition_base_modernsky_point_projector_encode_commit_exact_GPU_completion_output_retirement"
         " excludes=LL_scene_gather_culling_source_publication_Gbuffer_lightmap_production_asset_upload_renderer_creation"
         " current_serial_same_command_batch=1 native_only_complete_path=1 fullviewer_PPD307_collector=0 GPUwait_included=1"
-        " extra_idle_barrier_command=1 exact_command_gpu_ms_excludes_idle_barrier=1 validation=off FPS_claim=0\n";
+        " extra_idle_barrier_command=1 exact_command_gpu_ms_excludes_idle_barrier=1"
+        " draw_commit_encoder_census=untimed_same_API_matching_cells timed_rows_counter_instrumented=0 validation=off FPS_claim=0\n";
     for (const auto dimensions : {std::array<unsigned, 2>{1920,1080}, {2560,1440}})
     for (unsigned lists = 0; lists < 4; ++lists)
     @autoreleasepool
@@ -591,10 +628,12 @@ TEST_CASE("almetal: complete serial and single-renderpass native main lighting c
         }
         // Pixel validation is a separate untimed pair, with no added readback
         // command, Catch assertion or counter scope in any measured interval.
-        auto expected = submit(f, *owners[0], inputs, false, true);
-        auto actual = submit(f, *owners[1], inputs, true, true);
-        CHECK(inputs.pixels(*actual) == inputs.pixels(*expected));
-        CHECK(actual->depthStencilTexture() == inputs.gbuffer->depthStencilTexture());
+        const unsigned pair = (dimensions[0] == 1920 ? 0u : 4u) + lists;
+        auto expected = observe(f, *owners[0], inputs, false, "cost_frontier", pair);
+        auto actual = observe(f, *owners[1], inputs, true, "cost_frontier", pair);
+        CHECK(expected.draws == actual.draws); CHECK(expected.commits == actual.commits);
+        CHECK(inputs.pixels(*actual.output) == inputs.pixels(*expected.output));
+        CHECK(actual.output->depthStencilTexture() == inputs.gbuffer->depthStencilTexture());
         std::cout << "main_lighting_cost_summary width=" << dimensions[0] << " height=" << dimensions[1]
             << " lists=" << lists << " measured_pairs=" << measured
             << " serial_owner_cpu_median_ms=" << median(cpu[0]) << " chain_owner_cpu_median_ms=" << median(cpu[1])
