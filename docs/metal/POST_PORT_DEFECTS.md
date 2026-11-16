@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-327 -->
+<!-- next-defect-id: PPD-328 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7646,7 +7646,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes.
-- Next action: Prepare and validate bounded startup/early/late quiet GPU capture under the owner-set diagnostic objective. Distinguish growing quiet GPU work/queue latency from arrival CPU asset/mesh/publication costs; exact quiet shader/pass cause remains unknown because detailed encoder trace is club-only. Preserve normal scheduling, graphics and private evidence. No new viewer launch/profile without explicit instruction; original architecture implementation stays paused.
+- Next action: Discuss actual early/late GPU shader and bounded replay findings with the owner. Qualify a quality-preserving probe/alpha shader codegen hypothesis (PPD-327) before any combined viewer retest; retain all valid probes, material/lighting and completion/overlap behavior. The replay source intervention establishes a material GPU contribution, not the entire live24→14FPS delta or a fix. Original architecture implementation remains paused; no new viewer launch/profile/push without instruction.
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7660,6 +7660,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 diagnostic preparation is complete: separately staged verified69200/fd5, actual controller/native/static gates, final170 tool tests and Xcode fixture replay/source/counters are preserved. Three subsequent goal continuations confirm no owner viewer/recorder and no new owner capture in the prepared root. Goal is blocked on manual capture paths or explicit owner launch/record instruction, as the goal prohibits autonomous runtime. No exact quiet GPU cause, causal check or performance acceptance can be claimed yet; original architecture work remains paused.
 
 - 2026-11-16 clean owner Terminal reproduction (all4native paths active; no sampled Xcode/validation helpers): period41.387→69.123ms, FPS24.162→14.467. Exact eligible main waits20.674→49.068ms/frame account for the expansion;4384paired waittargets retain native GPU intervals, almost all lighting/post exactly2display frames old. Target-GPUEnd delivery~0.2ms per actual waited command remains stable. Main probe config0→22by60s→39by120s while mainpoint/projector counts/rectangles and resolution remain fixed; GPU lighting/post envelopes grow but Gbuffer remains~14ms. Probe traversal/concurrent work and resource/cache effects are measured hypotheses, not exact shader cause. ThermalNominal, late decode0.017CPU-s. Early/late viewer gputrace and contained causal check remain absent; original goalpaused, no optimization/push. See research/quiet-terminal-findings-20261116.md and private matched native/CPU/GPU/log reports. PPD-325/326 preserve measurement limits.
+
+- 2026-11-16 owner supplies quiet-qy__4ufq with two successful device captures, exact22105-file/11627693726-byte copy retained at private quiet-frame-analysis-20261116T174649Z. Main probe bounds1→20; lights/rectangles,3456×2168,SSR25/4 fixed. Capture stops4.205/9.090s and armedCaptureMTL CPUcost are explicit; excluding capture intervals still24.384→14.798FPS with wait15.221→42.029ms/frame. XcodeMedium/Overlapping actual shaders show expensive simple-alpha/base probe-dependent shading; hazeencoder label includesalpha, truehaze is small. Sharedprobe-helper source A/B/A at fixedlatecapture gives125.57→91.45→121.62ms withsameGPRcounts; recompileddefault-onlyB changeslighting/allusingviews, so this is material replay causality, notfull livecritical-path attribution orFPSgain. Recompiledsimple/PBR/material spill304/80/32bytes; storagecontributionunproved(PPD-327). Source restored, replay stopped, diagnostic edits notsaved; noenginechange. [GPU findings](research/quiet-gpu-frame-findings-20261116.md) retain allvariants/adverse155.55→130.89untouchedvariance, exactsource/evidence and remaining owner-runtime boundary.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -7793,3 +7795,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered on first actual native viewer workload. The independent180.692s Overview recording survives the native cutoff. Preserve the completed run; this limitation does not invalidate its observed24→14FPS reproduction.
+
+## PPD-327 — Native probe accumulator codegen and alpha shader spilling need qualification
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex quiet GPU diagnosis
+- Discovered: 2026-11-16
+- Original reference: Pinned1eb44 class3/deferred/reflectionProbeF.glsl601–641 uses named automatic/manual scalar pairs and explicit branches. Native almetal_builtin.metal6293–6338 stores five two-element thread-private arrays and indexes them by runtime family. Source semantics correspond; storage/compiler shape differs. This confirmed difference is a performance hypothesis, not proof of a regression or spill cause.
+- Evidence: [Actual quiet GPU findings](research/quiet-gpu-frame-findings-20261116.md); private quiet-frame-analysis-20261116T174649Z/analysis-gpu source audit and parent-replay-counter-observations.json. Actual early/late captures have mainprobe bounds1/20. Saved late recompiled shader A/B/A default-only traversal control125.57/91.45/121.62ms is a separate workload intervention; it does not rewrite accumulator storage.
+- Next action: Test a bounded scalar-pair/explicit-branch variant against the original algorithm with all probes, weights, lighting/material behavior and representative fragment inputs preserved. Retain exact shader code, compiled registers/spills, pixels, GPU counters/costs and adverse observations. An owner capture-free combined viewer retest is required before accepting any native FPS benefit. No implementation is selected by this record.
+- Verification: Recompiled original-expression A and runtime-default-only B both report245simple-alpha/214base/254PBR-material registers; Xcode reports SpilledBytes304simple/80PBR/32material, with base blank/unknown. The alpha encoders report~1.05–1.12GiB buffer-device writes despite no explicit device stores in the dominant simple fragment. Addressable private arrays/stack/spills are plausible mechanisms; the counter is not itself a spill-attribution measurement. Installed offline-binary spill penalty, scalar-variant correctness/cost and live FPS effect remain unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before any accumulator rewrite. Current diagnostic engine fd5/69200 remains unchanged. The only edited code was embedded source in a separate GPU replay working copy for the PPD-319 probe-count control, then restored and discarded after measured A/B/A; all original captures/private evidence remain preserved. Do not ship the default-only probe experiment as a fix or resume architecture optimization from this record alone.

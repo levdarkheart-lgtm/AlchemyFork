@@ -258,3 +258,36 @@ runtime evidence is prepared early/late .gputrace with validationoff, retaining
 this capture-free run as cadence control. Profiling overhead and a contained
 causal check remain required. Original architecture stays paused, PPD-319open;
 no agent launch/profile or push.
+
+## Actual early/late GPU captures and bounded causal replay
+
+Owner supplied `/Users/dekstroza/Alchemy-quiet-qy__4ufq`; private exact22105-file/
+11627693726-byte copy at quiet-frame-analysis-20261116T174649Z/owner-run. Xcode
+opens separate APFSworkingcopies. All19launchflags/samefd5/69200exe verified.
+Early mainprobe1/ordinary2, late20/43;3456×2168/point9/projector39/rectangles/
+SSR25/4/hero0 fixed. APIstopcost4.205/9.090s; capture-excluded FPS24.384→14.798,
+wait15.221→42.029ms/frame. ArmedCaptureMTL CPUwork remains outsidecaptures; no
+matched liveFPS overhead subtraction. Native stream cap/loss153+96/37pending
+explicit. FullCPU/log/native/GPUreports and raw5sbins preserved.
+
+Actual replay finds simple-alpha-with-shadows/base-light geometry dominant,
+not atmospheric haze despite encodername. Main fusedfragmentinvocations match
+251649472early/late; ALU29.514→50.488billion, sampler2.72→3.55/invocation.
+Untouched replay Medium/Overlapping91.15msearly vs155.55/130.89late varies; no
+exactisolatedcost/liveFPS claim. Sharedprobe-helper runtimeboundsourceA/B/A
+in separate savedlatecopy: unchangedreloaded125.57ms, defaultonly91.45ms,
+restoredoriginal121.62ms. Producerw0runtimeboundpreservesdynamictaps; GPRsame
+245simple/214base/254PBR-material. RecompiledBandrestoredA spill304/80/32B; base
+unknown. This isolates a material probe-dependent GPU contribution in saved
+replay, not purecandidate-tests/main-onlycost orfull live24→14delta. Ordinary
+probeviews/sharedPSOs/changedlighting/downstreamwork andsource-recompilelimits
+are explicit. Frame capture/replay sourceedit has zero renderer gitdiff.
+
+PPD-327 registers the originalnamedscalarpairs versusnativedynamicallyindexed
+thread-array storage hypothesis before any rewrite. Qualitypreserving scalar
+codegen/correctness/costcheck andownercombinedcapture-free runtime acceptance
+remain unexecuted. B is diagnosticqualityreduction, notafix. Source restored,
+GPUreplaystopped, agentmodificationsnotsaved; original captures/evidencekept.
+XcodecounterCSVSave disabled; observedAXtables/receipts retained, noexportclaim.
+[ActualGPUfindings](../../research/quiet-gpu-frame-findings-20261116.md). No new
+viewer/profile/build/push. Architecture remainspaused forownerdiscussion.
