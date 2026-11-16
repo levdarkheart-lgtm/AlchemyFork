@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-328 -->
+<!-- next-defect-id: PPD-329 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7779,9 +7779,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 registered before any repair. Preserve outer collector exit1 and real recorder exit0 separately. Do not ask the owner to repeat a completed run solely because of this false retention classification.
 
+- 2026-11-16 repair integratedbae0170c91; valid zero-associated-frame buckets bridge retained timestamp coverage, positive/zero/invalid counts and positive-only gaps remain explicit. Missing/wrong-PID/all-zero/malformed/genuine-gap checks remain fail-closed. Exact-final179tool tests/harness/diff PASS in private quiet-home-tool-qualification-20261116T183912Z. Cachedl9 PASS actual1.05648s max gap; qy retains genuine5.524927s gap FAIL. No repeat owner recording requested and no renderer FPS claim. Owner verification remains pending.
+
 ## PPD-326 — Native telemetry byte budget ends before the requested three-minute run
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex quiet diagnostic retention
 - Discovered: 2026-11-16
@@ -7797,6 +7799,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered on first actual native viewer workload. The independent180.692s Overview recording survives the native cutoff. Preserve the completed run; this limitation does not invalidate its observed24→14FPS reproduction.
 
 - 2026-11-16 preparing the first quality-preserving Homecandidate: startup-only ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB permits explicit64–256MiB, default64 unchanged; ring/producer/writer schedule unchanged. Invalid/out-of-range input disables collection before output rather than silently running an unintended budget. Actualcontroller header/activation checks added for freshprocess selectors; compile/runtimepending. This prevents an improvedFPS candidate from exhausting the old64MiB budget before its late window; it does not change renderer admission or shader timing.
+
+- 2026-11-16 actual controller targetbuild0 at285c85e7df,18fresh-process startup/header checks PASS with API/GPU validation. Unset/empty/default and64/65/72/128/255/256/leading-zero boundaries accepted; out-of-range,negative/plus/whitespace/junk/overflow rejected beforeoutput. Source/binary/command/log/header receipts retained in privatequiet-home-fix-20261116T183158Z/controller-budget. No viewer run or complete180s native retention claim yet.
 
 ## PPD-327 — Native probe accumulator codegen and alpha shader spilling need qualification
 
@@ -7816,3 +7820,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered before any accumulator rewrite. Current diagnostic engine fd5/69200 remains unchanged. The only edited code was embedded source in a separate GPU replay working copy for the PPD-319 probe-count control, then restored and discarded after measured A/B/A; all original captures/private evidence remain preserved. Do not ship the default-only probe experiment as a fix or resume architecture optimization from this record alone.
 
 - 2026-11-16 owner activates fixing quietHomeperformance, including shader spills and Apple-native followups. Nextcheckpoint is Home ONLY; club/nextsteps follow that result. PPD-327 first candidate will replace native dynamic family-indexed probe accumulator arrays with original-equivalent named scalar pairs and explicit branches, preserving probe traversal/order/32accepted/64neighbors, sample math/features/default/manual precedence and allwater consumers. RootaloneownsMSL/CMake/integration; independent testworktree owns newactualGPUparity/costfixtures; read-only peers auditsemantics/nativelevers. No quality reduction or general architecture activation is selected. Build/parity/cost/ownerruntime acceptance remain pending.
+
+
+- 2026-11-16 all scalar/narrow-mix variants pass6081assertions/429image comparisons each. Scalar-only and scalar+narrow variants show repeated adverse ambient/PBR-base cells (~3–4% paired); array+narrow is neutral. All rejected, baseline MSL restored exactly in285c85e7df, test retained. Sources/compiled libraries/binary hashes/all160observations per variant and failed/adverse pairs preserved in private quiet-home-fix-20261116T183158Z/probe-accumulator-checks. No evidence accumulator storage causes304B spills or that cleanup fixes Home. Next qualify SH evaluation/live-state change; no viewer launched or gain accepted.
+
+## PPD-328 — Material-alpha source samples the same SSR ray for two lobes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home shader repair
+- Discovered: 2026-11-16
+- Original reference: Pinned1eb44 class3/deferred/reflectionProbeF.glsl928–958 legacyProbeFinish samples SSR once and blends gloss/legacy lobes with that result. Native almetal_builtin.metal material-alpha fragment calls almetal_finish_legacy_ssr twice with identical screen/ray/normal/gloss/texture inputs, differing only incoming lobe color, when glossiness and environment intensity are both positive.
+- Evidence: [Home repair ledger](work/active/quiet-home-performance-fix-20261116.md); source audit in private quiet-frame-analysis-20261116T174649Z and current source baseline285c85e7df. Native deferred-base already shares its SSR sample. Saved replay material-alpha approximately1–2% shader cost; simple-alpha does not march SSR.
+- Next action: Inspect generated behavior and measure a single shared-sample exact-color implementation only after the dominant Home shader target. Preserve each lobe gate, SSR alpha and hero order; add actual production PSO parity if selected.
+- Verification: Duplicate source calls confirmed; compiler CSE, extra executed ray cost and live FPS contribution unproved. No implementation or runtime acceptance yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before repair. This secondary source difference does not explain the dominant simple-alpha probe cost by itself. No quality change or architecture activation selected.
