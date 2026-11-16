@@ -7668,6 +7668,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 repair draft feeds between-capture invalidation, observes non-NONE teleport state, and separates expected sequence invalidation from capture failure. Peer review additionally finds an asynchronously bounded telemetry sink can disable between iterations, skipping the previous enabled-only heartbeat. Add an unconditional cheap heartbeat at app entry and an actual-controller sink-cutoff test. No diagnostic viewer execution or repair acceptance yet.
 
+- 2026-11-16 first combined99a3d7e6c4 build fails in new diagnostic controller: helper session() conflicts with POSIX struct session introduced by the actual viewer PCH. Preserve build-first.json/log. Rename only the private helper to quietSession(); do not infer runtime correctness from prior standalone helper compilation. Actual viewer hooks and retained controller tests remain pending. Add first-world/invalidated markers in telemetry-only mode for equal same-binary capture-cost controls.
+
 ## PPD-321 — New diagnostic telemetry allocates while disabled and mishandles startup failure
 
 - Status: investigating

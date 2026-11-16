@@ -26,8 +26,10 @@ struct Session
     ALMetalQuietCapturePolicy policy;
     std::unique_ptr<ALMetalFrameCapture> capture;
     std::uint64_t capture_start_ns = 0, last_resource_ns = 0;
+    std::uint64_t world_start_ns = 0;
+    bool world_invalidated = false;
 };
-Session& session() { static Session value; return value; }
+Session& quietSession() { static Session value; return value; }
 
 void warning(const char* reason) noexcept
 {
@@ -60,7 +62,7 @@ void cancel(Session& value, std::uint64_t frame, const char* reason,
 
 void alQuietDiagnosticsInitialize() noexcept
 {
-    auto& value = session();
+    auto& value = quietSession();
     if (value.initialized) return;
     value.initialized = true;
     const char* directory = std::getenv("ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY");
@@ -105,7 +107,12 @@ void alQuietDiagnosticsInitialize() noexcept
 void alQuietDiagnosticsHeartbeat(std::uint64_t frame,
     bool world_invalidated, bool cadence_valid) noexcept
 {
-    auto& value = session();
+    auto& value = quietSession();
+    if (world_invalidated && value.world_start_ns && !value.world_invalidated)
+    {
+        value.world_invalidated = true;
+        D::recordMarker("quiet_world_invalidated", {frame, D::ViewKind::main, -1});
+    }
     if (!value.automatic && !value.capture) return;
     try
     {
@@ -135,11 +142,17 @@ void alQuietDiagnosticsAdvanceDisplay(ALMetalDevice* device,
     const ALQuietDiagnosticDisplay& observation) noexcept
 {
     if (!D::enabled()) return;
-    auto& value = session();
+    auto& value = quietSession();
     try
     {
         const auto now = D::machTimeNs();
         const D::FrameTag tag{observation.frame, D::ViewKind::main, -1};
+        if (!value.world_start_ns && observation.normal_display && observation.world_ready &&
+            observation.cadence_valid)
+        {
+            value.world_start_ns = now;
+            D::recordMarker("quiet_world_started", tag);
+        }
         if (observation.normal_display && (!value.last_resource_ns ||
                 now - value.last_resource_ns >= 1'000'000'000ull))
         {
@@ -216,14 +229,14 @@ void alQuietDiagnosticsAdvanceDisplay(ALMetalDevice* device,
 
 void alQuietDiagnosticsShutdown(std::uint64_t frame) noexcept
 {
-    auto& value = session();
+    auto& value = quietSession();
     if (value.capture) cancel(value, frame, "quiet_capture_shutdown");
     D::stop();
 }
 
 ALQuietDiagnosticStatistics alQuietDiagnosticsStatistics() noexcept
 {
-    const auto& value = session();
+    const auto& value = quietSession();
     const auto& policy = value.policy.stats();
     return {value.automatic, policy.started, policy.terminal,
         value.capture && value.capture->stats().state == ALMetalFrameCapture::State::capturing,
