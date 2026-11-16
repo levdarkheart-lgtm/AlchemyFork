@@ -3497,6 +3497,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-16 narrow parity repair integrated from d9eccdef2c: ordered missing_buffer skips only the current face and increments a capture-owned cumulative census; preceding pointer failures and every nonnull native-publication/range/material guard retain incomplete/clear behavior. Previously accepted draws remain owned. Production diagnostics now print unready_buffer_skips even without failures. Three new actual-body cases exercise protected phase memory, ready/null/ready progress and nullskip followed by real missing-publisher failure; no viewer/runtime recovery claim. Build/native execution pending on next frozen source.
 
+- 2026-11-16 repair verification at frozen43a44724c7/build26.4.0.69162 (89): doctor/configure/build exits0, build38.247s. Actual production preflight include passes213assertions/7cases with protected-memory and real missing-publisher controls, including the three new omission/failure progression cases. Exactapp/ARM64/signature/import/native-resource checks and strict3598files/0blockers pass. Receipts frozen-source-build-89.json and terrain-validation-89.json retain exact argv/source/log hashes. Earlier88 full34renderer proof remains separate, not relabelled89. No viewer launch, owner transition retest or final mirror-recovery evidence; record remains open.
+
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
 - Status: investigating
@@ -6572,6 +6574,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 integrated69122 profile evidence: Numeric runtime counters now attribute quiet/club retain byte-cap rejection deltas2559646/4331675 and capacity eviction deltas1090835/1535092 inside sampled actualtrace intervals, cap3892314112bytes. Working-set retain is visible in CPU samples(3.452s/4.900s inclusive). Diagnostics work; total frame-time causality and policy quality remain unproved. Counts are occurrences and ledger estimates, not unique objects or physical allocations. No cap increase or fix. [Report](research/integrated-build-69122-quiet-club-20261115.md).
 
 - 2026-11-15 Runtime-backed follow-up keeps numeric3,892,314,112B ledger cap and all ownership contracts unchanged. PPD295 is a separate bookkeeping candidate to avoid heap scratch growth before denial; no cache-policy or physical memory repair is established. Native retain inclusive3.452/4.900CPU-s does not support a dominant-frame attribution.
+
+- 2026-11-16 preserved69151 whole-log activation census again records byte-only retention pressure: quiet522s/busy423s telemetry spans have retain false+4,348,078/+13,234,480, capacity evictions+2,019,845/+3,582,721; entry/both cap masks and allocation/invalid/conflict/exception counters remain0. Shared ledger cap3,892,314,112B derives from clamp(device recommended working set/16,256MiB,4GiB);8192entries/max_age2 frame units. Duplicate main/probe gauges are one global scope. These are invocation/estimate counters, not physical RAM, unique assets or five-minute CPU/GPU costs. PPD295 scratch repair does not fix cache turnover; no policy/cap change or frame-time cause claimed.
 
 ## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
 

@@ -378,3 +378,40 @@ static-visibility-command-cost-88{,-summary}.json and selection-88.json;
 architecture-69151-warning-review-20261116T072955Z;
 capture-retention-preflight-20261116. Preserved owner69151 and older staged
 apps are untouched. Goal remainsactive/partial; no launch, push or new staged app.
+
+### Preserved69151 full-log engine observations
+
+These observations use full text logs, not the short retained CPU/GPU trace.
+The quiet shadow telemetry endpoints span522seconds; busy-labelled endpoints
+span423seconds, so their absolute totals are not comparable rates. Selected
+1024-batch shadow work submits14,160/25,732 jobs, respectively, with zero logged
+worker failure/cancellation/denial. More specifically, periodic records inside
+the logged busy post-teleport request span07:05:06–07:09:59 (293seconds):
+18,077 new jobs encode and submit;13,603 views stay serial below threshold.
+Query entries remain0. Finish/join wall includes waiting and settlement, not
+net overhead or a speedup. Main retained cohorts average1.62/1.15draws per
+consumed group in the respective broad telemetry spans; real small runs remain
+an implementation constraint.
+
+One global source ledger reaches its hardware-derived3,892,314,112-byte estimate
+cap. Quiet/busy spans show4,348,078/13,234,480 byte-cap rejection invocations and
+2,019,845/3,582,721 capacity evictions; entry-cap, invalid-resource, allocation
+exception and budget-shrink counters stay0. Touch-missing calls increase8,714/
+9,619,482, but cannot identify a specific eviction cause. Repeated main/probe
+gauges are the same shared ledger. These are not physical RAM/OOM measurements.
+No cap increase or unsupported retention/FPS attribution is made (PPD274/295).
+
+Required-main completion observations report no new full/unavailable/failed
+samples, pending/capacity1/3 and lifetime peak2; sparse gauges do not prove
+absence of transient stalls or GPU priority. Busy ordinary-probe admission
+defers2272 groups; quiet0. Shared terrain fallback deltas are0 while native
+terrain reuse and selected probe/base lighting fusion both advance. RGB
+conversion and immediate-upload counters advance sharply during busy loading;
+worker-upload commits do not advance over these endpoints. Counters prove
+which paths ran, not conversion speed, missing functionality or frame-time cost.
+
+All raw endpoints, reason masks, resets/gauges, source anchors and redacted
+receipts are in each recording directory's architecture-activation-review files.
+The terrain repair is now native-verified at source43a447/build69162(89):
+doctor/configure/build/static/strict PASS;213assertions/7actual-body cases PASS.
+In-world transition acceptance remains pending; no new app was staged/launched.

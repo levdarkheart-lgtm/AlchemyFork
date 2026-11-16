@@ -51,6 +51,28 @@ env \
 - During an armed run only, each newly committed native-wrapper command installs a completion handler. Monotonic `metal_completed` and `metal_timed` deltas distinguish completed commands from commands with valid `GPUStartTime`/`GPUEndTime`; `metal_gpu_ms` is the sum of those completed app-owned Metal command durations observed between two CPU sampling points. A mutex makes each cumulative timing snapshot internally coherent. The M1 Max physical regression proves one real blit produces one submitted, completed and timed command plus a positive duration, normally and with Metal API validation.
 - Completion is asynchronous, so `metal_completed`, `metal_timed` and `metal_gpu_ms` can lag the frame that submitted the work. `metal_gpu_ms` excludes legacy-driver work and is neither whole-frame GPU duration nor pass attribution. Treat all four Metal columns as secondary diagnostics and average them only across a steady consecutive sequence. Use Instruments/Metal capture for per-label attribution and independent GPU evidence.
 
+## External trace retention
+
+Before a long Instruments recording, verify the installed template's retention
+mode. `--time-limit` and a successful `xctrace` exit do not establish sample
+coverage. In PPD-305 the detailed Game Performance template had a five-second
+rolling window; recordings requested for five minutes retained under two seconds
+of exported CPU/GPU activity. Preserve such captures as limited evidence.
+
+The locally copied continuous template changes its global `windowLimit` to 0.
+An independent 20-second nonviewer check retained 20.803 seconds of CPU samples;
+its provenance and raw exports are in ignored
+`artifacts/metal/capture-retention-preflight-20261116/`. This proves controlled
+CPU retention, not a five-minute viewer/GPU measurement. Recheck installed or
+changed templates before relying on them.
+
+After recording, export the TOC and actual CPU/GPU tables and record their
+first/last retained timestamps, including interval ends. Keep requested duration,
+recorder/finalization wall time, full log span and retained trace coverage
+separate. Nominal headers from a rolling trace do not prove UTC alignment with
+a teleport marker. Missing coverage does not require another owner recording
+when implementation can proceed using existing evidence.
+
 ## Frame observability (real viewer process)
 
 For probe-heavy fixed-view comparisons, also set
