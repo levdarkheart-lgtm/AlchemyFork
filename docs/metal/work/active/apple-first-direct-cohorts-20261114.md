@@ -2921,3 +2921,17 @@ Required build/static/strict and full34scopes1130524/356 pass; new native task
 Full ownership/cost/receipt/launcher details: [current delivery](apple-first-architecture-status.md#2026-11-16--actual-owned-native-overlap-delivered-in69149).
 Next: exact69149 owner runtime activation/full-engine evidence, not69122 reuse.
 No launch/login/live profile/push; PPD241/299 and original goal remain active.
+
+## 2026-11-16 — PPD300 main/probe completion census integrated
+
+Frozen81/2038c60c36/build69151 passes required build/static/strict and current
+native census60/1, outer-frame56/2, probe136/3 and budget6112/52 checks. A narrow
+source proof and identical native test binaries explicitly reuse80's renderer
+and unchanged cost evidence. No new renderer benchmark or scheduling change.
+The actual app samples required presentation command completion at frame begin
+and before ordinary probes; existing log gains full/peak/pending/retired facts.
+Separate69151 staging is VERIFIED8273 nodes/all19 checksum rows PASS; owner
+69149 and earlier apps preserved. [Details/launcher](apple-first-architecture-status.md#2026-11-16--whole-engine-completion-observation-in69151).
+GPU visibility still follows CPU discovery; GPU-owned discovery, GPU-priority
+policy, runtime activation and whole-engine performance/feature/stability remain
+open. No launch/login/profile/push; original goal stays active, not complete.

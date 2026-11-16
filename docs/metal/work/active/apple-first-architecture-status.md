@@ -238,3 +238,40 @@ PPD241/299 remain owner-pending. Next assess exact69149 runtime activation,
 frame tails, full GPU competition, queries/projectors/probes, loading and
 stability. The69122 profile cannot establish69149 performance. No new viewer
 launch/login/live profile or push; original whole-engine goal remains active.
+
+## 2026-11-16 — Whole-engine completion observation in69151
+
+Frozen81/source `2038c60c365b63d6b55e705cb0660efb781106b2` preserves69149's
+selected renderer. Independent source audits trace actual producer consumption
+through main/probe/shadow, native command/visibility consumers and shared
+upload/decode/probe credits. Their rejected optional activation is not a
+forgotten callsite. Early GPU-owned discovery remains unimplemented; current
+GPU visibility follows CPU discovery. Original whole-engine acceptance is open.
+
+A concrete G5 measurement gap (PPD300) remains separate from optional credits:
+required-main native completion did not reach the frame-plan diagnostics.
+The new owner-only observer samples the window's existing Metal scheduler at
+outer-frame begin and before ordinary probes after required-main accounting.
+Periodic `Native main completion` lines report samples/unavailable/full/peak,
+pending/capacity, submitted/completed/failed and last-submission retirement.
+These counters are independently sampled. Retirement includes failure and is
+neither successful rendering nor scan-out. No pointers, timing flags, extra GPU
+work, admission or probe-cadence changes enter this observer. A normal pending
+frame is not evidence of harmful queue pressure; policy needs real evidence.
+
+Doctor/configure/build, native census60/1, existing outer-frame56/2, probe136/3,
+common budget6112/52 and native bundle/strict3597zero blockers/errors PASS.
+The source-diff whitelist and exact original FramePlan implementation proof are
+`renderer-correctness-reuse-81.json`. All three frozen native test binaries are
+identical to80. Earlier34 renderer scopes and12cell costs are explicitly reused,
+not relabeled as new81 executions. `combined-component-cost-gate-81.json`
+records unchanged measured helpers; new per-frame sampling has no live timing.
+
+[Latest combined launcher](</Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-persistent-native-scene-20261114/architecture-combined-69151/Launch Apple First Combined.command>)
+uses the same selected renderer policy as69149. Staging is VERIFIED8273 nodes;
+all19 checksum rows pass. ExecutableSHA256
+`e7b29adc9214f0851a2089960edb1c422a6b6791e42f656f9a23f224967537c8`.
+69149/69134/69129/69122 stay unchanged; no app/launcher execution or push.
+Next: exact69151 whole-engine runtime activation/quality/loading/stability,
+frame tails and main/probe GPU/pass scaling; existing69122 evidence cannot
+prove those outcomes. This is progress on observability, not goal completion.
