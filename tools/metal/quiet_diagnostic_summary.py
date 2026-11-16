@@ -34,7 +34,7 @@ VIEW_NAMES = {0: "unknown", 1: "main", 2: "hero", 3: "ordinary_probe", 4: "shado
 FRAME_FIELDS = ("iteration_id", "start_mach_ns", "end_mach_ns", "begin_display_frame",
                 "end_display_frame", "begin_flags", "end_flags", "begin_startup_state",
                 "end_startup_state", "begin_teleport_state", "end_teleport_state", "outcome",
-                "native_exact", "drawable_width", "drawable_height")
+                "native_exact", "drawable_width", "drawable_height", "quality")
 FRAME_WIDTH = len(FRAME_FIELDS)
 FRAME_INDEX = {name: i for i, name in enumerate(FRAME_FIELDS)}
 METRIC_FIELDS = {
@@ -360,6 +360,7 @@ class Phase:
         self.metrics = {}
         self.progression = {}
         self.command_latencies = {}
+        self.configurations = Counter()
 
     def overlap(self, start, end):
         return max(self.start, start), min(self.end, end)
@@ -513,6 +514,13 @@ class Analyzer:
             self.frame_reasons.update(reasons)
             if not reasons:
                 self.frame_totals["eligible_frame_rows"] += 1
+            configuration = tuple(frame[FRAME_INDEX[key]] for key in ("drawable_width", "drawable_height", "quality"))
+            for phase in self.phases:
+                if phase.start <= frame[1] < phase.end:
+                    if configuration in phase.configurations or len(phase.configurations) < MAX_GROUPS:
+                        phase.configurations[configuration] += 1
+                    else:
+                        self.budget.limits["frame_configuration_groups"] += 1
             if previous is not None:
                 if frame[0] != previous[0] + 1:
                     self.frame_totals["iteration_id_gaps_or_reordering"] += 1
@@ -526,6 +534,8 @@ class Analyzer:
                         period_reasons.append("display_boundary_discontinuity")
                     captured = intersections(start, end, self.capture_bounds)
                     post = intersections(start, end, self.post_capture_periods)
+                    configuration_changed = any(previous[FRAME_INDEX[key]] != frame[FRAME_INDEX[key]]
+                                                for key in ("drawable_width", "drawable_height", "quality"))
                     for phase in self.phases:
                         if not (start < phase.end and end > phase.start):
                             continue
@@ -538,9 +548,11 @@ class Analyzer:
                             phase.frame_rejections["capture_or_capture_api_overlap"] += 1
                         if post:
                             phase.frame_rejections["first_post_capture_period"] += 1
+                        if configuration_changed:
+                            phase.frame_rejections["quality_or_resolution_change"] += 1
                         if not period_reasons:
                             phase.eligible_periods.add(end - start)
-                            if not captured and not post:
+                            if not captured and not post and not configuration_changed:
                                 phase.control_periods.add(end - start)
             previous = frame
 
@@ -849,6 +861,8 @@ class Analyzer:
                            "observed_event_mach_interval": [phase.first_event, phase.last_event],
                            "observed_event_span_ns": phase.last_event - phase.first_event if phase.first_event is not None else None,
                            "events": dict(phase.events),
+                           "observed_quality_and_dimensions": [{"width": key[0], "height": key[1], "quality": key[2], "frame_rows": count}
+                                                               for key, count in sorted(phase.configurations.items())],
                            "raw_consecutive_iteration_periods": phase.raw_periods.result(),
                            "eligible_display_periods": phase.eligible_periods.result(),
                            "capture_excluded_control_periods": phase.control_periods.result(),
@@ -963,13 +977,17 @@ def parser():
 def safe_write(path, text, input_path):
     if path.resolve() == input_path.resolve() or (path.exists() and os.path.samefile(path, input_path)):
         raise ValueError("output must not alias the original diagnostic input")
+    if path.exists() or path.is_symlink():
+        raise FileExistsError("derived evidence output already exists; choose a new path")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, prefix="." + path.name, delete=False) as handle:
             temporary = Path(handle.name)
             handle.write(text)
-        temporary.replace(path)
+        # Same-directory hard-link publication is atomic and exclusive. It
+        # refuses an existing file or symlink even if one races the check.
+        os.link(temporary, path, follow_symlinks=False)
     finally:
         if temporary and temporary.exists():
             temporary.unlink()

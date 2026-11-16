@@ -112,6 +112,19 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(result["frame_ineligible_occurrences_overlap"]["teleport"], 1)
         self.assertEqual(result["phases"][0]["eligible_display_periods"]["count"], 0)
 
+    def test_quality_and_resolution_changes_remain_visible_but_leave_control(self):
+        stream=Stream();stream.marker("quiet_world_started",0)
+        for i in range(1,7):
+            stream.frame(i,i-.9,quality=6 if i<3 else 5,
+                         drawable_width=64 if i<5 else 128,drawable_height=48 if i<5 else 96)
+        phase=self.analyze(stream)["phases"][0]
+        self.assertEqual(phase["eligible_display_periods"]["count"],5)
+        self.assertEqual(phase["capture_excluded_control_periods"]["count"],3)
+        self.assertEqual(phase["period_exclusion_occurrences_overlap"]["quality_or_resolution_change"],2)
+        self.assertEqual({(r["width"],r["height"],r["quality"]):r["frame_rows"]
+                          for r in phase["observed_quality_and_dimensions"]},
+                         {(64,48,6):2,(64,48,5):2,(128,96,5):2})
+
     def test_gpu_unions_are_clipped_and_not_additive_frame_cost(self):
         stream = Stream(); stream.marker("quiet_world_started", 0)
         stream.command(1,1,4); stream.command(2,3,5,view=4)
@@ -249,6 +262,14 @@ class SummaryTests(unittest.TestCase):
         with self.assertRaises(ValueError):summary.safe_write(self.path,"bad",self.path)
         alias=self.directory/"hardlink";os.link(self.path,alias)
         with self.assertRaises(ValueError):summary.safe_write(alias,"bad",self.path)
+        with self.assertRaises(FileExistsError):summary.safe_write(output,"bad",self.path)
+        original_output=output.read_bytes()
+        self.assertEqual(json.loads(original_output)["provenance"]["source_sha"],"b"*40)
+        dangling=self.directory/"dangling-output"
+        dangling.symlink_to(self.directory/"absent-target")
+        with self.assertRaises(FileExistsError):summary.safe_write(dangling,"bad",self.path)
+        self.assertTrue(dangling.is_symlink())
+        self.assertEqual(output.read_bytes(),original_output)
         self.assertEqual(self.path.read_bytes(),original)
 
     def test_invalid_header_missing_gpu_values_and_malformed_tail_fail_closed(self):
