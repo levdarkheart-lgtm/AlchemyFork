@@ -166,6 +166,7 @@ target_sources(
       almetalworldsourcecommands.h
       almetalworldsourceview.h
       almetalworldprepare.h
+      almetalworldencodetask.h
       almetalworlddraws.h
       almetalworldanimated.h
       almetalworldcohort.h
