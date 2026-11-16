@@ -2637,6 +2637,17 @@ struct ALMetalWorldBaseLightingScene
     ALMetalProbeWorkloadView diagnostic_view;
 };
 
+// PPD-308: acceptance is separate from a safe pre-prefix serial decline.
+// A failed result may have emitted a native prefix and must never be replayed.
+enum class ALMetalWorldLightingChainStatus { declined, failed, encoded };
+enum class ALMetalWorldLightingChainReason { none, scope, diagnostic, inputs, preflight, native_prefix, count };
+struct ALMetalWorldLightingChainResult
+{
+    ALMetalWorldLightingChainStatus status = ALMetalWorldLightingChainStatus::declined;
+    ALMetalWorldLightingChainReason reason = ALMetalWorldLightingChainReason::none;
+    std::unique_ptr<ALMetalRenderTarget> target;
+};
+
 // The ordered native world G-buffer owner for supported object, material and
 // system-avatar families.
 // It writes four colour attachments plus depth and is not presented yet. The
@@ -3272,6 +3283,21 @@ public:
         const ALMetalWorldBaseLightingScene& scene,
         std::string* error = nullptr);
 
+    // Main-only, ready-input transaction. Shares one RGBA16F/depth pass for
+    // base, optional modern sky, point and projector draws. All CPU inputs
+    // are borrowed only through this call. No encoder survives the call.
+    // Decline leaves the current command untouched; failure poisons a native
+    // prefix in the exact enclosing batch. Caller commits/publishes as usual.
+    ALMetalWorldLightingChainResult renderMainLightingChain(
+        const ALMetalWorldBaseLightingScene& base,
+        const ALMetalWorldModernSkyScene* modern_sky,
+        const ALMetalWorldLocalLightingScene& local,
+        const ALMetalWorldProjectorLightingScene& projector,
+        std::string* error = nullptr);
+
+    // One-shot native-prefix fault used by contained cancellation tests.
+    void failNextMainLightingChainAfterBaseForTesting() noexcept;
+
     // Probe-only unblurred lighting owner. An eligible Apple GPU keeps the
     // exact RG8 light map in tile memory between its original producer and
     // base-light draws. External maps, SSAO, unsupported devices/libraries
@@ -3302,7 +3328,25 @@ private:
     std::unique_ptr<ALMetalRenderTarget> renderBaseLightingInternal(
         const ALMetalWorldBaseLightingScene& scene,
         const ALMetalWorldLightMapScene* tile_light_map,
-        std::string* error);
+        std::string* error,
+        const ALMetalWorldLocalLightingScene* local = nullptr,
+        const ALMetalWorldProjectorLightingScene* projector = nullptr,
+        const ALMetalWorldModernSkyScene* modern_sky = nullptr,
+        bool* native_prefix = nullptr);
+    bool prepareLocalLighting(const ALMetalRenderTarget& target,
+        const ALMetalWorldLocalLightingScene& scene,
+        std::unique_ptr<ALMetalBuffer>& light_buffer, std::string* error);
+    bool encodeLocalLighting(ALMetalRenderEncoder& encoder,
+        const ALMetalWorldLocalLightingScene& scene,
+        const ALMetalBuffer* light_buffer, bool with_depth, std::string* error);
+    bool prepareProjectorLighting(const ALMetalRenderTarget& target,
+        const ALMetalWorldProjectorLightingScene& scene,
+        bool& needs_shadows, std::string* error);
+    bool encodeProjectorLighting(ALMetalRenderEncoder& encoder,
+        const ALMetalWorldProjectorLightingScene& scene,
+        bool needs_shadows, bool with_depth, std::string* error);
+    bool encodeModernSky(ALMetalRenderEncoder& encoder,
+        const ALMetalWorldModernSkyScene& scene, std::string* error);
     std::unique_ptr<ALMetalRenderTarget> renderExposureInternal(
         const ALMetalWorldExposureScene& scene, bool meter_only,
         std::string* error);

@@ -415,3 +415,36 @@ receipts are in each recording directory's architecture-activation-review files.
 The terrain repair is now native-verified at source43a447/build69162(89):
 doctor/configure/build/static/strict PASS;213assertions/7actual-body cases PASS.
 In-world transition acceptance remains pending; no new app was staged/launched.
+
+## 2026-11-16 — Main encode/point overlap tested; lighting pass integration
+
+PPD307 sourcef04d025/build69168(93) passes doctor/configure/build, exactapp/
+static/strict3602zero, values96/5, native main596/3 and full34renderer
+1135022assertions/375cases. Compile90, malformed-owner fixture91 and empty
+point-command cost92 failures remain recorded with their exact repairs.
+Current40cell800row native cost passes149364assertions/1case and strict parser.
+
+The tested thread route is not selected. All320raw starts (256measured) miss
+the owner-gather interval; measured gather median0.750microseconds/max3.5,
+join median36.917microseconds.31/32active-cell owner paired medians are worse
+(range−0.43..+27.00%), with mixed settled−4.94..+9.90%. Main-thread CPU
+reduction alone is insufficient. The16×16 fixture uses synthetic point getters
+and typed base clear; positive downstream RGB is unobserved. This rejects
+selection for the tested frontier, not every possible useful main overlap.
+The owned point-value separation remains useful for the next actual native
+lighting compound operation. No identical rerun is needed without new work or
+a faithful positive-light control.
+
+PPD308 source4da1017af8 is integrated for94: actual main base→modern sky→point
+→projector bodies share one encoder with compatible depth PSOs and explicit
+state resets. All scenes/native owners are prepared before the pass; one
+transaction publishes only complete output. Typed prefix failures cancel,
+preflight decline uses the already gathered serial scenes, and failure counting
+uses actual batch state. Haze retains its later current-depth copy/scene order;
+selected probe fusion remains unchanged. Default/Persist0 until native tests
+and complete representative-resolution costs justify selection. Five native
+correctness cases and8cost cells are registered, not yet executed.
+
+Root owns integration/build and preserves all prior owner apps. Main author and
+two source reviewers completed their scoped work; contained94native checks and
+costs are next. Original goal remains active/partial, with no new viewer launch.

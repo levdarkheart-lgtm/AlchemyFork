@@ -993,10 +993,31 @@ struct LLPipeline::MetalWorldSimpleCapture
     struct MainLightEncodingDiagnostics
     {
         U64 requested=0, started=0, budget_denied=0, declined=0;
-        U64 encoded=0, encode_failed=0, gather_failed=0;
+        U64 encoded=0, encode_failed=0, gather_failed=0, worker_exceptions=0;
         U64 packet_hits=0, packet_misses=0, point_lights=0;
         U64 encode_ns=0, gather_ns=0, observed_overlap_ns=0, join_ns=0;
     } main_light_encoding;
+    // Owner-only CPU staging, drained in composition before any encoder is
+    // opened. Values/probes are owned; resource pointers refer to this exact
+    // capture and remain valid through the synchronous compound call.
+    struct MainLightingReady
+    {
+        ALMetalWorldBaseLightingScene base;
+        ALMetalWorldReflectionProbes probes;
+        ALMetalWorldModernSkyScene sky;
+        bool has_sky = false, local_ready = false, projector_ready = false;
+        std::optional<MetalLocalLightValues> point_values;
+        ALMetalWorldLocalLightingScene local;
+        std::vector<ALMetalWorldProjectorLight> projector_values;
+        ALMetalWorldProjectorLightingScene projector;
+    };
+    std::unique_ptr<MainLightingReady> main_lighting_ready;
+    struct MainLightingPassDiagnostics
+    {
+        U64 requested=0, prepared=0, owner_excluded=0, encoded=0, declined=0, failed_after_prefix=0, serial_failed=0, inputs_missing=0;
+        U64 points=0, projectors=0;
+        std::array<U64, static_cast<std::size_t>(ALMetalWorldLightingChainReason::count)> reasons{};
+    } main_lighting_pass;
     U64 scene_source_failures = 0;
     const char* last_scene_source_failure = nullptr;
     std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
@@ -2140,6 +2161,7 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
+    capture.main_lighting_ready.reset();
     capture.base_light_target.reset();
     capture.clearDraws();
     capture.avatar_palettes.clear();
@@ -2258,6 +2280,7 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
+    capture.main_lighting_ready.reset();
     capture.base_light_target.reset();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2372,6 +2395,7 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
+    capture.main_lighting_ready.reset();
     capture.base_light_target.reset();
     capture.clearDraws();
     capture.avatar_palettes.clear();
@@ -2441,6 +2465,7 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
     capture.pending_probe_light_map.reset();
+    capture.main_lighting_ready.reset();
     capture.base_light_target.reset();
     capture.frame_active = false;
     capture.pass_active = false;
@@ -2629,6 +2654,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
         capture.pending_probe_light_map.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
+        capture.main_lighting_ready.reset();
         capture.base_light_target.reset();
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe = {};
@@ -3307,11 +3333,22 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const auto& main_light = capture.main_light_encoding;
             LL_INFOS("MetalFramePlan") << "Native main encode/light-values: requested/started/budget_denied/declined="
                 << main_light.requested << '/' << main_light.started << '/' << main_light.budget_denied << '/' << main_light.declined
-                << ", encoded/failed/gather_failed=" << main_light.encoded << '/' << main_light.encode_failed << '/' << main_light.gather_failed
+                << ", encoded/failed/gather_failed/worker_exceptions=" << main_light.encoded << '/' << main_light.encode_failed << '/' << main_light.gather_failed << '/' << main_light.worker_exceptions
                 << ", point_packet_hits/misses/lights=" << main_light.packet_hits << '/' << main_light.packet_misses << '/' << main_light.point_lights
                 << ", cpu_wall_ns(encode/gather/observed_overlap/join)=" << main_light.encode_ns << '/' << main_light.gather_ns
                 << '/' << main_light.observed_overlap_ns << '/' << main_light.join_ns
                 << ", scope=exclusive_main_encode_owner_point_values_not_gpu_or_fps" << LL_ENDL;
+            const auto& lighting_pass = capture.main_lighting_pass;
+            LL_INFOS("Metal") << "Native main lighting render-pass: requested/prepared/owner_excluded/encoded/structural_declined/failed_after_prefix/serial_failed/inputs_missing="
+                << lighting_pass.requested << '/' << lighting_pass.prepared << '/' << lighting_pass.owner_excluded << '/' << lighting_pass.encoded << '/' << lighting_pass.declined
+                << '/' << lighting_pass.failed_after_prefix << '/' << lighting_pass.serial_failed << '/' << lighting_pass.inputs_missing
+                << ", decline_reason(scope/diagnostic/inputs/preflight)="
+                << lighting_pass.reasons[static_cast<std::size_t>(ALMetalWorldLightingChainReason::scope)] << '/'
+                << lighting_pass.reasons[static_cast<std::size_t>(ALMetalWorldLightingChainReason::diagnostic)] << '/'
+                << lighting_pass.reasons[static_cast<std::size_t>(ALMetalWorldLightingChainReason::inputs)] << '/'
+                << lighting_pass.reasons[static_cast<std::size_t>(ALMetalWorldLightingChainReason::preflight)]
+                << ", points/projectors=" << lighting_pass.points << '/' << lighting_pass.projectors
+                << ", scope=cumulative_owner_acceptance_not_gpu_completion_or_fps" << LL_ENDL;
             const auto frame_plan = ALNativeFrameBudget::instance().snapshot();
             LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
                 << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
@@ -3830,6 +3867,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
         capture.pending_probe_light_map.reset();
+        capture.main_lighting_ready.reset();
         capture.base_light_target.reset();
         capture.attempted = false;
         capture.local_lighting_attempted = false;
@@ -4362,6 +4400,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.pending_probe_light_map.reset();
         capture.base_noise_texture.reset();
         capture.legacy_glow_noise_texture.reset();
+        capture.main_lighting_ready.reset();
         capture.base_light_target.reset();
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe = {};
@@ -17227,6 +17266,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                     const auto overlap_start = std::max<U64>(gather_start, outcome.started_ns);
                     const auto overlap_end = std::min<U64>(gather_end, outcome.finished_ns);
                     if (overlap_end > overlap_start) d.observed_overlap_ns += overlap_end - overlap_start;
+                    d.worker_exceptions += outcome.threw;
                     if (outcome.target) ++d.encoded; else ++d.encode_failed;
                     target = std::move(outcome.target);
                     visibility_results = std::move(outcome.visibility_results);
@@ -17408,7 +17448,7 @@ void LLPipeline::renderMetalWorldLocalLights(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
-        !capture.base_light_target ||
+        (!capture.base_light_target && !capture.main_lighting_ready) ||
         capture.local_lighting_attempted)
     {
         return;
@@ -17451,6 +17491,19 @@ void LLPipeline::renderMetalWorldLocalLights(
     scene.reverse_z = capture.reverse_z;
     scene.hdr = capture.hdr;
     scene.classic_mode = LLRender::sClassicMode;
+
+    if (capture.main_lighting_ready)
+    {
+        auto& ready = *capture.main_lighting_ready;
+        // Move the actual307 packet (including its CPU reservation), or the
+        // serial values, without allocating another wrapper or copying arrays.
+        ready.point_values.emplace(std::move(*values_ptr));
+        ready.local = scene;
+        ready.local.lights = ready.point_values->lights.empty()
+            ? nullptr : ready.point_values->lights.data();
+        ready.local_ready = true;
+        return;
+    }
 
     std::string error;
     if (!capture.renderer->accumulateLocalLights(
@@ -17498,7 +17551,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
-        !capture.base_light_target ||
+        (!capture.base_light_target && !capture.main_lighting_ready) ||
         capture.projector_lighting_attempted)
     {
         return;
@@ -17736,6 +17789,17 @@ void LLPipeline::renderMetalWorldProjectorLights(
     scene.normal_hdr = capture.normal_hdr;
     scene.classic_mode = LLRender::sClassicMode;
 
+    if (capture.main_lighting_ready)
+    {
+        auto& ready = *capture.main_lighting_ready;
+        ready.projector_values = std::move(lights);
+        ready.projector = scene;
+        ready.projector.lights = ready.projector_values.empty()
+            ? nullptr : ready.projector_values.data();
+        ready.projector_ready = true;
+        return;
+    }
+
     std::string error;
     if (!capture.renderer->accumulateProjectorLights(
             *capture.base_light_target, scene, &error))
@@ -17788,6 +17852,60 @@ void LLPipeline::renderMetalWorldLightingComposition()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.main_lighting_ready && capture.device && capture.renderer)
+    {
+        auto ready = std::move(capture.main_lighting_ready);
+        auto& census = capture.main_lighting_pass;
+        if (!ready->local_ready || !ready->projector_ready)
+        {
+            ++census.inputs_missing;
+            // No native prefix exists. Preserve the existing incomplete-frame
+            // contract when a cookie/shadow/resource producer was unavailable.
+            return;
+        }
+        ++census.prepared;
+        std::string error;
+        auto result = capture.renderer->renderMainLightingChain(ready->base,
+            ready->has_sky ? &ready->sky : nullptr, ready->local, ready->projector, &error);
+        if (result.status == ALMetalWorldLightingChainStatus::declined)
+        {
+            ++census.declined;
+            ++census.reasons[static_cast<std::size_t>(result.reason)];
+            // Structural decline happened before native work. Use these exact
+            // ready scenes; never repeat mutable light/cookie collection.
+            error.clear();
+            result.target = capture.renderer->renderBaseLighting(ready->base, &error);
+            if (result.target && ready->has_sky && !capture.renderer->compositeModernSky(
+                    *result.target, *ready->base.gbuffer->depthStencilTexture(), ready->sky, &error))
+                result.target.reset();
+            if (result.target && !capture.renderer->accumulateLocalLights(*result.target, ready->local, &error))
+                result.target.reset();
+            if (result.target && !capture.renderer->accumulateProjectorLights(*result.target, ready->projector, &error))
+                result.target.reset();
+        }
+        else if (result.status == ALMetalWorldLightingChainStatus::encoded) ++census.encoded;
+        if (!result.target)
+        {
+            if (result.status == ALMetalWorldLightingChainStatus::failed) ++census.failed_after_prefix;
+            else ++census.serial_failed;
+            ++capture.lighting_composition_failed_frames;
+            capture.projector_shadows = {};
+            capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+            // A failed compound prefix is already poisoned. A serial fallback
+            // failure must likewise abandon its exact enclosing transaction.
+            capture.renderer->cancelCommandBatch();
+            LL_WARNS_ONCE("Metal") << "Native main lighting render-pass transaction failed: " << error << LL_ENDL;
+            return;
+        }
+        census.points += ready->local.light_count;
+        census.projectors += ready->projector.light_count;
+        capture.base_light_target = std::move(result.target);
+        capture.base_lighting_attempted = capture.local_lighting_attempted =
+            capture.projector_lighting_attempted = true;
+        capture.base_lighting_failed_frames = capture.local_lighting_failed_frames =
+            capture.projector_lighting_failed_frames = 0;
+        capture.modern_sky_composited = ready->has_sky;
+    }
     if (!capture.device || !capture.renderer ||
         !capture.base_light_target ||
         !capture.local_lighting_attempted ||
@@ -18153,6 +18271,47 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.config[3] = has_ssao ? 1u : 0u;
     constants.environment_config[0] =
         use_reflection_probes ? 0u : 1u;
+
+    static LLCachedControl<bool> main_lighting_pass(
+        gSavedSettings, "RenderMetalMainLightingRenderPass", false);
+    const bool use_main_lighting_pass = main_lighting_pass && isMainWorldPass() && mRT == &mMainRT &&
+        !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
+        !sCutoutRender && !gSnapshot && !gCubeSnapshot && !sRenderingHUDs &&
+        !capture.pending_probe_light_map && !metal_base_capture_ready();
+    if (main_lighting_pass)
+    {
+        ++capture.main_lighting_pass.requested;
+        capture.main_lighting_pass.owner_excluded += !use_main_lighting_pass;
+    }
+    if (use_main_lighting_pass)
+    {
+        try
+        {
+            auto ready = std::make_unique<MetalWorldSimpleCapture::MainLightingReady>();
+            ready->base = scene;
+            if (scene.reflection_probes)
+            {
+                ready->probes = *scene.reflection_probes;
+                ready->base.reflection_probes = &ready->probes;
+            }
+            ready->has_sky = capture.modern_sky_valid && capture.modern_sky_drawn;
+            if (ready->has_sky)
+            {
+                ready->sky = capture.modern_sky.scene;
+                ready->sky.stars_texture = capture.target->colorTexture(
+                    ALSkyLayers::starAttachment(mResourceInputs.mEmissive));
+            }
+            capture.main_lighting_ready = std::move(ready);
+            return;
+        }
+        catch (const std::bad_alloc&)
+        {
+            // No native prefix or owner success flag exists yet. The exact
+            // already-prepared base scene can use its ordinary native path.
+            ++capture.main_lighting_pass.declined;
+            ++capture.main_lighting_pass.reasons[static_cast<std::size_t>(ALMetalWorldLightingChainReason::preflight)];
+        }
+    }
 
     // Begin only after scene preparation, immediately before the owned base
     // command is created. Reject an enclosing batch rather than capturing an
@@ -26344,16 +26503,22 @@ void LLPipeline::renderDeferredLighting()
             MetalWorldSimpleCapture& capture =
                 *mMetalWorldSimpleCapture;
             lighting_batch_error.clear();
-            if (!capture.renderer->commitCommandBatch(
+            // Composition can already abandon a failed native prefix. Do
+            // cleanup once, without committing an absent command or counting
+            // that intentional cancellation as a second failed frame.
+            const bool command_active = capture.renderer->commandBatchActive();
+            if (!command_active || !capture.renderer->commitCommandBatch(
                     &lighting_batch_error))
             {
                 capture.base_light_map_target.reset();
                 capture.pending_probe_light_map.reset();
+                capture.main_lighting_ready.reset();
                 capture.base_light_target.reset();
                 capture.composed_light_target.reset();
-                const U32 failed_frames =
-                    ++capture.lighting_composition_failed_frames;
-                if (failed_frames ==
+                const U32 failed_frames = command_active
+                    ? ++capture.lighting_composition_failed_frames
+                    : capture.lighting_composition_failed_frames;
+                if (command_active && failed_frames ==
                     MetalWorldSimpleCapture::max_failed_frames)
                 {
                     LL_WARNS("Metal")

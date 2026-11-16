@@ -2562,6 +2562,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         local_light_accumulation_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         projector_light_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        main_local_light_pipelines, main_projector_light_pipelines;
+    bool fail_main_lighting_after_base = false;
     std::array<std::array<
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
         display_post_pipelines;
@@ -12372,9 +12375,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     return target;
 }
 
-bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
-    ALMetalRenderTarget& target,
+bool ALMetalWorldGBufferRenderer::prepareLocalLighting(
+    const ALMetalRenderTarget& target,
     const ALMetalWorldLocalLightingScene& scene,
+    std::unique_ptr<ALMetalBuffer>& light_buffer,
     std::string* error)
 {
     constexpr std::size_t max_light_count = 65535;
@@ -12439,7 +12443,6 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         }
     }
 
-    ALMetalRenderTarget* output = &target;
     const auto& output_descriptor = target.descriptor();
     if (output_descriptor.width != input.width ||
         output_descriptor.height != input.height ||
@@ -12456,7 +12459,6 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
     // untouched. Validate its inputs above, but acquire no resource or pass.
     if (scene.light_count == 0) return true;
 
-    std::unique_ptr<ALMetalBuffer> light_buffer;
     if (scene.light_count != 0)
     {
         ALMetalBufferDescriptor descriptor;
@@ -12473,6 +12475,115 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         }
     }
 
+    return true;
+}
+
+bool ALMetalWorldGBufferRenderer::encodeLocalLighting(
+    ALMetalRenderEncoder& encoder, const ALMetalWorldLocalLightingScene& scene,
+    const ALMetalBuffer* light_buffer, bool with_depth, std::string* error)
+{
+    const auto& input = scene.gbuffer->descriptor();
+    const auto* albedo = scene.gbuffer->colorTexture(0);
+    const auto* specular = scene.gbuffer->colorTexture(1);
+    const auto* normal = scene.gbuffer->colorTexture(2);
+    const auto* depth = scene.gbuffer->depthStencilTexture();
+    bool encoded = true;
+    if (scene.light_count != 0)
+    {
+        WorldLocalLightingConstants constants;
+        std::memcpy(constants.inverse_projection,
+                    scene.inverse_projection,
+                    sizeof(constants.inverse_projection));
+        constants.surface[0] = scene.specular_exponent;
+        constants.surface[1] = scene.classic_mode ? 0.9f : 1.f;
+        constants.config[0] =
+            static_cast<std::uint32_t>(scene.light_count);
+        constants.config[1] = scene.reverse_z ? 1u : 0u;
+        const std::size_t draw_count = scene.bounded_light_count +
+            (scene.light_count - scene.bounded_light_count + 15u) / 16u;
+        constants.config[2] = static_cast<std::uint32_t>(std::min<std::size_t>(
+            std::max(draw_count, scene.additive_pass_count != 0
+                ? scene.additive_pass_count : 2u * draw_count),
+            std::numeric_limits<std::uint32_t>::max()));
+        const ALMetalViewport viewport{
+            0.0, 0.0,
+            static_cast<double>(input.width),
+            static_cast<double>(input.height), 0.0, 1.0,
+        };
+        const ALMetalScissorRect scissor{
+            0, 0, input.width, input.height,
+        };
+        encoded =
+            encoder.setViewport(viewport, error) &&
+            encoder.setCullMode(ALMetalCullMode::none, error) &&
+            encoder.setFragmentTexture(0, albedo, error) &&
+            encoder.setFragmentTexture(1, specular, error) &&
+            encoder.setFragmentTexture(2, normal, error) &&
+            encoder.setFragmentTexture(3, depth, error) &&
+            encoder.setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
+            encoder.setFragmentSampler(
+                0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder.setFragmentSampler(
+                1, mImpl->linear_clamp_sampler.get(), error);
+
+        const auto draw_lights =
+            [&](std::size_t first, std::size_t count,
+                const ALMetalScissorRect& light_scissor)
+            {
+                if (!encoded)
+                {
+                    return;
+                }
+                constants.config[0] = static_cast<std::uint32_t>(count);
+                encoded =
+                    encoder.setScissor(light_scissor, error) &&
+                    encoder.setPipeline(
+                        *(with_depth ? mImpl->main_local_light_pipelines[scene.hdr ? 1 : 0] : mImpl->local_light_accumulation_pipelines[scene.hdr ? 1 : 0]),
+                        error) &&
+                    encoder.setFragmentBuffer(
+                        0, *light_buffer,
+                        first * sizeof(ALMetalWorldLocalLight), error) &&
+                    encoder.setFragmentBytes(
+                        1, &constants, sizeof(constants), error) &&
+                    encoder.draw(
+                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+            };
+
+        for (std::size_t index = 0;
+             index < scene.bounded_light_count; ++index)
+        {
+            const ALMetalWorldLocalLight& light = scene.lights[index];
+            const ALMetalScissorRect light_scissor{
+                light.screen_rect[0], light.screen_rect[1],
+                light.screen_rect[2], light.screen_rect[3],
+            };
+            draw_lights(index, 1, light_scissor);
+        }
+
+        // Exact original behavior batches only camera-inside lights and caps
+        // each full-screen shader variant at sixteen lights.
+        constexpr std::size_t max_fullscreen_light_batch = 16;
+        for (std::size_t first = scene.bounded_light_count;
+             first < scene.light_count;
+             first += max_fullscreen_light_batch)
+        {
+            draw_lights(
+                first,
+                std::min(max_fullscreen_light_batch,
+                         scene.light_count - first),
+                scissor);
+        }
+    }
+    return encoded;
+}
+
+bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
+    ALMetalRenderTarget& target, const ALMetalWorldLocalLightingScene& scene,
+    std::string* error)
+{
+    std::unique_ptr<ALMetalBuffer> light_buffer;
+    if (!prepareLocalLighting(target, scene, light_buffer, error)) return false;
+    if (scene.light_count == 0) return true;
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
         "Alchemy native world local-point-light accumulation",
@@ -12505,7 +12616,7 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
     pass_config.colors[0].load = ALMetalLoadAction::load;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.bind_depth_stencil = false;
-    auto pass = output->makeRenderPass(pass_config, error);
+    auto pass = target.makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass,
         "Alchemy world in-place local-point-light encoder",
@@ -12516,93 +12627,7 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         return false;
     }
 
-    bool encoded = true;
-    if (scene.light_count != 0)
-    {
-        WorldLocalLightingConstants constants;
-        std::memcpy(constants.inverse_projection,
-                    scene.inverse_projection,
-                    sizeof(constants.inverse_projection));
-        constants.surface[0] = scene.specular_exponent;
-        constants.surface[1] = scene.classic_mode ? 0.9f : 1.f;
-        constants.config[0] =
-            static_cast<std::uint32_t>(scene.light_count);
-        constants.config[1] = scene.reverse_z ? 1u : 0u;
-        const std::size_t draw_count = scene.bounded_light_count +
-            (scene.light_count - scene.bounded_light_count + 15u) / 16u;
-        constants.config[2] = static_cast<std::uint32_t>(std::min<std::size_t>(
-            std::max(draw_count, scene.additive_pass_count != 0
-                ? scene.additive_pass_count : 2u * draw_count),
-            std::numeric_limits<std::uint32_t>::max()));
-        const ALMetalViewport viewport{
-            0.0, 0.0,
-            static_cast<double>(input.width),
-            static_cast<double>(input.height), 0.0, 1.0,
-        };
-        const ALMetalScissorRect scissor{
-            0, 0, input.width, input.height,
-        };
-        encoded =
-            encoder->setViewport(viewport, error) &&
-            encoder->setCullMode(ALMetalCullMode::none, error) &&
-            encoder->setFragmentTexture(0, albedo, error) &&
-            encoder->setFragmentTexture(1, specular, error) &&
-            encoder->setFragmentTexture(2, normal, error) &&
-            encoder->setFragmentTexture(3, depth, error) &&
-            encoder->setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
-            encoder->setFragmentSampler(
-                0, mImpl->point_clamp_sampler.get(), error) &&
-            encoder->setFragmentSampler(
-                1, mImpl->linear_clamp_sampler.get(), error);
-
-        const auto draw_lights =
-            [&](std::size_t first, std::size_t count,
-                const ALMetalScissorRect& light_scissor)
-            {
-                if (!encoded)
-                {
-                    return;
-                }
-                constants.config[0] = static_cast<std::uint32_t>(count);
-                encoded =
-                    encoder->setScissor(light_scissor, error) &&
-                    encoder->setPipeline(
-                        *mImpl->local_light_accumulation_pipelines[scene.hdr ? 1 : 0],
-                        error) &&
-                    encoder->setFragmentBuffer(
-                        0, *light_buffer,
-                        first * sizeof(ALMetalWorldLocalLight), error) &&
-                    encoder->setFragmentBytes(
-                        1, &constants, sizeof(constants), error) &&
-                    encoder->draw(
-                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-            };
-
-        for (std::size_t index = 0;
-             index < scene.bounded_light_count; ++index)
-        {
-            const ALMetalWorldLocalLight& light = scene.lights[index];
-            const ALMetalScissorRect light_scissor{
-                light.screen_rect[0], light.screen_rect[1],
-                light.screen_rect[2], light.screen_rect[3],
-            };
-            draw_lights(index, 1, light_scissor);
-        }
-
-        // Exact original behavior batches only camera-inside lights and caps
-        // each full-screen shader variant at sixteen lights.
-        constexpr std::size_t max_fullscreen_light_batch = 16;
-        for (std::size_t first = scene.bounded_light_count;
-             first < scene.light_count;
-             first += max_fullscreen_light_batch)
-        {
-            draw_lights(
-                first,
-                std::min(max_fullscreen_light_batch,
-                         scene.light_count - first),
-                scissor);
-        }
-    }
+    const bool encoded = encodeLocalLighting(*encoder, scene, light_buffer.get(), false, error);
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(
             owned_command, encoded && ended, error))
@@ -12680,10 +12705,10 @@ bool ALMetalWorldGBufferRenderer::validateProjectorLightParameters(
     return true;
 }
 
-bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
-    ALMetalRenderTarget& target,
+bool ALMetalWorldGBufferRenderer::prepareProjectorLighting(
+    const ALMetalRenderTarget& target,
     const ALMetalWorldProjectorLightingScene& scene,
-    std::string* error)
+    bool& needs_shadows, std::string* error)
 {
     constexpr std::size_t max_light_count = 65535;
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
@@ -12727,7 +12752,7 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
         return false;
     }
 
-    bool needs_shadows = false;
+    needs_shadows = false;
     for (std::size_t index = 0; index < scene.light_count; ++index)
     {
         const ALMetalWorldProjectorLight& light = scene.lights[index];
@@ -12758,7 +12783,6 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
         }
     }
 
-    ALMetalRenderTarget* output = &target;
     const auto& output_descriptor = target.descriptor();
     if (output_descriptor.width != input.width ||
         output_descriptor.height != input.height ||
@@ -12774,49 +12798,19 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
     // Match the original empty-list skip after all existing input checks.
     if (scene.light_count == 0) return true;
 
-    std::unique_ptr<ALMetalCommandBuffer> owned_command;
-    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
-        "Alchemy native world projector-light accumulation",
-        owned_command, error);
-    if (!command)
-    {
-        return false;
-    }
+    return true;
+}
 
-    constexpr std::uint32_t brdf_lut_size = 512;
-    const bool generate_brdf_lut =
-        scene.light_count != 0 && !mImpl->brdf_lut_ready &&
-        !mImpl->command_batch_generates_brdf_lut;
-    if (generate_brdf_lut)
-    {
-        auto compute = ALMetalComputeEncoder::begin(
-            *command, "Alchemy world projector BRDF LUT encoder", error);
-        if (!compute ||
-            !compute->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
-            !compute->setTexture(0, mImpl->brdf_lut.get(), error) ||
-            !compute->dispatch(
-                brdf_lut_size, brdf_lut_size, 1, 8, 8, 1, error) ||
-            !compute->end(error))
-        {
-            return false;
-        }
-    }
-
-    ALMetalRenderPassConfig pass_config;
-    pass_config.colors[0].load = ALMetalLoadAction::load;
-    pass_config.colors[0].store = ALMetalStoreAction::store;
-    pass_config.bind_depth_stencil = false;
-    auto pass = output->makeRenderPass(pass_config, error);
-    auto encoder = pass ? ALMetalRenderEncoder::begin(
-        *command, *pass,
-        "Alchemy world in-place projector-light encoder",
-        error)
-        : nullptr;
-    if (!encoder)
-    {
-        return false;
-    }
-
+bool ALMetalWorldGBufferRenderer::encodeProjectorLighting(
+    ALMetalRenderEncoder& encoder, const ALMetalWorldProjectorLightingScene& scene,
+    bool needs_shadows, bool with_depth, std::string* error)
+{
+    if (scene.light_count == 0) return true;
+    const auto& input = scene.gbuffer->descriptor();
+    const auto* albedo = scene.gbuffer->colorTexture(0);
+    const auto* specular = scene.gbuffer->colorTexture(1);
+    const auto* normal = scene.gbuffer->colorTexture(2);
+    const auto* depth = scene.gbuffer->depthStencilTexture();
     const ALMetalViewport viewport{
         0.0, 0.0,
         static_cast<double>(input.width),
@@ -12831,24 +12825,24 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
             ? scene.projector_shadows->constants
             : mImpl->unshadowed_constants;
     bool encoded =
-        encoder->setViewport(viewport, error) &&
-        encoder->setScissor(scissor, error) &&
-        encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(
-            *mImpl->projector_light_pipelines[scene.hdr ? 1 : 0], error) &&
-        encoder->setFragmentTexture(0, albedo, error) &&
-        encoder->setFragmentTexture(1, specular, error) &&
-        encoder->setFragmentTexture(2, normal, error) &&
-        encoder->setFragmentTexture(3, depth, error) &&
-        encoder->setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
-        encoder->setFragmentTexture(6, projector_shadow_depth, error) &&
-        encoder->setFragmentBytes(
+        encoder.setViewport(viewport, error) &&
+        encoder.setScissor(scissor, error) &&
+        encoder.setCullMode(ALMetalCullMode::none, error) &&
+        encoder.setPipeline(
+            *(with_depth ? mImpl->main_projector_light_pipelines[scene.hdr ? 1 : 0] : mImpl->projector_light_pipelines[scene.hdr ? 1 : 0]), error) &&
+        encoder.setFragmentTexture(0, albedo, error) &&
+        encoder.setFragmentTexture(1, specular, error) &&
+        encoder.setFragmentTexture(2, normal, error) &&
+        encoder.setFragmentTexture(3, depth, error) &&
+        encoder.setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
+        encoder.setFragmentTexture(6, projector_shadow_depth, error) &&
+        encoder.setFragmentBytes(
             1, &projector_shadows, sizeof(projector_shadows), error) &&
-        encoder->setFragmentSampler(
+        encoder.setFragmentSampler(
             0, mImpl->point_clamp_sampler.get(), error) &&
-        encoder->setFragmentSampler(
+        encoder.setFragmentSampler(
             1, mImpl->linear_clamp_sampler.get(), error) &&
-        encoder->setFragmentSampler(
+        encoder.setFragmentSampler(
             2, mImpl->diffuse_sampler.get(), error);
 
     for (std::size_t index = 0; encoded && index < scene.light_count;
@@ -12893,15 +12887,69 @@ bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
                 ? scene.additive_pass_count : 2u * scene.light_count),
             std::numeric_limits<std::uint32_t>::max()));
         encoded =
-            encoder->setScissor(light_scissor, error) &&
-            encoder->setFragmentBytes(
+            encoder.setScissor(light_scissor, error) &&
+            encoder.setFragmentBytes(
                 0, &constants, sizeof(constants), error) &&
-            encoder->setFragmentTexture(
+            encoder.setFragmentTexture(
                 5, light.cookie_texture, error) &&
-            encoder->draw(
+            encoder.draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
 
+    return encoded;
+}
+
+bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
+    ALMetalRenderTarget& target, const ALMetalWorldProjectorLightingScene& scene,
+    std::string* error)
+{
+    bool needs_shadows = false;
+    if (!prepareProjectorLighting(target, scene, needs_shadows, error)) return false;
+    if (scene.light_count == 0) return true;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world projector-light accumulation",
+        owned_command, error);
+    if (!command)
+    {
+        return false;
+    }
+
+    constexpr std::uint32_t brdf_lut_size = 512;
+    const bool generate_brdf_lut =
+        scene.light_count != 0 && !mImpl->brdf_lut_ready &&
+        !mImpl->command_batch_generates_brdf_lut;
+    if (generate_brdf_lut)
+    {
+        auto compute = ALMetalComputeEncoder::begin(
+            *command, "Alchemy world projector BRDF LUT encoder", error);
+        if (!compute ||
+            !compute->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
+            !compute->setTexture(0, mImpl->brdf_lut.get(), error) ||
+            !compute->dispatch(
+                brdf_lut_size, brdf_lut_size, 1, 8, 8, 1, error) ||
+            !compute->end(error))
+        {
+            return false;
+        }
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::load;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.bind_depth_stencil = false;
+    auto pass = target.makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass,
+        "Alchemy world in-place projector-light encoder",
+        error)
+        : nullptr;
+    if (!encoder)
+    {
+        return false;
+    }
+
+    const bool encoded = encodeProjectorLighting(*encoder, scene, needs_shadows, false, error);
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(
             owned_command, encoded && ended, error))
@@ -25291,11 +25339,95 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderBaseLigh
     return renderBaseLightingInternal(scene, nullptr, error);
 }
 
+void ALMetalWorldGBufferRenderer::failNextMainLightingChainAfterBaseForTesting() noexcept
+{
+    if (mImpl) mImpl->fail_main_lighting_after_base = true;
+}
+
+ALMetalWorldLightingChainResult ALMetalWorldGBufferRenderer::renderMainLightingChain(
+    const ALMetalWorldBaseLightingScene& base,
+    const ALMetalWorldModernSkyScene* modern_sky,
+    const ALMetalWorldLocalLightingScene& local,
+    const ALMetalWorldProjectorLightingScene& projector, std::string* error)
+{
+    ALMetalWorldLightingChainResult result;
+    if (!mImpl || !base.carry_depth || !base.borrow_depth || base.diagnostic_view.view_kind != 1)
+    {
+        result.reason = ALMetalWorldLightingChainReason::scope;
+        setError(error, "Metal main lighting chain requires carried main-view depth");
+        return result;
+    }
+    if (mImpl->probe_workload)
+    {
+        result.reason = ALMetalWorldLightingChainReason::diagnostic;
+        setError(error, "Metal main lighting chain preserves the separate workload diagnostic");
+        return result;
+    }
+    if (!base.gbuffer || local.gbuffer != base.gbuffer || projector.gbuffer != base.gbuffer ||
+        local.hdr != base.hdr || projector.hdr != base.hdr ||
+        local.reverse_z != (base.constants.config[0] != 0) ||
+        projector.reverse_z != local.reverse_z ||
+        projector.normal_hdr != (base.constants.surface[1] != 0.f) ||
+        (modern_sky && (!modernSkyValid(*modern_sky, true, error) ||
+            modern_sky->width != base.gbuffer->descriptor().width ||
+            modern_sky->height != base.gbuffer->descriptor().height)))
+    {
+        result.reason = ALMetalWorldLightingChainReason::inputs;
+        if (!error || error->empty()) setError(error, "Metal main lighting chain inputs are incompatible");
+        return result;
+    }
+    bool prefix = false;
+    // Cover every post-prefix exit, including exceptions: never leave the
+    // exact outer command committable after reporting a failed transaction.
+    struct Failure
+    {
+        Impl* impl; bool& prefix; bool succeeded = false;
+        ~Failure() noexcept
+        {
+            if (!succeeded && prefix && impl->command_batch)
+            {
+                impl->command_batch_valid = false;
+                try
+                {
+                    if (impl->command_batch_failure.empty())
+                        impl->command_batch_failure = "Metal main lighting chain failed after native prefix";
+                }
+                catch (...) {}
+            }
+        }
+    } failure{mImpl.get(), prefix};
+    try
+    {
+        result.target = renderBaseLightingInternal(base, nullptr, error,
+            &local, &projector, modern_sky, &prefix);
+    }
+    catch (...)
+    {
+        setError(error, "Metal main lighting chain preparation or encoding failed");
+    }
+    if (result.target)
+    {
+        failure.succeeded = true;
+        result.status = ALMetalWorldLightingChainStatus::encoded;
+    }
+    else if (prefix)
+    {
+        result.status = ALMetalWorldLightingChainStatus::failed;
+        result.reason = ALMetalWorldLightingChainReason::native_prefix;
+    }
+    else result.reason = ALMetalWorldLightingChainReason::preflight;
+    return result;
+}
+
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     const ALMetalWorldBaseLightingScene& scene,
     const ALMetalWorldLightMapScene* tile_light_map,
-    std::string* error)
+    std::string* error,
+    const ALMetalWorldLocalLightingScene* local,
+    const ALMetalWorldProjectorLightingScene* projector,
+    const ALMetalWorldModernSkyScene* modern_sky,
+    bool* native_prefix)
 {
     if (tile_light_map && !validateWorldLightMap(*tile_light_map, error)) return nullptr;
     const bool probe_environment =
@@ -25462,6 +25594,33 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         return nullptr;
     }
 
+    std::unique_ptr<ALMetalBuffer> local_buffer;
+    bool projector_needs_shadows = false;
+    if (local && (!prepareLocalLighting(*output, *local, local_buffer, error) ||
+        !prepareProjectorLighting(*output, *projector, projector_needs_shadows, error))) return nullptr;
+    if (local)
+    {
+        const auto variant = scene.hdr ? 1u : 0u;
+        if (local->light_count && !mImpl->main_local_light_pipelines[variant])
+        {
+            auto point = mImpl->local_light_accumulation_pipelines[variant]->descriptor();
+            point.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+            point.label = "Alchemy main-pass point-light pipeline";
+            auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, point, error);
+            if (!pipeline) return nullptr;
+            mImpl->main_local_light_pipelines[variant] = std::move(pipeline);
+        }
+        if (projector->light_count && !mImpl->main_projector_light_pipelines[variant])
+        {
+            auto spot = mImpl->projector_light_pipelines[variant]->descriptor();
+            spot.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+            spot.label = "Alchemy main-pass projector-light pipeline";
+            auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, spot, error);
+            if (!pipeline) return nullptr;
+            mImpl->main_projector_light_pipelines[variant] = std::move(pipeline);
+        }
+    }
+
     ALMetalBufferDescriptor probe_buffer_descriptor;
     probe_buffer_descriptor.length =
         sizeof(ALMetalWorldReflectionProbeConstants);
@@ -25499,24 +25658,6 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         return nullptr;
     }
 
-    constexpr std::uint32_t brdf_lut_size = 512;
-    const bool generate_brdf_lut = !mImpl->brdf_lut_ready &&
-        !mImpl->command_batch_generates_brdf_lut;
-    if (generate_brdf_lut)
-    {
-        auto compute = ALMetalComputeEncoder::begin(
-            *command, "Alchemy world PBR BRDF LUT encoder", error);
-        if (!compute ||
-            !compute->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
-            !compute->setTexture(0, mImpl->brdf_lut.get(), error) ||
-            !compute->dispatch(
-                brdf_lut_size, brdf_lut_size, 1, 8, 8, 1, error) ||
-            !compute->end(error))
-        {
-            return nullptr;
-        }
-    }
-
     ALMetalRenderPassConfig pass_config;
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
@@ -25532,8 +25673,30 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = pass_target->makeRenderPass(pass_config, error);
+    if (!pass) return nullptr;
+
+    constexpr std::uint32_t brdf_lut_size = 512;
+    const bool generate_brdf_lut = !mImpl->brdf_lut_ready &&
+        !mImpl->command_batch_generates_brdf_lut;
+    if (generate_brdf_lut)
+    {
+        if (native_prefix) *native_prefix = true;
+        auto compute = ALMetalComputeEncoder::begin(
+            *command, "Alchemy world PBR BRDF LUT encoder", error);
+        if (!compute ||
+            !compute->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
+            !compute->setTexture(0, mImpl->brdf_lut.get(), error) ||
+            !compute->dispatch(
+                brdf_lut_size, brdf_lut_size, 1, 8, 8, 1, error) ||
+            !compute->end(error))
+        {
+            return nullptr;
+        }
+    }
+
+    if (pass && native_prefix) *native_prefix = true;
     auto encoder = pass ? ALMetalRenderEncoder::begin(
-        *command, *pass, "Alchemy world depth-classified base-light encoder",
+        *command, *pass, local ? "Alchemy main base-sky-point-projector encoder" : "Alchemy world depth-classified base-light encoder",
         error)
         : nullptr;
     if (!encoder)
@@ -25650,6 +25813,21 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
                 *(tile_light_map ? mImpl->probe_tile_sky_pipelines[pipeline_index] : mImpl->base_light_sky_pipelines[pipeline_index]), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+    if (encoded && local && mImpl->fail_main_lighting_after_base)
+    {
+        mImpl->fail_main_lighting_after_base = false;
+        setError(error, "Injected main lighting chain failure after encoded base");
+        encoded = false;
+    }
+    if (encoded && modern_sky) encoded = encodeModernSky(*encoder, *modern_sky, error);
+    if (encoded && local)
+    {
+        // Base/sky depth classification must not leak into fullscreen
+        // additive lighting. Keep carried depth/stencil unchanged.
+        encoded = encoder->setDepthStencilState(mImpl->overlay_composite_depth.get(), error) &&
+            encodeLocalLighting(*encoder, *local, local_buffer.get(), true, error) &&
+            encodeProjectorLighting(*encoder, *projector, projector_needs_shadows, true, error);
     }
     const bool ended = encoder->end(error);
     const bool copied_depth =
@@ -26570,6 +26748,34 @@ bool ALMetalWorldGBufferRenderer::renderModernSkyStars(ALMetalRenderTarget& gbuf
     return mImpl->finishCommandBuffer(owned, ok && ended, error);
 }
 
+bool ALMetalWorldGBufferRenderer::encodeModernSky(
+    ALMetalRenderEncoder& encoder, const ALMetalWorldModernSkyScene& scene,
+    std::string* error)
+{
+    bool ok = encoder.setPipeline(*mImpl->modern_sky_pipeline, error) &&
+        encoder.setDepthStencilState(mImpl->modern_sky_depth.get(), error) &&
+        encoder.setCullMode(ALMetalCullMode::none, error) &&
+        encoder.setViewport({0, 0, double(scene.width), double(scene.height), 0, 1}, error) &&
+        encoder.setScissor({0, 0, scene.width, scene.height}, error) &&
+        encoder.setVertexBytes(0, &scene.constants, sizeof(scene.constants), error) &&
+        encoder.setFragmentBytes(0, &scene.constants, sizeof(scene.constants), error) &&
+        encoder.setFragmentBytes(1, scene.meteor_data, sizeof(scene.meteor_data), error);
+    const ALMetalTexture* maps[] = {scene.rainbow_texture, scene.halo_texture, scene.hdri_texture, scene.stars_texture,
+        scene.sun_texture, scene.sun_next_texture, scene.moon_texture, scene.bloom_texture,
+        scene.bloom_next_texture, scene.cloud_texture, scene.cloud_next_texture};
+    for (std::uint32_t i = 0; ok && i < 11; ++i)
+    {
+        const auto* map = maps[i] ? maps[i] : mImpl->inactive_ssr_color.get();
+        ok = i == 3 ? encoder.setFragmentTexture(i, map, error) : encoder.setFragmentTextureLinear(i, map, error);
+    }
+    ok = ok && encoder.setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
+        encoder.setFragmentSampler(1, mImpl->ramp_sampler.get(), error) &&
+        encoder.setFragmentSampler(2, mImpl->point_clamp_sampler.get(), error) &&
+        encoder.setFragmentSampler(3, mImpl->hdri_sampler.get(), error) &&
+        encoder.draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    return ok;
+}
+
 bool ALMetalWorldGBufferRenderer::compositeModernSky(ALMetalRenderTarget& lit, const ALMetalTexture& depth,
     const ALMetalWorldModernSkyScene& scene, std::string* error)
 {
@@ -26596,27 +26802,7 @@ bool ALMetalWorldGBufferRenderer::compositeModernSky(ALMetalRenderTarget& lit, c
     auto command = pass ? mImpl->acquireCommandBuffer("Alchemy ray sky composite", owned, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(*command, *pass, "Alchemy ray sky composite", error) : nullptr;
     if (!encoder) return false;
-    bool ok = encoder->setPipeline(*mImpl->modern_sky_pipeline, error) &&
-        encoder->setDepthStencilState(mImpl->modern_sky_depth.get(), error) &&
-        encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setViewport({0, 0, double(scene.width), double(scene.height), 0, 1}, error) &&
-        encoder->setScissor({0, 0, scene.width, scene.height}, error) &&
-        encoder->setVertexBytes(0, &scene.constants, sizeof(scene.constants), error) &&
-        encoder->setFragmentBytes(0, &scene.constants, sizeof(scene.constants), error) &&
-        encoder->setFragmentBytes(1, scene.meteor_data, sizeof(scene.meteor_data), error);
-    const ALMetalTexture* maps[] = {scene.rainbow_texture, scene.halo_texture, scene.hdri_texture, scene.stars_texture,
-        scene.sun_texture, scene.sun_next_texture, scene.moon_texture, scene.bloom_texture,
-        scene.bloom_next_texture, scene.cloud_texture, scene.cloud_next_texture};
-    for (std::uint32_t i = 0; ok && i < 11; ++i)
-    {
-        const auto* map = maps[i] ? maps[i] : mImpl->inactive_ssr_color.get();
-        ok = i == 3 ? encoder->setFragmentTexture(i, map, error) : encoder->setFragmentTextureLinear(i, map, error);
-    }
-    ok = ok && encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
-        encoder->setFragmentSampler(1, mImpl->ramp_sampler.get(), error) &&
-        encoder->setFragmentSampler(2, mImpl->point_clamp_sampler.get(), error) &&
-        encoder->setFragmentSampler(3, mImpl->hdri_sampler.get(), error) &&
-        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    const bool ok = encodeModernSky(*encoder, scene, error);
     const bool ended = encoder->end(error);
     return mImpl->finishCommandBuffer(owned, ok && ended, error);
 }
