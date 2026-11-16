@@ -14,8 +14,8 @@ struct Stats
 {
     // Owner-only invocation totals. At a quiescent boundary every refresh
     // returns a reuse/completed relay or throws. Same-revision owner returns
-    // never enter refresh. Subscription calls include duplicate Signal edges
-    // and a Signal::observe which throws, but exclude a pre-call test fault.
+    // never enter refresh. Subscription calls count distinct Signal edges,
+    // including a Signal::observe which throws, but not a pre-call test fault.
     std::uint64_t refresh_calls = 0, topology_reuses = 0, relay_completions = 0;
     std::uint64_t actual_subscription_calls = 0, failures = 0;
 };
@@ -88,12 +88,18 @@ public:
         return matched && at == signals.size();
     }
 
-    void remember(ALNativePublication::Revision identity)
+    // Preserve every ordered role for exact topology matching, but subscribe
+    // this relay only on the first occurrence of a Signal. Its immutable
+    // identity also distinguishes a replacement at a recycled object address.
+    bool remember(ALNativePublication::Revision identity)
     {
+        bool first = true;
+        for (const auto prior : identities())
+            if (prior == identity) { first = false; break; }
         if (mOverflow.empty() && mSignalCount < inline_capacity)
         {
             mInline[mSignalCount++] = identity;
-            return;
+            return first;
         }
         if (mOverflow.empty())
         {
@@ -102,6 +108,7 @@ public:
         }
         mOverflow.push_back(identity);
         ++mSignalCount;
+        return first;
     }
     std::size_t signalCount() const noexcept { return mSignalCount; }
 
@@ -142,7 +149,7 @@ std::shared_ptr<Relay> refresh(const DrawInfo& info,
         auto relay = std::make_shared<Relay>(state);
         visit(info, [&](ALNativePublication::Signal& signal)
         {
-            relay->remember(signal.identity());
+            if (!relay->remember(signal.identity())) return true;
             if (subscriptionAttemptForTesting) subscriptionAttemptForTesting(relay->signalCount() - 1);
             ++statistics.actual_subscription_calls;
             signal.observe(relay);

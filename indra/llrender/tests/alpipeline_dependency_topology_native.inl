@@ -83,7 +83,11 @@ TEST_CASE("Production draw dependency visitor covers all roles and reuses unchan
     info.mGLTFMaterial.value = &material;
     info.mGLTFMaterialList = {{&material}, {&material}};
     const auto before = DependencyTopology::ALNativeDrawSourceDependencies::statistics;
-    info.observeShared();
+    {
+        DependencyTopology::SubscriptionFault count_subscriptions;
+        info.observeShared();
+        CHECK(DependencyTopology::SubscriptionFault::attempted == 3);
+    }
     REQUIRE(info.dependencies);
     CHECK(info.dependencies->signalCount() == 30);
     auto relay = info.dependencies;
@@ -129,7 +133,7 @@ TEST_CASE("Production draw dependency visitor covers all roles and reuses unchan
     CHECK(after.refresh_calls - before.refresh_calls == 4);
     CHECK(after.topology_reuses - before.topology_reuses == 3);
     CHECK(after.relay_completions - before.relay_completions == 1);
-    CHECK(after.actual_subscription_calls - before.actual_subscription_calls == 30);
+    CHECK(after.actual_subscription_calls - before.actual_subscription_calls == 3);
     CHECK(after.failures == before.failures);
 }
 
@@ -214,7 +218,97 @@ TEST_CASE("Dependency subscription failure preserves the old relay until a compl
     CHECK(after.refresh_calls - before.refresh_calls == 3);
     CHECK(after.topology_reuses == before.topology_reuses);
     CHECK(after.relay_completions - before.relay_completions == 2);
-    CHECK(after.actual_subscription_calls - before.actual_subscription_calls == 12);
+    CHECK(after.actual_subscription_calls - before.actual_subscription_calls == 8);
+    CHECK(after.failures - before.failures == 1);
+}
+
+TEST_CASE("Repeated dependency roles retain exact order and multiplicity after subscription deduplication",
+          "[almetal][pipeline-dependency-topology]")
+{
+    Publication fixture;
+    DependencyTopology::Image first, second;
+    DependencyTopology::Owner info;
+    info.mVertexBuffer = fixture.buffer(false);
+    info.mTextureList = {{&first.facade}, {&first.facade}, {&second.facade}};
+    info.observeShared();
+    REQUIRE(info.dependencies->signalCount() == 7);
+    std::weak_ptr<DependencyTopology::Relay> old(info.dependencies);
+    const auto before = DependencyTopology::ALNativeDrawSourceDependencies::statistics;
+    // The unique Signals and the role count stay equal, but the full ordered
+    // topology changes. A deduplicated topology fingerprint would miss this.
+    std::swap(info.mTextureList[1], info.mTextureList[2]);
+    info.state->invalidate();
+    {
+        DependencyTopology::SubscriptionFault count_subscriptions;
+        info.observeShared();
+        CHECK(DependencyTopology::SubscriptionFault::attempted == 4);
+    }
+    CHECK(old.expired());
+    CHECK(info.dependencies->signalCount() == 7);
+    old = info.dependencies;
+    // Change multiplicity without changing the unique producers or role count.
+    info.mTextureList[0].value = &second.facade;
+    info.state->invalidate();
+    info.observeShared();
+    CHECK(old.expired());
+    CHECK(info.dependencies->signalCount() == 7);
+    auto revision = info.state->revision();
+    first.native->nativePublication().willWrite();
+    CHECK(info.state->revision() == revision + 1);
+    second.native->nativePublication().didPublish();
+    CHECK(info.state->revision() == revision + 2);
+    const auto after = DependencyTopology::ALNativeDrawSourceDependencies::statistics;
+    CHECK(after.relay_completions - before.relay_completions == 2);
+    CHECK(after.actual_subscription_calls - before.actual_subscription_calls == 8);
+    CHECK(after.topology_reuses == before.topology_reuses);
+}
+
+TEST_CASE("Repeated dependency roles preserve rollback before a later unique subscription",
+          "[almetal][pipeline-dependency-topology]")
+{
+    Publication fixture;
+    DependencyTopology::Image first, second, third;
+    DependencyTopology::Owner info;
+    info.mVertexBuffer = fixture.buffer(false);
+    info.mTexture.value = &first.facade;
+    info.observeShared();
+    auto* original = info.dependencies.get();
+    const auto cached = info.dependency_revision;
+    info.mTexture.value = info.mNormalMap.value = info.mSpecularMap.value = &second.facade;
+    info.mTextureList = {{&second.facade}, {&third.facade}};
+    info.state->invalidate();
+    const auto before = DependencyTopology::ALNativeDrawSourceDependencies::statistics;
+    {
+        // Vertex, second image, then third image at role five. The repeated
+        // second-image roles keep their topology positions without callbacks.
+        DependencyTopology::SubscriptionFault fail_on_third_unique(5);
+        REQUIRE_THROWS_AS(info.observeShared(), std::bad_alloc);
+        CHECK(DependencyTopology::SubscriptionFault::attempted == 3);
+    }
+    CHECK(info.dependencies.get() == original);
+    CHECK(info.dependency_revision == cached);
+    auto revision = info.state->revision();
+    second.native->nativePublication().didPublish();
+    CHECK(info.state->revision() == revision); // The partial new relay expired.
+    first.native->nativePublication().didPublish();
+    CHECK(info.state->revision() == revision + 1);
+    std::weak_ptr<DependencyTopology::Relay> old(info.dependencies);
+    {
+        DependencyTopology::SubscriptionFault count_subscriptions;
+        info.observeShared();
+        CHECK(DependencyTopology::SubscriptionFault::attempted == 4);
+    }
+    CHECK(old.expired());
+    CHECK(info.dependencies->signalCount() == 9);
+    revision = info.state->revision();
+    first.native->nativePublication().didPublish();
+    CHECK(info.state->revision() == revision);
+    second.native->nativePublication().didPublish();
+    CHECK(info.state->revision() == revision + 1);
+    third.native->nativePublication().willWrite();
+    CHECK(info.state->revision() == revision + 2);
+    const auto after = DependencyTopology::ALNativeDrawSourceDependencies::statistics;
+    CHECK(after.actual_subscription_calls - before.actual_subscription_calls == 6);
     CHECK(after.failures - before.failures == 1);
 }
 
@@ -342,7 +436,12 @@ TEST_CASE("Production dependency visitor observes distinct material image and fa
     }
     CHECK(unique.size() == 30);
     const auto before = DependencyTopology::ALNativeDrawSourceDependencies::statistics;
-    info.observeShared(); auto relay = info.dependencies;
+    {
+        DependencyTopology::SubscriptionFault count_subscriptions;
+        info.observeShared();
+        CHECK(DependencyTopology::SubscriptionFault::attempted == 30);
+    }
+    auto relay = info.dependencies;
     {
         DependencyTopology::SubscriptionFault forbid_subscriptions(0);
         for (auto* signal : expected)
