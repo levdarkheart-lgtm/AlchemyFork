@@ -7,6 +7,19 @@
 #include "almetalshadowcapture.h"
 #include "almetalshadowindirect.h"
 #include "../llcommon/alnativeframebudget.h"
+
+// Complete-path costs reject dispatch at 256 and show useful overlap at 1158.
+// This conservative native-record boundary still requires its own 1024 cost
+// cell; it is not a logical-source threshold or a viewer FPS guarantee.
+inline constexpr std::size_t alMetalShadowViewMinimumBatches = 1024;
+enum class ALMetalShadowViewWorkEligibility : std::uint8_t { eligible, below_work };
+constexpr ALMetalShadowViewWorkEligibility alMetalShadowViewWorkEligibility(
+    std::size_t native_batch_count) noexcept
+{
+    return native_batch_count >= alMetalShadowViewMinimumBatches
+        ? ALMetalShadowViewWorkEligibility::eligible
+        : ALMetalShadowViewWorkEligibility::below_work;
+}
 // This is the production capture/encode overlap boundary, not a work queue.
 // Owner methods are sequential. Only run() sees the packet/private encoder;
 // no query pool, ticket, viewer pointer or owner callback enters that worker.

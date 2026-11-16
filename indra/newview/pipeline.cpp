@@ -579,7 +579,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalCapturedShadowView::Queries recycled_shadow_queries;
     struct ShadowOverlapDiagnostics
     {
-        U64 considered = 0, eligible = 0, disabled = 0, borrowed = 0, diagnostic = 0, timing = 0,
+        U64 considered = 0, eligible = 0, disabled = 0, borrowed = 0, diagnostic = 0, timing = 0, below_work = 0,
             declined = 0, budget_denied = 0, adoption_denied = 0, jobs = 0, queries = 0, encoded = 0, submitted = 0,
             canceled = 0, failed = 0, join_ns = 0, cpu_packet_bytes = 0, max_cpu_packet_bytes = 0;
     } shadow_overlap_diagnostics;
@@ -3228,8 +3228,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             LL_INFOS("MetalShadowSources") << "Native shadow view overlap: requested="
                 << gSavedSettings.getBOOL("RenderMetalShadowViewOverlap")
                 << ", considered/eligible=" << overlap.considered << '/' << overlap.eligible
-                << ", declined(disabled/borrowed/readback/timing/job)=" << overlap.disabled << '/'
-                << overlap.borrowed << '/' << overlap.diagnostic << '/' << overlap.timing << '/' << overlap.declined
+                << ", minimum_native_batches=" << alMetalShadowViewMinimumBatches
+                << ", declined(disabled/borrowed/readback/timing/below_work/job)=" << overlap.disabled << '/'
+                << overlap.borrowed << '/' << overlap.diagnostic << '/' << overlap.timing << '/' << overlap.below_work << '/' << overlap.declined
                 << ", budget/adoption_denials=" << overlap.budget_denied << '/' << overlap.adoption_denied
                 << ", jobs/queries=" << overlap.jobs << '/' << overlap.queries
                 << ", outcomes(encoded/submitted/canceled/failed)=" << overlap.encoded << '/'
@@ -14943,6 +14944,8 @@ void LLPipeline::endMetalSpotShadowCapture()
     // Real StageTimingWindow mutation/poll/seal is submission-owner-only.
     else if (ALMetalStageTimingScope::current() && ALMetalStageTimingScope::current()->window())
         ++overlap.timing;
+    else if (alMetalShadowViewWorkEligibility(scene.batch_count) == ALMetalShadowViewWorkEligibility::below_work)
+        ++overlap.below_work;
     else
     {
         ++overlap.eligible;

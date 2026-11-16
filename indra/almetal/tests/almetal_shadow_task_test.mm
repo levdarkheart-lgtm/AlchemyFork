@@ -640,7 +640,8 @@ struct CostResult
     double cpu_ms = 0, settled_ms = 0, gpu_sum_ms = 0, gpu_envelope_ms = 0;
     std::uint64_t overlap_ns = 0, producer_ns = 0, worker_ns = 0, commits = 0;
     std::uint64_t context_creation_ns = 0;
-    unsigned workers = 0, settlements = 0;
+    unsigned workers = 0, settlements = 0, eligible_views = 0, below_work_views = 0;
+    std::array<std::size_t, 3> native_batches{};
     std::array<std::vector<float>, 3> pixels;
     std::array<std::vector<std::uint64_t>, 3> queries;
 };
@@ -663,13 +664,7 @@ CostResult measure(Fixture& f, const Plan& plan, CostArm& arm,
     { if (!condition) throw std::runtime_error(message); };
     const auto before = ALMetalDevice::committedCommandBufferCount();
     const auto started = tick();
-    if (overlap && !arm.task)
-    {
-        const auto context_start = tick();
-        auto context = arm.renderer->createShadowEncodingContext(&f.error); must(bool(context), "Context creation failed");
-        arm.task = std::make_unique<ALMetalShadowViewTask>(std::move(context));
-        result.context_creation_ns = tick() - context_start;
-    }
+    bool pending = false;
     auto finish_previous = [&](unsigned view, std::uint64_t producer_start, std::uint64_t producer_end)
     {
         auto outcome = arm.task->finish(true, &f.error);
@@ -697,22 +692,41 @@ CostResult measure(Fixture& f, const Plan& plan, CostArm& arm,
         const auto producer_start = tick(); plan.produce(arm.capture, view, query); const auto producer_end = tick();
         producer_owners[view] = arm.capture.owners;
         result.producer_ns += producer_end - producer_start;
-        if (overlap)
+        result.native_batches[view] = arm.capture.batches.size();
+        if (pending)
         {
-            if (view) finish_previous(view - 1, producer_start, producer_end);
+            finish_previous(view - 1, producer_start, producer_end);
+            pending = false;
+        }
+        const bool eligible = overlap && alMetalShadowViewWorkEligibility(arm.capture.batches.size()) ==
+            ALMetalShadowViewWorkEligibility::eligible;
+        if (eligible)
+        {
+            ++result.eligible_views;
+            if (!arm.task)
+            {
+                const auto context_start = tick();
+                auto context = arm.renderer->createShadowEncodingContext(&f.error); must(bool(context), "Context creation failed");
+                arm.task = std::make_unique<ALMetalShadowViewTask>(std::move(context));
+                result.context_creation_ns = tick() - context_start;
+            }
             auto packet = arm.capture.take(f.error);
             must(arm.task->start(*arm.renderer, frame, packet, arm.target, view, &budget, &f.error), "Task adoption declined");
             must(!packet && !arm.renderer->commandBatchActive(), "Adoption left duplicate command or packet ownership");
             arm.capture.batches.swap(arm.recycled_batches); arm.capture.queries.swap(arm.recycled_queries);
+            pending = true;
         }
         else
         {
+            result.below_work_views += overlap;
+            // Policy fallback uses the ordinary serial branch before creating
+            // any packet, private context or job, including cold mode1 samples.
             must(arm.renderer->renderSpotShadow(*arm.target, view, arm.capture.scene(), &f.error, &queries[view]), "Serial encoding failed");
             must(arm.renderer->commitCommandBatch(&f.error), "Serial commitment failed");
             arm.capture.batches.clear(); arm.capture.queries.clear(); arm.capture.owners.reset();
         }
     }
-    if (overlap) finish_previous(2, 0, 0);
+    if (pending) finish_previous(2, 0, 0);
     const auto encoded = tick();
     for (unsigned view = 0; view < 3; ++view)
     {
@@ -777,8 +791,8 @@ TEST_CASE("almetal: complete current serial and production shadow overlap cost f
         Fixture f;
         std::cout << "shadow_task_cost_scope includes=source_pose_acquire_scalar_MVP_UV_ordered_owner_admission_packet_dispatch_join_native_encode_original_admission_commit_query_settlement_GPU_retirement"
             " excludes=live_LL_traversal_culling_asset_publication_initial_retained_targets_pose_solve_LL_query_ticket_pool"
-            " views=3 families=opaque_mask_riggedPBR frozen_record_per_draw=1 current_raw_scalar_comparator=1 retained_context_and_frame_arenas=1 FPS_claim=0\n";
-        for (const std::size_t count : {256u, 867u, 1158u})
+            " views=3 families=opaque_mask_riggedPBR frozen_record_per_draw=1 current_raw_scalar_comparator=1 mode1=shared_native_batch_policy minimum_native_batches=1024 retained_context_and_frame_arenas=1 FPS_claim=0\n";
+        for (const std::size_t count : {32u, 256u, 867u, 1024u, 1158u, 4096u})
         for (const bool query : {false, true})
         {
             Plan plan(f, count); std::array<std::unique_ptr<CostArm>, 2> arms;
@@ -802,10 +816,20 @@ TEST_CASE("almetal: complete current serial and production shadow overlap cost f
                         << " producer_ns=" << value.producer_ns << " worker_ns=" << value.worker_ns
                         << " first_context_creation_ns=" << value.context_creation_ns
                         << " actual_producer_encode_intersection_ns=" << value.overlap_ns
-                        << " private_workers=" << value.workers << " original_commands=" << value.commits << '\n';
+                        << " private_workers=" << value.workers << " original_commands=" << value.commits
+                        << " native_batches=" << value.native_batches[0] << '/' << value.native_batches[1] << '/' << value.native_batches[2]
+                        << " policy_eligible_views=" << value.eligible_views << " policy_below_work_views=" << value.below_work_views
+                        << " minimum_native_batches=" << alMetalShadowViewMinimumBatches << '\n';
                 }
                 CHECK(results[0].pixels == results[1].pixels); CHECK(results[0].queries == results[1].queries);
-                CHECK(results[1].workers == 3);
+                const bool eligible = alMetalShadowViewWorkEligibility(count) == ALMetalShadowViewWorkEligibility::eligible;
+                CHECK(results[0].workers == 0); CHECK(results[0].context_creation_ns == 0);
+                CHECK(results[1].workers == (eligible ? 3u : 0u));
+                CHECK(results[1].eligible_views == (eligible ? 3u : 0u));
+                CHECK(results[1].below_work_views == (eligible ? 0u : 3u));
+                for (const auto& value : results)
+                    for (const auto actual : value.native_batches) CHECK(actual == count);
+                if (!eligible) { CHECK(results[1].context_creation_ns == 0); CHECK_FALSE(arms[1]->task); }
             }
             std::cout << "shadow_task_cost_summary draws=" << count << " query=" << query << " samples=" << measured
                 << " serial_cpu_median_ms=" << median(cpu[0]) << " overlap_cpu_median_ms=" << median(cpu[1])
