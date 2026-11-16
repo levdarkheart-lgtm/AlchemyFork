@@ -5847,6 +5847,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-16 independent review gap closed with one additional real cutout/sampler test: source80fc60b5ebd9… passes44assertions/1case via optimized test object linked against frozen76 native objects and exact76 metallib, API/GPU validation enabled. Both old/new contexts match direct scalar alpha-discard pixels after parent reload/anisotropy4/destruction and material-buffer first use. Private shadow-context-covered-20261116T005033Z/receipt.json preserves all input hashes/commands. Formal future combined build includes this added case; this evidence is not a new full app build or FPS claim. Production outer-admission and owner settlement remain open.
 
+- 2026-11-16 next G3 implementation assigned to exclusive /private/tmp/alchemy-apple-first-shadow-view-overlap fromdfb1f5dad3: actual one-packet capture/encoding overlap, including native query arrays/results with owner-only ALQueryTicket settlement. Preserve original shared2-group×6-view admission and command/source-lease completion identity; do not create a duplicate old command or constrain GPU overlap to the preliminary context local1 limit. Projector key/publication acceptance and all resize/reload/swap/profile/destruction joins are required. Author owns pipeline/world/shadow/settings and dedicated tests; root owns CMake/docs/integration/all execution. No worker activation or speedup claim before real correctness and complete serial/overlap costs.
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating

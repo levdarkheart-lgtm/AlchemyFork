@@ -2859,3 +2859,27 @@ A context and packet alone are not that integration. It must cover actual
 query-bearing main views rather than assume only non-query eligibility, and
 avoid a one-GPU-command local limit replacing existing multi-frame overlap.
 No view launch/login/live capture/push authorized by these contained checks.
+
+
+## Production coarse native shadow overlap —doing, original G3/PPD241
+
+Exclusive author /private/tmp/alchemy-apple-first-shadow-view-overlap starts
+from restored-coredfb1f5dad3. Owns pipeline.cpp/h, settings, world.h/cpp,
+shadowcapture and dedicated native helpers/tests. Root alone CMake/docs and all
+execution. Required end state: one owned CPU packet encoded while owner captures
+next view; real query buffers enter worker but tickets/pool/cache/slice acceptance
+stay owner-only. Maintain one shared original2-frame-group×6-view admission,
+not another independent permit or empty original command. Coherently adopt the
+original command/admission/settlement identity or replace all its linked roles.
+Keep global native GPU overlap; preliminary context local1 is not final policy.
+Borrowed hero/probe transactions preserve existing execution. Join all pending
+CPU work before dependent readers/function exit and lifecycle mutations.
+Source/body/target generations remain completion-safe, CPU arrays recycle at
+join. Tests and complete real serial/overlap costs at actual small-view scales
+must cover query order, failure/prefix/cancellation and bounded useful work.
+No author execution/launch/profile/push; no claim this work is integrated yet.
+
+Root prepares required build78 for restored core while author works separately.
+Independent source-only UMA audit checks source-cache charging/dedup/COW and
+metadata rebuilding under existing capacity rejections; no cap increase or
+memory policy change is authorized by nominal RAM or overlapping ledger bytes.
