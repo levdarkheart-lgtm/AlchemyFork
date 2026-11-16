@@ -284,7 +284,11 @@ TEST_CASE("Actual main encoder declines before mutation and cancels on owner unw
     // Adoption shape-validates; native geometry validation still owns a
     // malformed row. A failed task result must never replay or submit it.
     std::vector<ALMetalWorldSimpleBatch> invalid(1);
-    auto bad=ALMetalWorldViewInputs::adopt(scene,std::move(invalid),{}, {},2,&error);REQUIRE(bad);
+    // Nonempty adoption requires an explicit lifetime owner before native
+    // geometry validation. The shell owns no backing: the row intentionally
+    // remains malformed so the real renderer must reject it after dispatch.
+    auto bad=ALMetalWorldViewInputs::adopt(scene,std::move(invalid),{},
+        std::make_shared<int>(18),2,&error);REQUIRE(bad);
     credit=budget.tryAcquire(ALNativeFrameBudget::Work::preparation,1024).credit;REQUIRE(credit);
     REQUIRE(renderer->beginCommandBatch("Native malformed-row main failure",&error));
     ALMetalMainWorldEncodingTask task;REQUIRE(task.start(*renderer,bad,credit));

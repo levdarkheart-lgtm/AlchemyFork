@@ -7367,6 +7367,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 repair for90 uses explicit borrowed LLDrawable* conversion matching the original gather. Both new fixture Light fields now use implicitly convertible nonowning handles, preventing raw-pointer-only coverage from hiding this production type boundary; fixture stack/vector ownership is deliberately unchanged. No scheduling/shader/admission policy change. Freeze91 for build and actual native/producer tests before cost execution.
 
+- 2026-11-16 sourcefd189 build91 doctor/configure/build0/0/0 (38.877s); point-value cases96assertions/5PASS. Native main3case suite has2PASS/1FAIL,589/590assertions: malformed nonempty batch adoption was rejected at the explicit native-resource-owner prerequisite, before intended native geometry validation. This is a fixture setup error, not a production rendering failure. Register before supplying an explicit owner lifetime shell to the deliberately malformed, unbacked geometry packet. Preserve actual native rejection/no-submission/no-replay assertions. Full34/static/cost91 were not run; native failure receipt/log preserved.
+
 ## PPD-308 — Main lighting reopens render encoders on one accumulation target
 
 - Status: investigating
