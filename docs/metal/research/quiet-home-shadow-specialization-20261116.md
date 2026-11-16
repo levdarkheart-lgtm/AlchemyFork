@@ -80,14 +80,15 @@ but the measured variants did not justify selection.
 
 Root owns MSL, CMake, documentation and integration. Integrated `almetalworld.cpp`
 work prepares 39 additional High2 PSOs, including matching fused tile producers for light map, projector, simple alpha,
-material alpha and PBR alpha. Avatar, custom blend, water, probe-tile light map
-and impostor paths initially retain generic pipelines and exact quality behavior.
+material alpha and PBR alpha. Avatar, custom blend, water
+and impostor paths retain generic pipelines and exact quality behavior. Both
+fused tile light-map producers have matching High2 specializations.
 Build, native correctness checks, app verification and separate staging precede
 the Home checkpoint. Live FPS, full spilling closure and product gates remain
 partial.
 
 
-## Combined verification and live outcome still pending
+## Combined verification and live checkpoint
 
 Runtime819f98d71c /69224 passes the corrected native matrix: 470case-executions,
 2391076assertion-executions, plus18budget and179tool tests. ARM64/signature/app
@@ -100,6 +101,9 @@ All initial failures and the rejected stage remain retained.
 After owner launch authorization, two Home-only Overview/native recordings
 completed successfully, then both viewers closed. Region-environment run:
 Alchemy-home-upwlt_pz. Midday: Alchemy-home-dwgbpexo, with owner reports27→17→15FPS.
-The reported decline remains. Live gain/fix acceptance is unproved; analyze the
-runs separately and respect their lighting state, focus, workload and retained
-coverage before comparing. No further implementation precedes that discussion.
+The reported decline remains. The [closed-run findings](home-checkpoint-69224-20261116.md)
+retain exact coverage, GPU completion backpressure, the owner-corrected late
+environment-change/reset context, additional light workload and partial event
+loss. Live gain/fix acceptance is unproved. The implemented High2 selection was
+present in the actual launched app; per-draw selection and fresh per-shader spill
+counters were not recorded. No further implementation precedes discussion.
