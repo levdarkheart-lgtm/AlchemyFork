@@ -19,6 +19,10 @@ trigger them. All collector output is private (0700 directory/0600 files).
 Observed size limits are sampled, including owned recorder-child raw files, and
 checked again after exit; they are not a kernel-enforced peak-allocation limit.
 Actual exported target timestamps, not the requested duration, qualify retention.
+GPU coverage requires positive-frame GPU Begin to End and GPU Active Time rows
+separately. A requested native stream must cover those ranges and CPU samples
+with calibrated FRAME iteration bounds (one-second boundary tolerance). A live
+prefix can cover the interval while its final loss/cutoff census remains unknown.
 Powermetrics is off by default; enabling it requires existing root privilege and
 supported samplers. The tool never runs sudo or prompts for privilege.
 """
@@ -46,6 +50,8 @@ import xml.etree.ElementTree as ET
 MIB = 1024 ** 2
 GIB = 1024 ** 3
 SCHEMAS = ("time-profile", "metal-perf-overview-layer-duration-metric")
+GPU_FAMILIES = ("GPU Begin to End", "GPU Active Time")
+NATIVE_COVERAGE_TOLERANCE_NS = 1_000_000_000  # Writer/app-iteration/Overview bucket boundaries.
 OVERVIEW_ID = "com.apple.dt.instruments.metal-perf-overview"
 OVERVIEW_INSTRUMENTS = {OVERVIEW_ID, "com.apple.xray.instrument-type.device-thermal-state",
                         "com.apple.xray.instrument-type.coresampler2"}
@@ -295,7 +301,10 @@ def diagnostic_coverage(path, cap=64 * MIB):
     result = {"records": 0, "malformed": 0, "events": {}, "first_mach_ns": None,
               "last_mach_ns": None, "header": None, "partial_final_line": False,
               "path": str(path), "present": path.exists(), "read_only": True,
-              "markers": [], "footer": None}
+              "markers": [], "footer": None, "frame_records": 0, "invalid_frame_records": 0,
+              "first_frame_start_mach_ns": None, "last_frame_end_mach_ns": None,
+              "maximum_frame_gap_ns": 0}
+    previous_frame_end = None
     counts = collections.Counter()
     if not path.exists():
         return result
@@ -326,6 +335,18 @@ def diagnostic_coverage(path, cap=64 * MIB):
                     result["footer"] = row
                 if event == "marker" and len(result["markers"]) < 128:
                     result["markers"].append(row)
+                if event == "frame":
+                    start, end = row.get("start_mach_ns"), row.get("end_mach_ns")
+                    if isinstance(start, int) and isinstance(end, int) and 0 <= start <= end:
+                        result["frame_records"] += 1
+                        first, last = result["first_frame_start_mach_ns"], result["last_frame_end_mach_ns"]
+                        result["first_frame_start_mach_ns"] = start if first is None else min(first, start)
+                        result["last_frame_end_mach_ns"] = end if last is None else max(last, end)
+                        if previous_frame_end is not None:
+                            result["maximum_frame_gap_ns"] = max(result["maximum_frame_gap_ns"], start - previous_frame_end)
+                        previous_frame_end = end
+                    else:
+                        result["invalid_frame_records"] += 1
                 value = row.get("mach_ns")
                 if isinstance(value, int):
                     result["first_mach_ns"] = value if result["first_mach_ns"] is None else min(value, result["first_mach_ns"])
@@ -342,7 +363,8 @@ def diagnostic_coverage(path, cap=64 * MIB):
     result["calibration_available"] = (header.get("schema") == 1 and
         header.get("cpu_clock") == "mach_absolute_time_ns" and
         all(isinstance(header.get(key), int) for key in ("calibration_before_mach_ns",
-            "calibration_unix_ns", "calibration_after_mach_ns")))
+            "calibration_unix_ns", "calibration_after_mach_ns")) and
+        header["calibration_after_mach_ns"] >= header["calibration_before_mach_ns"])
     result["stream_state"] = "footer_observed" if result["footer"] else "live_or_missing_footer"
     footer = result["footer"] or {}
     result["loss_counters"] = {key: footer.get(key) for key in (
@@ -351,6 +373,62 @@ def diagnostic_coverage(path, cap=64 * MIB):
     result["loss_observed"] = any(isinstance(footer.get(key), int) and footer[key] > 0
                                    for key in ("dropped_full", "dropped_contention", "dropped_budget", "io_errors"))
     result["interpretation"] = "Read-only original-file prefix snapshot; native schema/calibration and drop/footer records determine validity"
+    return result
+
+
+def utc_unix_ns(value):
+    parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("UTC timestamp requires an explicit timezone")
+    epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
+    delta = parsed - epoch
+    return (delta.days * 86400 + delta.seconds) * 1_000_000_000 + delta.microseconds * 1000
+
+
+def qualify_native(coverage, overview, source_sha):
+    """Qualify actual FRAME iteration bounds; completion timestamps cannot fill holes."""
+    result = {"native_coverage_status": "unavailable", "covered": False,
+              "tolerance_ns": NATIVE_COVERAGE_TOLERANCE_NS,
+              "stop_reason": (coverage.get("footer") or {}).get("stop_reason"),
+              "partial_final_line": coverage.get("partial_final_line", False),
+              "footer_observed": coverage.get("footer") is not None,
+              "uncertainty": "A live prefix has no final loss/cutoff census; partial final line is not a complete event"}
+    header = coverage.get("header") or {}
+    if (not coverage.get("present") or not coverage.get("calibration_available") or
+            header.get("source_sha", "").lower() != source_sha.lower()):
+        result["native_coverage_status"] = "missing_uncalibrated_or_source_mismatch"
+        return result
+    if coverage["malformed"] or coverage["invalid_frame_records"]:
+        result["native_coverage_status"] = "malformed"
+        return result
+    if coverage["loss_observed"]:
+        result["native_coverage_status"] = "loss_observed"
+        return result
+    if not coverage["frame_records"]:
+        result["native_coverage_status"] = "no_frame_iteration_records"
+        return result
+    bounds = overview.get("target_clock_bounds") or {}
+    if "first_unix_ns" not in bounds or "last_end_unix_ns" not in bounds:
+        result["native_coverage_status"] = "overview_clock_bounds_unavailable"
+        return result
+    before, after = header["calibration_before_mach_ns"], header["calibration_after_mach_ns"]
+    midpoint = (before + after) // 2
+    offset = header["calibration_unix_ns"] - midpoint
+    first = coverage["first_frame_start_mach_ns"] + offset
+    last = coverage["last_frame_end_mach_ns"] + offset
+    short_start = max(0, first - bounds["first_unix_ns"])
+    short_end = max(0, bounds["last_end_unix_ns"] - last)
+    result.update(first_frame_start_unix_ns=first, last_frame_end_unix_ns=last,
+                  required_first_unix_ns=bounds["first_unix_ns"], required_last_end_unix_ns=bounds["last_end_unix_ns"],
+                  frame_records=coverage["frame_records"], calibration_uncertainty_ns=(after - before + 1) // 2,
+                  start_shortfall_ns=short_start, end_shortfall_ns=short_end,
+                  maximum_frame_gap_ns=coverage["maximum_frame_gap_ns"],
+                  bounds_meaning="FRAME app-iteration wall bounds versus actual target CPU samples/GPU Overview buckets; not GPU execution timestamps")
+    if max(short_start, short_end, coverage["maximum_frame_gap_ns"], (after - before + 1) // 2) > NATIVE_COVERAGE_TOLERANCE_NS:
+        result["native_coverage_status"] = "incomplete_frame_iteration_coverage"
+        return result
+    result.update(covered=True, native_coverage_status=("covered_live_prefix" if coverage["footer"] is None
+                  else "covered_footer_" + str(result["stop_reason"])))
     return result
 
 
@@ -395,6 +473,7 @@ def table_coverage(path, pid):
     rows = matched = 0
     first = last = previous = None
     maximum_gap = 0
+    gpu_families = {}
     def resolve(element):
         if element.get("ref"):
             return references.get(element.get("ref"), ("", None))
@@ -420,10 +499,31 @@ def table_coverage(path, pid):
                     if previous is not None:
                         maximum_gap = max(maximum_gap, start - previous)
                     previous = start
+                    family = values.get("name", (None, None))[0]
+                    frames = values.get("number-of-frames", ("0", None))[0]
+                    metric = values.get("value-in-ms", ("", None))[0]
+                    try:
+                        valid_gpu = (int(frames) > 0 and math.isfinite(float(metric)) and float(metric) >= 0
+                                     and duration.isdigit() and int(duration) > 0)
+                    except ValueError:
+                        valid_gpu = False
+                    if family in GPU_FAMILIES and valid_gpu:
+                        item = gpu_families.setdefault(family, {"target_rows": 0, "first_ns": start,
+                            "last_end_ns": end, "maximum_consecutive_start_gap_seconds": 0, "previous": start})
+                        item["target_rows"] += 1
+                        item["first_ns"] = min(item["first_ns"], start)
+                        item["last_end_ns"] = max(item["last_end_ns"], end)
+                        item["maximum_consecutive_start_gap_seconds"] = max(
+                            item["maximum_consecutive_start_gap_seconds"], (start - item["previous"]) / 1e9)
+                        item["previous"] = start
             element.clear()
+    for item in gpu_families.values():
+        item.pop("previous")
+        item["span_seconds"] = (item["last_end_ns"] - item["first_ns"]) / 1e9
     return {"rows": rows, "target_rows": matched, "first_ns": first, "last_end_ns": last,
             "span_seconds": None if first is None else (last - first) / 1e9,
             "maximum_consecutive_start_gap_seconds": maximum_gap / 1e9,
+            "gpu_families": gpu_families,
             "limitation": "Timestamp span is not continuity, hardware occupancy, or wall-frame quantiles"}
 
 
@@ -454,6 +554,22 @@ def qualify(args, expected_seconds):
                 raise RuntimeError(f"insufficient actual target coverage: {schema}")
             if ranges[schema]["maximum_consecutive_start_gap_seconds"] > 5:
                 raise RuntimeError(f"actual target timestamp gap exceeds five seconds: {schema}")
+            if schema == "metal-perf-overview-layer-duration-metric":
+                for family in GPU_FAMILIES:
+                    item = ranges[schema]["gpu_families"].get(family)
+                    if (item is None or item["span_seconds"] < result["required_span_seconds"] or
+                            item["maximum_consecutive_start_gap_seconds"] > 5):
+                        raise RuntimeError(f"insufficient actual positive-frame target GPU family coverage: {family}")
+        clock_ranges = [("time-profile", ranges["time-profile"])] if "time-profile" in ranges else []
+        gpu = ranges.get("metal-perf-overview-layer-duration-metric", {}).get("gpu_families", {})
+        clock_ranges.extend((family, gpu[family]) for family in GPU_FAMILIES if family in gpu)
+        if clock_ranges:
+            origin = utc_unix_ns(result["summary"]["start-date"])
+            first = min(item["first_ns"] for _, item in clock_ranges)
+            last = max(item["last_end_ns"] for _, item in clock_ranges)
+            result["target_clock_bounds"] = {"trace_origin_unix_ns": origin, "first_offset_ns": first,
+                "last_end_offset_ns": last, "first_unix_ns": origin + first,
+                "last_end_unix_ns": origin + last, "sources": [name for name, _ in clock_ranges]}
         result["status"] = "verified_target_timestamp_ranges"
     except BaseException as error:
         result["failure"] = str(error)
@@ -654,9 +770,10 @@ class Collector:
                 try:
                     coverage = diagnostic_coverage(args.diagnostic_jsonl)
                     self.state["diagnostic_coverage"] = coverage
-                    if (not coverage["present"] or not coverage["calibration_available"] or coverage["malformed"]
-                            or coverage["loss_observed"] or (coverage["header"] or {}).get("source_sha") != args.source_sha):
-                        raise RuntimeError("requested native diagnostic stream missing, malformed, uncalibrated, lossy, or source mismatch")
+                    native = qualify_native(coverage, self.state.get("coverage", {}), args.source_sha)
+                    self.state["native_coverage"] = native
+                    if not native["covered"]:
+                        raise RuntimeError("requested native diagnostic stream incomplete: " + native["native_coverage_status"])
                 except Exception as error:
                     reason = reason or str(error)
                     self.state.update(status="failed", failure=reason)

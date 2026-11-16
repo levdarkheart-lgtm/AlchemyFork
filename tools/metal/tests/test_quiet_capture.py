@@ -101,7 +101,8 @@ class CollectorTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(capture.time, "monotonic", side_effect=self.clock.monotonic))
             stack.enter_context(mock.patch.object(capture.time, "sleep", side_effect=self.clock.sleep))
             qualify = stack.enter_context(mock.patch.object(capture, "qualify", side_effect=qualification,
-                                                             return_value={"status": "actual ranges verified"}))
+                return_value={"status": "actual ranges verified", "target_clock_bounds": {
+                    "first_unix_ns": 200, "last_end_unix_ns": 3_000_000_200}}))
             output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             code = capture.Collector(self.args).run()
             notifier_factory.assert_called_once()
@@ -220,6 +221,9 @@ class CollectorTests(unittest.TestCase):
                 "calibration_before_mach_ns": 100, "calibration_unix_ns": 200,
                 "calibration_after_mach_ns": 101, "source_sha": self.args.source_sha}
         source.write_text(json.dumps(data) + "\n")
+        with source.open("a") as stream:
+            stream.write(json.dumps({"event": "frame", "start_mach_ns": 100,
+                                     "end_mach_ns": 3_000_000_100, "mach_ns": 3_000_000_100}) + "\n")
         original = source.read_bytes()
         self.args.diagnostic_jsonl = source
         code, receipt, _, _ = self.run_collector()
@@ -233,7 +237,7 @@ class CollectorTests(unittest.TestCase):
         code, receipt, _, _ = self.run_collector()
         self.assertEqual(1, code)
         self.assertEqual(0, receipt["recorder_exit"])
-        self.assertIn("native diagnostic stream missing", receipt["failure"])
+        self.assertIn("missing_uncalibrated_or_source_mismatch", receipt["failure"])
         self.assertIn("coverage", receipt)
 
     def test_existing_run_is_never_overwritten(self):
@@ -430,6 +434,117 @@ class DataTests(unittest.TestCase):
                                  "--output", "/absolute/new-run", "--seconds", "360", "--thread-states"])
         self.assertEqual(1, code)
         collector.assert_not_called()
+
+
+class CoverageContractTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        self.args = argparse.Namespace(output=self.directory, pid=8, thread_states=False,
+                                       export_timeout=1, export_cap_mib=1)
+        self.source_sha = "b" * 40
+        self.origin = 1_700_000_000_000_000_000
+
+    def native(self, seconds, footer=None, partial=False, command_tail_seconds=0):
+        path = self.directory / "native.jsonl"
+        rows = [{"event": "header", "schema": 1, "source_sha": self.source_sha,
+                 "cpu_clock": "mach_absolute_time_ns", "calibration_before_mach_ns": 100_000_000_000,
+                 "calibration_unix_ns": self.origin, "calibration_after_mach_ns": 100_000_000_000}]
+        for second in range(seconds):
+            rows.append({"event": "frame", "start_mach_ns": (100 + second) * 1_000_000_000,
+                         "end_mach_ns": (101 + second) * 1_000_000_000,
+                         "mach_ns": (101 + second) * 1_000_000_000})
+        if command_tail_seconds:
+            rows.append({"event": "command_complete", "mach_ns": (100 + command_tail_seconds) * 1_000_000_000})
+        if footer:
+            rows.append({"event": "footer", "stop_reason": footer, "dropped_full": 0,
+                         "dropped_contention": 0, "dropped_budget": 0, "io_errors": 0})
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows) + ('{"event":' if partial else ''))
+        summary = capture.diagnostic_coverage(path)
+        overview = {"target_clock_bounds": {"first_unix_ns": self.origin,
+                                             "last_end_unix_ns": self.origin + 20_000_000_000}}
+        return summary, capture.qualify_native(summary, overview, self.source_sha)
+
+    def test_duration_limit_zero_drops_before_overview_end_is_incomplete(self):
+        summary, result = self.native(10, footer="duration_limit", command_tail_seconds=25)
+        self.assertFalse(summary["loss_observed"])
+        self.assertFalse(result["covered"])
+        self.assertEqual("duration_limit", result["stop_reason"])
+        self.assertEqual("incomplete_frame_iteration_coverage", result["native_coverage_status"])
+        self.assertEqual(10_000_000_000, result["end_shortfall_ns"])
+        # A later command completion does not manufacture missing FRAME time.
+        self.assertEqual(self.origin + 10_000_000_000, result["last_frame_end_unix_ns"])
+
+    def test_live_prefix_covers_full_span_without_requiring_footer(self):
+        _, result = self.native(20)
+        self.assertTrue(result["covered"])
+        self.assertEqual("covered_live_prefix", result["native_coverage_status"])
+        self.assertFalse(result["footer_observed"])
+        self.assertIsNone(result["stop_reason"])
+
+    def test_live_partial_final_line_is_reported_without_erasing_complete_frame_coverage(self):
+        _, result = self.native(20, partial=True)
+        self.assertTrue(result["covered"])
+        self.assertTrue(result["partial_final_line"])
+        self.assertIn("no final loss", result["uncertainty"])
+
+    def test_footer_duration_limit_after_required_span_is_explicitly_covered(self):
+        _, result = self.native(21, footer="duration_limit")
+        self.assertTrue(result["covered"])
+        self.assertEqual("covered_footer_duration_limit", result["native_coverage_status"])
+
+    def export_fixture(self, families, gpu_pid=8, partial_family=None, zero_frames=False):
+        def exported(_trace, output, _selector, _deadline, _cap):
+            if output.name == "toc.xml":
+                output.write_text('<trace-toc><run number="1"><info><target><process pid="8"/>'
+                    '</target><summary><start-date>2026-11-16T16:00:00.000Z</start-date>'
+                    '<duration>10</duration></summary></info><data>' +
+                    ''.join('<table schema="' + name + '"/>' for name in capture.SCHEMAS) +
+                    '</data></run></trace-toc>')
+            else:
+                names = ("time-profile",) if output.name == "time-profile.xml" else families
+                rows = []
+                for family in names:
+                    count = 4 if family == partial_family else 10
+                    for second in range(count):
+                        owner = 8 if family in ("time-profile", "CPU Begin to Display") else gpu_pid
+                        rows.append('<row><time>' + str(second * 1_000_000_000) + '</time>'
+                            '<duration>1000000000</duration><name>' + family + '</name>'
+                            '<frames>' + ('0' if zero_frames else '1') + '</frames><value>3.5</value>'
+                            '<process><pid>' + str(owner) + '</pid></process></row>')
+                output.write_text('<trace-query-result><schema>' + ''.join('<col><mnemonic>' + name +
+                    '</mnemonic></col>' for name in ("start", "duration", "name", "number-of-frames", "value-in-ms", "process")) +
+                    '</schema>' + ''.join(rows) + '</trace-query-result>')
+            return {"exit": 0}
+        return mock.patch.object(capture, "bounded_export", side_effect=exported)
+
+    def test_cpu_display_rows_cannot_manufacture_gpu_family_coverage(self):
+        with self.export_fixture(("CPU Begin to Display",)):
+            with self.assertRaisesRegex(RuntimeError, "GPU family coverage"):
+                capture.qualify(self.args, 10)
+
+    def test_both_positive_frame_gpu_families_qualify_and_define_clock_bounds(self):
+        with self.export_fixture(capture.GPU_FAMILIES):
+            result = capture.qualify(self.args, 10)
+        self.assertEqual("verified_target_timestamp_ranges", result["status"])
+        self.assertEqual(["time-profile", *capture.GPU_FAMILIES], result["target_clock_bounds"]["sources"])
+        self.assertEqual(10_000_000_000, result["target_clock_bounds"]["last_end_offset_ns"])
+
+    def test_other_pid_gpu_rows_do_not_qualify_target_cpu_display_rows(self):
+        with self.export_fixture(("CPU Begin to Display", *capture.GPU_FAMILIES), gpu_pid=99):
+            with self.assertRaisesRegex(RuntimeError, "GPU family coverage"):
+                capture.qualify(self.args, 10)
+
+    def test_short_gpu_family_cannot_borrow_other_family_full_span(self):
+        with self.export_fixture(capture.GPU_FAMILIES, partial_family="GPU Active Time"):
+            with self.assertRaisesRegex(RuntimeError, "GPU Active Time"):
+                capture.qualify(self.args, 10)
+
+    def test_zero_frame_gpu_buckets_do_not_qualify(self):
+        with self.export_fixture(capture.GPU_FAMILIES, zero_frames=True):
+            with self.assertRaisesRegex(RuntimeError, "GPU family coverage"):
+                capture.qualify(self.args, 10)
 
 
 if __name__ == "__main__":
