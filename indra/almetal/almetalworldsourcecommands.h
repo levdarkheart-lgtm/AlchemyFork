@@ -49,6 +49,8 @@ struct ALMetalWorldSourceCommandStats
     std::uint64_t direct_builds=0,direct_hits=0,direct_encoded_calls=0;
     // Encoded compute dispatches/rows, not GPU-executed or visible draws.
     std::uint64_t static_visibility_dispatches=0,static_visibility_rows=0;
+    // Qualified inputs in encoded dispatches; this is not a visible-row count.
+    std::uint64_t static_visibility_qualified_rows=0;
     std::size_t cached_banks=0,live_banks=0;
     std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> failures{};
     ALMetalWorldSourceCommandFailure last_failure=ALMetalWorldSourceCommandFailure::none;

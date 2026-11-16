@@ -177,6 +177,7 @@ TEST_CASE("almetal: static GPU command counts preserve indexed offsets, material
                 const auto after=f.commands->stats();
                 CHECK(after.static_visibility_dispatches-before.static_visibility_dispatches==mode);
                 CHECK(after.static_visibility_rows-before.static_visibility_rows==mode*f.count);
+                CHECK(after.static_visibility_qualified_rows-before.static_visibility_qualified_rows==mode*4);
                 CHECK(after.executions-before.executions==f.count);
             }
             // The third call restored full-count kind after GPU mutation.
@@ -198,6 +199,7 @@ TEST_CASE("almetal: synthetic static bounds prove GPU zero-count writes for both
         {
             auto command=f.device->makeCommandBuffer("Synthetic static GPU count proof",&f.error);REQUIRE(command);
             auto frame=f.freeze(*command);
+            const auto before=f.commands->stats();
             auto bank=visible?f.commands->prepareVisibleCohortForCommand(*command,frame,*f.device,*f.library,&f.error):
                 f.commands->prepareCohortForCommand(*command,frame,&f.error);
             INFO(f.error);REQUIRE(bank);auto encoded=f.encode(*command,*bank);REQUIRE(command->commitAndWait(&f.error));
@@ -205,6 +207,7 @@ TEST_CASE("almetal: synthetic static bounds prove GPU zero-count writes for both
             if(visible){CHECK(result.queries[0]==0);CHECK(result.queries[1]==0);}
             else{CHECK(result.queries[0]>0);CHECK(result.queries[1]>0);}
             CHECK(result.queries[2]>0); // Unknown bounds retain the uint16 call.
+            CHECK(f.commands->stats().static_visibility_qualified_rows-before.static_visibility_qualified_rows==(visible?4u:0u));
         }
     }
 }
@@ -224,6 +227,7 @@ TEST_CASE("almetal: static visibility owns pending slots and native generations 
         f.views[0].view.modelview_projection[12]=.1f;
         auto frame_b=f.freeze(*b);CHECK(frame_b->directBindingSlot()!=slot_a);
         auto bank_b=f.commands->prepareVisibleCohortForCommand(*b,frame_b,*f.device,*f.library,&f.error);INFO(f.error);REQUIRE(bank_b);
+        CHECK(f.commands->stats().static_visibility_qualified_rows==8);
         auto target_b=f.encode(*b,*bank_b);REQUIRE(b->commit(&f.error));
         std::weak_ptr<const void> cpu=f.cpu,native=f.native;
         std::weak_ptr<const ALMetalBuffer> geometry=f.native->buffers[f.resources->buffers.size()];
@@ -258,6 +262,7 @@ TEST_CASE("almetal: static visibility declines missing kernels and preserves war
             {CHECK(work.encoded_row_bytes>=StaticVisibilityFixture::count*64);return {};});
         CHECK_FALSE(f.commands->prepareVisibleCohortForCommand(*command,frame,*f.device,*f.library,&f.error,&reason));
         CHECK(reason==ALMetalWorldSourceCommandFailure::admission);CHECK(f.commands->stats().static_visibility_dispatches==0);
+        CHECK(f.commands->stats().static_visibility_qualified_rows==0);
         f.commands->setPublicationAdmission({});
         auto full_again=f.commands->prepareCohortForCommand(*command,frame,&f.error);REQUIRE(full_again);
         CHECK(f.commands->stats().builds==1);CHECK(f.commands->stats().hits==1);
@@ -267,10 +272,12 @@ TEST_CASE("almetal: static visibility declines missing kernels and preserves war
         CHECK(reason==ALMetalWorldSourceCommandFailure::capacity);
         CHECK(bounded->stats().live_banks==0);CHECK(bounded->stats().unique_retained_binding_bytes==0);
         CHECK(bounded->stats().static_visibility_dispatches==0);
+        CHECK(bounded->stats().static_visibility_qualified_rows==0);
         const auto before=f.commands->stats();
         auto visible=f.commands->prepareVisibleCohortForCommand(*command,frame,*f.device,*f.library,&f.error);INFO(f.error);REQUIRE(visible);
         auto same_view=f.commands->prepareVisibleCohortForCommand(*command,frame,*f.device,*f.library,&f.error);INFO(f.error);REQUIRE(same_view);
         CHECK(f.commands->stats().static_visibility_dispatches-before.static_visibility_dispatches==2);
+        CHECK(f.commands->stats().static_visibility_qualified_rows-before.static_visibility_qualified_rows==8);
         CHECK(f.commands->stats().builds-before.builds==1);CHECK(f.commands->stats().hits-before.hits==1);
         auto encoded=f.encode(*command,*full_again);REQUIRE(command->commitAndWait(&f.error));CHECK(f.output(encoded).queries[0]>0);
     }

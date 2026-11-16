@@ -3415,7 +3415,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", charged_logical_indexed_argument_bytes=" << banks.cache.charged_logical_argument_bytes
                     << ", charged_logical_buffer_binding_bytes=" << banks.cache.charged_logical_binding_bytes
                     << ", direct_bank_builds/hits/encoded_calls=" << banks.cache.direct_builds << '/' << banks.cache.direct_hits << '/' << banks.cache.direct_encoded_calls
-                    << ", static_visibility_encoded_dispatches/rows=" << banks.cache.static_visibility_dispatches << '/' << banks.cache.static_visibility_rows
+                    << ", static_visibility_encoded_dispatches/rows/qualified=" << banks.cache.static_visibility_dispatches << '/' << banks.cache.static_visibility_rows << '/' << banks.cache.static_visibility_qualified_rows
                     << ", static_visibility_counts_are_encoded_not_executed=1"
                     << ", gross_retained_binding_bytes/cap=" << banks.cache.unique_retained_binding_bytes << '/' << banks.cache.retained_binding_limit_bytes
                     << ", live_icb_allocated_bytes=" << banks.cache.live_icb_allocated_bytes

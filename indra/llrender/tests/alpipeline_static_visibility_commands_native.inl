@@ -21,7 +21,7 @@ struct Sample : ActualEarlyVisibility::Sample
     U64 bank_requests = 0, bank_hits = 0, bank_builds = 0, bank_evictions = 0;
     U64 bank_admission_denials = 0, bank_argument_bytes = 0, bank_binding_bytes = 0;
     U64 direct_builds = 0, direct_hits = 0, direct_encoded_calls = 0;
-    U64 visibility_dispatches = 0, visibility_rows = 0;
+    U64 visibility_dispatches = 0, visibility_rows = 0, visibility_qualified_rows = 0;
     U64 page_requests = 0, page_hits = 0, page_builds = 0, page_failures = 0;
     U64 page_admission_denials = 0, page_row_bytes = 0, page_mapping_bytes = 0;
     U64 page_copy_bytes = 0, page_bank_copy_bytes = 0, page_arena_bytes = 0;
@@ -161,6 +161,7 @@ Sample measure(MaterialGroupPublication& f, Arm& arm, U32 sources_per_group, U32
     sample.direct_encoded_calls = a.direct_encoded_calls - b.direct_encoded_calls;
     sample.visibility_dispatches = a.static_visibility_dispatches - b.static_visibility_dispatches;
     sample.visibility_rows = a.static_visibility_rows - b.static_visibility_rows;
+    sample.visibility_qualified_rows = a.static_visibility_qualified_rows - b.static_visibility_qualified_rows;
     sample.page_requests = after_page.cohort_requests - before_page.cohort_requests;
     sample.page_hits = after_page.cohort_hits - before_page.cohort_hits;
     sample.page_builds = after_page.cohort_builds - before_page.cohort_builds;
@@ -197,7 +198,8 @@ Sample measure(MaterialGroupPublication& f, Arm& arm, U32 sources_per_group, U32
     CHECK(sample.cpu_packets_reclaimed == 1); CHECK(sample.bank_draws + sample.fallback == sample.bank_requested);
     CHECK(sample.bank_draws <= sample.cohort_draws);
     if (!mode) { CHECK(sample.bank_requested == 0); CHECK(sample.visibility_dispatches == 0); }
-    if (mode != 2) { CHECK(sample.visibility_dispatches == 0); CHECK(sample.visibility_rows == 0); }
+    if (mode != 2) { CHECK(sample.visibility_dispatches == 0); CHECK(sample.visibility_rows == 0); CHECK(sample.visibility_qualified_rows == 0); }
+    CHECK(sample.visibility_qualified_rows <= sample.visibility_rows);
     if (sample.bank_draws == sample.cohort_draws && sample.bank_draws)
     { CHECK(sample.scalar_recipe_reads == 0); CHECK(sample.scalar_common_builds == sample.raw_draws); }
     return sample;
@@ -235,6 +237,7 @@ void emit(const Sample& s, U32 groups, U32 sources, bool outside, U32 condition,
         << " bank_binding_bytes=" << s.bank_binding_bytes << " direct_builds=" << s.direct_builds
         << " direct_hits=" << s.direct_hits << " direct_encoded_calls=" << s.direct_encoded_calls
         << " visibility_dispatches=" << s.visibility_dispatches << " visibility_rows=" << s.visibility_rows
+        << " visibility_qualified_rows=" << s.visibility_qualified_rows
         << " page_requests=" << s.page_requests << " page_hits=" << s.page_hits << " page_builds=" << s.page_builds
         << " page_failures=" << s.page_failures << " page_admission_denials=" << s.page_admission_denials
         << " page_row_bytes=" << s.page_row_bytes << " page_mapping_bytes=" << s.page_mapping_bytes
@@ -287,6 +290,7 @@ TEST_CASE("Actual static visible commands preserve selected producer queries and
                 }
                 full_count_warm = paired[1].bank_draws == 8;
                 visible_warm = paired[2].bank_draws == 8 && paired[2].visibility_dispatches > 0 && paired[2].visibility_rows == 8;
+                CHECK(paired[2].visibility_qualified_rows == 8);
             }
             if (step == 3)
                 for (const auto& s : paired) { CHECK(s.raw_draws > 2); CHECK(s.stability_deferred > 0); }

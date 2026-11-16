@@ -92,6 +92,7 @@ struct Bank
     id<MTLLibrary> static_visibility_library=nil;
     std::shared_ptr<ALMetalBuffer> static_visibility_rows,static_visibility_root;
     std::vector<void*> static_visibility_indices;
+    std::size_t static_visibility_qualified_count=0;
     std::uint64_t binding_limit=0;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> direct_tables;
     std::vector<std::shared_ptr<IndexLease>> indices;
@@ -597,6 +598,7 @@ try
                 (call.index_type==ALMetalIndexType::uint16?row.index16:row.index32)=indices.gpuAddress+call.index_offset;
                 row.call={call.index_count,static_cast<std::uint32_t>(region),call.row_id,binding.bounds_qualified?1u:0u};
                 rows[index]=row;
+                bank->static_visibility_qualified_count+=binding.bounds_qualified?1u:0u;
             }
             // Construct the exact index residency union once. Warm dispatch
             // declares this immutable span with one Metal call, never N leases.
@@ -669,6 +671,7 @@ try
         if(!compute->dispatch(static_cast<std::uint32_t>(bank.count),1,1,32,1,1,error)||!compute->end(error))
             return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility dispatch failed");
         ++state.statistics.static_visibility_dispatches;state.statistics.static_visibility_rows+=bank.count;
+        state.statistics.static_visibility_qualified_rows+=bank.static_visibility_qualified_count;
     }
     if(publication){state.commitPublication(*publication);state.statistics.charged_logical_argument_bytes+=charged_arguments;
         state.statistics.charged_logical_binding_bytes+=charged_bindings;
