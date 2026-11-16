@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -2191,8 +2192,17 @@ struct ALMetalWorldGBufferRenderer::Impl
     bool shared_builtin_member = false;
     bool fail_shader_reload_for_testing = false;
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
-    std::deque<std::unique_ptr<ALMetalCommandBuffer>>
-        pending_command_batches;
+    struct PendingWorldBatch
+    {
+        std::unique_ptr<ALMetalCommandBuffer> command;
+        ALMetalFrameAdmission::Ticket main_ticket = 0;
+        ALMetalCommandBuffer* operator->() const noexcept { return command.get(); }
+        ALMetalCommandBuffer& operator*() const noexcept { return *command; }
+    };
+    std::deque<PendingWorldBatch> pending_command_batches;
+    ALMetalFrameAdmission main_admission{2, 3};
+    ALMetalFrameAdmission::Ticket main_reservation = 0;
+    ALMetalWorldMainFrameStats main_stats;
     struct PendingShadowBatch
     {
         ALMetalFrameAdmission::Ticket ticket;
@@ -2431,6 +2441,104 @@ struct ALMetalWorldGBufferRenderer::Impl
         }
     }
 
+    bool retireMainBatch(const PendingWorldBatch& pending,
+                         ALMetalCommandStatus status, std::string* error)
+    {
+        if (!pending.main_ticket) return true;
+        const std::array receipts{ALMetalFrameAdmission::CompletionReceipt{
+            pending.main_ticket, status == ALMetalCommandStatus::completed
+                ? ALMetalFrameAdmission::CompletionState::completed
+                : ALMetalFrameAdmission::CompletionState::failed}};
+        if (main_admission.prune(receipts).ignored_receipts)
+        {
+            setError(error, "Metal main frame completion lost its reservation");
+            return false;
+        }
+        if (status == ALMetalCommandStatus::completed) ++main_stats.completed;
+        else ++main_stats.failed;
+        return true;
+    }
+
+    bool pruneMainBatches(std::string* error)
+    {
+        std::string failure;
+        for (auto it = pending_command_batches.begin(); it != pending_command_batches.end();)
+        {
+            if (!it->main_ticket) { ++it; continue; }
+            const auto status = it->command->status();
+            if (status != ALMetalCommandStatus::completed && status != ALMetalCommandStatus::error)
+            { ++it; continue; }
+            if (!retireMainBatch(*it, status, error)) return false;
+            if (status == ALMetalCommandStatus::error && failure.empty())
+            {
+                failure = it->command->errorDescription();
+                if (failure.empty()) failure = "A pending Metal main frame command failed";
+            }
+            it = pending_command_batches.erase(it);
+        }
+        if (!failure.empty()) { setError(error, failure); return false; }
+        return true;
+    }
+
+    ALMetalFrameAdmission::Ticket reserveMainFrame(std::uint64_t group, std::string* error)
+    {
+        // A utility or special-view batch on this same renderer must settle
+        // before entering the explicit main authority. Do not bypass its cap
+        // by relabeling its pending commands as a main frame.
+        for (auto it = pending_command_batches.begin(); it != pending_command_batches.end();)
+        {
+            if (it->main_ticket) { ++it; continue; }
+            const bool complete = it->command->waitUntilCompleted(error);
+            it = pending_command_batches.erase(it);
+            if (!complete) return 0;
+        }
+        for (;;)
+        {
+            if (!pruneMainBatches(error)) return 0;
+            const auto decision = main_admission.reserve(group);
+            if (decision) return decision.reservation;
+            if (decision.outcome != ALMetalFrameAdmission::Outcome::wait_for_prior_frame ||
+                decision.blocking_frame >= group)
+            {
+                if (decision.outcome == ALMetalFrameAdmission::Outcome::same_frame_limit)
+                    ++main_stats.width_denials;
+                setError(error, "Metal main frame admission requires an available stage or older completed group");
+                return 0;
+            }
+            const auto tickets = main_admission.submittedTickets(decision.blocking_frame);
+            ++main_stats.older_group_waits;
+            const auto start = std::chrono::steady_clock::now();
+            bool waited = false;
+            std::string failure;
+            for (auto& pending : pending_command_batches)
+            {
+                if (!pending.main_ticket ||
+                    std::find(tickets.begin(), tickets.end(), pending.main_ticket) == tickets.end()) continue;
+                waited = true;
+                std::string wait_error;
+                if (!pending.command->waitUntilCompleted(&wait_error) && failure.empty())
+                    failure = wait_error.empty() ? "An older Metal main frame failed" : wait_error;
+            }
+            main_stats.wait_nanoseconds += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - start).count());
+            std::string retirement_error;
+            const bool retired = pruneMainBatches(&retirement_error);
+            if (!failure.empty() || !retired)
+            { setError(error, failure.empty() ? retirement_error : failure); return 0; }
+            if (!waited)
+            { setError(error, "Metal main frame admission has no matching pending commands"); return 0; }
+        }
+    }
+
+    void cancelMainReservation() noexcept
+    {
+        if (!main_reservation) return;
+        main_admission.cancel(main_reservation);
+        main_reservation = 0;
+        ++main_stats.canceled;
+    }
+
     bool makeCommandBatchSlot(
         std::size_t max_pending_command_batches,
         std::string* error)
@@ -2443,42 +2551,40 @@ struct ALMetalWorldGBufferRenderer::Impl
         // unbounded.
         max_pending_command_batches =
             std::max<std::size_t>(max_pending_command_batches, 1);
-        while (!pending_command_batches.empty())
+        for (;;)
         {
+            if (pending_command_batches.empty()) return true;
             ALMetalCommandBuffer& oldest =
                 *pending_command_batches.front();
             const ALMetalCommandStatus status = oldest.status();
             if (status == ALMetalCommandStatus::completed)
             {
+                if (!retireMainBatch(pending_command_batches.front(), status, error)) return false;
                 pending_command_batches.pop_front();
                 continue;
             }
             if (status == ALMetalCommandStatus::error)
             {
                 const std::string description = oldest.errorDescription();
+                if (!retireMainBatch(pending_command_batches.front(), status, error)) return false;
                 pending_command_batches.pop_front();
                 setError(error, description.empty()
                     ? "A pending Metal world command batch failed"
                     : description);
                 return false;
             }
-            break;
-        }
-
-        if (pending_command_batches.size() <
-            max_pending_command_batches)
-        {
-            return true;
-        }
-
-        ALMetalCommandBuffer& oldest = *pending_command_batches.front();
-        if (!oldest.waitUntilCompleted(error))
-        {
+            if (pending_command_batches.size() < max_pending_command_batches) return true;
+            // Explicit main groups may have more entries than a utility's
+            // command cap. Drain enough actual commands to honor that cap.
+            if (!oldest.waitUntilCompleted(error))
+            {
+                if (!retireMainBatch(pending_command_batches.front(), ALMetalCommandStatus::error, error)) return false;
+                pending_command_batches.pop_front();
+                return false;
+            }
+            if (!retireMainBatch(pending_command_batches.front(), ALMetalCommandStatus::completed, error)) return false;
             pending_command_batches.pop_front();
-            return false;
         }
-        pending_command_batches.pop_front();
-        return true;
     }
     std::array<std::shared_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
@@ -3471,6 +3577,8 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.frame_data = mImpl->frame_data;
     next.render_target_pool = mImpl->render_target_pool;
     next.pending_command_batches.swap(mImpl->pending_command_batches);
+    next.main_admission = std::move(mImpl->main_admission);
+    next.main_stats = mImpl->main_stats;
     next.shadow_submissions = mImpl->shadow_submissions;
     next.shadow_data_slabs.swap(mImpl->shadow_data_slabs);
     next.shadow_data_statistics = mImpl->shadow_data_statistics;
@@ -3775,6 +3883,50 @@ bool ALMetalWorldGBufferRenderer::beginCommandBatch(
     return static_cast<bool>(mImpl->command_batch);
 }
 
+bool ALMetalWorldGBufferRenderer::beginMainFrameBatch(
+    std::uint64_t group, const std::string& label, std::string* error)
+{
+    if (!mImpl || !mImpl->device || mImpl->command_batch)
+    {
+        setError(error, "Metal main frame requires an available renderer and no active batch");
+        return false;
+    }
+    ALMetalFrameAdmission::Ticket ticket = 0;
+    try
+    {
+        ticket = mImpl->reserveMainFrame(group, error);
+        if (!ticket) return false;
+        auto command = mImpl->device->makeCommandBuffer(label, error);
+        if (!command)
+        {
+            mImpl->main_admission.cancel(ticket);
+            return false;
+        }
+        mImpl->command_batch = std::move(command);
+    }
+    catch (const std::bad_alloc&)
+    {
+        if (ticket) mImpl->main_admission.cancel(ticket);
+        setError(error, "Could not allocate a Metal main frame reservation or command");
+        return false;
+    }
+    mImpl->main_reservation = ticket;
+    mImpl->command_batch_valid = true;
+    mImpl->command_batch_failure.clear();
+    mImpl->command_batch_generates_brdf_lut = false;
+    return true;
+}
+
+ALMetalWorldMainFrameStats ALMetalWorldGBufferRenderer::mainFrameStats() const noexcept
+{
+    if (!mImpl) return {};
+    auto stats = mImpl->main_stats;
+    stats.pending_groups = mImpl->main_admission.pendingFrameCount();
+    stats.pending_commands = mImpl->main_admission.pendingSubmissionCount();
+    stats.reservations = mImpl->main_admission.reservationCount();
+    return stats;
+}
+
 bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
 {
     if (!mImpl || !mImpl->command_batch)
@@ -3788,6 +3940,7 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     const bool generates_brdf_lut =
         mImpl->command_batch_generates_brdf_lut;
     const auto shadow_ticket = mImpl->shadow_reservation;
+    const auto main_ticket = mImpl->main_reservation;
     mImpl->command_batch_valid = true;
     mImpl->command_batch_failure.clear();
     mImpl->command_batch_generates_brdf_lut = false;
@@ -3795,6 +3948,7 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     {
         if (shadow_ticket) mImpl->shadow_submissions->admission.cancel(shadow_ticket);
         mImpl->shadow_reservation = 0;
+        mImpl->cancelMainReservation();
         command.reset();
         setError(error, failure.empty()
             ? "Metal world command batch was invalidated"
@@ -3808,15 +3962,29 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     // Reserve the native retirement entry before committing. A post-commit
     // container allocation must not lose the only submission receipt.
     ALMetalCommandBuffer* queued = nullptr;
-    if (shadow_ticket)
+    try
     {
-        mImpl->shadow_submissions->pending.push_back({shadow_ticket, std::move(command)});
-        queued = mImpl->shadow_submissions->pending.back().command.get();
+        if (shadow_ticket)
+        {
+            mImpl->shadow_submissions->pending.push_back({shadow_ticket, std::move(command)});
+            queued = mImpl->shadow_submissions->pending.back().command.get();
+        }
+        else
+        {
+            mImpl->pending_command_batches.push_back({std::move(command), main_ticket});
+            queued = mImpl->pending_command_batches.back().command.get();
+        }
     }
-    else
+    catch (const std::bad_alloc&)
     {
-        mImpl->pending_command_batches.push_back(std::move(command));
-        queued = mImpl->pending_command_batches.back().get();
+        if (shadow_ticket) mImpl->shadow_submissions->admission.cancel(shadow_ticket);
+        mImpl->shadow_reservation = 0;
+        mImpl->cancelMainReservation();
+        setError(error, "Could not reserve Metal command retirement storage");
+        auto observers = std::move(mImpl->command_settlement_observers);
+        mImpl->command_settlement_observers.clear();
+        notifyCommandSettlement(std::move(observers), mImpl->settlement_observer_failures, false);
+        return false;
     }
     const bool committed = queued->commit(error);
     if (committed && generates_brdf_lut)
@@ -3837,6 +4005,25 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
         }
     }
     else if (!committed) mImpl->pending_command_batches.pop_back();
+    if (main_ticket)
+    {
+        if (committed)
+        {
+            if (!mImpl->main_admission.submitted(main_ticket))
+                std::fprintf(stderr, "Alchemy Metal committed main frame lost its reservation\n");
+            ++mImpl->main_stats.committed;
+            mImpl->main_reservation = 0;
+            mImpl->main_stats.peak_pending_groups = std::max(mImpl->main_stats.peak_pending_groups,
+                mImpl->main_admission.pendingFrameCount());
+            mImpl->main_stats.peak_pending_commands = std::max(mImpl->main_stats.peak_pending_commands,
+                mImpl->main_admission.pendingSubmissionCount());
+        }
+        else
+        {
+            ++mImpl->main_stats.failed;
+            mImpl->cancelMainReservation();
+        }
+    }
     mImpl->shadow_reservation = 0;
     auto observers = std::move(mImpl->command_settlement_observers);
     mImpl->command_settlement_observers.clear();
@@ -3853,6 +4040,7 @@ void ALMetalWorldGBufferRenderer::cancelCommandBatch()
     if (mImpl)
     {
         mImpl->command_batch.reset();
+        mImpl->cancelMainReservation();
         if (mImpl->shadow_reservation)
             mImpl->shadow_submissions->admission.cancel(mImpl->shadow_reservation);
         mImpl->shadow_reservation = 0;

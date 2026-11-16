@@ -2779,6 +2779,14 @@ private:
 struct ALMetalShadowIndirectStats;
 enum class ALMetalShadowPrepareFailure : std::uint8_t;
 
+struct ALMetalWorldMainFrameStats
+{
+    std::uint64_t committed = 0, completed = 0, failed = 0, canceled = 0;
+    std::uint64_t older_group_waits = 0, wait_nanoseconds = 0, width_denials = 0;
+    std::size_t pending_groups = 0, pending_commands = 0, reservations = 0;
+    std::size_t peak_pending_groups = 0, peak_pending_commands = 0;
+};
+
 class ALMetalWorldGBufferRenderer final
 {
 public:
@@ -2848,6 +2856,15 @@ public:
         const std::string& label,
         std::string* error = nullptr,
         std::size_t max_pending_command_batches = 2);
+    // Explicit ordinary-main owner: the three early G-buffer, lighting and
+    // post transactions share one monotonic group. Two groups may be pending;
+    // the third waits for older actual completions, never its own commands.
+    // Cancel/failed commit permits a retry; at most three successful commits
+    // belong to one group. Special views and diagnostics keep their existing
+    // beginCommandBatch/beginShadowFrameBatch ownership and limits.
+    bool beginMainFrameBatch(std::uint64_t group, const std::string& label,
+                             std::string* error = nullptr);
+    ALMetalWorldMainFrameStats mainFrameStats() const noexcept;
     // The identity is a monotonic logical shadow-view GROUP serial, which
     // need not equal the simulation/presentation gFrameCount. Production
     // streams up to six view commands per group with two pending groups,
