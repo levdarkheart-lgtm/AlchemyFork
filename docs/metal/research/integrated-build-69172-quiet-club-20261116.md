@@ -121,9 +121,11 @@ After the viewer exited the recorder waited in system tracing teardown;
 DTServiceHub sampled in authorized_ktrace_stop/XPC reply, while protected
 dtsecurity remained active. The raw file was APFS-cloned without restarting or
 repeatedly interrupting the recorder. An offline import was started separately,
-then reversibly suspended once the original recorder resumed processing, to
-avoid duplicate analysis CPU/memory growth. Both raw input and import state are
-preserved; no second viewer session is needed for this recovery attempt.
+then suspended and operator-canceled(exit1) once the original recorder resumed
+processing, to avoid duplicate analysis CPU/memory growth. Both raw input and
+receipts remain preserved. The original attachment has1261024additional bytes
+compared with the early snapshot; their nature and snapshot completeness are
+unverified. No second viewer session is needed for this recovery attempt.
 Actual sample/interval coverage, symbols and presentation coverage remain
 unverified. A short successful CPU-only retention preflight did not qualify the
 configuration's cost/finalization for this workload. This is a collector problem;
@@ -136,3 +138,68 @@ correctness separately. Do not raise caps, lower quality, repeat unsuccessful
 worker/ICB variants or declare fusion faster from activation counters. Future
 continuous capture uses lighter CPU/GPU instrumentation and bounded detailed
 diagnostics, with representative collection-cost/finalization checks.
+
+## Bounded skin-source follow-up
+
+The network-skin loader, constructors and hash function are byte-identical to
+original1eb44. Matrix decoding coerces/narrows LLSD values without matrix-shape,
+finite or F32-range checks. No affected asset bytes are available, so this is a
+producer validation gap rather than an identified live asset cause. Every local
+inverse matrix lane is assigned; inspected output owners do not alias inputs.
+PPD313 retains separate inherited missing-bind-shape initialization and empty
+inverse/output-vector indexing hazards. They require actual CPU contract tests
+before repair and are not explanations for the nonempty invalid inverse values
+seen in PPD311. The audit makes no rendering or FPS claim. Private
+analysis-skin-source-review/functions/excerpts/receipt retain source evidence.
+
+## Future collector repair
+
+The archived future collector now recognizes the actual xctrace control prompt
+and avoids a second stop request during automatic exit/stopping/saving. Eight
+pure lifecycle cases plus syntax pass; the active collector and original phase
+metadata remain unchanged. A qualification guard prevents that future script
+from launching until low-overhead instrumentation has been explicitly qualified.
+This is not a replacement recording or verified continuous-capture performance.
+Private future-collector-logic-check.json preserves exact source hashes/results.
+
+## Frame policy and timing-collector follow-up
+
+TargetFPS15 is the autotuning target, not an active frame cap with AutoTuneFPS0.
+MaxFPS is obsolete; VSync maps to CAMetalLayer displaySyncEnabled. Background
+policy can sleep40ms and pause texture-cache work when unfocused/invisible,
+but its live setting/focus was not sampled. Existing foreground counters advance
+about300seconds per300seconds at10:23/10:28/10:33/10:38UTC, supporting predominantly
+focused operation rather than proving every frame was foreground.
+
+The existing strict benchmark CSV intentionally terminates on teleport and
+cannot rearm. Its defaults are120frames/30seconds warmup followed by300samples,
+not a five-minute duration. It emits intervals/frame indices without UTC frame
+anchors. No environment-only change makes it a continuous multi-scene logger.
+A future narrow opt-in wall-frame mode at LLAppViewer::frame can provide actual
+steady/UTC timestamps and transition/focus status while preserving strict
+benchmark semantics. This source audit does not reconstruct missing frame data.
+Private analysis-frame-csv-audit.md/.json retain exact source/policy evidence.
+
+## Analysis-method qualification
+
+Future collector lifecycle logic passes8actual-CLI/negative cases and syntax.
+Repository tools pass116tests in15.322s in an isolated environment installed
+from numpy2.4.3/PyYAML6.0.3 pins. Initial system-Python run failed only the missing
+PyYAML import; that failure and corrected environment/commands are retained.
+No application code/build or replacement viewer recording was made.
+
+The prepared detailed GPU parser was checked against saved short69151 XML:
+PID/ref resolution, coverage and329/364command-buffer joins match prior results.
+This validates parsing only, not full-run performance or current69172coverage.
+A per-file cache release and12-table first pass plus sizing/RSS guards bound the
+next analysis attempt; optional tables remain deferred. Large-file behavior is
+not claimed executed. Private analysis-gpu-qualification.json/.md and original
+prepared script retain the changes and measurements.
+
+The original detailed recorder is now processing symbols and emits DWARF cursor
+warnings. Count and actual exported symbol coverage still need checking. A later
+269311200736-byte raw attachment snapshot was APFS-cloned; a separate installed
+Game Performance Overview(windowLimit0) import started11:22:50UTC to avoid full
+Metal API analysis if it can provide CPU/GPU overview sooner. Neither path has
+verified CPU/GPU phase coverage yet. Original recorder and both raw snapshots
+remain preserved; no repeat owner run was requested.

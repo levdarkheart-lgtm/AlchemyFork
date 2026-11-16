@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-313 -->
+<!-- next-defect-id: PPD-314 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7433,6 +7433,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 registered before correction. Preserve current xctrace PID65180 and controller handle20469, source identity and all raw logs. Operator phase timeline will explicitly identify the alternate authoritative timer; actual retained CPU/GPU spans still require post-record verification.
 
+- 2026-11-16 future collector artifact corrected to recognize the observed Starting recording/CLI control prompt and avoid sending SIGINT once automatic exit/Stopping recording/save/completion is already reported. Eight pure lifecycle cases and syntax pass against actual CLI evidence; future script has a fail-closed instrumentation qualification guard and was not executed. Active original controller/raw metadata remain unchanged; separate authoritative timer completed both300s intervals. This is not new live capture verification or closure. Evidence: private future-collector-logic-check.json and record-integrated-69172-corrected-not-executed.py.
+
 ## PPD-310 — Integrated Instruments recording stalls during system-trace teardown
 
 - Status: investigating
@@ -7449,6 +7451,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before recovery. Original recorder65180 and service65212 preserved; no repeated stop signal. Snapshot tools cannot sample protected dtsecurity65214 without privilege; noninteractive sudo denied and no credential requested. The large raw trace and active tracing helper also require an explicit measurement-overhead limitation.
+
+- 2026-11-16 the original recorder resumed CPU-active processing after system-service teardown. Its raw attachment contains1261024more bytes than the early preserved snapshot; the extra bytes' nature and snapshot completeness are unverified. Duplicate offline import62938/PID71854 was reversibly suspended, then operator-canceled(exit1) to release analysis memory while preserving all raw data/receipts. This is not an independently failed recovery or proof of corrupt input. The original controller also sent its single SIGINT after xctrace already reported Target app exited/Stopping recording; retain this duplicate-stop risk without attributing the delay to it. Actual original save/CPU/GPU coverage remains pending.
+
+- 2026-11-16 lighter recovery attempt starts11:22:50UTC from APFS-cloned later269311200736-byte attachment using installed Game Performance Overview(windowLimit0), handle44448/PID78586; original65180 preserved. Original progresses into DWARF symbol processing with cursor warnings; inspect actual symbol coverage after export, not warning counts alone. No new viewer or successful-retention claim. Prepared detailed parser qualifies only against short69151 fixtures and has sizing/RSS guards.
 
 ## PPD-311 — Live rigged skin data repeatedly requires nonfinite-matrix stabilization
 
@@ -7483,3 +7489,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered all three stderr warnings separately from365structured viewer warnings. No application change or warning suppression attempted.
+
+## PPD-313 — Skin default and empty-input paths violate initialization/indexing contracts
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrated skin-source audit
+- Discovered: 2026-11-16
+- Original reference: Exact350b803597 and original1eb44bbd1b LLMeshSkinInfo constructors/fromLLSD/updateHash are byte-identical. llmodel.cpp1486–1510 leaves LLMatrix4a bind shape uninitialized; optional-field absence1549 precedes bind-pose composition1597. updateHash1687 indexes inverse[0] even when empty; llvoavatar.cpp10886 forms palette[0] after a possible zero-size resize.
+- Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); private analysis-skin-source-review.md/functions/excerpts/receipt preserve exact source comparisons and bounded callsites.
+- Next action: Add actual CPU construction/default/missing-field/count-mismatch and zero-palette cases, then repair initialization/empty indexing without changing valid skin matrices, asset admission or current finite stabilization. Keep malformed numeric input semantics and PPD311 live cause separate.
+- Verification: Source proves conditional uninitialized bind-pose input and empty-vector precondition violations. Inverse locals themselves assign all16lanes; bind-pose composition writes a separate vector, so missing bind shape is not an explanation for the observed nonfinite inverse coefficients. Normal inspected output/input owners do not alias. No executed reproduction, live occurrence, crash or FPS attribution for these subcases.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before repair. Bounded source comparison exits0; no tests/builds/viewer or application edits performed. Existing palette stabilization tests do not cover LLMeshSkinInfo decoding/default/empty contracts. Numeric hash uses lround then S32 narrowing; do not call a session hash collision or multiplication bug without focused evidence.
