@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-308 -->
+<!-- next-defect-id: PPD-309 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7362,3 +7362,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered before edits in isolated codex/apple-first-main-light-packet at24fe03. Main author exclusively owns prospective pipeline main-light/encoding hunks and new helpers/tests/settings; root terrain census hunks already committed separately3adb360d38. Root owns documentation, integration and sole executiontree builds. Preserve actual query/commit failure semantics and no replay after partial native encoding.
 
 - 2026-11-16 PPD307 first scoped implementation integrated from8363194f57. One exclusive same-renderer main task joins before all sky/commit/query/target access; copied submission ownership is rebound, active stage diagnostics decline, unwind joins/cancels. Owner point arrays reserve budget before allocation and retain charge until consumed/destroyed; packet keys frame/camera/dimensions/scale/count/attachment policy. OFF route retains stack values without task/heap packet. Projector/resource work and nearby-light updates remain ordered. Authored five actual point-value/key/candidate cases, three native task/query/unwind cases and40cell800row full-frontier comparison including real producer, budget, allocation, dispatch, point consumer and original settlement. Exclusions and unselected defaultOFF retained. Source/peer review only; freeze90 build/native/cost still pending.
+
+## PPD-308 — Main lighting reopens render encoders on one accumulation target
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex main lighting render-pass author / root integration
+- Discovered: 2026-11-16
+- Original reference: Original1eb44 ordered base/sky/local/projector accumulation and later post-deferred haze-depth synchronization remain authoritative. Preserve currently accepted native order and arithmetic; do not opportunistically reorder light families.
+- Evidence: [Architecture implementation status](work/active/apple-first-architecture-status.md); private lighting-renderpass-coalescing-source-review-20261116.{json,md}. Actual native main base, modern sky, point and projector calls share one RGBA16F accumulation target and command batch, but create separate render encoders. Point/projector do not sample accumulated color. Existing point/projector PSOs have no depth attachment; shared-pass variants require exact depth32FloatStencil8 compatibility.
+- Next action: Implement one main-only compound native lighting operation receiving all ready scenes. Preflight cookie/shadow/BRDF work before encoder opening; encode the existing ordered bodies into one pass with explicit depth/no-write/state resets, preserving current standalone native APIs for other scopes and the comparator. Reuse joined307 point values. Preserve selected two-color memoryless probe fusion.
+- Verification: Source-feasible only; no native execution or speedup claim. Haze remains outside because intervening forward/water draws and its current-depth snapshot require the later ordered boundary. No persistent encoder spans mutable pipeline gathering calls. Allocation/validation decline before prefix may use serial; post-prefix failure cancels the original transaction without replay/publication. DefaultOFF until actual native output/depth/query/lifetime parity and complete owner/GPU/settlement costs justify selection.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before implementation. Root owns docs/PPD/integration/build and preserved applications. Independent author owns prospective compound renderer APIs/body/PSOs, actual native tests/cost and pipeline ready-scene hooks, exclusively after307 author stopped editing. Existing command admission/caps, shader math, probe fusion and later post-deferred/haze boundaries remain unchanged. Need complete transaction/lifetime and representative-resolution cost evidence; removing explicit encoder boundaries alone is not proof of physical tile traffic or better FPS.
