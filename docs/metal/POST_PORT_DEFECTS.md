@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-318 -->
+<!-- next-defect-id: PPD-320 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7610,3 +7610,37 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 round3 passes356assertions/7actual-body cases including positive legacy/PBR restored pixels. Ten world cost cells retain every iteration; stable legacy/PBR gains remain unproved, so world/SIMPLE/opaque recipe activation is not selected. Covered and covered-rigged shadow owner-wall medians improve18.91%/19.81% with8/8paired-block wins; settled readback changes remain mixed and do not establish FPS gains. Valid byte-pressure2 executes requested cell3 only:64resident entries/262144logical bytes, all16arms72byte rejections and zero entry/oversize/eviction counts; covered-rigged2sources×3views owner-wall5.7752→4.8873microseconds (-15.374%,8/8wins), settled976.87105→988.28335microseconds (+1.168%,4/8wins). Select only the supported covered-shadow component; keep full tested world proposal/evidence locally for continued architecture work. Main-frame PPD315 and shared PPD316 remain the combined engine's primary changes; original architecture acceptance is partial, not a shadow-only completion claim. Narrowed final source/test integration pending; no owner FPS/pacing/performance acceptance or push.
 
 - 2026-11-16 selected final covered-only49a31097de passes335assertions/7actual-body cases and19495faithful byte-pressure checks. Raw192iteration rows/16counter receipts retained; final owner-wall5.99605→4.78750microseconds and settled957.90205→932.22710 remain tiny-workload component observations, not FPS acceptance. World/SIMPLE/opaque proposal is preserved at eb7d7aac13/branchcodex/source-recipes-full-proposal-20261116 and omitted from selected source. Combined build/native/whole-engine owner checkpoint pending. Subsequent owner instruction authorizes exact-candidate launch with owner login, quiet→teleport/loading→settledclub bounded profiling after coherent groups; push still not granted.
+
+## PPD-318 — Checkpoint collector fails before recording and delays startup capture
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex checkpoint tooling
+- Discovered: 2026-11-16
+- Original reference: Private checkpoint_collect.py in engine-checkpoint-workflow-20261116T144053Z, based on existing low-overhead Xcode capture helpers. No original GL rendering equivalent. event(self,name,...) receives event(...,name=...) in start_record, producing TypeError before actual recording; ready detection also expects Recording started while the installed CLI emits Starting recording plus Ctrl-C banner.
+- Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private capture-session.json/capture-events.jsonl/quiet-detail-failure.json and restarted session/record.log. Source App92ddb0966c is separate from these artifact scripts.
+- Next action: Before another owner checkpoint, correct and exercise actual recorder-start/ready/finalization paths, start low-overhead recording before owner login, preserve live child/raw-data proof, keep the recorder parent to capture its exit status, and bound detail overhead/coverage. No settings comparison or detail export may delay startup recording. Implementation remains held for owner discussion.
+- Verification: First viewer PID19966 initial quiet24→14FPS transition was missed. Restarted PID21370 continuous Overview actually covers466.3998s from15:01:23.165, before STATE_STARTED15:02:44, through quiet25→15–17drop/teleport/club loading/settled15:09:09.565. New continuous recorder detached exit status is unknown; saved-output log and successful bounded exports do not manufacture that status. Captures/logs preserved; no other viewer restart authorized after closure without owner steering.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 initial collector start failed on duplicate name argument; synthetic parser/size tests had not exercised actual start path. Owner stopped the later direct partial trace and closed the viewer. On explicit restart instruction, direct Overview attach was started before Login cue; faulty expected readiness text caused unnecessary delay but live child ktrace data proved recording before owner login. Full restarted run is usable with precise phase/exit-status limits. The later requested3s detail exceeds1GiB raw guard;1.662047s is retained with failed-size status. A206ms trace-start worker stall is attributable to AGX resource/signpost enumeration, not ordinary rendering cost. No engineering/profiling restart after owner requests discussion.
+
+## PPD-319 — Quiet frame cadence declines after login as completion latency grows
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex whole-engine performance assessment
+- Discovered: 2026-11-16
+- Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
+- Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes.
+- Next action: Discuss measured findings with owner before further implementation. Distinguish growing quiet GPU work/queue latency from arrival CPU asset/mesh/publication costs; exact quiet shader/pass cause remains unknown because detailed encoder trace is club-only. Do not substitute more workers, queue depth, reduced graphics or another shadow-only performance claim for whole-engine evidence.
+- Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 owner report registered and confirmed by restarted recording. Renderer contract repair PPD315 is active, PPD316 subscription dedup runs, and PPD317 covered recipes restore without failure; those facts do not close this performance report. Source byte-pressure churn persists at3.892GB logical cap. Lateclub CPU remains shadow/geometry/lighting/probe dominated while GPU lighting/haze/SSAO/shadow work is material.223structured warnings/0ERROR/FATAL plus3PNGstderr notices are exhaustively source-mapped; actual asset failures remain functional/loading concerns without demonstrated causation of the quiet FPS decline. Viewer normal Goodbye15:12:57; no further code change or profile after owner discussion request.
