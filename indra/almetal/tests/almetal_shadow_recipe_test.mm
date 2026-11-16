@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -211,5 +212,130 @@ TEST_CASE("almetal: shadow recipe does not weaken initial producer certification
         auto restored = recipe->restore(8); REQUIRE(restored);
         CHECK(restored->textureLeases().empty());
         CHECK_FALSE(restored->requiresPalette());
+    }
+}
+
+TEST_CASE("almetal: restored shadow recipes preserve native depth masks poses and queries",
+          "[almetal][shadow-recipe][shadow-recipe-render]")
+{
+    @autoreleasepool
+    {
+        RecipeFixture f;
+        const std::array<std::array<float, 4>, 3> positions{{
+            {{-.75f, -.75f, 0.f, 1.f}}, {{.75f, -.75f, 0.f, 1.f}}, {{0.f, .75f, 0.f, 1.f}}}};
+        const std::array<std::array<float, 4>, 3> weights{{
+            {{.5f, 0.f, 0.f, 0.f}}, {{.5f, 0.f, 0.f, 0.f}}, {{.5f, 0.f, 0.f, 0.f}}}};
+        const std::array<std::array<float, 2>, 3> uv{{
+            {{.25f, .5f}}, {{.25f, .5f}}, {{.25f, .5f}}}};
+        const std::array<std::uint8_t, 12> colors{{255,255,255,255,255,255,255,255,255,255,255,255}};
+        std::array<std::uint8_t, 132> bytes{};
+        std::memcpy(bytes.data(), positions.data(), sizeof(positions));
+        std::memcpy(bytes.data() + 48, weights.data(), sizeof(weights));
+        std::memcpy(bytes.data() + 96, uv.data(), sizeof(uv));
+        std::memcpy(bytes.data() + 120, colors.data(), sizeof(colors));
+        ALMetalBufferDescriptor buffer_descriptor; buffer_descriptor.length = bytes.size();
+        auto vertices = ALMetalBuffer::create(*f.device, buffer_descriptor, &f.error); REQUIRE(vertices);
+        REQUIRE(vertices->write(0, bytes.data(), bytes.size(), &f.error));
+        f.vertices = std::move(vertices);
+        const std::array<std::uint16_t, 3> indices{{0, 1, 2}};
+        buffer_descriptor.length = sizeof(indices);
+        auto index_buffer = ALMetalBuffer::create(*f.device, buffer_descriptor, &f.error); REQUIRE(index_buffer);
+        REQUIRE(index_buffer->write(0, indices.data(), sizeof(indices), &f.error));
+        f.indices = std::move(index_buffer);
+        ALMetalTextureDescriptor texture_descriptor; texture_descriptor.width = 2;
+        texture_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        auto mask = ALMetalTexture::create(*f.device, texture_descriptor, &f.error); REQUIRE(mask);
+        const std::array<std::uint8_t, 8> mask_pixels{{255,255,255,255,255,255,255,0}};
+        auto upload = f.device->makeCommandBuffer("Shadow recipe native mask", &f.error); REQUIRE(upload);
+        REQUIRE(mask->upload(*upload, 0, 0, {}, mask_pixels.data(), mask_pixels.size(), &f.error));
+        REQUIRE(upload->commitAndWait(&f.error)); f.texture = std::move(mask);
+
+        constexpr std::size_t width = 32, height = 32;
+        texture_descriptor.type = ALMetalTextureType::texture_2d_array;
+        texture_descriptor.width = width; texture_descriptor.height = height;
+        texture_descriptor.array_length = 2; texture_descriptor.format = ALMetalPixelFormat::r32_float;
+        texture_descriptor.usage = ALMetalTextureUsage::render_target | ALMetalTextureUsage::shader_read;
+        auto target = ALMetalTexture::create(*f.device, texture_descriptor, &f.error); REQUIRE(target);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*f.device, &f.error); INFO(f.error); REQUIRE(renderer);
+        auto frame_data = ALMetalWorldFrameData::create(*f.device, &f.error); REQUIRE(frame_data);
+        renderer->setFrameData(frame_data);
+        std::array<float, 16> pose_values{};
+        pose_values[4] = pose_values[9] = pose_values[14] = 1.f;
+        pose_values[15] = .25f;
+        auto current_pose = ALMetalAttachmentPaletteRecord::create(pose_values.data(), pose_values.size(), 1, &f.error);
+        REQUIRE(current_pose);
+        std::array<float, 16> visible_uv = alMetalShadowIdentity, hidden_uv = visible_uv;
+        hidden_uv[12] = .5f;
+        std::uint64_t frame = 0;
+        struct Result
+        {
+            std::array<float, width * height> depth{};
+            std::array<std::uint64_t, 2> queries{};
+        };
+        const auto draw = [&](const std::shared_ptr<const Record>& record,
+                              const std::shared_ptr<const ALMetalAttachmentPaletteRecord>& pose,
+                              const std::array<float, 16>& texture_matrix, bool reverse,
+                              std::uint32_t slice)
+        {
+            frame_data->beginFrame(++frame);
+            auto owners = std::make_shared<std::pair<std::shared_ptr<const Record>,
+                std::shared_ptr<const ALMetalAttachmentPaletteRecord>>>(record, pose);
+            ALMetalShadowPrepareInstance instance;
+            instance.source = record.get(); instance.source_generation = record->generation();
+            instance.epoch = frame; instance.palette = pose.get(); instance.texture_matrix_slot = 0;
+            ALMetalShadowPrepareContext context; context.projection[14] = reverse ? .5f : 0.f;
+            context.texture_matrices = std::span(&texture_matrix, 1);
+            std::array<Batch, 1> batches;
+            REQUIRE(alMetalPrepareShadowBatches(std::span(&instance, 1), context, batches, frame,
+                nullptr, false, nullptr, &f.error));
+            REQUIRE(record->matchesStableInputs(batches[0]));
+            std::array<ALMetalWorldVisibilityQuery, 2> queries{};
+            for (std::size_t at = 0; at < queries.size(); ++at)
+            {
+                queries[at].batch_offset = at;
+                queries[at].count_samples = 1;
+                std::memcpy(queries[at].modelview_projection, alMetalShadowIdentity.data(),
+                    sizeof(queries[at].modelview_projection));
+                queries[at].half_extent[0] = queries[at].half_extent[1] = queries[at].half_extent[2] = .3f;
+            }
+            ALMetalWorldSpotShadowScene scene;
+            scene.source_owner = owners; scene.batches = batches.data(); scene.batch_count = batches.size();
+            scene.width = width; scene.height = height; scene.reverse_z = reverse;
+            scene.visibility_queries = queries.data(); scene.visibility_query_count = queries.size();
+            std::shared_ptr<ALMetalVisibilityResultBatch> query_results;
+            REQUIRE(renderer->renderSpotShadow(*target, slice, scene, &f.error, &query_results));
+            REQUIRE(query_results);
+            Result result;
+            for (std::size_t at = 0; at < queries.size(); ++at)
+                REQUIRE(query_results->wait(at, result.queries[at], &f.error));
+            REQUIRE(target->readback(*f.device, 0, slice, {}, result.depth.data(), width * sizeof(float), &f.error));
+            return result;
+        };
+        for (const bool reverse : {false, true})
+        {
+            CAPTURE(reverse);
+            auto prototype = f.prototype(true, true);
+            prototype.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
+            auto source = f.source(prototype); INFO(f.error); REQUIRE(source);
+            auto recipe = Recipe::create(*source); REQUIRE(recipe);
+            const auto old_pose = draw(source, f.pose, visible_uv, reverse, 0);
+            const auto reference = draw(source, current_pose, visible_uv, reverse, 0);
+            const auto hidden_reference = draw(source, current_pose, hidden_uv, reverse, 0);
+            source.reset(); prototype = {};
+            auto restored = recipe->restore(8, &f.error); INFO(f.error); REQUIRE(restored);
+            const auto actual = draw(restored, current_pose, visible_uv, reverse, 1);
+            const auto hidden_actual = draw(restored, current_pose, hidden_uv, reverse, 1);
+            CHECK(actual.depth == reference.depth);
+            CHECK(actual.queries == reference.queries);
+            CHECK(hidden_actual.depth == hidden_reference.depth);
+            CHECK(hidden_actual.queries == hidden_reference.queries);
+            CHECK(actual.queries[0] > 0);
+            CHECK(old_pose.depth != actual.depth);
+            const float clear = reverse ? 0.f : 1.f;
+            CHECK(std::any_of(actual.depth.begin(), actual.depth.end(),
+                [clear](float value) { return value != clear; }));
+            CHECK(std::all_of(hidden_actual.depth.begin(), hidden_actual.depth.end(),
+                [clear](float value) { return value == clear; }));
+        }
     }
 }
