@@ -187,19 +187,26 @@ Sample measure(MaterialGroupPublication& f, Arm& arm, U32 sources, Owner& owner,
         requireWork(values->matches(Inputs::gFrameCount,16,16,owner.local_light_count,owner.light_scale,
             owner.sRenderAttachedLights,owner.modelview,owner.camera.getProjection(),owner.camera.getOrigin()),"Main point packet key changed");
         sample.point_lights=values->lights.size();
-        requireWork(renderer.beginCommandBatch("Identical downstream native point-light consumption",&f.error),"Point command admission failed");
         ALMetalWorldLocalLightingScene local;local.gbuffer=target.get();local.lights=values->lights.data();
         local.light_count=values->lights.size();local.bounded_light_count=values->bounded_count;
         local.additive_pass_count=values->additive_pass_count;local.specular_exponent=128.f;
         LLMatrix4a inverse;inverse.setInverse(owner.camera.getProjection());
         std::memcpy(local.inverse_projection,inverse.getF32ptr(),sizeof(local.inverse_projection));
+        // Empty production point lists validate and return before acquiring a
+        // command (PPD250). Do not add a synthetic empty command or demand GPU
+        // timestamps for work that the actual renderer deliberately omits.
+        if(local.light_count)
+            requireWork(renderer.beginCommandBatch("Identical downstream native point-light consumption",&f.error),"Point command admission failed");
         requireWork(renderer.accumulateLocalLights(base,local,&f.error),"Downstream native point-light consumption failed");
-        receipts[2]=renderer.commandBatchCompletion();
-        requireWork(renderer.commitCommandBatch(&f.error),"Point-light commit failed");
+        if(local.light_count)
+        {
+            receipts[2]=renderer.commandBatchCompletion();
+            requireWork(renderer.commitCommandBatch(&f.error),"Point-light commit failed");
+        }
     } // CPU point arrays die before their packet credit, before timed settlement.
     requireWork(arm.budget.snapshot().preparation_bytes_in_flight==0,"Main point packet bytes did not retire");
     const auto encoded=now(),cpu_end=threadCPU();
-    for(const auto& receipt:receipts)wait(receipt);
+    for(const auto& receipt:receipts)if(receipt)wait(receipt);
     sample.query_results[0].resize(results->resultCount());
     for(std::size_t q=0;q<results->resultCount();++q)
         requireWork(results->wait(q,sample.query_results[0][q],&f.error),"Actual main query settlement failed");
@@ -220,9 +227,10 @@ Sample measure(MaterialGroupPublication& f, Arm& arm, U32 sources, Owner& owner,
     sample.pixels[0]=f.read(*target);
     requireWork(base.colorTexture(0)->readback(*f.device,0,0,{},sample.light_pixels.data(),16*8,&f.error),"Point target parity readback failed");
     for(const auto& receipt:receipts)
-    { ALMetalCommandGPUTime gpu;requireWork(receipt->gpuTime(gpu)==ALMetalCommandTimingStatus::ready,"Native main GPU receipt unavailable");
+    { if(!receipt)continue;
+      ALMetalCommandGPUTime gpu;requireWork(receipt->gpuTime(gpu)==ALMetalCommandTimingStatus::ready,"Native main GPU receipt unavailable");
       sample.gpu_ms+=double(gpu.elapsed_nanoseconds)/1e6;++sample.gpu_receipts_ready; }
-    CHECK(sample.command_count==3);CHECK(sample.point_lights==owner.mNearbyLights.size());
+    CHECK(sample.command_count==(sample.point_lights?3:2));CHECK(sample.point_lights==owner.mNearbyLights.size());
     for(auto count:sample.query_results[0])CHECK(count>0);
     return sample;
 }
@@ -343,7 +351,7 @@ TEST_CASE("Actual main producer point gather and exclusive native encoding compa
               " real_LLCamera_frustum_and_production_screenrect=1 real_default16_publication_budget=1 no_untimed_preseal=1"
               " includes=actual_source_cull_capture_publication_adoption_candidatecheck_budget_packetallocation_dispatch_gather_nativeencode_commit_pointconsumer_query_GPUsettlement_CPUreclaim_creditretirement"
               " base_producer=identical_typed_clear_not_base_shader excludes=initial_assets_live_octree_camera_dependencywalker_common_renderer_factory_parityreadback_targetwrapper"
-              " GPU_sum_not_criticalpath=1 FPS_claim=0\n";
+              " empty_point_native_no_command=1 GPU_sum_not_criticalpath=1 FPS_claim=0\n";
         for(U32 sample=0;sample<10;++sample)
         {
             frame(arms);std::array<Sample,2> paired;
