@@ -41,6 +41,7 @@ class ALMetalWorldVisibilityView;
 class ALMetalWorldMaterialSource;
 class ALMetalWorldMaterialDataCache;
 class ALMetalWorldTerrainPass;
+class ALMetalShadowEncodingContext;
 
 // Ordinary probe scratch/filter output and manager publication must agree on
 // storage: the publication blit copies bytes and does not convert formats.
@@ -2792,6 +2793,13 @@ public:
     bool reloadShaders(const std::string& library_path, std::string* error = nullptr);
     std::uint64_t shaderGeneration() const noexcept;
 
+    // Capture an immutable shadow executable generation without building a
+    // second world renderer. Create/recreate on the renderer owner thread,
+    // outside reload/setAnisotropy; subsequent context encoding is independent
+    // of this renderer and its frame data. The device must outlive both.
+    std::unique_ptr<ALMetalShadowEncodingContext> createShadowEncodingContext(
+        std::string* error = nullptr) const;
+
     // Metal sampler states are immutable. Replacing these three persistent
     // states keeps the native world, terrain, sky and probe paths on the same
     // live RenderAnisotropicLevel contract as the original renderer without
@@ -3305,4 +3313,48 @@ private:
         std::unique_ptr<ALMetalTexture>& radiance_cube,
         std::string* error);
     std::unique_ptr<Impl> mImpl;
+    friend class ALMetalShadowEncodingContext;
+};
+
+// One independent non-query shadow view, with explicit ownership handoff.
+// The owner begins, transfers exclusive context/scene access to its encoder,
+// joins that encoder, then commits/cancels. No method dispatches a worker or
+// synchronizes concurrent calls on this same context. Immutable executable
+// objects are shared; all command/arena/material/target/scratch state is private.
+class ALMetalShadowEncodingContext final
+{
+public:
+    ALMetalShadowEncodingContext(const ALMetalShadowEncodingContext&) = delete;
+    ALMetalShadowEncodingContext& operator=(const ALMetalShadowEncodingContext&) = delete;
+    ~ALMetalShadowEncodingContext();
+
+    // Nonblocking local bound: at most one uncompleted command per context.
+    // This is NOT global shadow admission. The caller must acquire its outer
+    // frame/submission budget before begin and pass that exact lifetime owner;
+    // a separate context never grants another main-renderer admission ticket.
+    bool slotAvailable() const noexcept;
+    bool begin(std::uint64_t frame, std::shared_ptr<const void> submission_owner,
+               const std::string& label, std::string* error = nullptr);
+    // One captured view per begin. Nonempty views require source_owner; it
+    // pins all borrowed batches' native generations and poses. CPU batches
+    // need survive only this call. Query/visibility inputs are rejected.
+    // Any failure poisons the transaction, including preflight failures.
+    bool encode(ALMetalTexture& destination, std::uint32_t destination_slice,
+                const ALMetalWorldSpotShadowScene& scene,
+                std::string* error = nullptr);
+    bool commit(std::string* error = nullptr);
+    void cancel() noexcept;
+    bool active() const noexcept;
+    std::shared_ptr<const ALMetalCommandCompletion> completion() const noexcept;
+    std::uint64_t shaderGeneration() const noexcept;
+    std::uint32_t anisotropy() const noexcept;
+    ALMetalWorldFrameDataStats frameDataStats() const noexcept;
+    ALMetalShadowIndirectStats shadowIndirectStats() const noexcept;
+    ALMetalWorldConstantStats constantStats() const noexcept;
+
+private:
+    struct Impl;
+    explicit ALMetalShadowEncodingContext(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+    friend class ALMetalWorldGBufferRenderer;
 };

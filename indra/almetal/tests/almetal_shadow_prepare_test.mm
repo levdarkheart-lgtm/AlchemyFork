@@ -25,6 +25,149 @@
 #include <unordered_set>
 #include <utility>
 
+TEST_CASE("shadow capture: CPU batch storage recycles before native generations retire",
+          "[almetal][shadow-prepare][shadow-captured-view]")
+{
+    auto producer = std::make_shared<int>(17);
+    const std::weak_ptr<int> weak_producer = producer;
+    std::array<float, 180> values{};
+    std::string error;
+    auto body = ALMetalBodyPaletteRecord::create(values, &error);
+    REQUIRE(body);
+    const std::weak_ptr<const ALMetalBodyPaletteRecord> weak_body = body;
+    ALMetalCapturedShadowView::BodyPalettes bodies{body};
+    ALMetalCapturedShadowView::Batches batches(1);
+    batches.front().body_palette_record = body.get();
+    batches.front().skin_palette = body->data();
+    batches.front().skin_palette_float_count = body->size();
+    batches.front().modelview_projection[0] = 17.f;
+    const auto* captured_storage = batches.data();
+    const auto captured_capacity = batches.capacity();
+
+    ALMetalWorldSpotShadowScene input;
+    input.width = 64;
+    input.height = 32;
+    input.reverse_z = true;
+    input.depth_clamp = true;
+    input.opaque_indirect_draws = true;
+    input.source_owner = producer;
+    input.batches = batches.data();
+    input.batch_count = batches.size();
+    input.source_batch_count = 3;
+    input.early_merged_source_count = 2;
+    auto packet = ALMetalCapturedShadowView::take(input, batches, bodies, &error);
+    INFO(error);
+    REQUIRE(packet);
+    CHECK(batches.empty());
+    CHECK(bodies.empty());
+    auto native_scene = packet->scene();
+    CHECK(native_scene.batches == captured_storage);
+    CHECK(native_scene.batch_count == 1);
+    CHECK(native_scene.width == 64);
+    CHECK(native_scene.height == 32);
+    CHECK(native_scene.reverse_z);
+    CHECK(native_scene.depth_clamp);
+    CHECK(native_scene.opaque_indirect_draws);
+    CHECK(native_scene.source_batch_count == 3);
+    CHECK(native_scene.early_merged_source_count == 2);
+    CHECK(native_scene.batches[0].body_palette_record == body.get());
+    CHECK(native_scene.batches[0].skin_palette == body->data());
+    REQUIRE(native_scene.source_owner);
+    CHECK(native_scene.source_owner != input.source_owner);
+
+    // The next capture can populate its own list while the encoder still reads
+    // the prior packet. Recycling refuses to overwrite those new records.
+    batches.emplace_back().modelview_projection[0] = 99.f;
+    CHECK_FALSE(packet->recycleBatches(batches));
+    CHECK(native_scene.batches[0].modelview_projection[0] == 17.f);
+    CHECK(batches[0].modelview_projection[0] == 99.f);
+
+    auto completion_owner = std::move(native_scene.source_owner);
+    native_scene = {}; // Encoding has returned; no CPU span remains in use.
+    input.source_owner.reset();
+    producer.reset();
+    body.reset();
+    batches.clear();
+    REQUIRE(packet->recycleBatches(batches));
+    CHECK(batches.data() == captured_storage);
+    CHECK(batches.capacity() == captured_capacity);
+    packet.reset();
+    CHECK_FALSE(weak_producer.expired());
+    CHECK_FALSE(weak_body.expired());
+    completion_owner.reset();
+    CHECK(weak_producer.expired());
+    CHECK(weak_body.expired());
+}
+
+TEST_CASE("shadow capture: unsupported view handoff preserves the owner's inputs",
+          "[almetal][shadow-prepare][shadow-captured-view]")
+{
+    ALMetalCapturedShadowView::Batches batches(2);
+    ALMetalCapturedShadowView::BodyPalettes bodies;
+    const auto* storage = batches.data();
+    ALMetalWorldSpotShadowScene input;
+    input.width = input.height = 16;
+    input.source_owner = std::make_shared<int>(3);
+    input.batches = batches.data();
+    input.batch_count = batches.size();
+    std::string error;
+    SECTION("Query-bearing view keeps its existing owner transaction")
+    {
+        input.visibility_query_count = 1;
+    }
+    SECTION("Visibility bounds remain with their existing typed owner")
+    {
+        input.visibility_bounds_count = 2;
+    }
+    SECTION("GPU visibility is not silently disabled")
+    {
+        input.gpu_visibility = true;
+    }
+    SECTION("A nonempty batch span requires its native producer lease")
+    {
+        input.source_owner.reset();
+    }
+    SECTION("A span must refer to the storage being transferred")
+    {
+        input.batches = nullptr;
+    }
+    CHECK_FALSE(ALMetalCapturedShadowView::take(input, batches, bodies, &error));
+    CHECK_FALSE(error.empty());
+    CHECK(batches.size() == 2);
+    CHECK(batches.data() == storage);
+}
+
+TEST_CASE("shadow capture: an empty admitted view still owns its clear dimensions",
+          "[almetal][shadow-prepare][shadow-captured-view]")
+{
+    ALMetalCapturedShadowView::Batches batches;
+    batches.reserve(4);
+    ALMetalCapturedShadowView::BodyPalettes bodies;
+    ALMetalWorldSpotShadowScene input;
+    input.width = 128;
+    input.height = 64;
+    input.reverse_z = true;
+    input.batches = batches.data();
+    ALMetalWorldVisibilityQuery query{};
+    ALMetalShadowBounds bounds{};
+    input.visibility_queries = &query; // Empty scratch spans may be nonnull.
+    input.visibility_bounds = &bounds;
+    auto packet = ALMetalCapturedShadowView::take(input, batches, bodies);
+    REQUIRE(packet);
+    auto scene = packet->scene();
+    CHECK(scene.width == 128);
+    CHECK(scene.height == 64);
+    CHECK(scene.reverse_z);
+    CHECK(scene.batch_count == 0);
+    CHECK(scene.visibility_queries == nullptr);
+    CHECK(scene.visibility_bounds == nullptr);
+    CHECK(scene.visibility_query_count == 0);
+    CHECK(scene.visibility_bounds_count == 0);
+    REQUIRE(scene.source_owner);
+    CHECK(packet->recycleBatches(batches));
+    CHECK(batches.capacity() >= 4);
+}
+
 namespace
 {
 using Batch = ALMetalWorldSpotShadowBatch;

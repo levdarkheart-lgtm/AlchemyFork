@@ -501,6 +501,15 @@ struct LLPipeline::MetalWorldSimpleCapture
     } shadow_source_diagnostics;
     U64 shadow_end_incomplete = 0;
 
+    // Actual encode-call coverage, before considering worker profitability.
+    // Order: independent non-query/query, borrowed non-query/query. Calls and
+    // encoded successes are CPU outcomes, not native submission/completion.
+    struct ShadowEncodingDiagnostics
+    {
+        std::array<U64, 4> calls{}, encoded{}, batches{}, max_batches{},
+            logical_sources{}, max_logical_sources{}, wall_ns{};
+    } shadow_encoding_diagnostics;
+
     struct ShadowSourceLease
     {
         std::vector<std::shared_ptr<const void>> publications;
@@ -3100,6 +3109,30 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_sources("main", &capture);
             log_sources("probe", mMetalProbeWorldSimpleCapture.get());
+            const auto log_shadow_encoding = [](const char* owner,
+                                                const MetalWorldSimpleCapture* source)
+            {
+                if (!source) return;
+                const auto& d = source->shadow_encoding_diagnostics;
+                const auto four = [](const auto& values)
+                {
+                    std::ostringstream out;
+                    out << values[0] << '/' << values[1] << '/'
+                        << values[2] << '/' << values[3];
+                    return out.str();
+                };
+                LL_INFOS("MetalShadowSources")
+                    << "Native shadow encoding coverage: owner=" << owner
+                    << ", order=independent_nonquery/independent_query/borrowed_nonquery/borrowed_query"
+                    << ", calls=" << four(d.calls)
+                    << ", encoded=" << four(d.encoded)
+                    << ", batches/max=" << four(d.batches) << '/' << four(d.max_batches)
+                    << ", logical_sources/max=" << four(d.logical_sources)
+                    << '/' << four(d.max_logical_sources)
+                    << ", encode_wall_ns=" << four(d.wall_ns) << LL_ENDL;
+            };
+            log_shadow_encoding("main", &capture);
+            log_shadow_encoding("probe", mMetalProbeWorldSimpleCapture.get());
             const auto log_publication = [](const char* view, const MetalWorldSimpleCapture* value)
             {
                 if (!value) return;
@@ -14730,8 +14763,22 @@ void LLPipeline::endMetalSpotShadowCapture()
         }
     }
 
+    const std::size_t encoding_class = (capture.spot_shadow_owns_batch ? 0 : 2) +
+        (scene.visibility_query_count ? 1 : 0);
+    auto& encoding = capture.shadow_encoding_diagnostics;
+    ++encoding.calls[encoding_class];
+    encoding.batches[encoding_class] += scene.batch_count;
+    encoding.max_batches[encoding_class] = std::max<U64>(
+        encoding.max_batches[encoding_class], scene.batch_count);
+    encoding.logical_sources[encoding_class] += scene.source_batch_count;
+    encoding.max_logical_sources[encoding_class] = std::max<U64>(
+        encoding.max_logical_sources[encoding_class], scene.source_batch_count);
+    const auto encode_started = std::chrono::steady_clock::now();
     const bool rendered = capture.renderer->renderSpotShadow(
         *retained_texture, map, scene, &error, &visibility_results);
+    encoding.wall_ns[encoding_class] += std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - encode_started).count();
+    encoding.encoded[encoding_class] += rendered;
     if (!rendered)
     {
         capture.spot_shadow_batches.clear();

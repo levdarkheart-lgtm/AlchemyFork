@@ -2472,10 +2472,10 @@ struct ALMetalWorldGBufferRenderer::Impl
         pending_command_batches.pop_front();
         return true;
     }
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
     std::unique_ptr<ALMetalShadowIndirectCommands> shadow_indirect;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> spot_shadow_indirect_pipelines;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> spot_shadow_indirect_pipelines;
     std::uint64_t shadow_coalesced_draws = 0;
     std::uint64_t shadow_covered_input_draws = 0;
     std::uint64_t shadow_covered_coalesced_draws = 0;
@@ -2496,17 +2496,17 @@ struct ALMetalWorldGBufferRenderer::Impl
     bool opaque_family_split_saw_timing = false;
     ALMetalWorldConstantStats constant_stats;
     std::unique_ptr<ALMetalProbeWorkloadCapture> probe_workload;
-    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
+    std::array<std::array<std::shared_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_coverage_pipelines;
-    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+    std::array<std::array<std::shared_ptr<ALMetalRenderPipeline>, 2>, 2>
         spot_shadow_material_pipelines;
-    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+    std::array<std::array<std::shared_ptr<ALMetalRenderPipeline>, 2>, 2>
         spot_shadow_indirect_material_pipelines;
     std::unique_ptr<ALMetalShadowMaterials> standalone_shadow_materials;
     std::uint64_t standalone_shadow_material_generation = 0;
-    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
+    std::array<std::array<std::shared_ptr<ALMetalRenderPipeline>, 3>, 2>
         spot_shadow_avatar_pipelines;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_terrain_pipelines;
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
@@ -2756,11 +2756,11 @@ struct ALMetalWorldGBufferRenderer::Impl
         water_depth_pyramid;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
-    std::unique_ptr<ALMetalDepthStencilState> forward_spot_shadow_depth;
-    std::unique_ptr<ALMetalDepthStencilState> reverse_spot_shadow_depth;
+    std::shared_ptr<ALMetalDepthStencilState> forward_spot_shadow_depth;
+    std::shared_ptr<ALMetalDepthStencilState> reverse_spot_shadow_depth;
     std::unique_ptr<ALMetalTexture> spot_shadow_depth_attachment;
-    std::unique_ptr<ALMetalDepthStencilState> forward_readonly_depth;
-    std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
+    std::shared_ptr<ALMetalDepthStencilState> forward_readonly_depth;
+    std::shared_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> debug_blip_depth;
@@ -3099,6 +3099,180 @@ ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer()
 {
     cancelCommandBatch();
 }
+
+struct ALMetalShadowEncodingContext::Impl
+{
+    // Shadow-only peer: populated directly from immutable executable owners,
+    // never by create(), which builds the unrelated world pipeline families.
+    std::unique_ptr<ALMetalWorldGBufferRenderer> peer;
+    std::shared_ptr<const ALMetalCommandCompletion> completion;
+    bool encode_attempted = false;
+};
+
+ALMetalShadowEncodingContext::ALMetalShadowEncodingContext(
+    std::unique_ptr<Impl> impl) : mImpl(std::move(impl)) {}
+
+ALMetalShadowEncodingContext::~ALMetalShadowEncodingContext() = default;
+
+std::unique_ptr<ALMetalShadowEncodingContext>
+ALMetalWorldGBufferRenderer::createShadowEncodingContext(std::string* error) const
+{
+    if (!mImpl || !mImpl->device || !mImpl->library)
+    {
+        setError(error, "Metal shadow context requires an initialized renderer");
+        return nullptr;
+    }
+    auto peer = std::make_unique<Impl>();
+    peer->device = mImpl->device;
+    peer->library = mImpl->library;
+    peer->shader_generation = mImpl->shader_generation;
+    peer->private_library = mImpl->private_library;
+    peer->max_anisotropy = mImpl->max_anisotropy;
+    peer->spot_shadow_pipelines = mImpl->spot_shadow_pipelines;
+    peer->spot_shadow_indirect_pipelines = mImpl->spot_shadow_indirect_pipelines;
+    peer->spot_shadow_coverage_pipelines = mImpl->spot_shadow_coverage_pipelines;
+    peer->spot_shadow_material_pipelines = mImpl->spot_shadow_material_pipelines;
+    peer->spot_shadow_indirect_material_pipelines = mImpl->spot_shadow_indirect_material_pipelines;
+    peer->spot_shadow_avatar_pipelines = mImpl->spot_shadow_avatar_pipelines;
+    peer->spot_shadow_terrain_pipelines = mImpl->spot_shadow_terrain_pipelines;
+    peer->forward_spot_shadow_depth = mImpl->forward_spot_shadow_depth;
+    peer->reverse_spot_shadow_depth = mImpl->reverse_spot_shadow_depth;
+    peer->forward_readonly_depth = mImpl->forward_readonly_depth;
+    peer->reverse_readonly_depth = mImpl->reverse_readonly_depth;
+    // No main frame arena, publication-admission closure, material cache,
+    // target pool, indirect scratch, pending queue or statistics is borrowed.
+    peer->frame_data = ALMetalWorldFrameData::create(*peer->device, error);
+    peer->render_target_pool = ALMetalRenderTargetPool::create(*peer->device);
+    peer->shadow_indirect = ALMetalShadowIndirectCommands::create(*peer->device, error);
+    peer->diffuse_sampler = ALMetalSamplerState::create(*peer->device,
+        worldDiffuseSamplerDescriptor(peer->max_anisotropy, false), error);
+    if (!peer->frame_data || !peer->render_target_pool ||
+        !peer->shadow_indirect || !peer->diffuse_sampler) return nullptr;
+    auto context = std::make_unique<ALMetalShadowEncodingContext::Impl>();
+    context->peer.reset(new ALMetalWorldGBufferRenderer(std::move(peer)));
+    return std::unique_ptr<ALMetalShadowEncodingContext>(
+        new ALMetalShadowEncodingContext(std::move(context)));
+}
+
+bool ALMetalShadowEncodingContext::slotAvailable() const noexcept
+{
+    return mImpl && mImpl->peer->commandBatchSlotAvailable(1);
+}
+
+bool ALMetalShadowEncodingContext::begin(std::uint64_t frame,
+    std::shared_ptr<const void> submission_owner, const std::string& label,
+    std::string* error)
+{
+    if (!submission_owner || !slotAvailable())
+    {
+        setError(error, "Metal shadow context requires outer admission and a free local slot");
+        return false;
+    }
+    try
+    {
+        // Submission TLS does not propagate to a worker. Create the command
+        // here with this explicit owner before handing encoding to that worker.
+        ALMetalSubmissionScope submission(std::move(submission_owner));
+        if (!mImpl->peer->beginCommandBatch(label, error, 1)) return false;
+        mImpl->completion = mImpl->peer->commandBatchCompletion();
+        mImpl->peer->mImpl->frame_data->beginFrame(frame);
+        mImpl->encode_attempted = false;
+        return true;
+    }
+    catch (...)
+    {
+        cancel();
+        setError(error, "Metal shadow context begin failed");
+        return false;
+    }
+}
+
+bool ALMetalShadowEncodingContext::encode(ALMetalTexture& destination,
+    std::uint32_t destination_slice, const ALMetalWorldSpotShadowScene& scene,
+    std::string* error)
+{
+    if (!active())
+    {
+        setError(error, "Metal shadow context is not active");
+        return false;
+    }
+    // renderSpotShadow's ordinary early validation predates transactions and
+    // may return before finishCommandBuffer. The private transaction must
+    // poison even that path, so a successful prefix can never be submitted.
+    auto& state = *mImpl->peer->mImpl;
+    ALMetalWorldGBufferRenderer::Impl::GBufferFailureScope failure(&state, error);
+    const bool already_attempted = mImpl->encode_attempted;
+    mImpl->encode_attempted = true;
+    if (already_attempted || scene.visibility_query_count || scene.native_visibility ||
+        scene.visibility_bounds_count ||
+        scene.gpu_visibility || scene.metal4_visibility ||
+        (scene.batch_count && !scene.source_owner))
+    {
+        setError(error, "Metal shadow context requires one owned non-query view");
+        return false;
+    }
+    bool encoded = false;
+    try
+    {
+        encoded = mImpl->peer->renderSpotShadow(
+            destination, destination_slice, scene, error);
+    }
+    catch (...)
+    {
+        setError(error, "Metal shadow context encoding threw an exception");
+    }
+    failure.succeeded = encoded;
+    return encoded;
+}
+
+bool ALMetalShadowEncodingContext::commit(std::string* error)
+{
+    if (!active())
+    {
+        setError(error, "Metal shadow context is not active");
+        return false;
+    }
+    if (!mImpl->encode_attempted)
+    {
+        cancel();
+        setError(error, "Metal shadow context has no encoded view");
+        return false;
+    }
+    try { return mImpl->peer->commitCommandBatch(error); }
+    catch (...)
+    {
+        cancel();
+        setError(error, "Metal shadow context commit failed");
+        return false;
+    }
+}
+
+void ALMetalShadowEncodingContext::cancel() noexcept
+{
+    if (mImpl) mImpl->peer->cancelCommandBatch();
+}
+
+bool ALMetalShadowEncodingContext::active() const noexcept
+{ return mImpl && mImpl->peer->commandBatchActive(); }
+
+std::shared_ptr<const ALMetalCommandCompletion>
+ALMetalShadowEncodingContext::completion() const noexcept
+{ return mImpl ? mImpl->completion : nullptr; }
+
+std::uint64_t ALMetalShadowEncodingContext::shaderGeneration() const noexcept
+{ return mImpl ? mImpl->peer->shaderGeneration() : 0; }
+
+std::uint32_t ALMetalShadowEncodingContext::anisotropy() const noexcept
+{ return mImpl ? mImpl->peer->anisotropy() : 1; }
+
+ALMetalWorldFrameDataStats ALMetalShadowEncodingContext::frameDataStats() const noexcept
+{ return mImpl ? mImpl->peer->mImpl->frame_data->stats() : ALMetalWorldFrameDataStats{}; }
+
+ALMetalShadowIndirectStats ALMetalShadowEncodingContext::shadowIndirectStats() const noexcept
+{ return mImpl ? mImpl->peer->shadowIndirectStats() : ALMetalShadowIndirectStats{}; }
+
+ALMetalWorldConstantStats ALMetalShadowEncodingContext::constantStats() const noexcept
+{ return mImpl ? mImpl->peer->constantStats() : ALMetalWorldConstantStats{}; }
 
 bool ALMetalWorldGBufferRenderer::reloadShaders(std::string* error)
 {
