@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-309 -->
+<!-- next-defect-id: PPD-310 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7409,3 +7409,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 current97/source350b803597/build69172 doctor/configure/build0/0/0 (30.364s). Native main5627assertions/5cases, modern-sky242875/13, full34renderer1135022/375, exactapp/static/strict3602zero PASS. NativeAPI/GPU validation enabled for correctness. Actual same-API census is serial2/3/3/4→compound1 encoder, same2/11/6/15draws andonecommit; positive RGB, query, depth/stencil, native-prefix cancellation/retry all pass.8cell176row native-only cost/parity parserPASS; its exact command GPU medians decrease2.42–17.99% in this fixture, with all cold/warmup/adverse rows retained. This is diagnostic, excludes livecollection/Gbuffer/lightmap/assets andnormal inter-frame overlap, and does not prove viewerFPS/pacing.
 
 - 2026-11-16 separately staged69172 VERIFIED8273 identical app inventory nodes/21checksum rows, executable b8e5596c3abcc69403a36d9bdb7935a991877edbc1f792b4513f2f161b41e9e4. Same app provides explicit308ON/OFF launchers; all other policy keys identical and307/banks/newvisibility remainOFF. Primary308ON is a provisional owner comparison, not an accepted performance policy. Source pinned local codex/apple-first-integrated-candidate-69172. No viewer launch/login/profile/push. Owner whole-viewer FPS/pacing, quality/functionality/loading and stability remain pending; mark ready_for_owner, not closed. Prior69151/69149/69134/69129/69122 preserved.
+
+## PPD-309 — Runtime phase controller waits for a nonexistent recorder message
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex runtime collection
+- Discovered: 2026-11-16
+- Original reference: xctrace continuous20s preflight records successfully after printing Starting recording and Ctrl-C to stop; it emits no Recording started message.
+- Evidence: [Instrumentation contract](INSTRUMENTATION.md); private architecture-69172-integrated-session-20261116T101436Z session/logs and prior controlled-record.log. Exact69172/PID65178 and xctrace65180 are live; CPU/GPU collection and full viewer/log observer are active.
+- Next action: Keep the current recorder alive. Use a separate authoritative phase timer keyed to the observed CLI control prompt plus live login state; retain the original detector's startup label as invalid diagnostic metadata, without editing recorder output or restarting capture.
+- Verification: Source check confirms the original artifact controller waits for literal Recording started, absent from the proven CLI log. Underlying recording/log collection remains active; phase timing, not trace retention, is affected. No viewer performance or rendering bug inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before correction. Preserve current xctrace PID65180 and controller handle20469, source identity and all raw logs. Operator phase timeline will explicitly identify the alternate authoritative timer; actual retained CPU/GPU spans still require post-record verification.

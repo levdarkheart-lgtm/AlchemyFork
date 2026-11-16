@@ -41,6 +41,30 @@ must still register discoveries and assess whether the evidence supports a claim
 ## Autonomous delivery loop
 Discover -> choose real work -> implement -> compile/test -> verify visually/with GPU traces as relevant -> self-review -> update ledger/state -> commit -> continue. Continue even after one subsystem is finished. If context or tools limit a session, record a specific executable next command and unfinished source locations so the next Codex session resumes. A new user prompt should not be required for each task while a Codex session can continue.
 
+
+### Integrated viewer evaluation checkpoint (owner instruction,2026-11-16)
+
+1. Deliver one source-pinned, separately staged candidate with explicit active,
+disabled, unfinished and demonstrated boundaries. Preserve the prior candidate.
+2. At the agreed checkpoint, launch only the exact authorized candidate. The
+owner controls login, quiet scene, teleport to the busy scene, logout and close.
+Capture startup through shutdown logs, including all warnings, plus CPU/GPU and
+whole-viewer cadence, loading/resource/power context when exposed. Verify actual
+retained sample coverage, runtime binary/settings and path activation.
+3. Confirm quiet collection has started; after its agreed interval tell the owner
+when to teleport. Mark owner arrival and collect the busy interval. Tell the owner
+when collection is complete and they can log out/close; preserve shutdown evidence.
+4. Suspend builds, native tests and unrelated engineering throughout measurement.
+Then assess the engine as a coupled frame pipeline under normal CPU/GPU overlap,
+including FPS/pacing, quality/functionality/loading, queues, and every warning
+category. Keep inherited, unexplained and confirmed defects distinct.
+5. Use that assessment to choose targeted repairs or architecture work, implement
+and verify them, then deliver the next coherent candidate and repeat. Component
+checks diagnose/correct mechanisms; they never establish whole-viewer gains.
+Repeatedly unsuccessful variants trigger reassessment. Owner profiling is useful
+when offered, not a prerequisite for every implementation step. Do not drift past
+an agreed integrated evaluation checkpoint into another architecture experiment.
+
 ## Technical changes
 - Keep source behavior where possible, rewrite OpenGL-bound implementation where required. No general renderer framework, Vulkan translation, GL emulation or permanent dual-backend toggle.
 - Any graphics semantics change must be justified by source/validation evidence. Preserve build and feature correctness of the working fork while progressing, but no requirement to maintain a second renderer inside the fork.
