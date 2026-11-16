@@ -481,6 +481,7 @@ private:
     friend class ALMetalWorldResources;
     friend class ALMetalWorldSourceFrameView;
     friend class ALMetalWorldSourceCommands;
+    friend class ALMetalWorldEarlyVisibilityRead;
 };
 
 class ALMetalComputeEncoder final
