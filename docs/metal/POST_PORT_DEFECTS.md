@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-300 -->
+<!-- next-defect-id: PPD-301 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7168,3 +7168,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 frozen79 build69148 verifies preparation299 with actual49assertions/4commoncases and the native task completed-before-join/moves/reserved-empty/recycle/restore/destruction/GPU-independent retirement case within2424/5. Full34 includes native frame budget6112/52 and passes1130524/356 total assertion/case executions. Required build/static/strict PASS; no viewer OOM, physical-memory gain, owner closure or push claimed. Effective-flag query first used the default Ninja manifest and returned unknown target without mutation; corrected build-Release.ninja query verifies the actual three new/touched objects and retains that invocation failure in its receipt.
 
 - 2026-11-16 preparation299 integrated frozen80/app69149 repeats actual byte49/4 and native task2424/5 PASS, full native-budget6112/52 within complete34renderer scopes PASS. Selected owner candidate includes packet-owned retirement repair and current byte-debt/denial census. Source-confirmed gap is repaired and contained native-verified; owner runtime verification remains pending, status investigating retained. No physical working-set/whole-engine benefit or owner closure inferred from logical-byte tests.
+
+
+## PPD-300 — Frame admission cannot observe required-main native completion backlog
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex whole-engine scheduling integration
+- Discovered: 2026-11-16
+- Original reference: Original viewer display/probe ordering and GPU fences retain required presentation before ordinary probe work. Native scheduling must distinguish required-main completion from optional-group credits, CPU time, display/scan-out and summed GPU command durations.
+- Evidence: [Integrated69122 engine evidence](research/integrated-build-69122-quiet-club-20261115.md). Current846f2781 source: ALNativeFramePlan fills main-thread CPU/interval and memory inputs only; ALNativeFrameBudget optional probe checks these, streaming and own outstanding credits. Window-owned ALMetalFrameScheduler has actual completed-handler retirement, pending/max and ordered submission serials, but these do not enter frame-plan diagnostics or optional admission. Quiet ordinary probes account for27.078CPU-s/31.7%main with high reported GPU-use; this does not prove harmful backlog or a scheduler cause of low FPS.
+- Next action: Add read-only main-completion census at real outer-frame begin and before ordinary probes, reporting unavailable/full/peak/pending/retired/failed facts in the existing periodic frame-plan log. Validate real native pending/retirement/abandonment semantics without a viewer/window launch. Do not derive policy from ALU/utilization claims or duration sums; optional GPU-priority policy awaits actual queue evidence.
+- Verification: Independent G5 source audit confirms absent required-main feedback but existing optional credits already retire on actual GPU completion. Concrete receipt is window getMetalFrameScheduler, UI presentation scheduler.submit and native completed handler. No new policy, attribution or runtime benefit is proved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before census integration. Preserve all source80/69149 staged app and selected policy; root owns app-loop sampling, pipeline logger, CMake/docs/build. Helper author owns native-frame-plan census and dedicated contained native test. Sampling must not allocate, wait, submit, activate timing/validation, retain scheduler/window pointers, change admission/probe cadence or treat failed retirement as successful display. Counters are independently sampled, not a coherent submitted-minus-completed identity or scan-out measurement.
+
+- 2026-11-16 implementation source frozen: value-only two-phase census reads scheduler stats, last-submitted serial and failure-inclusive retirement with no pointer retention, GPU wait, timing activation or admission mutation. Actual doFrame hooks sample after outer-plan begin and immediately before ordinary probes after display/required-CPU accounting; periodic frame-plan logging labels independent counters and non-scanout scope. New real-device test covers unsubmitted reservation, gated3-submission capacity, retirement, unknown scheduler and unchanged budget/timing/submit counts. Author/peer component review finds no blocker; integrated phase review and frozen81 build/checks next, no execution result claimed.

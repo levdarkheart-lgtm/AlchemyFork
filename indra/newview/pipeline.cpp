@@ -91,6 +91,7 @@
 #include "../almetal/almetalworldprepare.h"
 #include "../almetal/almetalworldvisibility.h"
 #include "alnativeframebudget.h"
+#include "alnativeframeplan.h"
 #include <dispatch/dispatch.h>
 #include "../almetal/almetalpipeline.h"
 #include "../almetal/almetalavatarresources.h"
@@ -3294,6 +3295,21 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", preparation_cpu_bytes_inflight=" << frame_plan.preparation_bytes_in_flight
                 << ", streaming_queued/pending/oldest=" << frame_plan.streaming.queued_requests << '/' << frame_plan.streaming.pending_publications << '/' << frame_plan.streaming.oldest_request_frame
                 << LL_ENDL;
+
+            const auto main_completion = ALNativeFramePlan::mainCompletionCensus();
+            for (std::size_t phase = 0; phase < main_completion.size(); ++phase)
+            {
+                const auto& value = main_completion[phase];
+                LL_INFOS("MetalFramePlan") << "Native main completion: phase="
+                    << (phase == 0 ? "frame_begin" : "before_ordinary_probes")
+                    << ", samples/unavailable/full/peak=" << value.samples << '/' << value.unavailable_samples
+                    << '/' << value.full_samples << '/' << value.peak_in_flight
+                    << ", available=" << value.available
+                    << ", pending/capacity=" << value.latest.in_flight << '/' << value.latest.maximum_in_flight
+                    << ", submitted/completed/failed=" << value.latest.submitted << '/' << value.latest.completed << '/' << value.latest.failed
+                    << ", last_submission/retired=" << value.last_submitted_serial << '/' << value.last_submission_retired
+                    << ", scope=independently_sampled_scheduler_completion_not_scanout" << LL_ENDL;
+            }
 
             const auto& ordinary = mReflectionMapManager.nativeUpdateAdmissionStats();
             const auto& hero = mHeroProbeManager.nativeUpdateAdmissionStats();

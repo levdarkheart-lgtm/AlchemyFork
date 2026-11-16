@@ -19,6 +19,7 @@ thread_local unsigned optional_depth = 0;
 // These are scene-owner frame history, never touched by GPU/worker callbacks.
 std::uint64_t frame_serial = 0;
 std::uint64_t previous_required_cpu = 0;
+std::array<ALNativeFramePlan::MainCompletionPhaseCensus, 2> completion_census{};
 
 std::uint64_t threadCpuTime() noexcept
 {
@@ -26,6 +27,38 @@ std::uint64_t threadCpuTime() noexcept
     if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &value) != 0 || value.tv_sec < 0) return 0;
     return static_cast<std::uint64_t>(value.tv_sec) * 1000000000ULL + value.tv_nsec;
 }
+}
+
+void ALNativeFramePlan::observeMainCompletion(
+    const ALMetalFrameScheduler* scheduler, MainCompletionPhase phase) noexcept
+{
+    const auto index = static_cast<std::size_t>(phase);
+    if (index >= completion_census.size()) return;
+    auto& census = completion_census[index];
+    ++census.samples;
+    if (!scheduler)
+    {
+        ++census.unavailable_samples;
+        census.available = false;
+        census.latest = {};
+        census.last_submitted_serial = 0;
+        census.last_submission_retired = false;
+        return;
+    }
+    census.latest = scheduler->stats();
+    census.last_submitted_serial = scheduler->lastSubmittedSerial();
+    census.last_submission_retired = scheduler->isSubmissionComplete(census.last_submitted_serial);
+    census.available = true;
+    census.peak_in_flight = std::max(census.peak_in_flight, census.latest.in_flight);
+    if (census.latest.maximum_in_flight &&
+        census.latest.in_flight >= census.latest.maximum_in_flight)
+        ++census.full_samples;
+}
+
+std::array<ALNativeFramePlan::MainCompletionPhaseCensus, 2>
+ALNativeFramePlan::mainCompletionCensus() noexcept
+{
+    return completion_census;
 }
 
 ALNativeFramePlan::MainScope::MainScope(ALNativeFrameBudget::FrameInputs inputs)

@@ -1426,6 +1426,10 @@ bool LLAppViewer::doFrame()
         gSavedSettings, "RenderMinFreeMainMemoryThreshold", 512);
     ALNativeFramePlan::MainScope native_frame_plan(gFrameIntervalSeconds.value(),
         static_cast<U64>(minimum_headroom_mib) * 1024 * 1024);
+    ALNativeFramePlan::observeMainCompletion(
+        gViewerWindow && gViewerWindow->getWindow()
+            ? gViewerWindow->getWindow()->getMetalFrameScheduler() : nullptr,
+        ALNativeFramePlan::MainCompletionPhase::frame_begin);
     LL_PROFILE_ZONE_SCOPED;
     LL_PROFILE_GPU_ZONE("doFrame");
 
@@ -1585,6 +1589,10 @@ bool LLAppViewer::doFrame()
                 // destructor records the full outer frame, excluding CPU
                 // spent inside explicitly admitted optional update groups.
                 native_frame_plan.recordRequiredWork();
+                ALNativeFramePlan::observeMainCompletion(
+                    gViewerWindow->getWindow()
+                        ? gViewerWindow->getWindow()->getMetalFrameScheduler() : nullptr,
+                    ALNativeFramePlan::MainCompletionPhase::before_ordinary_probes);
 
                 {
                     LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_IDLE);

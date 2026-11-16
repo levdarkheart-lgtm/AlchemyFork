@@ -2492,6 +2492,8 @@ elseif(AL_BUILD_TESTS)
 endif()
 
 if(AL_BUILD_TESTS)
+  set_source_files_properties(tests/alnativeframeplan_completion_test.mm
+    PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set(
     test_libs
     llfilesystem
@@ -2576,6 +2578,7 @@ if(AL_BUILD_TESTS)
     SOURCES
       tests/alprobeupdateadmission_test.cpp
       tests/alnativeframeplan_test.cpp
+      tests/alnativeframeplan_completion_test.mm
       tests/alavatarpose_test.cpp
       tests/alagentlocationformat_test.cpp
       tests/alapplinks_test.cpp
