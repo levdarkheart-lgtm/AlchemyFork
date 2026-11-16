@@ -7653,6 +7653,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 owner explicitly pauses the original architecture goal and makes explaining this quiet decline the sole current objective. [Diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md) records the capture method and incomplete preparation. Source inspection confirms existing capture/stage timing are post-benchmark gated and stage timing excludes ordinary shadow overlap; do not reuse that altered schedule as representative startup evidence. Prepare bounded early/late quiet capture, workload/resource evolution and available GPU limiter/frequency/thermal evidence. No new renderer change, launch or profile during discussion; cause and owner acceptance remain open.
 
+- 2026-11-16 diagnostic preparation is complete: separately staged verified69200/fd5, actual controller/native/static gates, final170 tool tests and Xcode fixture replay/source/counters are preserved. Three subsequent goal continuations confirm no owner viewer/recorder and no new owner capture in the prepared root. Goal is blocked on manual capture paths or explicit owner launch/record instruction, as the goal prohibits autonomous runtime. No exact quiet GPU cause, causal check or performance acceptance can be claimed yet; original architecture work remains paused.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner

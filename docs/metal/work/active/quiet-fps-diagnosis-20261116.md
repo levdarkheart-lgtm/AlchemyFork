@@ -156,6 +156,15 @@ The diagnosis remains incomplete until those measurements explain the change
 and a contained causal check supports the explanation. Original architecture
 work remains paused; no push is authorized.
 
+Runtime boundary: three consecutive goal continuations confirm no owner viewer
+or recorder running and no new owner capture in the prepared evidence root.
+All currently authorized preparation is complete; no further engineering can
+establish the quiet pass growth without the missing scene data. Mark the goal
+blocked on owner-provided manual capture paths or explicit launch/record
+instruction. Do not launch, profile, restart architecture work or invent the
+cause to bypass this boundary. Resume the diagnostic objective when that input
+arrives; the staged viewer and all earlier evidence remain intact.
+
 Success requires an early-versus-late critical-path explanation, exact source
 and evidence, and a contained causal check. A suspect list, another club trace,
 or preparation alone does not complete this objective.
