@@ -193,6 +193,30 @@ struct Fixture
         d.vertexFunction = [library newFunctionWithName:[NSString stringWithUTF8String:vertex]];
         d.fragmentFunction = [library newFunctionWithName:[NSString stringWithUTF8String:fragment]];
         INFO(vertex); INFO(fragment); REQUIRE(d.vertexFunction); REQUIRE(d.fragmentFunction);
+        if (d.fragmentFunction.functionConstantsDictionary.count != 0)
+        {
+            // Match ALMetalRenderPipeline::create: optional declarations still
+            // require specialization through an empty values object. Nothing
+            // is defined, so the ordinary main-view filter remains selected.
+            auto values = [MTLFunctionConstantValues new];
+            MTLFunctionConstant* classic = d.fragmentFunction.functionConstantsDictionary[@"almetal_simple_alpha_classic_mode"];
+            if (shadowed_alpha && classic)
+            {
+                // Only the opt-in specialization proposal declares this
+                // constant. Other fragment PSOs retain the uniform fallback,
+                // including the classic=true correctness cases above.
+                REQUIRE(classic.index == 2);
+                REQUIRE(classic.type == MTLDataTypeBool);
+                const bool modern = false;
+                [values setConstantValue:&modern type:MTLDataTypeBool atIndex:2];
+                std::printf("probe_specialization fragment=%s classic_constant2=false shadow_constant0=undefined\n",fragment);
+            }
+            NSError* error = nil;
+            d.fragmentFunction = [library newFunctionWithName:[NSString stringWithUTF8String:fragment]
+                constantValues:values error:&error];
+            INFO((error ? error.description.UTF8String : "optional constants resolved through explicit values"));
+            REQUIRE(d.fragmentFunction);
+        }
         for (unsigned a = 0; a != attachments; ++a)
             d.colorAttachments[a].pixelFormat = shadowed_alpha ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA32Float;
         if (shadowed_alpha)
