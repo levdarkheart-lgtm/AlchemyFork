@@ -181,6 +181,8 @@ struct CpuLayoutStats
 {
     std::size_t layouts = 0, rows = 0;
     U64 estimated_bytes = 0, evictions = 0, rejections = 0;
+    std::size_t recipe_entries = 0, recipe_rows = 0;
+    U64 recipe_bytes = 0, total_bytes = 0, recipe_evictions = 0, recipe_rejections = 0;
 };
 // Scene-owner only, including eviction. Entries are weak CPU identities and
 // contain no native or LL owner. The bound covers cached CPU records, weak
@@ -199,8 +201,35 @@ class CpuLayoutResidency
     using Entries = std::list<Entry>;
     Entries mEntries;
     std::unordered_map<U64, Entries::iterator> mLookup;
+    struct RecipeEntry
+    {
+        std::weak_ptr<ALViewerMetalShadowSourceCache> metadata;
+        std::weak_ptr<const void> recipe;
+        U64 identity = 0, bytes = 0;
+        std::size_t rows = 0;
+        U32 frame = 0;
+    };
+    using Recipes = std::list<RecipeEntry>;
+    Recipes mRecipes;
+    std::unordered_map<U64, Recipes::iterator> mRecipeLookup;
+    U64 mRecipeBytes = 0;
+    std::size_t mRecipeRows = 0;
     CpuLayoutLimits mLimits;
     CpuLayoutStats mStats;
+
+    void removeRecipe(Recipes::iterator at, bool eviction) noexcept
+    {
+        const auto entry = *at;
+        mRecipeLookup.erase(entry.identity);
+        mRecipeBytes -= entry.bytes; mRecipeRows -= entry.rows;
+        mRecipes.erase(at);
+        if (auto metadata = entry.metadata.lock())
+            if (!metadata->native_scene_recipe.owner_before(entry.recipe) &&
+                !entry.recipe.owner_before(metadata->native_scene_recipe))
+                metadata->native_scene_recipe.reset();
+        if (eviction) ++mStats.recipe_evictions;
+    }
+    U64 totalBytes() const noexcept { return mStats.estimated_bytes + mRecipeBytes; }
 
     void remove(Entries::iterator at, bool withdraw, bool eviction) noexcept
     {
@@ -224,16 +253,90 @@ class CpuLayoutResidency
     }
 public:
     CpuLayoutLimits limits() const noexcept { return mLimits; }
+    bool recipesEnabled() const noexcept
+    { return mLimits.maximum_layouts && mLimits.maximum_rows && mLimits.maximum_bytes; }
+    bool mayRetainRecipe(U64 identity, std::size_t rows, U64 minimum_bytes, U32 frame) noexcept
+    {
+        if (!recipesEnabled() || rows > mLimits.maximum_rows || minimum_bytes > mLimits.maximum_bytes)
+        { ++mStats.recipe_rejections;return false; }
+        // recipeFor touched a replacement to the LRU tail. Discount only its
+        // exact tracked old metadata. An older unrelated recipe may free room
+        // later; a protected current-frame front cannot. This is a lower-bound
+        // rejection only, never permission to bypass final exact accounting.
+        const auto old = mRecipeLookup.find(identity);
+        const auto old_rows = old == mRecipeLookup.end() ? 0 : old->second->rows;
+        const auto old_bytes = old == mRecipeLookup.end() ? 0 : old->second->bytes;
+        const auto used_rows = mStats.rows + mRecipeRows - old_rows;
+        const auto used_bytes = totalBytes() - old_bytes;
+        if (rows <= mLimits.maximum_rows - std::min(used_rows,mLimits.maximum_rows) &&
+            minimum_bytes <= mLimits.maximum_bytes - std::min(used_bytes,mLimits.maximum_bytes)) return true;
+        if (!mRecipes.empty() && mRecipes.front().identity != identity && mRecipes.front().frame != frame) return true;
+        ++mStats.recipe_rejections;return false;
+    }
     CpuLayoutStats stats() const noexcept
-    { auto result = mStats; result.layouts = mEntries.size(); return result; }
+    {
+        auto result = mStats; result.layouts = mEntries.size();
+        result.recipe_entries = mRecipes.size();result.recipe_rows = mRecipeRows;
+        result.recipe_bytes = mRecipeBytes;result.total_bytes = totalBytes();return result;
+    }
     // Internal policy seam also used by deterministic budget fixtures. Native
     // resource limits stay owned by ALNativeSourceWorkingSet independently.
     void configure(CpuLayoutLimits limits) noexcept
     {
         mLimits = limits;
+        while (!mRecipes.empty() && (!mLimits.maximum_layouts ||
+            mStats.rows + mRecipeRows > mLimits.maximum_rows || totalBytes() > mLimits.maximum_bytes))
+            removeRecipe(mRecipes.begin(), true);
         while (!mEntries.empty() && (mEntries.size() > mLimits.maximum_layouts ||
             mStats.rows > mLimits.maximum_rows || mStats.estimated_bytes > mLimits.maximum_bytes))
             remove(mEntries.begin(), true, true);
+    }
+    void forgetRecipe(U64 identity) noexcept
+    {
+        const auto found = mRecipeLookup.find(identity);
+        if (found != mRecipeLookup.end()) removeRecipe(found->second, false);
+    }
+    bool touchRecipe(U64 identity, const std::shared_ptr<const void>& recipe, U32 frame) noexcept
+    {
+        const auto found = mRecipeLookup.find(identity);
+        if (found == mRecipeLookup.end()) return false;
+        auto at = found->second;
+        if (at->recipe.owner_before(recipe) || recipe.owner_before(at->recipe)) return false;
+        if (at->metadata.expired() || at->recipe.expired())
+        { removeRecipe(at, false); return false; }
+        at->frame = frame;mRecipes.splice(mRecipes.end(), mRecipes, at);return true;
+    }
+    // Source recipes use the same bytes/rows as group layouts. Groups retain
+    // priority: a recipe can replace older recipe metadata, never evict a
+    // group publication. Both kinds remain bounded at the existing limits.
+    bool retainRecipe(const std::shared_ptr<ALViewerMetalShadowSourceCache>& metadata,
+        U64 identity, const std::shared_ptr<const void>& recipe, U64 bytes,
+        std::size_t rows, U32 frame)
+    {
+        if (!metadata || !recipe || !identity || !rows || !mLimits.maximum_layouts ||
+            rows > mLimits.maximum_rows || bytes > mLimits.maximum_bytes)
+        { ++mStats.recipe_rejections;return false; }
+        // Optional CPU metadata can be dropped on a failed replacement; it
+        // never modifies native State or any required/in-flight reader.
+        forgetRecipe(identity);
+        while (!mRecipes.empty() && (rows > mLimits.maximum_rows - std::min(mStats.rows + mRecipeRows, mLimits.maximum_rows) ||
+            bytes > mLimits.maximum_bytes - std::min(totalBytes(), mLimits.maximum_bytes)))
+        {
+            if (mRecipes.front().frame == frame) { ++mStats.recipe_rejections;return false; }
+            removeRecipe(mRecipes.begin(), true);
+        }
+        if (rows > mLimits.maximum_rows - std::min(mStats.rows + mRecipeRows, mLimits.maximum_rows) ||
+            bytes > mLimits.maximum_bytes - std::min(totalBytes(), mLimits.maximum_bytes))
+        { ++mStats.recipe_rejections;return false; }
+        mRecipes.push_back({metadata, recipe, identity, bytes, rows, frame});
+        const auto at = std::prev(mRecipes.end());
+        try
+        {
+            if (!mRecipeLookup.emplace(identity, at).second) { mRecipes.erase(at);return false; }
+        }
+        catch (...) { mRecipes.erase(at);throw; }
+        mRecipeBytes += bytes;mRecipeRows += rows;metadata->native_scene_recipe = recipe;
+        return true;
     }
     bool acceptsRows(std::size_t count) noexcept
     {
@@ -319,6 +422,9 @@ public:
             remove(previous->second, !same_layout, false);
             if (!current()) { ++mStats.rejections; return false; }
         }
+        while (!mRecipes.empty() && (layout->sources.size() > mLimits.maximum_rows - std::min(mStats.rows + mRecipeRows, mLimits.maximum_rows) ||
+            bytes > mLimits.maximum_bytes - std::min(totalBytes(), mLimits.maximum_bytes)))
+            removeRecipe(mRecipes.begin(), true);
         while (!mEntries.empty() && (mEntries.size() >= mLimits.maximum_layouts ||
             layout->sources.size() > mLimits.maximum_rows - mStats.rows ||
             bytes > mLimits.maximum_bytes - mStats.estimated_bytes))
@@ -330,6 +436,12 @@ public:
             // State eviction notifies real owner observers, which may publish
             // and retain a newer tuple for this same incoming producer.
             if (!current()) { ++mStats.rejections; return false; }
+            // That callback can also admit an unrelated CPU recipe. Groups
+            // still have priority, and the final shared limit must include
+            // those newly published facts before this layout is inserted.
+            while (!mRecipes.empty() && (layout->sources.size() > mLimits.maximum_rows - std::min(mStats.rows + mRecipeRows, mLimits.maximum_rows) ||
+                bytes > mLimits.maximum_bytes - std::min(totalBytes(), mLimits.maximum_bytes)))
+                removeRecipe(mRecipes.begin(), true);
         }
         if (!current() || !mLimits.maximum_layouts || layout->sources.size() > mLimits.maximum_rows || bytes > mLimits.maximum_bytes)
         { ++mStats.rejections; return false; }
@@ -933,3 +1045,4 @@ try
 }
 catch (const std::bad_alloc&) { recordFailure(FailureStage::host_allocation);return {}; }
 }
+#include "pipeline_source_recipes_native.inl"

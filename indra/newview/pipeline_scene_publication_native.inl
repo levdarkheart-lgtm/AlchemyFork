@@ -198,6 +198,15 @@ struct ShadowLease
     explicit operator bool() const noexcept { return owner && record && *record; }
 };
 
+// Implemented after the shared CPU layout residency owner. Recipes contain
+// only copied producer facts and weak exact native generations; native cache
+// withdrawal must not destroy those facts or retain an unbudgeted GPU lease.
+inline void rememberRecipe(const LLDrawInfo&, const std::shared_ptr<Payload>&, U32, bool) noexcept;
+inline WorldLease restoreWorldRecipe(const LLDrawInfo&, const WorldFlavor&,
+    ALNativeSourceWorkingSet&, U64&, U32);
+inline ShadowLease restoreShadowRecipe(const LLDrawInfo&, U32,
+    ALMetalWorldSpotShadowCoverage, ALNativeSourceWorkingSet&, U64&, U32);
+
 inline U64 saturatedProduct(U64 a, U64 b) noexcept
 {
     return b && a > std::numeric_limits<U64>::max() / b
@@ -379,17 +388,21 @@ inline bool publish(const LLDrawInfo& info, const std::shared_ptr<Payload>& valu
     // Dirty publication pays this exact-union metadata copy once; adding a
     // CPU-only variant can reuse the identical already-sealed native tuple.
     value->native_tuple = nativeTuple(value->resources, value->native_tuple);
-    if (!state->publish(value->producer_revision, value)) return false;
     auto& metadata = *info.mMetalShadowSource;
+    const bool expired = metadata.native_scene_revision == value->producer_revision &&
+        metadata.native_scene_transient.expired();
+    if (!state->publish(value->producer_revision, value)) return false;
     metadata.native_scene_revision = value->producer_revision;
     metadata.native_scene_transient = value;
     const std::shared_ptr<const void> expected = value;
     // The caller already owns value. Rejection/eviction drops only State's
     // publisher lease; actual packets may still reuse the weak transient.
-    working_set.retain(state, value->serial, expected, value->resources, frame);
+    const bool retained = working_set.retain(state, value->serial, expected, value->resources, frame);
     // Cache withdrawal alone still permits the caller's transient reader.
     // An actual producer change during residency callbacks rejects this work
     // without clearing a newer reentrant publication or its metadata.
+    if (state->revision() != value->producer_revision) return false;
+    rememberRecipe(info, value, frame, expired || !retained);
     return state->revision() == value->producer_revision;
 }
 
@@ -877,6 +890,7 @@ inline WorldLease world(const LLDrawInfo& info, WorldFlavor flavor,
         }
         else ++source_miss_statistics.world_misses[
             static_cast<std::size_t>(FactoryMissStage::current_payload_missing)];
+        if (auto restored = restoreWorldRecipe(info, flavor, working_set, serial, frame)) return restored;
         if (!geometry(info)) return {{}, nullptr, "Native scene geometry is unpublished or invalid"};
         info.observeMetalSourceDependencies();
         auto value = extend(info, serial);
@@ -993,6 +1007,7 @@ ShadowLease shadow(const LLDrawInfo& info, U32 type,
         }
         else ++source_miss_statistics.shadow_misses[
             static_cast<std::size_t>(FactoryMissStage::current_payload_missing)];
+        if (auto restored = restoreShadowRecipe(info, type, coverage, working_set, serial, frame)) return restored;
         if (!geometry(info)) return {{}, nullptr, "Native shadow geometry is unpublished or invalid"};
         ALMetalWorldSpotShadowBatch prototype;
         if (!build_prototype(prototype)) return {{}, nullptr, "Native shadow prototype is incomplete"};
