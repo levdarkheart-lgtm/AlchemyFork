@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-310 -->
+<!-- next-defect-id: PPD-313 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5865,6 +5865,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-16 delivery-document harness initially rejects a stale relative implementation-status link copied from state/CURRENT into work/active/metal-port. Correct the active-ledger link to its local sibling and retain this failed metadata check; no runtime/build defect or app change. Rerun harness before the documentation-only checkpoint commit.
 
+- 2026-11-16 exact69172/source350b803597 live session: cumulative main failed views10/probe0, all pool-stage at captureMetalSpotShadowTerrainBatch failure lambda line14554(pass/pool93,map3,directional1). Increments3startup/7post-busy, none inside either300s window. Specific operand remains unlogged; do not attribute measured clubFPS or PPD125 nullVB to this aggregate. Preserve first-reason guards and add precise helper operands before repair. Private analysis-warnings-review/summary/census-series retain timestamps.
+
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating
@@ -6576,6 +6579,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 Runtime-backed follow-up keeps numeric3,892,314,112B ledger cap and all ownership contracts unchanged. PPD295 is a separate bookkeeping candidate to avoid heap scratch growth before denial; no cache-policy or physical memory repair is established. Native retain inclusive3.452/4.900CPU-s does not support a dominant-frame attribution.
 
 - 2026-11-16 preserved69151 whole-log activation census again records byte-only retention pressure: quiet522s/busy423s telemetry spans have retain false+4,348,078/+13,234,480, capacity evictions+2,019,845/+3,582,721; entry/both cap masks and allocation/invalid/conflict/exception counters remain0. Shared ledger cap3,892,314,112B derives from clamp(device recommended working set/16,256MiB,4GiB);8192entries/max_age2 frame units. Duplicate main/probe gauges are one global scope. These are invocation/estimate counters, not physical RAM, unique assets or five-minute CPU/GPU costs. PPD295 scratch repair does not fix cache turnover; no policy/cap change or frame-time cause claimed.
+
+- 2026-11-16 exact69172/source350b803597 runtime final source-cache census:16730384retains,8104885success/new,8625499false(all bytepressure; other rejection buckets0),5673095capacity/892699ageevictions. Configured estimatedbytecap3892314112,retained3888122790;17629optional group failures allnative_retention withrequired raw/direct pathpreserved. These are logicalresource estimates and workcounts, not physicalUMAallocation orcausalFPScost. Correlate actual CPU/GPU beforechangingcaps/admission; priorallocationmitigations are not totalchurnrepairs. Private session analysis-warnings-review/summary/census-series preserve exactsource/logUTC.
+
 
 ## PPD-275 — New cache-lifetime fixture asserts retirement before releasing frame upload owners
 
@@ -7426,3 +7432,54 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before correction. Preserve current xctrace PID65180 and controller handle20469, source identity and all raw logs. Operator phase timeline will explicitly identify the alternate authoritative timer; actual retained CPU/GPU spans still require post-record verification.
+
+## PPD-310 — Integrated Instruments recording stalls during system-trace teardown
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex runtime collection
+- Discovered: 2026-11-16
+- Original reference: Exact69172/source350b803597 runtime; Apple xctrace continuous CPU/GPU template, owner-controlled quiet/club/logout session. This is a collector symptom, not a viewer crash.
+- Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); Private architecture-69172-integrated-session-20261116T101436Z xctrace-record.log, recorder-stop-sample-65180/65212.txt and recorder-raw-preservation.json. Full logs and LEAP histories are saved independently.
+- Next action: Preserve the original recorder and raw data; investigate/recover offline without another viewer run. Verify actual CPU/GPU coverage and collection overhead before using any timing for acceptance.
+- Verification: Viewer exited10:38:54UTC; recorder reports Target app exited / Stopping recording but no saved bundle or terminal exit as of10:43:51UTC. DTServiceHub waits in authorized_ktrace_stop/XPC reply; dtsecurity remains CPU-active. Raw269309939712-byte ktrace stopped growing10:38:55 and was APFS-cloned successfully. Adequate disk space remains. Cause and recoverability are unknown; no successful CPU/GPU coverage claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before recovery. Original recorder65180 and service65212 preserved; no repeated stop signal. Snapshot tools cannot sample protected dtsecurity65214 without privilege; noninteractive sudo denied and no credential requested. The large raw trace and active tracing helper also require an explicit measurement-overhead limitation.
+
+## PPD-311 — Live rigged skin data repeatedly requires nonfinite-matrix stabilization
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrated scene assessment
+- Discovered: 2026-11-16
+- Original reference: Original1eb44bbd1b llskinningutil.cpp multiplies inverse-bind and live joint matrices. Earlier native596bbc8ec1 stabilization predates the current architecture; current350b803597 bounded operand diagnostics identify invalid inputs/products.
+- Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); Private architecture-69172-integrated-session-20261116T101436Z analysis-warnings-review.md/summary.json and complete viewer log; llskinningutil.cpp217/235.
+- Next action: Trace inverse-bind production/decoding and finite-product overflow with contained asset/matrix cases before choosing a repair. Preserve the guard against nonfinite GPU inputs and do not suppress the warning or claim bind-space fallback preserves intended mesh shape.
+- Verification:70throttled notices represent at least6700palette calls by the last notice, not unique avatars. All16bounded diagnostics have finite world XYZ/W;10have nonfinite inverse XYZ and6finite inverse/world operands with nonfinite XYZ product. Asset/producer identity and numerical cause are unresolved. No measured FPS attribution or reported visible deformation in this session.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered the observed live quality fallback before repair. Busy-window55throttled notices are retained alongside transition/startup/shutdown evidence; source predates current architecture, which does not establish the origin of malformed inputs.
+
+## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex integrated asset assessment
+- Discovered: 2026-11-16
+- Original reference: Original1eb44bbd1b and current350b803597 LLPngWrapper::readPng call png_read_info, normalization, png_read_update_info and png_read_image without png_set_interlace_handling.
+- Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); Private architecture-69172-integrated-session-20261116T101436Z viewer-stderr.log and analysis-warnings-review.md/summary.json. Structured viewer warnings alone omit these messages.
+- Next action: Identify the emitting image path and exercise interlaced/noninterlaced PNG and metadata cases against the actual wrapper before a narrow API-order repair. Preserve original pixels and color semantics; no current image/FPS defect is proved.
+- Verification: stderr contains one libpng interlace-handling warning and two gray-ICC/RGB-PNG mismatches. No timestamps or asset identities are present, so phase assignment and actual visual impact are unknown. Current/original wrapper call-sequence gap is source-confirmed; attribution of every stderr emitter remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered all three stderr warnings separately from365structured viewer warnings. No application change or warning suppression attempted.

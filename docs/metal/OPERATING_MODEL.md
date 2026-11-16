@@ -65,6 +65,14 @@ Repeatedly unsuccessful variants trigger reassessment. Owner profiling is useful
 when offered, not a prerequisite for every implementation step. Do not drift past
 an agreed integrated evaluation checkpoint into another architecture experiment.
 
+Continuous collection must use a low-overhead CPU/GPU configuration; reserve
+detailed Metal system tracing for bounded diagnostic intervals. Before spending
+owner test time, verify retention, successful finalization, trace growth and
+collector cost against a representative native GPU workload. A short CPU-only
+retention check does not qualify long detailed viewer tracing. Record unavailable
+metrics and collection perturbation explicitly; a saved trace alone is not a
+whole-viewer performance result. PPD305/309/310 retain failed collector history.
+
 ## Technical changes
 - Keep source behavior where possible, rewrite OpenGL-bound implementation where required. No general renderer framework, Vulkan translation, GL emulation or permanent dual-backend toggle.
 - Any graphics semantics change must be justified by source/validation evidence. Preserve build and feature correctness of the working fork while progressing, but no requirement to maintain a second renderer inside the fork.
