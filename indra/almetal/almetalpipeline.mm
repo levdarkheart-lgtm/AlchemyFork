@@ -508,6 +508,23 @@ bool ALMetalShaderLibrary::hasFunction(const std::string& name) const
     }
 }
 
+bool ALMetalShaderLibrary::hasBoolFunctionConstant(
+    const std::string& name, std::uint32_t index) const
+{
+    if (!mImpl || name.empty()) return false;
+    @autoreleasepool
+    {
+        id<MTLFunction> function =
+            [mImpl->library newFunctionWithName:toNSString(name)];
+        for (MTLFunctionConstant* constant in function.functionConstantsDictionary.allValues)
+        {
+            if (constant.index == index && constant.type == MTLDataTypeBool)
+                return true;
+        }
+        return false;
+    }
+}
+
 struct ALMetalRenderPipeline::Impl
 {
     id<MTLDevice> device = nil;

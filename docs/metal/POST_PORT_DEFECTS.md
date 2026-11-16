@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-331 -->
+<!-- next-defect-id: PPD-332 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7879,3 +7879,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-16 selected after actual saved late Home source A/B/A: 142.99→119.21→140.90 ms, Medium/Overlapping; installed original 140.89 ms. Fixed-quality2 shared-filter source intervention shortens replay 15.39–16.63% against adjacent recompiled controls, not live FPS. Simple-alpha registers245→224 but304-byte spill persists; light map/projector registers improve, PBRspill80→32/material32→0. Separate High2 overdraw fixture: 36 exact images, all60pairs favorable (~11–13%). Both saved logs report quality2; producer/pack chain verified. Earlier quality3 timings remain stress checks. Optional3 MSL local; exclusive world.cpp integration preparing37prebuilt matching-pack PSOs with generic fallback. Original logic restored before StopGPU/Don'tSave. Build, engine qualification, staging and owner Home acceptance pending. [Recorded evidence](research/quiet-home-shadow-specialization-20261116.md).
+
+
+## PPD-331 — Proposed High2 pipelines reject supported explicit older libraries
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex High2 integration
+- Discovered: 2026-11-16
+- Original reference: Existing native reloadShaders(explicit_path) preserves a private older library without changing the shared main/probe epoch. stageShaderReload and previous-library fixtures retain generic rendering when optional executable features are absent. This native diagnostic contract has no original GL library equivalent; original shader reload likewise retains coherent owners and existing targets on failure.
+- Evidence: Independent review of proposed world.cpp593486b123 / integratedfb6606552c. New37 High2 creates require boolconstant3 even for an otherwise valid older library lacking it; ALMetalRenderPipeline correctly rejects absent requested constants. Existing world-library/source-command/resource previous-library fixtures require the older private path to work.
+- Next action: Query actual declared bool metadata during pipeline construction. Preserve generic cloned descriptors when optional3 is absent, with an explicit compatibility label; when3 exists, specialize and propagate real creation failures. Verify current bundled library declares3 for all selected consumers and test an explicit fd5 reload with no3 against unchanged shared ownership and pixels.
+- Verification: Source-confirmed introduced compatibility regression found before viewer delivery; no user-visible runtime failure. A compatibility generic path cannot establish High2 performance. Exact staged source/library and metadata checks must prove the accelerated candidate uses3. No other shader fallback/backend or draw-time compilation is added.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 root refines prior fail-closed instruction to preserve the existing explicit older-library contract. Independent source review found no pack/descriptor/lifetime blockers. Optional performance metadata absence is distinct from a failed real pipeline creation; retain generic behavior for the former, reject the latter. Actual tests/build pending.

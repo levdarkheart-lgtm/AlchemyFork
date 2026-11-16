@@ -57,6 +57,7 @@ public:
 
     void* nativeHandle() const noexcept;
     bool hasFunction(const std::string& name) const;
+    bool hasBoolFunctionConstant(const std::string& name, std::uint32_t index) const;
 
 private:
     struct Impl;

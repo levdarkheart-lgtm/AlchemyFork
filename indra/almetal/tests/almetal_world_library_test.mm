@@ -265,3 +265,44 @@ TEST_CASE("almetal: explicit older world library remains private to one renderer
         CHECK(f.probe->worldSourceStats().bound == 1); CHECK(f.read(*current_probe) == expected);
     }
 }
+
+TEST_CASE("almetal: High shadow specialization preserves a private pre-specialization library",
+          "[almetal][world-library][.world-library-high-shadow-previous]")
+{
+    @autoreleasepool
+    {
+        const char* path = std::getenv("ALCHEMY_HIGH_SHADOW_BASELINE_LIBRARY");
+        REQUIRE(path);
+        REQUIRE(std::filesystem::is_regular_file(path));
+        SharedLibraryFixture f;
+        const auto shared = f.data->builtinLibrary(&f.error);
+        const auto epoch = f.data->builtinLibraryEpoch();
+        for (const char* name : {"almetal_world_light_map_fragment",
+                 "almetal_world_projector_light_fragment",
+                 "almetal_world_pre_water_simple_shadow_fragment",
+                 "almetal_world_pre_water_material_fragment",
+                 "almetal_world_pre_water_pbr_fragment"})
+        {
+            INFO(name);
+            REQUIRE(shared->hasBoolFunctionConstant(name, 3));
+        }
+        auto scene = f.rowScene();
+        auto current = f.renderer->render(scene, &f.error);
+        INFO(f.error); REQUIRE(current);
+        const auto expected = f.read(*current);
+        REQUIRE(f.renderer->reloadShaders(std::string(path), &f.error));
+        INFO(f.error);
+        CHECK_FALSE(f.renderer->shaderLibrary()->hasBoolFunctionConstant(
+            "almetal_world_light_map_fragment", 3));
+        CHECK(f.renderer->shaderLibrary() != shared);
+        CHECK(f.probe->shaderLibrary() == shared);
+        CHECK(f.data->builtinLibrary(&f.error) == shared);
+        CHECK(f.data->builtinLibraryEpoch() == epoch);
+        auto previous = f.renderer->render(scene, &f.error);
+        INFO(f.error); REQUIRE(previous);
+        CHECK(f.read(*previous) == expected);
+        auto probe = f.probe->render(scene, &f.error);
+        INFO(f.error); REQUIRE(probe);
+        CHECK(f.read(*probe) == expected);
+    }
+}

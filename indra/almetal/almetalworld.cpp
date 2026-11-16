@@ -2959,9 +2959,19 @@ struct ALMetalWorldGBufferRenderer::Impl
         // Stored descriptors omit the borrowed library pointer. Preserve all
         // formats, blending, depth and existing function constants verbatim.
         descriptor.library = library.get();
-        descriptor.fragment_bool_constants.push_back(
-            {high_shadow_function_constant, true});
-        descriptor.label += " (High shadow quality)";
+        if (library->hasBoolFunctionConstant(
+                descriptor.fragment_function, high_shadow_function_constant))
+        {
+            descriptor.fragment_bool_constants.push_back(
+                {high_shadow_function_constant, true});
+            descriptor.label += " (High shadow quality)";
+        }
+        else
+        {
+            // Explicit older libraries retain their ordinary native shader.
+            // A missing optimization is distinct from a failed PSO creation.
+            descriptor.label += " (generic shadow compatibility)";
+        }
         return ALMetalRenderPipeline::create(*device, descriptor, error);
     }
 
