@@ -157,3 +157,70 @@ engine qualification, staging and owner Home acceptance remain pending.
 Simple-alpha 304-byte spill persists. Growing probe work remains a measured
 limiter. The actual live FPS effect and original architecture acceptance remain
 partial. GPU replay stopped, source edits discarded, input audit pending aliases.
+
+
+## First combined integration: retained failures and correction
+
+060942a945 / 69221 builds0 (344 seconds), staged8272nodes exactly match source;
+verify_app ARM64/signature and strict source checks pass. Qualified Python
+179tests pass; initial defaultPython run failed for missingPyYAML and is retained.
+Full native global API/GPU-validation invocation: 464cases,457pass,6fail,1skip;
+2380033assertions/9fail. Do not deliver this candidate.
+
+PPD332: five failures were the wrong matrix for native archive persistence.
+Its deliberate shader-validation bypass worked. Fresh API-only/no shader-env
+[pipeline-cache-disk] now passes5905assertions/6cases. Ordinary correctness and
+selective instrumentation will use separate documented modes.
+
+PPD333: the odd31x31 High2/reverse-Z/HDR probe fixture fails with GPU validation
+bothON andOFF, so it is a real integration parity issue, not instrumentation.
+Separate lightmap usesHigh2 while fused tile producer remainedgeneric. Failed
+arrays show21center-axis pixels/63RGB half-components differ (maxHDR0.03515625).
+No equality relaxation, tile disable or architecture rollback is selected.
+Independent reviewed world-only repair819f98d71c adds2prebuilt High2 tile-lightmap
+PSOs, selecting fromthe exactboundpack; base/sky/ROGformats remain intact.
+Rebuild and focused strict parity are pending; preserve first69221 stage.
+
+PPD331: explicit older-library contract preserved through actual declaration
+query atconstruction; absentoptional3 clonesgeneric withcompatlabel. Real PSO
+creation errors stillpropagate. Hidden fd5reload/5declared-consumer assertions
+pending. New bundledcandidate mustprove3/assetidentity; oldgenericcompat isnot
+performance evidence.
+
+Original and preserved capture content audit completed: all22105logical paths/
+bytes/hashes match,17254regular files+4851aliases, no followed symlink. Symlink
+permission modes differ source/copy and oldmanifest lacks linkmetadata; no
+historical permission-equality or attribution claim. Strict failures retained;
+finalcontent-verdict0 under post-home-fix-replay-input-verification-20261116T192819Z.
+
+
+## Verified combined candidate and authorized live checkpoint
+
+Final runtime source819f98d71ca479441f635fb619e8dccb5d26e6a8 /26.4.0.69224,
+local experiment branch; build0 in48.98s after bounded tile fix. Corrected native
+matrix allpass: renderer457cases/2375887assertions API+GPUvalidation; archive
+API-only6/5905; selective1/98; focusedprobe3/1526; oldprivate-library1/80;
+productionhelper/shadowparity2/7580. Total2391076assertion-executions in470case-
+executions (focusedcases repeat ordinary coverage). Budget18freshprocesses pass,
+all9acceptedactualheaders pin819source; tools179/harness/strict/app/signature pass.
+Newstage candidate-26.4.0.69224 exactlymatches8272internal sourcebundle nodes.
+ExecutableSHA89f27569f7c9d3dfeca5b5a4805128e72d3c24d988758b06a06986bae9e2d604;
+metallibSHAe8198019580a4559c213204b2bd01423c384f8a07aa108d492f26f67014a2cc9.
+First69221failedcandidate andallfailedchecks remainpreserved/unaccepted.
+
+Owner explicitly authorized launchwhenready, then another rununderMidday.
+Sameverified69224/exact19overrides/fourTRUE/cameraandgraphicsowner-controlled;
+validation/capturelayersoff, nativebudget256MiB, Overview180s startsbeforelogin.
+Regionenv /Users/dekstroza/Alchemy-home-upwlt_pz PID13541: recordstart20:11:03Z,
+worldSTATE_STARTED20:11:35Z, recordstop20:14:11Z, complete20:15:02Z/exit0.
+Midday /Users/dekstroza/Alchemy-home-dwgbpexo PID16215: recordstart20:18:50Z,
+recordstop20:21:57Z, complete20:22:21Z/exit0. UserconfirmedMidday viaexplicit
+marker andreported27→brief17→15FPS; previous17wasnotfinalsettlement. Bothviewers
+closedobserved; nofurtherimplementation/profile/launchbeforefindingdiscussion.
+
+Preserve/analyzeboth independently underprivate home-checkpoint-69224-
+20261116T202910Z. Native136/152MBfinal files extendbeyondOverview; matchedphases
+mustrespectactualoverlap andeligibility. Differentlighting runsare notpairedFPS
+controls. PPD319remainsopen; replayGPUgain doesnotestablishliveFPSacceptance.
+Originalbroadarchitecturepaused; no club/push. Next action: completecoverage,
+source/settings/CPU-GPU/native/warning audits anddiscussresidualquietdecline.

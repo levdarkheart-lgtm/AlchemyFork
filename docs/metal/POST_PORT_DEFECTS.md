@@ -7663,6 +7663,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 owner supplies quiet-qy__4ufq with two successful device captures, exact22105-file/11627693726-byte copy retained at private quiet-frame-analysis-20261116T174649Z. Main probe bounds1→20; lights/rectangles,3456×2168,SSR25/4 fixed. Capture stops4.205/9.090s and armedCaptureMTL CPUcost are explicit; excluding capture intervals still24.384→14.798FPS with wait15.221→42.029ms/frame. XcodeMedium/Overlapping actual shaders show expensive simple-alpha/base probe-dependent shading; hazeencoder label includesalpha, truehaze is small. Sharedprobe-helper source A/B/A at fixedlatecapture gives125.57→91.45→121.62ms withsameGPRcounts; recompileddefault-onlyB changeslighting/allusingviews, so this is material replay causality, notfull livecritical-path attribution orFPSgain. Recompiledsimple/PBR/material spill304/80/32bytes; storagecontributionunproved(PPD-327). Source restored, replay stopped, diagnostic edits notsaved; noenginechange. [GPU findings](research/quiet-gpu-frame-findings-20261116.md) retain allvariants/adverse155.55→130.89untouchedvariance, exactsource/evidence and remaining owner-runtime boundary.
 
+- 2026-11-16 source819/69224 staged/native/static checks pass after PPD330/333 integration. Owner authorized region-environment and Midday Home recordings; both recorderexit0/viewersclosed, no club. Middayowner reports27→brief17→15FPS, so decline persists and no live fix/gain accepted. Separate actual-phase/coverage/CPU-GPU/native/log analysis ongoing underprivate home-checkpoint-69224-20261116T202910Z; lighting runs are not paired controls. Original architecture stayspaused pendingdiscussion.
+
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -7862,7 +7865,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-330 — Native directional shadows lose the reference compile-time quality filter
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex Home shadow shader repair
 - Discovered: 2026-11-16
@@ -7883,7 +7886,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-331 — Proposed High2 pipelines reject supported explicit older libraries
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex High2 integration
 - Discovered: 2026-11-16
@@ -7901,7 +7904,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-332 — Native test matrix incorrectly enables shader instrumentation for disk archives
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex Home integration validation
 - Discovered: 2026-11-16
@@ -7918,7 +7921,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-333 — High2 separate light-map specialization breaks exact fused probe parity
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex High2 integration
 - Discovered: 2026-11-16
@@ -7932,3 +7935,6 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-16 registered before repair. First staged69221/060942 app is retained as an unaccepted candidate; original recorded A/B/A remains valid source-intervention evidence, not proof combined engine correctness. Preserve failed suite and exact arrays.
+
+
+- 2026-11-16 PPD333 repair819 passes strict probe fusion1526assertions/3cases plus full corrected renderer2375887/457; productionparity7580/2 and oldlibrary80/1 pass. Cachematrixcorrectmodes5905/6+98/1 pass (PPD332); no archivepolicychange. Budget18actualprocesses, all9acceptedheaders source819 pass. Combined69224 build/app/native gates pass, owner livechecks authorized/completed; Middaydecline27→15 remainsPPD319. Automated parity repairs are ready_for_owner, not closed or FPS-accepted.
