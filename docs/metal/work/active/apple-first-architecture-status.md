@@ -448,3 +448,20 @@ correctness cases and8cost cells are registered, not yet executed.
 Root owns integration/build and preserves all prior owner apps. Main author and
 two source reviewers completed their scoped work; contained94native checks and
 costs are next. Original goal remains active/partial, with no new viewer launch.
+
+### Owner acceptance steering — 2026-11-16
+
+The objective is better whole-viewer FPS and frame pacing on Apple hardware,
+with quality, functionality and loading preserved. Component tests establish
+correctness or diagnose a mechanism. Main CPU savings, GPU regressions or
+isolated completion latency cannot establish a whole-viewer performance result.
+Experiments must connect to observed viewer work and its normal CPU/GPU overlap;
+repeated failures trigger reassessment, not endless new scheduling variants.
+Keep the integrated candidate coherent and report active/disabled/unfinished/
+demonstrated states separately. Further owner profiling is useful when offered
+and needed for a specific question, not a prerequisite for each code step.
+
+Current308 correctness exposed a real missing-library binding in lazy cloned
+PSO descriptors before activation. Correct that implementation defect, finish
+quality/lifecycle checks, and use component cost only to assess the mechanism
+and whether it warrants a whole-viewer trial. Do not call it an FPS gain.

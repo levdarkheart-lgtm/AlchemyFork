@@ -25604,6 +25604,8 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         if (local->light_count && !mImpl->main_local_light_pipelines[variant])
         {
             auto point = mImpl->local_light_accumulation_pipelines[variant]->descriptor();
+            // Diagnostic descriptors deliberately omit borrowed libraries.
+            point.library = mImpl->library.get();
             point.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
             point.label = "Alchemy main-pass point-light pipeline";
             auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, point, error);
@@ -25613,6 +25615,7 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         if (projector->light_count && !mImpl->main_projector_light_pipelines[variant])
         {
             auto spot = mImpl->projector_light_pipelines[variant]->descriptor();
+            spot.library = mImpl->library.get();
             spot.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
             spot.label = "Alchemy main-pass projector-light pipeline";
             auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, spot, error);
