@@ -8,7 +8,7 @@
     for (auto it = mNearbyLights.begin(); it != mNearbyLights.end(); ++it)
     {
         if (++considered_lights > local_light_count) break;
-        const auto* drawable = it->drawable;
+        LLDrawable* drawable = it->drawable;
         const auto* volume = drawable ? drawable->getVOVolume() : nullptr;
         if (volume && !(volume->isAttachment() && !sRenderAttachedLights) &&
             !volume->isLightSpotlight())

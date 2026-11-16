@@ -53,7 +53,15 @@ struct LLDrawable
     const LLVector3& getPositionAgent() const
     { ++position_reads; return position; }
 };
-struct Light { LLDrawable* drawable = nullptr; F32 fade = 1.f; };
+// Match the production LLPointer conversion boundary without giving this
+// handle ownership of stack/vector fixture objects.
+struct DrawableReference
+{
+    LLDrawable* value = nullptr;
+    DrawableReference(LLDrawable* input = nullptr) : value(input) {}
+    operator LLDrawable*() const noexcept { return value; }
+};
+struct Light { DrawableReference drawable; F32 fade = 1.f; };
 struct Camera
 {
     LLVector3 origin{0.f, 0.f, 8.f};

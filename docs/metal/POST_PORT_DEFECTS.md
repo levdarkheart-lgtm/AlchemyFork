@@ -7363,6 +7363,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 PPD307 first scoped implementation integrated from8363194f57. One exclusive same-renderer main task joins before all sky/commit/query/target access; copied submission ownership is rebound, active stage diagnostics decline, unwind joins/cancels. Owner point arrays reserve budget before allocation and retain charge until consumed/destroyed; packet keys frame/camera/dimensions/scale/count/attachment policy. OFF route retains stack values without task/heap packet. Projector/resource work and nearby-light updates remain ordered. Authored five actual point-value/key/candidate cases, three native task/query/unwind cases and40cell800row full-frontier comparison including real producer, budget, allocation, dispatch, point consumer and original settlement. Exclusions and unselected defaultOFF retained. Source/peer review only; freeze90 build/native/cost still pending.
 
+- 2026-11-16 first integrated90/source8eeb481 doctor/configure pass; build fails42.719s before native execution. Actual Light::drawable is LLPointer<LLDrawable>, so candidate helper const-auto-pointer deduction is invalid, though raw-pointer fixture accepted it. Register before repair: restore explicit borrowed LLDrawable* conversion as in original point gather and make candidate fixtures model an implicitly convertible handle, not only raw pointers. No app staged or test/cost claim; failed90 receipt/log retained.
+
+- 2026-11-16 repair for90 uses explicit borrowed LLDrawable* conversion matching the original gather. Both new fixture Light fields now use implicitly convertible nonowning handles, preventing raw-pointer-only coverage from hiding this production type boundary; fixture stack/vector ownership is deliberately unchanged. No scheduling/shader/admission policy change. Freeze91 for build and actual native/producer tests before cost execution.
+
 ## PPD-308 — Main lighting reopens render encoders on one accumulation target
 
 - Status: investigating

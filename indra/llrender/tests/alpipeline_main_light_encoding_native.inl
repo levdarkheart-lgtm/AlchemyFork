@@ -35,7 +35,15 @@ struct LLDrawable
     LLVOVolume* getVOVolume() const { return volume; }
     const LLVector3& getPositionAgent() const { return position; }
 };
-struct Light { LLDrawable* drawable = nullptr; F32 fade = 1.f; };
+// Match the production LLPointer conversion boundary without giving this
+// handle ownership of stack/vector fixture objects.
+struct DrawableReference
+{
+    LLDrawable* value = nullptr;
+    DrawableReference(LLDrawable* input = nullptr) : value(input) {}
+    operator LLDrawable*() const noexcept { return value; }
+};
+struct Light { DrawableReference drawable; F32 fade = 1.f; };
 struct Owner
 {
     using light_set_t = std::vector<Light>;
