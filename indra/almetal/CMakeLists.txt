@@ -257,6 +257,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_static_visibility_commands_test.mm
             tests/almetal_main_lighting_renderpass_test.mm
             tests/almetal_main_frame_admission_test.mm
+            tests/almetal_shadow_recipe_test.mm
             tests/almetal_cohort_declaration_test.mm
             tests/almetal_world_material_source_test.mm
             tests/almetal_world_resources_test.mm
@@ -402,6 +403,7 @@ set_source_files_properties(tests/almetal_early_visibility_test.mm PROPERTIES SK
 set_source_files_properties(tests/almetal_static_visibility_commands_test.mm tests/almetal_cohort_declaration_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_main_lighting_renderpass_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_main_frame_admission_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties(tests/almetal_shadow_recipe_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 

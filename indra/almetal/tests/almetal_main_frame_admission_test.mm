@@ -192,10 +192,14 @@ TEST_CASE("almetal: main authority survives shader reload and retires through le
             REQUIRE(f.renderer->beginMainFrameBatch(1, "Main before reload", &f.error));
             auto target = f.clear(i); REQUIRE(f.renderer->commitCommandBatch(&f.error));
         }
+        REQUIRE_FALSE(gate.watchdogTripped());
+        // Shader reload eagerly uploads fallback/look-up textures and waits
+        // on this same queue. Release the artificial GPU gate before reload;
+        // the old main admission receipts still need to transfer and retire.
+        gate.release();
         const std::array owners{f.renderer.get()};
         REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data, owners, &f.error));
         CHECK(f.renderer->mainFrameStats().pending_commands == 3);
-        REQUIRE_FALSE(gate.watchdogTripped()); gate.release();
         REQUIRE(f.renderer->beginCommandBatch("Legacy utility retains one-command cap", &f.error, 1));
         auto utility = f.clear(1); REQUIRE(f.renderer->commitCommandBatch(&f.error));
         CHECK(f.renderer->mainFrameStats().pending_commands == 0);

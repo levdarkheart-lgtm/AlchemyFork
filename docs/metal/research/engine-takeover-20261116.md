@@ -88,3 +88,38 @@ The successful collector is still private/ad hoc; maintained tooling should
 acquire explicit PID/source identity, bounded recording/finalization/export,
 actual coverage and failure receipts. Existing continuous-frame work PPD-314 is
 preserved in its isolated worktree; it has not been resumed or integrated.
+
+## PPD-317 — shared CPU recipe publication follow-through
+
+The native source cache currently discards CPU preparation facts together with
+optional native leases. Interior same-revision-expired getter deltas are
+5,626,666 quiet / 10,870,652 club, against 1,112 / 29,080 revision-change calls.
+These are repeated calls, not distinct producers or physical allocations.
+Club `world()`18.010CPU-s, `publish()`13.977, native `retain()`7.681,
+`remove()`2.262 and `buildWorld()`2.177 overlap. Both source and measured stacks
+justify a shared restoration boundary; no frame-time saving follows from their
+sum. A bounded producer-owned CPU recipe should survive native-cache withdrawal,
+then restore exact weak generations across main/probe/shadow without repeating
+live material/texture walks. Producer writes, expired generations and unsupported
+families must retain the existing current-input path. This work is independent
+of the running frozen290c25ea60 admission/dependency build and remains unverified.
+
+## Frozen first integration validation
+
+`290c25ea60c46b2f522259ee8631b84a3897d98c` builds as 26.4.0.69181.
+Doctor/configure/full build and exact static ARM64/signature/import/retained
+feature/provenance verification exit0. Production dependency topology427/9,
+main lighting5627/5 and common budget/working-set6112/52 pass. The four new
+admission cases first execute with1136assertions/1failure: three cases pass;
+reload fails its artificial five-second gate. Source review proves reload must
+commitAndWait eager lookup/fallback uploads on the same queue. Corrected test
+releases the artificial gate before reload and still verifies receipt transfer
+and retirement. Corrected runtime execution remains pending. Preserve the
+initial failure; no production workaround or expanded timeout is applied.
+Private exact commands/hashes are under `artifacts/metal/engine-takeover-20261116/`.
+
+Main admission ledger counts are pruned at later owner entry and can include
+already-completed commands. They must not be interpreted as live GPU debt.
+The independent frame-budget audit found no observed window-capacity-full
+samples in69172, so no new probe/upload throttle is justified from those
+counters. Shared producer recipes are the next supported implementation work.

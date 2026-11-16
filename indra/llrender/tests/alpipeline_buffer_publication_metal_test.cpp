@@ -126,6 +126,7 @@ struct ALViewerMetalShadowSourceCache
 {
     std::unique_ptr<ALNativeCohortCompilationAdmission> animated_compilation;
     std::weak_ptr<const void> native_scene_transient;
+    std::shared_ptr<const void> native_scene_recipe;
     U64 native_scene_revision=0;
     std::weak_ptr<ALMetalWorldVisibility> visibility;
     ALMetalWorldBoundsHandle bounds;

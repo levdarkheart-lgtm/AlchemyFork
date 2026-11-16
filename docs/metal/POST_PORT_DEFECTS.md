@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-317 -->
+<!-- next-defect-id: PPD-318 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7559,6 +7559,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 takeover independently re-confirms the normal three-transaction/two-command path. Native repair is isolated in codex/main-admission-takeover; root pipeline integration uses an explicit owner-local group serial and retains snapshot/probe/hero/diagnostic policies. Event-gated native validation and combined build pending. No live incidence, FPS benefit, owner acceptance or push.
 
+- 2026-11-16 frozen290c25ea60 doctor/configure/build exits0. First actual API/GPU-validated admission suite exits42:4cases,3passed/1failed,1136assertions/1failure at reload-case five-second watchdog. Gated six-commit overlap, cancellation/reentrancy/output and pooled reuse cases passed. Reload wait versus compilation-time attribution remains under source review; do not discard failure or call the suite passed. Private engine-takeover-20261116 build.json/test-main-frame-admission.log and targeted-correctness.json retain exact argv, binary hash and failure.
+
+- 2026-11-16 failure source review identifies an invalid test premise: shader reload creates eager fallback/lookup textures through commitAndWait on the same queue, so holding an artificial GPU event across reload requires watchdog release. Existing world-library tests keep earlier encoded commands unsubmitted for this reason. Test now releases the gate after proving six-stage overlap and before reload, then verifies transfer and retirement of the existing ledger receipts. No renderer workaround or longer timeout; corrected native execution pending.
+
 ## PPD-316 — Repeated dependency roles rescan the same Signal subscription
 
 - Status: investigating
@@ -7577,3 +7581,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered before implementation. The apparent double world/shadow observation calls already have a revision guard and can be required after reentrant buffer publication; do not remove them. This bounded secondary candidate does not replace the primary frame-overlap work.
 
 - 2026-11-16 takeover integrates reviewed local4050b02a88 as3c52f5dd29. Independent actual-body baseline has8assertion failures/4failed cases; candidate318assertions/9cases passes, including identical-unique-set duplicate order/multiplicity, invalidation, reentrancy and transactional failures. Full production test TU compiles. Private ppd316-takeover-validation receipts retained under successful69172 Overview evidence. Combined build and owner acceptance remain pending; no FPS claim or push.
+
+## PPD-317 — Native residency withdrawal discards unchanged CPU source recipes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared source publication takeover
+- Discovered: 2026-11-16
+- Original reference: Original1eb44 current draw/material preparation remains the semantic reference. The new native cache has no original GL equivalent. At290c25ea60 pipeline_scene_publication_native.inl Payload171–182 combines CPU variants with strong native generations; current257–273 and extend301–315 cannot recover variants after the sole native-cache Payload and weak transient expire. State::evict in alnativepublication.cpp142–147 preserves revision while dropping the Payload. Existing group Source/StaticRestoreTuple and restoreMaterial already demonstrate owner-free CPU facts plus weak native identities for a narrower static path.
+- Evidence: [Takeover engine audit](research/engine-takeover-20261116.md); successful69172 Overview private evidence retains publication CPU stacks and cumulative source-miss telemetry. Quiet/busy interior same-revision-expired getter deltas5626666/10870652 dominate revision-changed1112/29080; getter/factory calls are not unique producers. Club world18.010CPU-s, publish13.977, native retain7.681, remove2.262 and buildWorld2.177 overlap and cannot be summed.
+- Next action: Separate bounded immutable CPU recipes from optional native residency for shared world/shadow consumers, with exact producer revision/variant and weak native-generation proofs. Share existing CPU layout/recipe allowance, preserve same-frame writes, all current pose/view/coverage/resource behavior and native completion ownership. Validate complete cold/warm/churn/denial costs; no arbitrary native-cap increase or worker/bank activation.
+- Verification: Source and real miss distribution establish repeated same-revision source reconstruction after cache withdrawal. CPU recipes are currently retained only within narrower static-group layouts. New general recipe implementation, integrated build, pixel/lifetime checks and whole-viewer benefit remain unverified. Recipe restoration alone cannot eliminate native retention/eviction cost.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before repair. Implementation delegated exclusively to codex/source-recipes-takeover for source/group publication helpers and actual-body tests; root owns pipeline metadata/CMake/docs/integration. Frozen290c25ea60 PPD315/316 build proceeds independently. Preserve source350b803597/build69172 baseline and all prior private evidence; no viewer launch, live profile or push.
