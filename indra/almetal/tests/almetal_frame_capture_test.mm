@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -77,9 +78,10 @@ namespace
         fs::path trace() const { return session() / ALMetalFrameCapture::trace_name; }
     };
 
-    std::vector<NSDictionary*> records(const Directory& directory)
+    std::vector<NSDictionary*> records(const Directory& directory,
+                                      const char* child = ALMetalFrameCapture::session_directory)
     {
-        std::ifstream input(directory.session() / ALMetalFrameCapture::metadata_name);
+        std::ifstream input(directory.path / child / ALMetalFrameCapture::metadata_name);
         REQUIRE(input.good());
         std::vector<NSDictionary*> result;
         for (std::string line; std::getline(input, line);)
@@ -103,6 +105,24 @@ namespace
     {
         const char* requested = std::getenv("ALCHEMY_METAL_RUN_FRAME_CAPTURE_TEST");
         return requested && std::strcmp(requested, "1") == 0;
+    }
+
+    bool traceBytesContain(const fs::path& trace, const std::string& literal)
+    {
+        // Fixture-only raw-byte inspection: presence is direct evidence;
+        // absence does not decode compressed packets or establish missing
+        // Xcode metadata. No real viewer capture is inspected by this test.
+        const auto contains = [&](const fs::path& path)
+        {
+            if (!fs::is_regular_file(path) || fs::file_size(path) > 64 * 1024 * 1024) return false;
+            std::ifstream input(path, std::ios::binary);
+            const std::string bytes((std::istreambuf_iterator<char>(input)), {});
+            return bytes.find(literal) != std::string::npos;
+        };
+        if (fs::is_regular_file(trace)) return contains(trace);
+        for (const auto& entry : fs::recursive_directory_iterator(trace))
+            if (contains(entry.path())) return true;
+        return false;
     }
 
     void reachStart(ALMetalFrameCapture& capture, std::string& error)
@@ -130,6 +150,254 @@ namespace
         REQUIRE(capture.stats().state == State::capturing);
         CHECK(capture.stats().start_attempts == 1);
         CHECK(capture.stats().start_frame == 259);
+    }
+}
+
+TEST_CASE("almetal: explicit quiet capture rejects legacy controllers and unsafe reservations",
+          "[almetal][frame-capture]")
+{
+    Environment environment;
+    Directory directory;
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    REQUIRE(device);
+    using Capture = ALMetalFrameCapture;
+    CHECK_FALSE(Capture::createTriggeredDisplay(*device, directory.path.c_str(),
+                                               Capture::Trigger::legacy, &error));
+    CHECK(error.find("quiet trigger") != std::string::npos);
+    CHECK_FALSE(Capture::createTriggeredDisplay(*device, directory.path.c_str(),
+                                               Capture::Trigger::quiet_early, &error));
+    CHECK(error.find("legacy capture") != std::string::npos);
+    REQUIRE(unsetenv(Capture::directory_environment) == 0);
+    REQUIRE(setenv(Capture::mode_environment, "display", 1) == 0);
+    CHECK_FALSE(Capture::createTriggeredDisplay(*device, directory.path.c_str(),
+                                               Capture::Trigger::quiet_early, &error));
+    CHECK(error.find("legacy capture") != std::string::npos);
+    REQUIRE(unsetenv(Capture::mode_environment) == 0);
+    CHECK_FALSE(Capture::createTriggeredDisplay(*device, "relative",
+                                               Capture::Trigger::quiet_early, &error));
+    CHECK(error.find("absolute") != std::string::npos);
+    const auto child = directory.path / Capture::quiet_early_directory;
+    REQUIRE(fs::create_directory(child));
+    { std::ofstream output(child / "sentinel"); output << "keep"; }
+    CHECK_FALSE(Capture::createTriggeredDisplay(*device, directory.path.c_str(),
+                                               Capture::Trigger::quiet_early, &error));
+    CHECK(error.find("no overwrite") != std::string::npos);
+    std::ifstream input(child / "sentinel");
+    std::string sentinel;
+    input >> sentinel;
+    CHECK(sentinel == "keep");
+}
+
+TEST_CASE("almetal: explicit early and late intervals capture fresh commands on two device queues",
+          "[.][almetal][quiet-frame-capture-gpu]")
+{
+    if (!captureTestRequested())
+    {
+        WARN("Quiet frame capture requires explicit launch/test flags");
+        return;
+    }
+    @autoreleasepool
+    {
+        using Capture = ALMetalFrameCapture;
+        Environment environment;
+        REQUIRE(environment.capture == std::optional<std::string>("1"));
+        Directory directory;
+        REQUIRE(unsetenv(Capture::directory_environment) == 0);
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        MTLCaptureManager* manager = [MTLCaptureManager sharedCaptureManager];
+        if (![manager supportsDestination:MTLCaptureDestinationGPUTraceDocument])
+        {
+            WARN("GPUTraceDocument unsupported; quiet capture fixture not executed");
+            return;
+        }
+        REQUIRE_FALSE(manager.isCapturing);
+        // Literal source compilation is proven by executing this exact kernel.
+        // This does not assert Xcode source view/debug metadata availability.
+        const std::string source =
+            "#include <metal_stdlib>\nusing namespace metal;\n"
+            "kernel void almetal_quiet_literal_source_20261116(device uint* output [[buffer(0)]])"
+            " { output[0] = 0x51a7u; }\n";
+        auto library = ALMetalShaderLibrary::compileSource(*device, source,
+            "Quiet capture literal source library", &error);
+        INFO(error);
+        REQUIRE(library);
+        ALMetalComputePipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.function = "almetal_quiet_literal_source_20261116";
+        auto pipeline = ALMetalComputePipeline::create(*device, pipeline_descriptor, &error);
+        REQUIRE(pipeline);
+        ALMetalBufferDescriptor buffer_descriptor;
+        buffer_descriptor.length = 4;
+        buffer_descriptor.storage = ALMetalStorageMode::shared;
+        auto result = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        REQUIRE(result);
+        id<MTLDevice> native_device = (__bridge id<MTLDevice>)device->nativeHandle();
+        auto native_output = [native_device newBufferWithLength:4 options:MTLResourceStorageModeShared];
+        REQUIRE(native_output);
+
+        const std::array<Capture::Trigger, 2> triggers{
+            Capture::Trigger::quiet_early, Capture::Trigger::quiet_late_fallback};
+        for (std::size_t index = 0; index < triggers.size(); ++index)
+        {
+            CAPTURE(index);
+            const unsigned zero = 0;
+            REQUIRE(result->write(0, &zero, sizeof(zero), &error));
+            std::memset(native_output.contents, 0, 4);
+            const auto trigger = triggers[index];
+            const char* child = index == 0 ? Capture::quiet_early_directory : Capture::quiet_late_directory;
+            auto capture = Capture::createTriggeredDisplay(*device, directory.path.c_str(), trigger, &error);
+            INFO(error);
+            REQUIRE(capture);
+            CHECK(capture->stats().state == Capture::State::ready_for_display);
+            REQUIRE(capture->advanceDisplayInterval(10 + index * 10, true, &error));
+            CHECK(capture->stats().start_attempts == 0); // Eligibility cannot start it.
+            // No benchmark arm/disarm/cooldown is required, even if timing is enabled.
+            ALMetalDevice::setCommandTimingEnabled(true);
+            const std::uint64_t frame = 11 + index * 10;
+            REQUIRE(capture->beginDisplayInterval(frame, &error));
+            ALMetalDevice::setCommandTimingEnabled(false);
+            REQUIRE(manager.isCapturing);
+            CHECK_FALSE(capture->selectedPassReady());
+            CHECK_FALSE(capture->beginDisplayInterval(frame, &error));
+            auto command = device->makeCommandBuffer("Quiet viewer queue literal source command", &error);
+            REQUIRE(command);
+            auto encoder = ALMetalComputeEncoder::begin(*command, "Quiet literal source compute", &error);
+            REQUIRE(encoder);
+            REQUIRE(encoder->setPipeline(*pipeline, &error));
+            REQUIRE(encoder->setBuffer(0, *result, 0, &error));
+            REQUIRE(encoder->dispatch(1, 1, 1, 1, 1, 1, &error));
+            REQUIRE(encoder->end(&error));
+            REQUIRE(command->commit(&error));
+            // This queue AND command are created inside the device capture window.
+            auto second_queue = [native_device newCommandQueue];
+            REQUIRE(second_queue);
+            second_queue.label = @"Quiet independent native queue";
+            auto second_command = [second_queue commandBuffer];
+            REQUIRE(second_command);
+            second_command.label = @"Quiet independent queue captured command";
+            auto blit = [second_command blitCommandEncoder];
+            REQUIRE(blit);
+            [blit fillBuffer:native_output range:NSMakeRange(0,4) value:0x63];
+            [blit endEncoding];
+            [second_command commit];
+            REQUIRE(capture->advanceDisplayInterval(frame, true, &error));
+            REQUIRE(manager.isCapturing); // Duplicate normal entry cannot stop.
+            REQUIRE(capture->advanceDisplayInterval(frame + 1, false, &error));
+            REQUIRE(manager.isCapturing); // Nested entry cannot truncate.
+            REQUIRE(capture->advanceDisplayInterval(frame + 2, true, &error));
+            CHECK_FALSE(manager.isCapturing);
+            const auto stats = capture->stats();
+            CHECK(stats.state == Capture::State::stopped);
+            CHECK(stats.trigger == trigger);
+            CHECK(stats.start_frame == frame);
+            CHECK(stats.stop_frame == frame + 2);
+            CHECK(stats.start_request_monotonic_ns > 0);
+            CHECK(stats.start_return_monotonic_ns >= stats.start_request_monotonic_ns);
+            CHECK(stats.stop_request_monotonic_ns >= stats.start_return_monotonic_ns);
+            CHECK(stats.stop_return_monotonic_ns >= stats.stop_request_monotonic_ns);
+            REQUIRE(command->waitUntilCompleted(&error)); // Test-only, after capture.
+            [second_command waitUntilCompleted];
+            CHECK(second_command.status == MTLCommandBufferStatusCompleted);
+            CHECK(*static_cast<const unsigned*>(result->mappedBytes()) == 0x51a7u);
+            CHECK(*static_cast<const unsigned*>(native_output.contents) == 0x63636363u);
+            REQUIRE(fs::exists(directory.path / child / Capture::trace_name));
+            const auto trace = directory.path / child / Capture::trace_name;
+            const bool source_present = traceBytesContain(trace, source);
+            const bool kernel_name_present = traceBytesContain(trace, pipeline_descriptor.function);
+            const bool independent_queue_present = traceBytesContain(trace,
+                "Quiet independent queue captured command");
+            std::printf("quiet_capture_fixture trigger=%s literal_source_bytes=%s "
+                        "literal_kernel_name=%s independent_queue_command=%s "
+                        "xcode_source_view=unverified\n",
+                        index == 0 ? "early" : "late_fallback",
+                        source_present ? "present" : "not_found_in_raw_bytes",
+                        kernel_name_present ? "present" : "not_found_in_raw_bytes",
+                        independent_queue_present ? "present" : "not_found_in_raw_bytes");
+            const auto metadata = records(directory, child);
+            REQUIRE(metadata.size() == 3);
+            CHECK([metadata.back()[@"quiet_trigger"] isEqualToString:
+                (index == 0 ? @"quiet_early" : @"quiet_late_fallback")]);
+            CHECK([metadata.back()[@"quiet_cpu_bounds_are_gpu_timestamps"] boolValue] == NO);
+            CHECK_FALSE(Capture::createTriggeredDisplay(*device, directory.path.c_str(), trigger, &error));
+            CHECK(error.find("no overwrite") != std::string::npos);
+        }
+    }
+}
+
+TEST_CASE("almetal: quiet capture cancellation and external conflicts preserve normal work",
+          "[.][almetal][quiet-frame-capture-gpu]")
+{
+    if (!captureTestRequested()) return;
+    @autoreleasepool
+    {
+        using Capture = ALMetalFrameCapture;
+        Environment environment;
+        REQUIRE(environment.capture == std::optional<std::string>("1"));
+        Directory directory;
+        REQUIRE(unsetenv(Capture::directory_environment) == 0);
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        REQUIRE(device);
+        MTLCaptureManager* manager = [MTLCaptureManager sharedCaptureManager];
+        if (![manager supportsDestination:MTLCaptureDestinationGPUTraceDocument]) return;
+        auto capture = Capture::createTriggeredDisplay(*device, directory.path.c_str(),
+            Capture::Trigger::quiet_early, &error);
+        REQUIRE(capture);
+
+        SECTION("a later external controller remains untouched")
+        {
+            MTLCaptureDescriptor* descriptor = [[MTLCaptureDescriptor alloc] init];
+            descriptor.captureObject = (__bridge id<MTLDevice>)device->nativeHandle();
+            descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
+            descriptor.outputURL = [NSURL fileURLWithPath:
+                [NSString stringWithUTF8String:(directory.path / "external-quiet.gputrace").c_str()]];
+            NSError* native_error = nil;
+            REQUIRE([manager startCaptureWithDescriptor:descriptor error:&native_error]);
+            struct StopExternal
+            {
+                MTLCaptureManager* manager;
+                ~StopExternal() { if (manager.isCapturing) [manager stopCapture]; }
+            } external{manager};
+            CHECK_FALSE(capture->beginDisplayInterval(1, &error));
+            CHECK(capture->stats().start_attempts == 0);
+            CHECK(capture->stats().state == Capture::State::failed);
+            CHECK(manager.isCapturing);
+            capture.reset();
+            CHECK(manager.isCapturing);
+            const auto metadata = records(directory, Capture::quiet_early_directory);
+            CHECK([metadata.back()[@"status"] isEqualToString:@"capture_conflict"]);
+        }
+
+        SECTION("world invalidation cancels only the diagnostic interval")
+        {
+            ALMetalBufferDescriptor descriptor;
+            descriptor.length = 4;
+            descriptor.storage = ALMetalStorageMode::shared;
+            auto output = ALMetalBuffer::create(*device, descriptor, &error);
+            REQUIRE(output);
+            REQUIRE(capture->beginDisplayInterval(1, &error));
+            auto command = device->makeCommandBuffer("Quiet capture cancellation ordinary command", &error);
+            REQUIRE(command);
+            auto native_command = (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+            auto blit = [native_command blitCommandEncoder];
+            REQUIRE(blit);
+            [blit fillBuffer:(__bridge id<MTLBuffer>)output->nativeHandle()
+                       range:NSMakeRange(0,4) value:0x72];
+            [blit endEncoding];
+            REQUIRE(command->commit(&error));
+            CHECK_FALSE(capture->cancelDisplayInterval(2, &error));
+            CHECK(capture->stats().state == Capture::State::failed);
+            CHECK(capture->stats().stop_frame == 2);
+            CHECK_FALSE(manager.isCapturing);
+            REQUIRE(command->waitUntilCompleted(&error)); // Test-only; work remains valid.
+            CHECK(*static_cast<const unsigned*>(output->mappedBytes()) == 0x72727272u);
+            const auto metadata = records(directory, Capture::quiet_early_directory);
+            CHECK([metadata.back()[@"status"] isEqualToString:@"cancelled"]);
+            CHECK_FALSE(capture->beginDisplayInterval(3, &error));
+        }
     }
 }
 

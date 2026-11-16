@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 #include <utility>
 
@@ -50,6 +51,26 @@ namespace
         }
         return true;
     }
+
+    std::uint64_t monotonicNanoseconds() noexcept
+    {
+        timespec time{};
+        if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return 0;
+        return static_cast<std::uint64_t>(time.tv_sec) * 1000000000ull +
+            static_cast<std::uint64_t>(time.tv_nsec);
+    }
+
+    const char* triggerName(ALMetalFrameCapture::Trigger trigger) noexcept
+    {
+        using Trigger = ALMetalFrameCapture::Trigger;
+        switch (trigger)
+        {
+            case Trigger::quiet_early: return "quiet_early";
+            case Trigger::quiet_late_decline: return "quiet_late_decline";
+            case Trigger::quiet_late_fallback: return "quiet_late_fallback";
+            default: return "legacy";
+        }
+    }
 }
 
 struct ALMetalFrameCapture::Impl
@@ -59,6 +80,7 @@ struct ALMetalFrameCapture::Impl
     int metadata = -1;
     std::string parent_path;
     std::string session_path;
+    const char* child = session_directory;
     id<MTLDevice> device = nil;
     MTLCaptureManager* manager = nil;
     NSURL* trace_url = nil;
@@ -100,7 +122,7 @@ struct ALMetalFrameCapture::Impl
             fstat(directory, &session) == 0 &&
             lstat(parent_path.c_str(), &path_parent) == 0 &&
             lstat(session_path.c_str(), &path_session) == 0 &&
-            fstatat(parent_directory, session_directory, &child, AT_SYMLINK_NOFOLLOW) == 0 &&
+            fstatat(parent_directory, this->child, &child, AT_SYMLINK_NOFOLLOW) == 0 &&
             secure(parent) && secure(session) && secure(path_parent) && secure(path_session) &&
             same(parent, path_parent) && same(session, path_session) && same(session, child);
     }
@@ -111,12 +133,18 @@ struct ALMetalFrameCapture::Impl
         // Fixed strings and numeric, non-identifying fields only. At most
         // eight short records, including cancellation/error, per helper.
         if (metadata < 0 || records >= 8) return false;
-        char json[1024];
+        char json[1536];
         const int size = std::snprintf(json, sizeof(json),
             "{\"schema_version\":1,\"status\":\"%s\",\"frame_index\":%llu,"
             "\"start_frame\":%llu,\"stop_frame\":%llu,\"device_registry_id\":%llu,"
             "\"cooldown_eligible_intervals\":%u,\"eligible_intervals_waited\":%u,"
             "\"start_attempts\":%u,\"native_error_code\":%lld,"
+            "\"quiet_trigger\":\"%s\","
+            "\"quiet_start_request_monotonic_ns\":%llu,"
+            "\"quiet_start_return_monotonic_ns\":%llu,"
+            "\"quiet_stop_request_monotonic_ns\":%llu,"
+            "\"quiet_stop_return_monotonic_ns\":%llu,"
+            "\"quiet_cpu_bounds_are_gpu_timestamps\":false,"
             "\"scope\":\"device_all_queues\","
             "\"interval\":\"%s\","
             "\"includes_intervening_idle_uploads\":true,"
@@ -127,6 +155,11 @@ struct ALMetalFrameCapture::Impl
             static_cast<unsigned long long>(registry_id), cooldown_frames,
             stats.eligible_intervals_waited, stats.start_attempts,
             static_cast<long long>(native_error),
+            triggerName(stats.trigger),
+            static_cast<unsigned long long>(stats.start_request_monotonic_ns),
+            static_cast<unsigned long long>(stats.start_return_monotonic_ns),
+            static_cast<unsigned long long>(stats.stop_request_monotonic_ns),
+            static_cast<unsigned long long>(stats.stop_return_monotonic_ns),
             mode == Mode::hero_forward ? "selected_hero_forward_face_1"
                 : selected_pass ? "selected_main_base_pass"
                 : "eligible_display_to_next_eligible_display");
@@ -163,7 +196,10 @@ struct ALMetalFrameCapture::Impl
         descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
         descriptor.outputURL = trace_url;
         NSError* native_error = nil;
-        if (![manager startCaptureWithDescriptor:descriptor error:&native_error])
+        stats.start_request_monotonic_ns = monotonicNanoseconds();
+        const bool started = [manager startCaptureWithDescriptor:descriptor error:&native_error];
+        stats.start_return_monotonic_ns = monotonicNanoseconds();
+        if (!started)
             return fail("Metal could not start frame capture; normal rendering continues",
                         "start_failed", frame, error, native_error.code);
         owns_capture = true;
@@ -187,7 +223,9 @@ struct ALMetalFrameCapture::Impl
             return fail("Frame capture was stopped by another controller",
                         "interrupted", frame, error);
         }
+        stats.stop_request_monotonic_ns = monotonicNanoseconds();
         [manager stopCapture];
+        stats.stop_return_monotonic_ns = monotonicNanoseconds();
         owns_capture = false;
         stats.stop_frame = frame;
         if (cancelled)
@@ -235,13 +273,44 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
         setError(error, "Frame capture mode must be display, main-base or hero-forward");
         return nullptr;
     }
+    return create(device, path, session_directory,
+                  hero_forward ? Mode::hero_forward
+                      : selected_pass ? Mode::main_base : Mode::display,
+                  Trigger::legacy, error);
+}
+
+std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createTriggeredDisplay(
+    ALMetalDevice& device, const char* path, Trigger trigger, std::string* error) noexcept
+{
+    if (trigger != Trigger::quiet_early && trigger != Trigger::quiet_late_decline &&
+        trigger != Trigger::quiet_late_fallback)
+    {
+        setError(error, "Explicit frame capture requires a quiet trigger");
+        return nullptr;
+    }
+    const char* legacy_directory = std::getenv(directory_environment);
+    const char* legacy_mode = std::getenv(mode_environment);
+    if ((legacy_directory && *legacy_directory) || (legacy_mode && *legacy_mode))
+    {
+        setError(error, "Quiet frame capture conflicts with a configured legacy capture controller");
+        return nullptr;
+    }
+    return create(device, path,
+                  trigger == Trigger::quiet_early ? quiet_early_directory : quiet_late_directory,
+                  Mode::display, trigger, error);
+}
+
+std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::create(
+    ALMetalDevice& device, const char* path, const char* child,
+    Mode mode, Trigger trigger, std::string* error) noexcept
+{
     try
     {
         @autoreleasepool
         {
             @try
             {
-                if (path[0] != '/')
+                if (!path || path[0] != '/')
                 {
                     setError(error, "Frame capture requires an absolute existing private directory");
                     return nullptr;
@@ -256,7 +325,7 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
                     return nullptr;
                 }
                 struct stat existing{};
-                if (fstatat(directory.value, session_directory, &existing,
+                if (fstatat(directory.value, child, &existing,
                             AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT)
                 {
                     setError(error, "Frame capture output already exists or cannot be checked; no overwrite attempted");
@@ -300,21 +369,23 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
                 }
                 auto impl = std::make_unique<Impl>();
                 impl->parent_path = canonical;
-                impl->session_path = impl->parent_path + '/' + session_directory;
+                impl->child = child;
+                impl->session_path = impl->parent_path + '/' + child;
                 impl->device = (__bridge id<MTLDevice>)device.nativeHandle();
                 impl->manager = manager;
-                impl->selected_pass = selected_pass;
-                impl->mode = hero_forward ? Mode::hero_forward
-                    : selected_pass ? Mode::main_base : Mode::display;
+                impl->selected_pass = mode != Mode::display;
+                impl->mode = mode;
+                impl->stats.trigger = trigger;
+                if (trigger != Trigger::legacy) impl->stats.state = State::ready_for_display;
                 impl->registry_id = device.info().registry_id;
                 // Atomic exclusive reservation: even two helpers targeting
                 // the same directory cannot supply an existing trace to Metal.
-                if (mkdirat(directory.value, session_directory, 0700) != 0)
+                if (mkdirat(directory.value, child, 0700) != 0)
                 {
                     setError(error, "Frame capture output reservation failed; no overwrite attempted");
                     return nullptr;
                 }
-                Descriptor session{openat(directory.value, session_directory,
+                Descriptor session{openat(directory.value, child,
                     O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)};
                 if (session.value < 0 || fchmod(session.value, 0700) != 0)
                 {
@@ -329,7 +400,7 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
                     return nullptr;
                 }
                 const std::string trace_path = std::string(canonical) + '/' +
-                    session_directory + '/' + trace_name;
+                    child + '/' + trace_name;
                 NSString* native_path = [NSString stringWithUTF8String:trace_path.c_str()];
                 if (!native_path)
                 {
@@ -340,7 +411,8 @@ std::unique_ptr<ALMetalFrameCapture> ALMetalFrameCapture::createIfRequested(
                 impl->directory = session.release();
                 impl->parent_directory = directory.release();
                 impl->metadata = metadata.release();
-                if (!impl->record("waiting_for_timing", 0))
+                if (!impl->record(trigger == Trigger::legacy ? "waiting_for_timing"
+                                                            : "quiet_ready_for_display", 0))
                 {
                     setError(error, "Could not write initial frame capture metadata");
                     return nullptr;
@@ -374,7 +446,10 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
                 if (mImpl->stats.state == State::failed) return false;
                 if (mImpl->stats.state == State::stopped) return true;
                 if (mImpl->stats.state == State::capturing)
-                    return !eligible || mImpl->stop(frame, mImpl->selected_pass, error);
+                    return !eligible ||
+                        (mImpl->stats.trigger != Trigger::legacy && frame <= mImpl->stats.start_frame) ||
+                        mImpl->stop(frame, mImpl->selected_pass, error);
+                if (mImpl->stats.trigger != Trigger::legacy) return true;
 
                 // Observe timing even during warm-up/ineligible main entries.
                 if (ALMetalDevice::commandTimingEnabled())
@@ -431,6 +506,68 @@ bool ALMetalFrameCapture::advanceDisplayInterval(
 ALMetalFrameCapture::Mode ALMetalFrameCapture::mode() const noexcept
 {
     return mImpl->mode;
+}
+
+bool ALMetalFrameCapture::beginDisplayInterval(
+    std::uint64_t frame, std::string* error) noexcept
+{
+    if (mImpl->stats.trigger == Trigger::legacy ||
+        mImpl->stats.state != State::ready_for_display)
+    {
+        setError(error, "Explicit display capture is not ready");
+        return false;
+    }
+    @autoreleasepool
+    {
+        @try
+        {
+            try
+            {
+                mImpl->last_frame = frame;
+                return mImpl->start(frame, error);
+            }
+            catch (...)
+            {
+                mImpl->stop(frame, true, nullptr);
+                return mImpl->fail("Explicit display capture failed after a diagnostic exception",
+                                   "exception", frame, error);
+            }
+        }
+        @catch (NSException*)
+        {
+            @try { mImpl->stop(frame, true, nullptr); }
+            @catch (NSException*) {}
+            return mImpl->fail("Explicit display capture failed after a native exception",
+                               "native_exception", frame, error);
+        }
+    }
+}
+
+bool ALMetalFrameCapture::cancelDisplayInterval(
+    std::uint64_t frame, std::string* error) noexcept
+{
+    if (mImpl->stats.trigger == Trigger::legacy)
+    {
+        setError(error, "Explicit cancellation requires a quiet display capture");
+        return false;
+    }
+    @autoreleasepool
+    {
+        @try
+        {
+            mImpl->last_frame = frame;
+            if (mImpl->stats.state == State::stopped) return true;
+            if (mImpl->stats.state == State::failed) return false;
+            if (mImpl->owns_capture) return mImpl->stop(frame, true, error);
+            return mImpl->fail("Explicit display capture cancelled before start",
+                               "cancelled", frame, error);
+        }
+        @catch (NSException*)
+        {
+            return mImpl->fail("Explicit display cancellation failed after a native exception",
+                               "native_exception", frame, error);
+        }
+    }
 }
 
 bool ALMetalFrameCapture::selectedPassReady() const noexcept

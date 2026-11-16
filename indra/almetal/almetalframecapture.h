@@ -1,6 +1,6 @@
 /**
  * @file almetalframecapture.h
- * @brief Explicit one-shot, post-benchmark Metal debugger capture.
+ * @brief Explicit, bounded Metal debugger display-interval capture.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -25,6 +25,8 @@ public:
     static constexpr const char* session_directory = "frame-capture";
     static constexpr const char* trace_name = "display-interval.gputrace";
     static constexpr const char* metadata_name = "metadata.jsonl";
+    static constexpr const char* quiet_early_directory = "quiet-early-frame-capture";
+    static constexpr const char* quiet_late_directory = "quiet-late-frame-capture";
     static constexpr std::uint32_t cooldown_frames = 60;
     static constexpr std::uint32_t hero_forward_face_index = 1;
 
@@ -43,7 +45,16 @@ public:
         capturing,
         stopped,
         failed,
-        ready_for_pass
+        ready_for_pass,
+        ready_for_display
+    };
+
+    enum class Trigger : std::uint8_t
+    {
+        legacy,
+        quiet_early,
+        quiet_late_decline,
+        quiet_late_fallback
     };
 
     struct Stats
@@ -53,6 +64,12 @@ public:
         std::uint32_t start_attempts = 0;
         std::uint64_t start_frame = 0;
         std::uint64_t stop_frame = 0;
+        Trigger trigger = Trigger::legacy;
+        // CPU bounds around the native start/stop calls; not GPU timestamps.
+        std::uint64_t start_request_monotonic_ns = 0;
+        std::uint64_t start_return_monotonic_ns = 0;
+        std::uint64_t stop_request_monotonic_ns = 0;
+        std::uint64_t stop_return_monotonic_ns = 0;
     };
 
     // Create before benchmark arming. Unset/empty directory returns nullptr
@@ -66,6 +83,15 @@ public:
     // URL-only output API cannot make pathname resolution atomic with start.
     static std::unique_ptr<ALMetalFrameCapture> createIfRequested(
         ALMetalDevice& device, std::string* error = nullptr) noexcept;
+
+    // An explicit display trigger has no benchmark/timing prerequisite. It
+    // reserves a separate fixed child under the same private-path contract.
+    // Any nonempty legacy capture directory/mode environment is a conflict.
+    // Only quiet_* triggers are accepted. The caller enforces the two-attempt
+    // sequence budget; each early/late child can be reserved only once.
+    static std::unique_ptr<ALMetalFrameCapture> createTriggeredDisplay(
+        ALMetalDevice& device, const char* private_directory, Trigger trigger,
+        std::string* error = nullptr) noexcept;
     ~ALMetalFrameCapture();
     ALMetalFrameCapture(const ALMetalFrameCapture&) = delete;
     ALMetalFrameCapture& operator=(const ALMetalFrameCapture&) = delete;
@@ -85,6 +111,16 @@ public:
     bool advanceDisplayInterval(std::uint64_t frame, bool eligible,
                                 std::string* error = nullptr) noexcept;
 
+    // Explicit trigger only. Begin before ALL commands of a normal display;
+    // advanceDisplayInterval stops at the next distinct eligible display
+    // entry, including intervening probes/uploads, without a completion wait.
+    // A duplicate frame cannot truncate the interval. Cancellation records an
+    // incomplete interval and is used for world invalidation/timeout/teardown.
+    bool beginDisplayInterval(std::uint64_t frame,
+                              std::string* error = nullptr) noexcept;
+    bool cancelDisplayInterval(std::uint64_t frame,
+                               std::string* error = nullptr) noexcept;
+
     // With MODE=main-base or hero-forward, the same arming/cooldown prepares one
     // selected pass. Begin BEFORE creating its command buffer and finish
     // AFTER committing it. The caller must omit any enclosing command batch.
@@ -101,6 +137,9 @@ public:
 
 private:
     struct Impl;
+    static std::unique_ptr<ALMetalFrameCapture> create(
+        ALMetalDevice& device, const char* path, const char* child,
+        Mode mode, Trigger trigger, std::string* error) noexcept;
     explicit ALMetalFrameCapture(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
 };
