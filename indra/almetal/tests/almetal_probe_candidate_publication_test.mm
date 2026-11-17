@@ -12,6 +12,7 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <thread>
 #include <vector>
 
@@ -30,11 +31,14 @@ struct Fixture
     ALMetalProbeCandidatePacket packet;
     ALMetalWorldReflectionProbeConstants probes;
     std::array<float,16> projection{}, inverse{};
+    std::uint64_t library_epoch = 0;
+    bool reverse_z = false;
     Fixture()
     {
         INFO(error); REQUIRE(device);
         data = ALMetalWorldFrameData::create(*device, &error); REQUIRE(data);
         library = data->builtinLibrary(&error); INFO(error); REQUIRE(library);
+        library_epoch = data->builtinLibraryEpoch();
         REQUIRE(library->hasFunction("almetal_world_probe_candidate_tiles"));
         ALMetalComputePipelineDescriptor descriptor;
         descriptor.library = library.get();
@@ -62,9 +66,15 @@ struct Fixture
     Result prepare(ALMetalCommandBuffer& command, Binding& binding)
     {
         return data->prepareProbeCandidates(command, pipeline.get(), library,
-            data->builtinLibraryEpoch(), packet, probes, projection, inverse, false, binding, &error);
+            library_epoch, packet, probes, projection, inverse, reverse_z, binding, &error);
     }
-    void key(unsigned value) { probes.ref_params[1][0] = float(value + 1); }
+    void key(unsigned value)
+    {
+        REQUIRE(value < 34);
+        // Distinct actual kernel inputs, including the 33rd/34th resident
+        // requests. SH scale is not a mask dependency and must permit reuse.
+        packet.bounds[1] = {value,0,value+16,16};
+    }
     void resize(std::uint32_t width, std::uint32_t height)
     {
         packet.config[1] = width; packet.config[2] = height;
@@ -254,6 +264,187 @@ TEST_CASE("Probe publication denial preserves generic work and completed hits ne
         CHECK(f.data->stats().candidate_reuses == 1);
         CHECK(f.data->stats().candidate_failures == 0);
         REQUIRE(consumer->commitAndWait(&f.error));
+    }
+}
+
+TEST_CASE("Completed probe masks reuse exact derived inputs across current lighting and view changes",
+          "[almetal][probe-candidate-publication]")
+{
+    @autoreleasepool
+    {
+        Fixture f; auto producer = f.command(); Binding original;
+        REQUIRE(f.prepare(*producer,original) == Result::ready);
+        auto original_readback = f.copyMasks(*producer,original);
+        REQUIRE(producer->commitAndWait(&f.error));
+        const auto packet = f.packet;
+        // The publication API receives a caller-certified packet. Its GPU
+        // output must not depend on the old view/lighting metadata retained
+        // by an earlier producer. Receiver certification is tested separately.
+        f.probes.ref_params[1][0] = .75f; // SH scale
+        f.probes.ref_params[1][1] = .625f; // radiance scale
+        f.probes.ref_params[1][2] = .5f; // fade/distance weight
+        f.probes.ref_params[1][3] = 2.f; // ordered-walk depth boundary
+        f.probes.ref_index[1][0] = 1; // current radiance/SH layer
+        f.probes.ref_index[1][1] = 0; f.probes.ref_index[1][2] = 1;
+        f.probes.ref_neighbor[0] = 2;
+        for (auto& bucket : f.probes.ref_bucket) bucket[0] = 1;
+        f.probes.env_matrix[0][0] = 0.f; f.probes.env_matrix[0][1] = 1.f;
+        f.probes.env_matrix[1][0] = -1.f; f.probes.env_matrix[1][1] = 0.f;
+        f.probes.ref_index[2][3] = -1; // a manual box remains full-view
+        for (unsigned i : {0u,5u,10u,15u}) f.probes.ref_box[2][i] = 1.f;
+        f.projection[0] = 2.f; f.inverse[0] = .5f;
+        f.reverse_z = true;
+        CHECK(std::memcmp(&packet,&f.packet,sizeof(packet)) == 0);
+        unsigned admissions = 0;
+        f.data->setSourcePublicationAdmission([&](const ALMetalWorldSourcePublicationWork&)
+            ->std::shared_ptr<const void> { ++admissions; return {}; });
+        auto consumer = f.command(); Binding reused;
+        const auto allocations = alMetalResourceAllocationStats().buffers_created;
+        REQUIRE(f.prepare(*consumer,reused) == Result::ready);
+        CHECK(reused.owner == original.owner); CHECK(reused.masks == original.masks);
+        CHECK_FALSE(reused.native_prefix); CHECK(admissions == 0);
+        CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
+        CHECK(f.data->stats().candidate_preparations == 1);
+        CHECK(f.data->stats().candidate_reuses == 1);
+        // A matching cache key cannot bypass current input validation.
+        f.probes.ref_index[1][3] = 1; Binding rejected;
+        CHECK(f.prepare(*consumer,rejected) == Result::unavailable);
+        CHECK_FALSE(rejected.owner); CHECK_FALSE(rejected.native_prefix);
+        f.probes.ref_index[1][3] = 0;
+        f.probes.config[0] = 4.f;
+        CHECK(f.prepare(*consumer,rejected) == Result::unavailable);
+        CHECK_FALSE(rejected.owner); CHECK_FALSE(rejected.native_prefix);
+        f.probes.config[0] = 3.f; f.packet.config[3] = 0;
+        CHECK(f.prepare(*consumer,rejected) == Result::unavailable);
+        CHECK_FALSE(rejected.owner); CHECK_FALSE(rejected.native_prefix);
+        f.packet = packet;
+        CHECK(admissions == 0);
+        CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
+        auto reused_readback = f.copyMasks(*consumer,reused);
+        REQUIRE(consumer->commitAndWait(&f.error));
+        std::array<std::uint32_t,120> before{}, after{};
+        REQUIRE(original_readback->read(0,before.data(),sizeof(before),&f.error));
+        REQUIRE(reused_readback->read(0,after.data(),sizeof(after),&f.error));
+        CHECK(after == before);
+        for (unsigned tile = 0; tile < 15; ++tile)
+            for (unsigned word = 0; word < 8; ++word)
+                CHECK(after[tile*8+word] == (word ? 0u : (tile ? 5u : 7u)));
+        CHECK(f.data->stats().candidate_failures == 0);
+    }
+}
+
+TEST_CASE("Probe mask publications remain isolated by actual library identity and epoch",
+          "[almetal][probe-candidate-publication]")
+{
+    @autoreleasepool
+    {
+        Fixture f; auto producer = f.command(); Binding original;
+        REQUIRE(f.prepare(*producer,original) == Result::ready);
+        REQUIRE(producer->commitAndWait(&f.error));
+        const auto old_library = f.library;
+        const auto old_epoch = f.library_epoch;
+        auto old_pipeline = std::move(f.pipeline);
+        SECTION("same native library with a new publication epoch")
+        {
+            ++f.library_epoch;
+            f.pipeline = std::move(old_pipeline);
+        }
+        SECTION("distinct actual bundled library with the same epoch")
+        {
+            f.library = ALMetalShaderLibrary::loadBuiltin(*f.device,&f.error);
+            INFO(f.error); REQUIRE(f.library);
+            REQUIRE(f.library->nativeHandle() != old_library->nativeHandle());
+            ALMetalComputePipelineDescriptor descriptor;
+            descriptor.library = f.library.get();
+            descriptor.function = "almetal_world_probe_candidate_tiles";
+            descriptor.label = "Probe publication replacement library";
+            f.pipeline = ALMetalComputePipeline::create(*f.device,descriptor,&f.error);
+            INFO(f.error); REQUIRE(f.pipeline);
+        }
+        auto command = f.command(); Binding replacement;
+        REQUIRE(f.prepare(*command,replacement) == Result::ready);
+        CHECK(replacement.owner != original.owner); CHECK(replacement.masks != original.masks);
+        CHECK(replacement.native_prefix);
+        auto readback = f.copyMasks(*command,replacement);
+        REQUIRE(command->commitAndWait(&f.error));
+        std::array<std::uint32_t,120> words{};
+        REQUIRE(readback->read(0,words.data(),sizeof(words),&f.error));
+        for (unsigned tile = 0; tile < 15; ++tile)
+            for (unsigned word = 0; word < 8; ++word)
+                CHECK(words[tile*8+word] == (word ? 0u : (tile ? 5u : 7u)));
+        CHECK(f.data->stats().candidate_preparations == 2);
+        CHECK(f.data->stats().candidate_reuses == 0);
+        // Returning to an earlier epoch/library must not resurrect an idle
+        // cache entry invalidated by the coherent library switch.
+        if (old_pipeline) f.pipeline = std::move(old_pipeline);
+        f.library = old_library; f.library_epoch = old_epoch;
+        auto returned_command = f.command(); Binding returned;
+        REQUIRE(f.prepare(*returned_command,returned) == Result::ready);
+        CHECK(returned.owner != original.owner); CHECK(returned.owner != replacement.owner);
+        CHECK(returned.native_prefix);
+        CHECK(f.data->stats().candidate_preparations == 3);
+        CHECK(f.data->stats().candidate_reuses == 0);
+        REQUIRE(returned_command->commitAndWait(&f.error));
+    }
+}
+
+TEST_CASE("Probe publication rechecks full borrowed input snapshots after miss admission",
+          "[almetal][probe-candidate-publication]")
+{
+    @autoreleasepool
+    {
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (bool nested_prefix : {false,true})
+            {
+                CAPTURE(mutation,nested_prefix);
+                Fixture f; auto command = f.command();
+                auto nested_packet = f.packet; nested_packet.bounds[1] = {16,0,32,16};
+                const auto nested_probes = f.probes;
+                const auto nested_projection = f.projection, nested_inverse = f.inverse;
+                Binding nested; Result nested_result = Result::unavailable;
+                bool inside_callback = false;
+                unsigned admissions = 0;
+                f.data->setSourcePublicationAdmission([&](const ALMetalWorldSourcePublicationWork&)
+                    ->std::shared_ptr<const void>
+                {
+                    ++admissions;
+                    if (inside_callback) return std::make_shared<int>(1);
+                    inside_callback = true;
+                    if (nested_prefix)
+                        nested_result = f.data->prepareProbeCandidates(*command,f.pipeline.get(),f.library,
+                            f.library_epoch,nested_packet,nested_probes,nested_projection,nested_inverse,
+                            false,nested,&f.error);
+                    // Even a non-mask lighting field must remain guarded for
+                    // this in-progress request; the persistent key is separate.
+                    if (mutation == 0) f.packet.bounds[1].x_max = 15;
+                    if (mutation == 1) f.probes.ref_params[1][0] = .75f;
+                    if (mutation == 2) f.projection[0] = 2.f;
+                    if (mutation == 3) f.inverse[0] = .5f;
+                    inside_callback = false;
+                    return std::make_shared<int>(2);
+                });
+                const auto allocations = alMetalResourceAllocationStats().buffers_created;
+                const auto commits = ALMetalDevice::committedCommandBufferCount();
+                Binding outer;
+                CHECK(f.prepare(*command,outer) == (nested_prefix ? Result::failed : Result::unavailable));
+                CHECK_FALSE(outer.masks); CHECK_FALSE(outer.owner);
+                CHECK(outer.native_prefix == nested_prefix);
+                CHECK(admissions == (nested_prefix ? 2u : 1u));
+                CHECK(f.data->stats().candidate_preparations == (nested_prefix ? 1u : 0u));
+                CHECK(f.data->stats().candidate_failures == (nested_prefix ? 1u : 0u));
+                CHECK(alMetalResourceAllocationStats().buffers_created == allocations+(nested_prefix ? 2u : 0u));
+                CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
+                CHECK_FALSE(command->isCommitted());
+                if (nested_prefix)
+                {
+                    REQUIRE(nested_result == Result::ready);
+                    REQUIRE(nested.owner); REQUIRE(nested.masks); CHECK(nested.native_prefix);
+                }
+                const auto token = command->completionToken();
+                command.reset(); // Never execute these intentionally invalidated requests.
+                CHECK(token->status() == ALMetalCommandStatus::unknown);
+                nested = {}; f.data->beginFrame(2);
+            }
     }
 }
 
