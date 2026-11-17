@@ -174,7 +174,7 @@ struct Inputs
         irradiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(irradiance);
         REQUIRE(irradiance->upload(*upload,0,0,{},packedSH.data(),64,&f.error));
         descriptor={};descriptor.type=ALMetalTextureType::texture_2d_array;descriptor.array_length=4;
-        descriptor.width=descriptor.height=8;descriptor.format=ALMetalPixelFormat::depth32_float;
+        descriptor.width=descriptor.height=8;descriptor.format=ALMetalPixelFormat::r32_float;
         shadow=ALMetalTexture::create(*f.device,descriptor,&f.error); REQUIRE(shadow);
         std::array<float,64> values{};
         for(unsigned cascade=0;cascade<4;++cascade)
