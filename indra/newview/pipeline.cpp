@@ -3361,7 +3361,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << prepared.probe_candidate_simple_shadow_batches
                     << ", source_frame/kind/index=" << prepared.probe_candidate_frame_index
                     << '/' << prepared.probe_candidate_view_kind << '/' << prepared.probe_candidate_view_index
-                    << ", scope=last_successful_cpu_encoding_not_gpu_coverage" << LL_ENDL;
+                    << ", renderer_calls=" << prepared.probe_candidate_activity.encoded_calls
+                    << ", cumulative_eligible(pre/post)=" << prepared.probe_candidate_activity.eligible_batches[0]
+                    << '/' << prepared.probe_candidate_activity.eligible_batches[1]
+                    << ", cumulative_prepared(pre/post)=" << prepared.probe_candidate_activity.prepared_batches[0]
+                    << '/' << prepared.probe_candidate_activity.prepared_batches[1]
+                    << ", scope=renderer_lifetime_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
                 static LLCachedControl<bool> cpu_visibility_requested(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
                 const auto cpu_visibility=value->renderer ? value->renderer->worldCpuVisibilityStats() : ALMetalWorldCpuVisibilityStats{};
                 LL_INFOS("MetalScene") << "Native published CPU visibility: view=" << view

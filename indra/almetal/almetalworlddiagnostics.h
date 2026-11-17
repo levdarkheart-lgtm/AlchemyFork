@@ -99,6 +99,15 @@ struct ALMetalWorldWaterShadowPSOCensus
     std::array<std::uint64_t, 6> draws{};
 };
 
+// Successful CPU encodings over this renderer's lifetime (including reloads).
+// A borrowed outer command batch can still fail later; these are not GPU completions.
+struct ALMetalWorldProbeCandidateActivity
+{
+    std::uint64_t encoded_calls = 0;
+    // Disjoint pre-water/post-water owners; only standard simple-alpha draws.
+    std::array<std::uint64_t, 2> eligible_batches{}, prepared_batches{};
+};
+
 struct ALMetalWorldPostDiagnostics
 {
     static constexpr std::size_t family_count =
@@ -125,6 +134,7 @@ struct ALMetalWorldPostDiagnostics
     std::uint64_t probe_candidate_simple_shadow_batches = 0;
     std::uint64_t probe_candidate_frame_index = 0;
     std::uint32_t probe_candidate_view_kind = 0, probe_candidate_view_index = 0;
+    ALMetalWorldProbeCandidateActivity probe_candidate_activity;
     std::uint64_t diagnostic_initial_family_frame = 0;
     std::uint32_t diagnostic_initial_family_view_kind = 0;
     std::uint32_t diagnostic_initial_family_view_index = 0;

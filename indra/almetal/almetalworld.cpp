@@ -2936,6 +2936,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t shadow_certified_source_validations = 0;
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
+    ALMetalWorldProbeCandidateActivity probe_candidate_activity;
     std::uint64_t simple_shadow_pso_observations = 0;
     std::array<std::uint64_t, 3> simple_shadow_pso_metric_ns{};
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
@@ -3990,6 +3991,7 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.opaque_family_split_saw_timing = mImpl->opaque_family_split_saw_timing;
     next.opaque_diagnostic_calls = mImpl->opaque_diagnostic_calls;
     next.opaque_diagnostics = mImpl->opaque_diagnostics;
+    next.probe_candidate_activity = mImpl->probe_candidate_activity;
     next.simple_shadow_pso_observations = mImpl->simple_shadow_pso_observations;
     next.simple_shadow_pso_metric_ns = mImpl->simple_shadow_pso_metric_ns;
     next.simple_shadow_pso_diagnostics = mImpl->simple_shadow_pso_diagnostics;
@@ -4147,6 +4149,7 @@ ALMetalWorldGBufferRenderer::opaquePostDiagnostics() const noexcept
     if (mImpl)
     {
         stats.encoded_calls = mImpl->opaque_diagnostic_calls;
+        stats.probe_candidate_activity = mImpl->probe_candidate_activity;
         stats.simple_shadow_psos = mImpl->simple_shadow_pso_diagnostics;
         stats.pbr_shadow_psos = mImpl->pbr_shadow_pso_diagnostics;
         stats.water_shadow_pso = mImpl->water_shadow_pso_diagnostics;
@@ -21212,6 +21215,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         forward_candidate_constants.grid=forward_candidates.grid;
     }
     std::uint64_t candidate_simple_batches=0,candidate_simple_shadow_batches=0;
+    ALMetalWorldProbeCandidateActivity candidate_activity;
 
     if (scene.far_plane_overlay_column_count != 0)
     {
@@ -22858,6 +22862,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,
                 batch.index_offset, 1, error);
+            if (encoded && standard_blend && !batch.avatar_alpha &&
+                !batch.post_water_depth_only && alpha_family==Impl::PreWaterAlphaFamily::simple)
+            {
+                const std::size_t owner=batch.post_water_alpha?1:0;
+                ++candidate_activity.eligible_batches[owner];
+                if (candidate_simple) ++candidate_activity.prepared_batches[owner];
+            }
             if (encoded && candidate_simple)
             {
                 if (simple_shadow_mode==Impl::SimpleShadowMode::none) ++candidate_simple_batches;
@@ -24737,6 +24748,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     mImpl->opaque_diagnostics.probe_candidate_frame_index=scene.diagnostic_frame_index;
     mImpl->opaque_diagnostics.probe_candidate_view_kind=scene.diagnostic_view_kind;
     mImpl->opaque_diagnostics.probe_candidate_view_index=scene.diagnostic_view_index;
+    // Publish only after all encoding/finish succeeded. Keep this outside the
+    // sparse diagnostic snapshot so later calls cannot erase earlier activity.
+    ++mImpl->probe_candidate_activity.encoded_calls;
+    for (std::size_t owner=0;owner<2;++owner)
+    {
+        mImpl->probe_candidate_activity.eligible_batches[owner]+=candidate_activity.eligible_batches[owner];
+        mImpl->probe_candidate_activity.prepared_batches[owner]+=candidate_activity.prepared_batches[owner];
+    }
     if (encoded_water_draws) *encoded_water_draws = water_draws;
     return output;
 }

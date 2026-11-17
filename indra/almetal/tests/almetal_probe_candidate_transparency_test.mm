@@ -218,6 +218,17 @@ struct Inputs
         }
         for(auto& bucket:p.ref_bucket)bucket[0]=1;
     }
+    void postWaterOnly()
+    {
+        for(auto& batch:batches)
+        {
+            batch.pre_water_alpha=false;
+            batch.post_water_alpha=true;
+        }
+        // The renderer reverses this sign for the post-water camera-side
+        // sweep. Keep these authored receivers on its visible side.
+        environment.water_fog[2]=1.f;
+    }
     std::unique_ptr<ALMetalRenderTarget> seeded(bool gbuffer)
     {
         ALMetalRenderTargetDescriptor descriptor;descriptor.width=cell.width;descriptor.height=cell.height;
@@ -247,7 +258,7 @@ struct Inputs
         return {f.read(*result),f.renderer->opaquePostDiagnostics()};
     }
 };
-void positive(const Planes& planes)
+void positive(const Planes& planes,bool writes_depth=true,bool reverse=false)
 {
     const Pixel seed{{0x2800,0x2c00,0x3000,0x3800}};
     std::size_t changed=0,positive_changed=0;
@@ -264,7 +275,15 @@ void positive(const Planes& planes)
     // The existing opaque-post owner clears output stencil after copying the
     // retained input depth. The input's0x5a is checked separately above.
     CHECK(std::all_of(planes.stencil.begin(),planes.stencil.end(),[](auto value){return value==0;}));
-    CHECK(std::any_of(planes.depth.begin(),planes.depth.end(),[first=planes.depth.front()](auto value){return value!=first;}));
+    if(writes_depth)
+        CHECK(std::any_of(planes.depth.begin(),planes.depth.end(),[first=planes.depth.front()](auto value){return value!=first;}));
+    else
+    {
+        // Ordinary rigid post-water alpha tests depth without writing it.
+        // Rigged alpha and the pre-water pool retain their depth-write owner.
+        const auto far=std::bit_cast<std::uint32_t>(reverse?0.f:1.f);
+        CHECK(std::all_of(planes.depth.begin(),planes.depth.end(),[far](auto value){return value==far;}));
+    }
 }
 void encoded(const Inputs::Rendered& value,bool shadow,unsigned count)
 {
@@ -305,6 +324,61 @@ TEST_CASE("Prepared probe masks preserve ordered rigid and skinned simple alpha"
             {
                 input.palette[0]=.25f; // Current rebased pose; mask geometry remains unchanged.
                 auto posed_generic=input.render(false);positive(posed_generic.planes);
+                CHECK(posed_generic.planes.color!=changed.planes.color);
+                auto posed_prepared=input.render(true);
+                CHECK(posed_prepared.planes==posed_generic.planes);encoded(posed_prepared,cells[i].shadow,2);
+            }
+            if(i==0)
+            {
+                std::swap(input.batches[0],input.batches[1]);
+                auto reordered=input.render(false);CHECK(reordered.planes.color!=changed.planes.color);
+                auto reordered_prepared=input.render(true);
+                CHECK(reordered_prepared.planes==reordered.planes);encoded(reordered_prepared,false,2);
+            }
+        }
+    }
+}
+
+TEST_CASE("Prepared probe masks select post-water-only rigid and skinned simple alpha",
+          "[almetal][probe-candidate-transparency]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        constexpr std::array<Cell,8> cells{{
+            {false,false,false,false,false,96,64},{false,true,true,false,true,97,65},
+            {true,false,false,true,true,97,65},{true,true,true,true,false,96,64},
+            {false,false,true,true,true,97,65},{false,true,false,true,false,96,64},
+            {true,false,true,false,false,96,64},{true,true,false,false,true,97,65}}};
+        for(unsigned i=0;i<cells.size();++i)
+        {
+            CAPTURE(i,cells[i].skinned,cells[i].shadow,cells[i].reverse,cells[i].infinite,cells[i].hdr);
+            f.data->beginFrame(i+1);Inputs input(f,cells[i]);input.postWaterOnly();
+            REQUIRE(std::all_of(input.batches.begin(),input.batches.end(),[](const auto& batch) {
+                return !batch.pre_water_alpha && batch.post_water_alpha && !batch.post_water_depth_only;
+            }));
+            auto generic=input.render(false);
+            positive(generic.planes,cells[i].skinned,cells[i].reverse);encoded(generic,cells[i].shadow,0);
+            const auto before=f.data->stats();auto prepared=input.render(true);
+            CHECK(prepared.planes==generic.planes);encoded(prepared,cells[i].shadow,2);
+            CHECK(f.data->stats().candidate_preparations+f.data->stats().candidate_reuses>
+                  before.candidate_preparations+before.candidate_reuses);
+            const auto after=f.data->stats();auto reused=input.render(true);
+            CHECK(reused.planes==generic.planes);encoded(reused,cells[i].shadow,2);
+            CHECK(f.data->stats().candidate_preparations==after.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses>after.candidate_reuses);
+            input.probes.constants.ref_sphere[1][0]=1000.f;
+            auto changed=input.render(false);
+            positive(changed.planes,cells[i].skinned,cells[i].reverse);
+            CHECK(changed.planes.color!=generic.planes.color);
+            auto changed_prepared=input.render(true);
+            CHECK(changed_prepared.planes==changed.planes);encoded(changed_prepared,cells[i].shadow,2);
+            CHECK(f.data->stats().candidate_failures==before.candidate_failures);
+            if(cells[i].skinned)
+            {
+                input.palette[0]=.25f;
+                auto posed_generic=input.render(false);
+                positive(posed_generic.planes,true,cells[i].reverse);
                 CHECK(posed_generic.planes.color!=changed.planes.color);
                 auto posed_prepared=input.render(true);
                 CHECK(posed_prepared.planes==posed_generic.planes);encoded(posed_prepared,cells[i].shadow,2);
@@ -425,5 +499,59 @@ TEST_CASE("Prepared alpha retains probe filtering and the three-texture selector
         auto triple_generic=input.render(false);positive(triple_generic.planes);
         CHECK(triple_generic.planes.color!=pair_generic.planes.color);
         auto triple=input.render(true);CHECK(triple.planes==triple_generic.planes);encoded(triple,true,2);
+    }
+}
+
+TEST_CASE("Cumulative prepared alpha activity survives later same-frame generic calls",
+          "[almetal][probe-candidate-transparency]")
+{
+    @autoreleasepool
+    {
+        Fixture f;Inputs input(f,{false,false,true,false,true,97,65});input.postWaterOnly();
+        input.scene.diagnostic_frame_index=515;
+        input.scene.diagnostic_view_kind=1;input.scene.diagnostic_view_index=0;
+        const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+        const auto activity=[&](const Inputs::Rendered& rendered,std::uint64_t calls,
+                                std::uint64_t eligible,std::uint64_t prepared) {
+            const auto& value=rendered.diagnostics.probe_candidate_activity;
+            CHECK(value.encoded_calls==before.encoded_calls+calls);
+            CHECK(value.eligible_batches[0]==before.eligible_batches[0]);
+            CHECK(value.eligible_batches[1]==before.eligible_batches[1]+eligible);
+            CHECK(value.prepared_batches[0]==before.prepared_batches[0]);
+            CHECK(value.prepared_batches[1]==before.prepared_batches[1]+prepared);
+            CHECK(rendered.diagnostics.probe_candidate_frame_index==515);
+            CHECK(rendered.diagnostics.probe_candidate_view_kind==1);
+            CHECK(rendered.diagnostics.probe_candidate_view_index==0);
+        };
+        auto prepared=input.render(true);positive(prepared.planes,false,true);encoded(prepared,false,2);
+        activity(prepared,1,2,2);
+        auto generic=input.render(false);CHECK(generic.planes==prepared.planes);encoded(generic,false,0);
+        activity(generic,2,4,2);
+        for(auto& batch:input.batches)
+        {
+            batch.pre_water_source_rgb=ALMetalBlendFactor::one;
+            batch.pre_water_destination_rgb=ALMetalBlendFactor::one;
+        }
+        auto custom=input.render(true);positive(custom.planes,false,true);encoded(custom,false,0);
+        activity(custom,3,4,2);
+        std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+        REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
+        const auto reloaded=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+        CHECK(reloaded.encoded_calls==custom.diagnostics.probe_candidate_activity.encoded_calls);
+        CHECK(reloaded.eligible_batches==custom.diagnostics.probe_candidate_activity.eligible_batches);
+        CHECK(reloaded.prepared_batches==custom.diagnostics.probe_candidate_activity.prepared_batches);
+        auto after_reload=input.render(true);CHECK(after_reload.planes==custom.planes);encoded(after_reload,false,0);
+        activity(after_reload,4,4,2);
+        // A preflight failure must not publish activity, even when its
+        // diagnostic frame is identical.
+        auto gbuffer=input.seeded(true),composed=input.seeded(false);
+        input.batches[0].pre_water_alpha=true; // Invalid: both water-stage owners.
+        auto invalid=input.scene;invalid.gbuffer=gbuffer.get();invalid.composed_lighting=composed.get();
+        CHECK_FALSE(f.renderer->renderOpaquePostDeferred(invalid,&f.error));
+        CHECK(f.error.find("family contract")!=std::string::npos);
+        const auto after=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+        CHECK(after.encoded_calls==after_reload.diagnostics.probe_candidate_activity.encoded_calls);
+        CHECK(after.eligible_batches==after_reload.diagnostics.probe_candidate_activity.eligible_batches);
+        CHECK(after.prepared_batches==after_reload.diagnostics.probe_candidate_activity.prepared_batches);
     }
 }
