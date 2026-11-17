@@ -3804,7 +3804,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     for (const auto& view : post.simple_shadow_psos)
                     {
                         if (!view.valid) continue;
-                        std::ostringstream chosen;
+                        std::ostringstream chosen, high, diffuse_pair;
                         for (std::size_t bucket = 0; bucket < view.bucket_count; ++bucket)
                         {
                             const auto& counts = view.draws[bucket];
@@ -3812,6 +3812,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                                 chosen << view.bucket_names[bucket] << '='
                                        << counts.batches << '/' << counts.vertices
                                        << '/' << counts.indices << ',';
+                            if (view.high_specialized_batches[bucket])
+                                high << view.bucket_names[bucket] << '='
+                                     << view.high_specialized_batches[bucket] << ',';
+                            if (view.diffuse_pair_specialized_batches[bucket])
+                                diffuse_pair << view.bucket_names[bucket] << '='
+                                             << view.diffuse_pair_specialized_batches[bucket] << ',';
                         }
                         LL_INFOS("MetalPost")
                             << "Native simple-shadow PSO sample: owner=" << owner
@@ -3822,6 +3828,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                             << ", shadow_pack=" << view.shadow_pack_present
                             << ", shadow_flags=" << view.shadow_flags
                             << ", selected_batches/vertices/indices={" << chosen.str() << '}'
+                            << ", high_specialized_batches={" << high.str() << '}'
+                            << ", diffuse_pair_specialized_batches={" << diffuse_pair.str() << '}'
+                            << ", unshadowed_simple_batches=" << view.unshadowed_simple_batches
+                            << ", unshadowed_diffuse_pair_batches=" << view.unshadowed_diffuse_pair_batches
                             << LL_ENDL;
                     }
                 };

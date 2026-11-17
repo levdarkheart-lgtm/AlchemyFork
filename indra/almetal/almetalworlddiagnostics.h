@@ -57,6 +57,12 @@ struct ALMetalWorldSimpleShadowPSOCensus
     std::uint32_t source_view_kind = 0, source_view_index = 0;
     std::uint32_t probe_count = 0, shadow_flags = 0;
     std::array<ALMetalWorldEncodedDrawCensus, bucket_count> draws{};
+    // Actual successful descriptors with bool3/bool4 true, per existing
+    // bucket. These count encoded batches, not requested specializations.
+    std::array<std::uint64_t, bucket_count> high_specialized_batches{};
+    std::array<std::uint64_t, bucket_count> diffuse_pair_specialized_batches{};
+    std::uint64_t unshadowed_simple_batches = 0;
+    std::uint64_t unshadowed_diffuse_pair_batches = 0;
 };
 
 // Latest successful color-writing PBR-alpha draws per view. Descriptor

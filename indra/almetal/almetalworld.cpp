@@ -181,6 +181,9 @@ namespace
     // Matches almetal_directional_shadow_high in the same module. Other
     // qualities retain the generic shader and its runtime filter selection.
     constexpr std::uint32_t high_shadow_function_constant = 3;
+    constexpr std::uint32_t diffuse_pair_function_constant = 4;
+    constexpr const char* diffuse_pair_function_constant_name =
+        "almetal_simple_diffuse_pair";
 
     bool highShadowQuality(const ALMetalWorldDirectionalShadowConstants& shadows)
     {
@@ -2829,6 +2832,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<
         std::array<OpaqueForwardRiggedPipelines, 2>, 2>, 2>
         high_pre_water_simple_pipelines;
+    // The same HDR/coverage/shadow/rigging families, with only the diffuse
+    // selector specialized for one or two actual bound textures.
+    decltype(pre_water_simple_pipelines) pair_pre_water_simple_pipelines;
+    decltype(high_pre_water_simple_pipelines) pair_high_pre_water_simple_pipelines;
     // HDR x coverage x shadows x rigid/skinned/cloth system-avatar mesh x
     // color-write state. The latter keeps the middle pass of three-pass
     // hair/skirt depth-only without changing its alpha-cutout shader.
@@ -2974,6 +2981,19 @@ struct ALMetalWorldGBufferRenderer::Impl
             // A missing optimization is distinct from a failed PSO creation.
             descriptor.label += " (generic shadow compatibility)";
         }
+        return ALMetalRenderPipeline::create(*device, descriptor, error);
+    }
+
+    std::unique_ptr<ALMetalRenderPipeline> pairDiffusePipeline(
+        const ALMetalRenderPipeline& original, std::string* error) const
+    {
+        auto descriptor = original.descriptor();
+        descriptor.library = library.get();
+        // The caller checks the optional declaration's name, index and type.
+        // Keep probe single-tap, High shadow quality and every render state.
+        descriptor.fragment_bool_constants.push_back(
+            {diffuse_pair_function_constant, true});
+        descriptor.label += " (one or two diffuse textures)";
         return ALMetalRenderPipeline::create(*device, descriptor, error);
     }
 
@@ -6545,6 +6565,27 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                         if (!high)
                         {
                             return nullptr;
+                        }
+                    }
+                    if (impl->library->hasBoolFunctionConstant(
+                            alpha_descriptor.fragment_function,
+                            diffuse_pair_function_constant,
+                            diffuse_pair_function_constant_name))
+                    {
+                        auto& pair = impl->pair_pre_water_simple_pipelines
+                            [hdr][coverage][shadows][rigged];
+                        pair = impl->pairDiffusePipeline(
+                            *impl->pre_water_simple_pipelines
+                                [hdr][coverage][shadows][rigged], error);
+                        if (!pair) return nullptr;
+                        if (shadows != 0)
+                        {
+                            auto& pair_high = impl->pair_high_pre_water_simple_pipelines
+                                [hdr][coverage][shadows - 1][rigged];
+                            pair_high = impl->pairDiffusePipeline(
+                                *impl->high_pre_water_simple_pipelines
+                                    [hdr][coverage][shadows - 1][rigged], error);
+                            if (!pair_high) return nullptr;
                         }
                     }
                 }
@@ -22031,6 +22072,31 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 }
             }
 
+            // This exact batch count also supplies the vertex constants and
+            // the textures subsequently bound at slots 0..count. No PSO is
+            // created during drawing; older explicit libraries keep the
+            // original pipeline when the named optional constant is absent.
+            if (standard_blend && !batch.avatar_alpha &&
+                !batch.post_water_depth_only &&
+                alpha_family == Impl::PreWaterAlphaFamily::simple &&
+                batch.texture_count >= 1 && batch.texture_count <= 2)
+            {
+                const bool high = highShadowQuality(alpha_shadow_constants) &&
+                    simple_shadow_mode != Impl::SimpleShadowMode::none;
+                auto* pair_pipeline = high
+                    ? mImpl->pair_high_pre_water_simple_pipelines
+                          [scene.hdr ? 1 : 0]
+                          [batch.pre_water_alpha_writes_coverage ? 1 : 0]
+                          [static_cast<std::size_t>(simple_shadow_mode) - 1]
+                          [rigged ? 1 : 0].get()
+                    : mImpl->pair_pre_water_simple_pipelines
+                          [scene.hdr ? 1 : 0]
+                          [batch.pre_water_alpha_writes_coverage ? 1 : 0]
+                          [static_cast<std::size_t>(simple_shadow_mode)]
+                          [rigged ? 1 : 0].get();
+                if (pair_pipeline) alpha_pipeline = pair_pipeline;
+            }
+
             if (probe_pbr_shadow && standard_blend)
             {
                 alpha_pipeline = mImpl->probePBRAlphaPipeline(
@@ -22303,23 +22369,47 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (encoded && selected_simple_shadow_psos)
             {
                 const auto& selected = alpha_pipeline->descriptor();
-                if (selected.fragment_function ==
-                    "almetal_world_pre_water_simple_shadow_fragment")
+                const bool simple_shadow = selected.fragment_function ==
+                    "almetal_world_pre_water_simple_shadow_fragment";
+                const bool simple_unshadowed = selected.fragment_function ==
+                    "almetal_world_pre_water_simple_fragment";
+                if (simple_shadow || simple_unshadowed)
                 {
                     std::size_t constant_state = 0; // Undefined optional bool.
+                    bool high_specialized = false, diffuse_pair = false;
                     for (const auto& value : selected.fragment_bool_constants)
+                    {
                         if (value.index == probe_shadow_function_constant)
                             constant_state = value.value ? 2u : 1u;
-                    const bool avatar = selected.vertex_function.find(
-                        "almetal_world_avatar_alpha_") == 0;
-                    const bool custom =
-                        selected.colors[0].source_rgb != ALMetalBlendFactor::source_alpha ||
-                        selected.colors[0].destination_rgb != ALMetalBlendFactor::one_minus_source_alpha;
-                    auto& counts = selected_simple_shadow_psos->draws[
-                        (avatar ? 6u : 0u) + (custom ? 3u : 0u) + constant_state];
-                    ++counts.batches;
-                    counts.vertices += batch.vertex_count;
-                    counts.indices += batch.index_count;
+                        if (value.index == high_shadow_function_constant)
+                            high_specialized = value.value;
+                        if (value.index == diffuse_pair_function_constant)
+                            diffuse_pair = value.value;
+                    }
+                    if (simple_shadow)
+                    {
+                        const bool avatar = selected.vertex_function.find(
+                            "almetal_world_avatar_alpha_") == 0;
+                        const bool custom =
+                            selected.colors[0].source_rgb != ALMetalBlendFactor::source_alpha ||
+                            selected.colors[0].destination_rgb != ALMetalBlendFactor::one_minus_source_alpha;
+                        const auto bucket = (avatar ? 6u : 0u) +
+                            (custom ? 3u : 0u) + constant_state;
+                        auto& counts = selected_simple_shadow_psos->draws[bucket];
+                        ++counts.batches;
+                        counts.vertices += batch.vertex_count;
+                        counts.indices += batch.index_count;
+                        if (high_specialized)
+                            ++selected_simple_shadow_psos->high_specialized_batches[bucket];
+                        if (diffuse_pair)
+                            ++selected_simple_shadow_psos->diffuse_pair_specialized_batches[bucket];
+                    }
+                    else
+                    {
+                        ++selected_simple_shadow_psos->unshadowed_simple_batches;
+                        if (diffuse_pair)
+                            ++selected_simple_shadow_psos->unshadowed_diffuse_pair_batches;
+                    }
                 }
             }
             if (encoded && selected_pbr_shadow_psos)

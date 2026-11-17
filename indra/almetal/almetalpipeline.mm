@@ -509,7 +509,8 @@ bool ALMetalShaderLibrary::hasFunction(const std::string& name) const
 }
 
 bool ALMetalShaderLibrary::hasBoolFunctionConstant(
-    const std::string& name, std::uint32_t index) const
+    const std::string& name, std::uint32_t index,
+    const std::string& expected_constant_name) const
 {
     if (!mImpl || name.empty()) return false;
     @autoreleasepool
@@ -518,7 +519,9 @@ bool ALMetalShaderLibrary::hasBoolFunctionConstant(
             [mImpl->library newFunctionWithName:toNSString(name)];
         for (MTLFunctionConstant* constant in function.functionConstantsDictionary.allValues)
         {
-            if (constant.index == index && constant.type == MTLDataTypeBool)
+            if (constant.index == index && constant.type == MTLDataTypeBool &&
+                (expected_constant_name.empty() ||
+                 [constant.name isEqualToString:toNSString(expected_constant_name)]))
                 return true;
         }
         return false;

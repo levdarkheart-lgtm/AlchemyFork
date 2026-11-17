@@ -8938,6 +8938,9 @@ static float3 almetal_world_pre_water_simple_local_light(
     return color * (classic_mode ? 0.9 : 1.0);
 }
 
+// Optional specialization for the exact one-or-two-texture binding contract.
+constant bool almetal_simple_diffuse_pair [[function_constant(4)]];
+
 static void almetal_world_pre_water_simple_surface(
     ALMetalWorldShinyVaryings input,
     array<texture2d<float>, 32> diffuse_textures,
@@ -8955,10 +8958,30 @@ static void almetal_world_pre_water_simple_surface(
         discard_fragment();
     }
 
-    diffuse = input.texture_index < input.texture_count
-        ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord) * input.color
-        : float4(1.0, 0.0, 1.0, 1.0);
+    const bool diffuse_pair =
+        is_function_constant_defined(almetal_simple_diffuse_pair)
+            ? almetal_simple_diffuse_pair : false;
+    if (diffuse_pair)
+    {
+        if (input.texture_index < input.texture_count)
+        {
+            texture2d<float> selected_diffuse = input.texture_index == 0u
+                ? diffuse_textures[0] : diffuse_textures[1];
+            diffuse = selected_diffuse.sample(
+                diffuse_sampler, input.texcoord) * input.color;
+        }
+        else
+        {
+            diffuse = float4(1.0, 0.0, 1.0, 1.0);
+        }
+    }
+    else
+    {
+        diffuse = input.texture_index < input.texture_count
+            ? diffuse_textures[min(input.texture_index, 31u)].sample(
+                  diffuse_sampler, input.texcoord) * input.color
+            : float4(1.0, 0.0, 1.0, 1.0);
+    }
     if (diffuse.a < environment.water_fog.w)
     {
         discard_fragment();

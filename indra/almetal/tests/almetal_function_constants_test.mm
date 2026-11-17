@@ -29,6 +29,7 @@ TEST_CASE("almetal: fragment bool constants specialize pixels and reject stale c
 #include <metal_stdlib>
 using namespace metal;
 constant bool cube [[function_constant(3)]];
+constant bool unrelated [[function_constant(4)]];
 constant uint wrong_type [[function_constant(5)]];
 constant uint required_value [[function_constant(7)]];
 struct Out { float4 position [[position]]; };
@@ -51,6 +52,11 @@ fragment float4 wrong_type_fragment()
 {
     return float4(float(wrong_type), 0, 0, 1);
 }
+fragment float4 wrong_name_fragment()
+{
+    const bool enabled = is_function_constant_defined(unrelated) ? unrelated : false;
+    return enabled ? float4(0,1,0,1) : float4(1,0,0,1);
+}
 fragment float4 required_fragment()
 {
     return float4(cube ? 1.f : 0.f, float(required_value), 0, 1);
@@ -59,6 +65,13 @@ fragment float4 required_fragment()
         auto library = ALMetalShaderLibrary::compileSource(
             *device, source, "Bool function constants regression", &error);
         REQUIRE(library);
+        CHECK(library->hasBoolFunctionConstant("constants_fragment", 3, "cube"));
+        CHECK_FALSE(library->hasBoolFunctionConstant("constants_fragment", 3, "unrelated"));
+        CHECK(library->hasBoolFunctionConstant("wrong_name_fragment", 4));
+        CHECK_FALSE(library->hasBoolFunctionConstant(
+            "wrong_name_fragment", 4, "almetal_simple_diffuse_pair"));
+        CHECK_FALSE(library->hasBoolFunctionConstant("wrong_type_fragment", 5, "wrong_type"));
+        CHECK_FALSE(library->hasBoolFunctionConstant("missing_fragment", 3, "cube"));
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
         descriptor.vertex_function = "constants_vertex";

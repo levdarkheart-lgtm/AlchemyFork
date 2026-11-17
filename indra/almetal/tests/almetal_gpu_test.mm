@@ -13966,6 +13966,21 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // single-tap filtering. Keep all inputs local so the tests below retain
         // their original shadow, scene, probe and map state.
         {
+            auto selection_library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+            INFO(error);
+            REQUIRE(selection_library);
+            for (const char* fragment : {
+                     "almetal_world_pre_water_simple_fragment",
+                     "almetal_world_pre_water_simple_shadow_fragment"})
+            {
+                CAPTURE(fragment);
+                REQUIRE(selection_library->hasBoolFunctionConstant(
+                    fragment, 4u, "almetal_simple_diffuse_pair"));
+            }
+            REQUIRE(selection_library->hasBoolFunctionConstant(
+                "almetal_world_pre_water_simple_shadow_fragment", 3u,
+                "almetal_directional_shadow_high"));
+
             ALMetalTextureDescriptor selection_descriptor = shadow_descriptor;
             selection_descriptor.label =
                 "Alchemy simple-alpha pipeline-selection checkerboard";
@@ -14004,9 +14019,25 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             std::array<ALMetalWorldSimpleBatch, 2> selection_batches{{
                 simple_pre_water, simple_pre_water_rigged,
             }};
+            // Isolate indexed vertex data from the rest of this fixture.
+            // Its original position.w is 1.f, not a packed texture index.
+            std::vector<std::uint8_t> selection_vertex_bytes(
+                selection_batches[0].vertices->length());
+            REQUIRE(selection_batches[0].vertices->read(
+                0, selection_vertex_bytes.data(), selection_vertex_bytes.size(), &error));
+            auto selection_vertex_descriptor = vertex_descriptor;
+            selection_vertex_descriptor.length = selection_vertex_bytes.size();
+            selection_vertex_descriptor.label = "Alchemy simple-alpha selector vertices";
+            auto selection_vertices = ALMetalBuffer::create(
+                *device, selection_vertex_descriptor, &error);
+            INFO(error);
+            REQUIRE(selection_vertices);
             for (auto& batch : selection_batches)
             {
                 batch.pre_water_shadows = true;
+                batch.vertices = selection_vertices.get();
+                batch.diffuse_textures[1] = batch.diffuse_textures[0];
+                batch.diffuse_textures[2] = batch.diffuse_textures[0];
             }
             auto selection_scene = opaque_forward_scene;
             selection_scene.batches = selection_batches.data();
@@ -14022,14 +14053,44 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             ALMetalDevice::setCommandTimingEnabled(true);
             selection_scene.diagnostic_frame_index = 1000u;
             const auto read_selection = [&](unsigned probe_count,
-                                            bool probe_filter)
+                                            bool probe_filter,
+                                            unsigned quality,
+                                            unsigned texture_count,
+                                            bool shadowed = true)
             {
+                CAPTURE(probe_count, probe_filter, quality, texture_count, shadowed);
+                // Exercise the last valid texture slot, including slot one
+                // in the pair PSO and slot two in the generic PSO. Duplicate
+                // images keep this selector change pixel/depth invariant.
+                const std::uint32_t texture_index = texture_count - 1u;
+                for (auto& batch : selection_batches)
+                {
+                    batch.texture_count = texture_count;
+                    batch.pre_water_shadows = shadowed;
+                    for (std::size_t vertex = 0; vertex < batch.vertex_count; ++vertex)
+                    {
+                        const auto offset = batch.position_offset +
+                            vertex * sizeof(positions[0]) + 3u * sizeof(float);
+                        REQUIRE(offset + sizeof(texture_index) <= selection_vertex_bytes.size());
+                        std::memcpy(selection_vertex_bytes.data() + offset,
+                                    &texture_index, sizeof(texture_index));
+                    }
+                }
+                REQUIRE(selection_vertices->write(
+                    0, selection_vertex_bytes.data(), selection_vertex_bytes.size(), &error));
+                selection_scene.alpha_directional_shadows = shadowed
+                    ? &selection_shadows : nullptr;
                 selection_probes.constants.config[0] =
                     static_cast<float>(probe_count);
-                selection_shadows.constants.config[3] = 3u |
+                selection_shadows.constants.config[3] = quality |
                     (probe_filter
                          ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
                          : 0u);
+                // High2's one comparison tap is bilinear. At the exact
+                // checkerboard center it equals the symmetric Gaussian, so
+                // offset this new row while retaining the original PCSS UV.
+                for (auto& matrix : selection_shadows.constants.shadow_matrix)
+                    matrix[12] = matrix[13] = quality == 2u ? 0.53f : 0.5f;
                 selection_scene.diagnostic_view_kind = probe_filter ? 2u : 1u;
                 selection_scene.diagnostic_view_index = probe_filter ? 1u : 0u;
                 ++selection_scene.diagnostic_frame_index;
@@ -14044,19 +14105,28 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 CHECK(selected.source_view_kind == selection_scene.diagnostic_view_kind);
                 CHECK(selected.source_view_index == selection_scene.diagnostic_view_index);
                 CHECK(selected.probe_count == probe_count);
-                CHECK(selected.shadow_pack_present);
-                CHECK(selected.shadow_flags == selection_shadows.constants.config[3]);
+                CHECK(selected.shadow_pack_present == shadowed);
+                CHECK(selected.shadow_flags == (shadowed ? selection_shadows.constants.config[3] : 0u));
                 const bool custom = selection_batches[0].pre_water_source_rgb == ALMetalBlendFactor::one;
                 const std::size_t expected = (custom ? 3u : 0u) +
                     (probe_filter && probe_count > 1u ? 2u : 0u);
+                const bool expect_pair = !custom && texture_count <= 2u;
                 for (std::size_t bucket = 0; bucket < selected.bucket_count; ++bucket)
                 {
-                    CHECK(selected.draws[bucket].batches == (bucket == expected ? 2u : 0u));
-                    CHECK(selected.draws[bucket].vertices == (bucket == expected
+                    const bool chosen_shadow = shadowed && bucket == expected;
+                    CHECK(selected.draws[bucket].batches == (chosen_shadow ? 2u : 0u));
+                    CHECK(selected.draws[bucket].vertices == (chosen_shadow
                         ? selection_batches[0].vertex_count + selection_batches[1].vertex_count : 0u));
-                    CHECK(selected.draws[bucket].indices == (bucket == expected
+                    CHECK(selected.draws[bucket].indices == (chosen_shadow
                         ? selection_batches[0].index_count + selection_batches[1].index_count : 0u));
+                    CHECK(selected.high_specialized_batches[bucket] ==
+                          (chosen_shadow && !custom && quality == 2u ? 2u : 0u));
+                    CHECK(selected.diffuse_pair_specialized_batches[bucket] ==
+                          (chosen_shadow && expect_pair ? 2u : 0u));
                 }
+                CHECK(selected.unshadowed_simple_batches == (shadowed ? 0u : 2u));
+                CHECK(selected.unshadowed_diffuse_pair_batches ==
+                      (!shadowed && expect_pair ? 2u : 0u));
                 std::array<std::uint16_t, 32 * 32 * 4> color{};
                 // Read raw depth into integer storage for exact bits,
                 // including any signed-zero difference.
@@ -14081,30 +14151,61 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                         ? ALMetalBlendFactor::one
                         : ALMetalBlendFactor::one_minus_source_alpha;
                 }
-                // Create the specialized custom entry first. A cache key
-                // that collapses runtime/specialized modes would otherwise
-                // silently reuse a correct-but-unspecialized runtime PSO.
-                const auto probe_first = read_selection(2, true);
-                const auto default_only = read_selection(1, true);
-                CHECK(probe_first == default_only);
-                const auto main_before = read_selection(2, false);
-                const auto probe_after = read_selection(2, true);
-                const auto main_after = read_selection(2, false);
-                CHECK(probe_after == default_only);
-                CHECK(main_after == main_before);
-                CHECK(main_before.second == default_only.second);
-                // Both actual vertex paths must render, and the checkerboard
-                // PCSS result must differ from the nearest single tap at
-                // (0.5,0.5), which selects a shadowed checkerboard texel.
-                for (const std::size_t pixel :
-                     {pre_water_left, pre_water_right})
+                for (const unsigned quality : {2u, 3u})
                 {
-                    CAPTURE(pixel);
-                    CHECK(probe_after.second[pixel / 4] == 0x3f000000u);
-                    CHECK(main_before.first[pixel + 1] !=
-                          default_only.first[pixel + 1]);
+                    CAPTURE(quality);
+                    std::pair<std::array<std::uint16_t, 32 * 32 * 4>,
+                              std::array<std::uint32_t, 32 * 32>> probe_reference{}, main_reference{};
+                    for (const unsigned texture_count : {1u, 2u, 3u})
+                    {
+                        CAPTURE(texture_count);
+                        // Create the specialized custom entry first. A cache
+                        // key that collapses runtime/probe modes would otherwise
+                        // silently reuse an unspecialized runtime PSO.
+                        const auto probe_first = read_selection(2, true, quality, texture_count);
+                        const auto default_only = read_selection(1, true, quality, texture_count);
+                        CHECK(probe_first == default_only);
+                        const auto main_before = read_selection(2, false, quality, texture_count);
+                        const auto probe_after = read_selection(2, true, quality, texture_count);
+                        const auto main_after = read_selection(2, false, quality, texture_count);
+                        CHECK(probe_after == default_only);
+                        CHECK(main_after == main_before);
+                        CHECK(main_before.second == default_only.second);
+                        if (texture_count == 1u)
+                        {
+                            probe_reference = probe_first;
+                            main_reference = main_before;
+                        }
+                        else
+                        {
+                            CHECK(probe_first == probe_reference);
+                            CHECK(main_before == main_reference);
+                        }
+                        // Both actual vertex paths must render. Preserve the
+                        // original PCSS-vs-single-tap pixel/depth controls; the
+                        // High2 row additionally checks composition above.
+                        for (const std::size_t pixel :
+                             {pre_water_left, pre_water_right})
+                        {
+                            CAPTURE(pixel);
+                            CHECK(probe_after.second[pixel / 4] == 0x3f000000u);
+                            CHECK(main_before.first[pixel + 1] !=
+                                  default_only.first[pixel + 1]);
+                        }
+                    }
                 }
             }
+            for (auto& batch : selection_batches)
+            {
+                batch.pre_water_source_rgb = ALMetalBlendFactor::source_alpha;
+                batch.pre_water_destination_rgb = ALMetalBlendFactor::one_minus_source_alpha;
+            }
+            const auto unshadowed_pair = read_selection(2, false, 2u, 2u, false);
+            const auto unshadowed_generic = read_selection(2, false, 2u, 3u, false);
+            CHECK(unshadowed_pair == unshadowed_generic);
+            // Restore a successful shadowed main observation before checking
+            // default-off and failed-render preservation below.
+            read_selection(2, false, 3u, 3u);
             // Default-off and failed renders cannot replace a successful
             // actual-pipeline observation with an unencoded input census.
             const auto previous = renderer->opaquePostDiagnostics().simple_shadow_psos[0];
