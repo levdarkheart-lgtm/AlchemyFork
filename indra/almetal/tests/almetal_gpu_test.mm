@@ -9,6 +9,7 @@
  */
 
 #include "../almetaldevice.h"
+#include "../almetaldiagnostictelemetry.h"
 #include "../almetalframe.h"
 #include "../almetalpbrpreview.h"
 #include "../almetalpipeline.h"
@@ -25,6 +26,7 @@
 #include "../../newview/SMAASearchTex.h"
 
 #import <Metal/Metal.h>
+#import <Foundation/Foundation.h>
 #import <IOSurface/IOSurface.h>
 
 #include <SDL3/SDL.h>
@@ -37,6 +39,8 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -14223,6 +14227,248 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             CHECK(unchanged.source_frame_index == previous.source_frame_index);
             CHECK(unchanged.sample_sequence == previous.sample_sequence);
             error.clear();
+
+            // PPD-338: observe the actual successful descriptors with only
+            // the normal asynchronous sink armed, never legacy timing.
+            namespace D = ALMetalDiagnosticTelemetry;
+            REQUIRE_FALSE(D::enabled());
+            ALMetalDevice::setCommandTimingEnabled(false);
+            struct SelectedPSOTelemetry
+            {
+                std::filesystem::path directory;
+                bool preserve = false;
+                ~SelectedPSOTelemetry()
+                {
+                    D::stop();
+                    if (!preserve && !directory.empty())
+                    {
+                        std::error_code ignored;
+                        std::filesystem::remove_all(directory, ignored);
+                    }
+                }
+            } selected_telemetry;
+            const char* retained = std::getenv("ALCHEMY_METAL_TEST_ARTIFACT_DIRECTORY");
+            const std::filesystem::path telemetry_parent = retained && *retained
+                ? retained : "/tmp";
+            REQUIRE(std::filesystem::is_directory(telemetry_parent));
+            std::string telemetry_pattern =
+                (telemetry_parent / "almetal-selected-pso-XXXXXX").string();
+            std::vector<char> telemetry_directory(
+                telemetry_pattern.begin(), telemetry_pattern.end());
+            telemetry_directory.push_back('\0');
+            auto* created_directory = mkdtemp(telemetry_directory.data());
+            REQUIRE(created_directory);
+            selected_telemetry.directory = created_directory;
+            selected_telemetry.preserve = retained && *retained;
+            D::Config telemetry_config;
+            telemetry_config.path =
+                (selected_telemetry.directory / "selected-pso.jsonl").string();
+            telemetry_config.source_sha = "ppd338-actual-renderer-fixture";
+            telemetry_config.build_id = "almetal_gpu_test";
+            telemetry_config.max_duration_seconds = 30;
+            telemetry_config.max_bytes = 4u * 1024u * 1024u;
+            telemetry_config.ring_records = 1024;
+
+            // Three shadowed and three unshadowed real draws in one view
+            // prove counts 1/2/3 without sleeps or a throttle override. The
+            // existing slot images are identical, so a generic three-slot
+            // control must give the same pixels and exact depth bits.
+            std::array<ALMetalWorldSimpleBatch, 6> native_selection_batches;
+            for (std::size_t index = 0; index < native_selection_batches.size(); ++index)
+            {
+                auto& batch = native_selection_batches[index];
+                batch = selection_batches[index % selection_batches.size()];
+                batch.pre_water_shadows = index < 3;
+                batch.texture_count = 3;
+                const std::uint32_t texture_index = 0;
+                for (std::size_t vertex = 0; vertex < batch.vertex_count; ++vertex)
+                {
+                    const auto offset = batch.position_offset +
+                        vertex * sizeof(positions[0]) + 3u * sizeof(float);
+                    REQUIRE(offset + sizeof(texture_index) <= selection_vertex_bytes.size());
+                    std::memcpy(selection_vertex_bytes.data() + offset,
+                                &texture_index, sizeof(texture_index));
+                }
+            }
+            REQUIRE(selection_vertices->write(
+                0, selection_vertex_bytes.data(), selection_vertex_bytes.size(), &error));
+            selection_scene.batches = native_selection_batches.data();
+            selection_scene.batch_count = native_selection_batches.size();
+            selection_scene.alpha_directional_shadows = &selection_shadows;
+            selection_probes.constants.config[0] = 2.f;
+            for (auto& matrix : selection_shadows.constants.shadow_matrix)
+                matrix[12] = matrix[13] = 0.53f;
+            const auto render_native_selection = [&](unsigned view_kind)
+            {
+                selection_shadows.constants.config[3] = 2u |
+                    (view_kind == 3u
+                        ? ALMetalWorldDirectionalShadowConstants::probe_single_tap : 0u);
+                selection_scene.diagnostic_view_kind = view_kind;
+                selection_scene.diagnostic_view_index = view_kind == 1u ? 0u : 2u;
+                ++selection_scene.diagnostic_frame_index;
+                auto target = renderer->renderOpaquePostDeferred(selection_scene, &error);
+                INFO(error);
+                REQUIRE(target);
+                return target;
+            };
+            const auto read_native_selection = [&](const ALMetalRenderTarget& target)
+            {
+                std::array<std::uint16_t, 32 * 32 * 4> color{};
+                std::array<std::uint32_t, 32 * 32> depth_bits{};
+                REQUIRE(target.colorTexture(0)->readback(
+                    *device, 0, 0, {}, color.data(), 32 * 8, &error));
+                REQUIRE(target.depthStencilTexture()->readback(
+                    *device, 0, 0, {}, depth_bits.data(),
+                    32 * sizeof(std::uint32_t), &error));
+                return std::make_pair(color, depth_bits);
+            };
+            const auto generic_main = read_native_selection(*render_native_selection(1u));
+            const auto generic_probe = read_native_selection(*render_native_selection(3u));
+            CHECK(generic_main.first != generic_probe.first);
+            CHECK(generic_main.second == generic_probe.second);
+            for (std::size_t index = 0; index < native_selection_batches.size(); ++index)
+                native_selection_batches[index].texture_count =
+                    static_cast<std::uint32_t>(index % 3u + 1u);
+            const auto legacy_sequence = renderer->opaquePostDiagnostics().sample_sequence;
+            const bool telemetry_started = D::start(telemetry_config, &error);
+            INFO(error);
+            REQUIRE(telemetry_started);
+            REQUIRE_FALSE(ALMetalDevice::commandTimingEnabled());
+            REQUIRE(D::currentFrameTag().frame_id == 0u);
+            const auto native_sample_start = D::machTimeNs();
+            auto native_main_target = render_native_selection(1u);
+            const auto native_main_frame = selection_scene.diagnostic_frame_index;
+            const auto native_main = renderer->opaquePostDiagnostics().simple_shadow_psos[0];
+            // The second warmed 32x32 encoding is intentionally immediate.
+            // Require the fixture to remain inside the sampling interval,
+            // rather than silently weakening its rate-bound assertion.
+            auto repeated_main_target = render_native_selection(1u);
+            REQUIRE(D::machTimeNs() - native_sample_start < 1'000'000'000ull);
+            CHECK(renderer->opaquePostDiagnostics().simple_shadow_psos[0].sample_sequence ==
+                  native_main.sample_sequence);
+            CHECK(read_native_selection(*native_main_target) == generic_main);
+            CHECK(read_native_selection(*repeated_main_target) == generic_main);
+            auto native_probe_target = render_native_selection(3u);
+            const auto native_probe_frame = selection_scene.diagnostic_frame_index;
+            const auto native_probe = renderer->opaquePostDiagnostics().simple_shadow_psos[9];
+            CHECK(read_native_selection(*native_probe_target) == generic_probe);
+            CHECK(renderer->opaquePostDiagnostics().sample_sequence == legacy_sequence);
+            CHECK(native_main.source_frame_index == native_main_frame);
+            CHECK(native_main.source_view_kind == 1u);
+            CHECK(native_main.source_view_index == 0u);
+            CHECK(native_probe.source_frame_index == native_probe_frame);
+            CHECK(native_probe.source_view_kind == 3u);
+            for (const auto* census : {&native_main, &native_probe})
+            {
+                CAPTURE(census->source_view_kind);
+                REQUIRE(census->valid);
+                CHECK(census->sample_sequence > previous.sample_sequence);
+                const std::size_t bucket = census->source_view_kind == 3u ? 2u : 0u;
+                CHECK(census->draws[bucket].batches == 3u);
+                CHECK(census->high_specialized_batches[bucket] == 3u);
+                CHECK(census->diffuse_pair_specialized_batches[bucket] == 2u);
+                CHECK(census->unshadowed_simple_batches == 3u);
+                CHECK(census->unshadowed_diffuse_pair_batches == 2u);
+            }
+            CHECK(native_probe.sample_sequence > native_main.sample_sequence);
+            CHECK(native_probe.source_view_index == 2u);
+            // A separate, still-unsampled hero slot cannot export an invalid
+            // scene or replace its previous successful observation.
+            const auto before_failed = renderer->opaquePostDiagnostics().simple_shadow_psos[3];
+            selection_scene.diagnostic_view_kind = 2u;
+            selection_scene.diagnostic_view_index = 2u;
+            ++selection_scene.diagnostic_frame_index;
+            const auto failed_frame = selection_scene.diagnostic_frame_index;
+            selection_scene.alpha_directional_shadows = nullptr;
+            CHECK_FALSE(renderer->renderOpaquePostDeferred(selection_scene, &error));
+            CHECK(renderer->opaquePostDiagnostics().simple_shadow_psos[3].sample_sequence ==
+                  before_failed.sample_sequence);
+            error.clear();
+            D::stop();
+            CHECK_FALSE(ALMetalDevice::commandTimingEnabled());
+            selection_scene.alpha_directional_shadows = &selection_shadows;
+            const auto stopped_before = renderer->opaquePostDiagnostics().simple_shadow_psos[0];
+            auto stopped_target = render_native_selection(1u);
+            CHECK(read_native_selection(*stopped_target) == generic_main);
+            CHECK(renderer->opaquePostDiagnostics().simple_shadow_psos[0].sample_sequence ==
+                  stopped_before.sample_sequence);
+
+            struct PSOMetricRow
+            {
+                std::string name;
+                std::uint64_t frame = 0;
+                std::uint32_t view_kind = 0;
+                std::int32_t view_index = -1;
+                std::array<std::uint64_t, 8> values{};
+            };
+            std::vector<PSOMetricRow> pso_rows;
+            std::ifstream telemetry_stream(telemetry_config.path);
+            REQUIRE(telemetry_stream.good());
+            std::string json_line;
+            while (std::getline(telemetry_stream, json_line))
+            {
+                NSData* data = [[NSString stringWithUTF8String:json_line.c_str()]
+                    dataUsingEncoding:NSUTF8StringEncoding];
+                NSError* json_error = nil;
+                id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:&json_error];
+                REQUIRE(json_error == nil);
+                REQUIRE([object isKindOfClass:[NSDictionary class]]);
+                NSDictionary* row = object;
+                if (![row[@"event"] isEqual:@"metrics"]) continue;
+                NSString* name = row[@"name"];
+                if (![name isEqual:@"simple_alpha_pso_view"] &&
+                    ![name isEqual:@"simple_alpha_pso_bucket"]) continue;
+                NSArray* values = row[@"values"];
+                REQUIRE(values.count == 8);
+                PSOMetricRow parsed;
+                parsed.name = name.UTF8String;
+                parsed.frame = [row[@"frame_id"] unsignedLongLongValue];
+                parsed.view_kind = [row[@"view_kind"] unsignedIntValue];
+                parsed.view_index = [row[@"view_index"] intValue];
+                for (std::size_t index = 0; index < parsed.values.size(); ++index)
+                    parsed.values[index] = [values[index] unsignedLongLongValue];
+                pso_rows.push_back(parsed);
+            }
+            // A complete tiny capture is a fixture prerequisite, not a
+            // promise that the production lossy sink never drops a row.
+            const auto telemetry_stats = D::statistics();
+            CAPTURE(telemetry_stats.dropped_full, telemetry_stats.dropped_contention,
+                    telemetry_stats.dropped_budget);
+            REQUIRE(pso_rows.size() == 4u);
+            for (const auto* census : {&native_main, &native_probe})
+            {
+                const std::size_t bucket = census->source_view_kind == 3u ? 2u : 0u;
+                const auto& draws = census->draws[bucket];
+                const std::array<std::uint64_t, 8> expected_view{
+                    1u, census->sample_sequence, 2u, census->shadow_flags, 1u, 3u, 3u, 2u};
+                const std::array<std::uint64_t, 8> expected_bucket{
+                    1u, census->sample_sequence, bucket, 3u,
+                    draws.vertices, draws.indices, 3u, 2u};
+                std::size_t view_rows = 0, bucket_rows = 0;
+                for (const auto& row : pso_rows)
+                {
+                    CHECK(row.frame != failed_frame);
+                    if (row.values[1] != census->sample_sequence) continue;
+                    CHECK(row.frame == census->source_frame_index);
+                    CHECK(row.view_kind == census->source_view_kind);
+                    CHECK(row.view_index == (census->source_view_kind == 1u ? -1 : 2));
+                    if (row.name == "simple_alpha_pso_view")
+                    {
+                        ++view_rows;
+                        CHECK(row.values == expected_view);
+                    }
+                    else
+                    {
+                        ++bucket_rows;
+                        CHECK(row.values == expected_bucket);
+                    }
+                }
+                CHECK(view_rows == 1u);
+                CHECK(bucket_rows == 1u);
+            }
+            CHECK(telemetry_stats.dropped_full == 0u);
+            CHECK(telemetry_stats.dropped_contention == 0u);
+            CHECK(telemetry_stats.dropped_budget == 0u);
         }
 
         opaque_forward_scene.alpha_directional_shadows = nullptr;

@@ -53,6 +53,9 @@ struct ALMetalWorldSimpleShadowPSOCensus
         "avatar.standard.undefined", "avatar.standard.false", "avatar.standard.true",
         "avatar.custom.undefined", "avatar.custom.false", "avatar.custom.true"};
     bool valid = false, shadow_pack_present = false;
+    // Successful CPU-encoding observation, independent of legacy command
+    // timing. Async telemetry samples at most once/second per renderer/view
+    // kind; it retains the actual face. Counts are not GPU completion/coverage.
     std::uint64_t source_frame_index = 0, sample_sequence = 0;
     std::uint32_t source_view_kind = 0, source_view_index = 0;
     std::uint32_t probe_count = 0, shadow_flags = 0;

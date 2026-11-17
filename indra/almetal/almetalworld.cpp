@@ -46,6 +46,36 @@ namespace
 {
     using CommandSettlementObserver = std::function<void(bool)>;
 
+    void recordSimpleAlphaPSOMetrics(
+        const ALMetalWorldSimpleShadowPSOCensus& census) noexcept
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        const D::FrameTag tag{census.source_frame_index,
+            static_cast<D::ViewKind>(census.source_view_kind),
+            census.source_view_kind == 1u ? -1 :
+                static_cast<std::int32_t>(census.source_view_index)};
+        std::uint64_t shadowed_batches = 0;
+        for (const auto& bucket : census.draws)
+            shadowed_batches += bucket.batches;
+        // Version and observation ID are repeated in each lossy row. These
+        // are successful CPU encodings, not GPU completion/fragment counts.
+        D::recordMetrics(tag, "simple_alpha_pso_view",
+            {1u, census.sample_sequence, census.probe_count, census.shadow_flags,
+                census.shadow_pack_present, shadowed_batches,
+                census.unshadowed_simple_batches,
+                census.unshadowed_diffuse_pair_batches});
+        for (std::size_t bucket = 0; bucket < census.bucket_count; ++bucket)
+        {
+            const auto& counts = census.draws[bucket];
+            if (!counts.batches) continue;
+            D::recordMetrics(tag, "simple_alpha_pso_bucket",
+                {1u, census.sample_sequence, bucket, counts.batches,
+                    counts.vertices, counts.indices,
+                    census.high_specialized_batches[bucket],
+                    census.diffuse_pair_specialized_batches[bucket]});
+        }
+    }
+
     template <typename T, std::size_t Count>
     void addOpaqueDiagnosticCounts(std::array<T, Count>& destination,
                                    const std::array<T, Count>& source) noexcept
@@ -2612,6 +2642,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint64_t shadow_certified_source_validations = 0;
     std::uint64_t opaque_diagnostic_calls = 0;
     ALMetalWorldPostDiagnostics opaque_diagnostics;
+    std::uint64_t simple_shadow_pso_observations = 0;
+    std::array<std::uint64_t, 3> simple_shadow_pso_metric_ns{};
     std::array<ALMetalWorldSimpleShadowPSOCensus, 13> simple_shadow_pso_diagnostics{};
     std::array<ALMetalWorldPBRShadowPSOCensus, 13> pbr_shadow_pso_diagnostics{};
     ALMetalWorldWaterShadowPSOCensus water_shadow_pso_diagnostics;
@@ -3657,6 +3689,8 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.opaque_family_split_saw_timing = mImpl->opaque_family_split_saw_timing;
     next.opaque_diagnostic_calls = mImpl->opaque_diagnostic_calls;
     next.opaque_diagnostics = mImpl->opaque_diagnostics;
+    next.simple_shadow_pso_observations = mImpl->simple_shadow_pso_observations;
+    next.simple_shadow_pso_metric_ns = mImpl->simple_shadow_pso_metric_ns;
     next.simple_shadow_pso_diagnostics = mImpl->simple_shadow_pso_diagnostics;
     next.pbr_shadow_pso_diagnostics = mImpl->pbr_shadow_pso_diagnostics;
     next.water_shadow_pso_diagnostics = mImpl->water_shadow_pso_diagnostics;
@@ -21081,10 +21115,27 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t selected_simple_shadow_view = 0;
     std::optional<ALMetalWorldWaterShadowPSOCensus> selected_water_shadow_pso;
     std::optional<ALMetalWorldPBRShadowPSOCensus> selected_pbr_shadow_psos;
-    if (ALMetalDevice::commandTimingEnabled() &&
-        ((scene.diagnostic_view_kind == 1u && scene.diagnostic_view_index == 0u) ||
-         ((scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
-          scene.diagnostic_view_index < 6u)))
+    const bool legacy_pso_census = ALMetalDevice::commandTimingEnabled();
+    const bool valid_pso_view =
+        (scene.diagnostic_view_kind == 1u && scene.diagnostic_view_index == 0u) ||
+        ((scene.diagnostic_view_kind == 2u || scene.diagnostic_view_kind == 3u) &&
+         scene.diagnostic_view_index < 6u);
+    bool sample_simple_pso_metrics = false;
+    if (valid_pso_view && ALMetalDiagnosticTelemetry::enabled())
+    {
+        auto& previous = mImpl->simple_shadow_pso_metric_ns[
+            scene.diagnostic_view_kind - 1u];
+        const auto now = ALMetalDiagnosticTelemetry::machTimeNs();
+        if (!previous || now - previous >= 1'000'000'000ull)
+        {
+            // Bound attempts as well as successful exports: a failed render
+            // cannot repeatedly arm descriptor scans. Faces share their kind's
+            // slot; the actual sampled face remains explicit in the record.
+            previous = now;
+            sample_simple_pso_metrics = true;
+        }
+    }
+    if ((legacy_pso_census || sample_simple_pso_metrics) && valid_pso_view)
     {
         selected_simple_shadow_psos.emplace();
         auto& census = *selected_simple_shadow_psos;
@@ -21100,7 +21151,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         selected_simple_shadow_view = scene.diagnostic_view_kind == 1u ? 0u
             : 1u + (scene.diagnostic_view_kind - 2u) * 6u + scene.diagnostic_view_index;
     }
-    if (selected_simple_shadow_psos && has_pre_water_pbr)
+    if (legacy_pso_census && selected_simple_shadow_psos && has_pre_water_pbr)
     {
         selected_pbr_shadow_psos.emplace();
         auto& census = *selected_pbr_shadow_psos;
@@ -21113,7 +21164,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         census.shadow_pack_present = source.shadow_pack_present;
         census.shadow_flags = source.shadow_flags;
     }
-    if (selected_simple_shadow_psos && has_water_surface)
+    if (legacy_pso_census && selected_simple_shadow_psos && has_water_surface)
     {
         selected_water_shadow_pso.emplace();
         auto& census = *selected_water_shadow_pso;
@@ -24203,11 +24254,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     }
     if (selected_simple_shadow_psos)
     {
-        // Publish only after the whole render succeeded. A failed/cancelled
-        // encoding cannot replace the previous successful view observation.
-        selected_simple_shadow_psos->sample_sequence = mImpl->opaque_diagnostic_calls;
+        // Publish only after this render's encoding/finish succeeded. An
+        // outer borrowed batch can still fail later; this is not a GPU
+        // completion or whole-frame success observation.
+        selected_simple_shadow_psos->sample_sequence =
+            ++mImpl->simple_shadow_pso_observations;
         mImpl->simple_shadow_pso_diagnostics[selected_simple_shadow_view] =
             *selected_simple_shadow_psos;
+        if (sample_simple_pso_metrics)
+            recordSimpleAlphaPSOMetrics(*selected_simple_shadow_psos);
     }
     if (selected_pbr_shadow_psos)
     {
