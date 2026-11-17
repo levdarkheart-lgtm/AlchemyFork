@@ -7646,7 +7646,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.
-- Next action: Discuss the completed [69233 Home checkpoint](research/probe-candidate-home-checkpoint-69233-20261117.md) before another implementation group. Decline persists with growing GPU completion wait; new preparation is active but reuse is low, and complete-path benefit is not isolated. Inspect exact input/library turnover and decline reasons while preserving all lighting, admission/completion safety and prior candidates. No additional profile or push now; club loading/settlement remains unrecorded in this run.
+- Next action: Owner checkpoint of separately staged69236/sourcef99b2daf14: Home login/loading/settlement then club teleport/loading/settlement. [Group1 evidence](work/active/probe-transparency-preparation-20261117.md) qualifies dependency-correct mask reuse and standard simple-alpha consumers; runtime benefit is unmeasured. Implementation pauses here as requested. Preserve settings/quality and record actual main-target dimensions automatically; their previous height difference is unexplained and does not establish an owner setting change. No push.
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7692,6 +7692,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-17 owner-authorized exact69233/source647dc369d1 Home recording completed0 with all world0–120 CPU/GPU phases retained; viewer closed after normal quit log path (process exit code uncollected). Owner region-environment31→16FPS; native29.690→15.886 with main wait11.616→43.026ms/frame and other elapsed22.066→19.923ms. Late waits target already-running GPU work two frames older; decoder late0.001CPU-s/main28% of one core. New candidate path active: last unambiguous in-Overview sample1379preparations/7reuses/2665declines/0failures;964569088cumulative mask bytes are not resident memory. Low reuse does not establish its FPS cost. All49controls/19args equal oldB2, but3456×2168 versus3456×1916(+13.15% pixels), light/probe/object/resource workloads differ; no causal gain/regression accepted. Native-only tail55→1probe reset/~24FPS recovery follows owner-confirmed environment change; no Overview there or unchanged-scene attribution.153warnings/40sites/0ERRORFATAL+3PNG source-mapped, actual cache mismatch/attachment/HTTP failures retained without FPS shares.231native contention drops retain partial evidence. PPD343spill fields unmeasured;356/357remain ready_for_owner. No club capture, new source group, further profile or push; discuss linked checkpoint first.
+
+- 2026-11-17 group1 candidate69236/sourcef99b2daf14 is ready for owner, root production791d03b070 plus fixture commits2fd5/d8, exactindra ad9459ed8d2f. Cache key now packet/library/epoch with independent full current-lighting publication and reentrant snapshot guards. Standard simple alpha gains independently proven virtual-eye masks preserving every valid tap/order/SH/blend/shadow. Actual GPU oracle28cases/zero omissions; final native1225097assertions/34cases including76strict renderer arms; existing renderer/reload50837/18 PASS, overlapping counts. Final build/static8272exactnodes/346ARM64/signatures/ownedimports PASS. Two fixture failures/corrections retained under359/361; no pixel tolerance change. No new viewer/profile/FPS/spill/physical-memory outcome; Home decline remains open. Owner keeps same test/settings: logged3456x1916 versus3456x2168 are main lighting target dimensions, not proof of changed physical drawable or quality. Stopped at requested inter-group checkpoint; later shader/admission/tile-local groups remain pending.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -8460,14 +8462,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-358 — Probe mask cache identity includes unrelated lighting inputs
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex shared probe preparation
 - Discovered: 2026-11-17
 - Original reference: Native tile-mask publication is new; original1eb44 reflectionProbeF.glsl probeHolds/traversal consumes current eye-space geometry and probe selection independently from SH/radiance values. Preserve all current lighting inputs and accepted taps.
 - Evidence: [Transparency preparation group](work/active/probe-transparency-preparation-20261117.md); almetalworld.cpp ProbeCandidateKey/prepareProbeCandidates and almetal_builtin.metal almetal_world_probe_candidate_tiles.
-- Next action: Persist only the exact mask-producing packet plus kernel library identity/epoch. Keep full current input validation and a separate miss-only snapshot across reentrant admission. Test completed reuse with changed lighting, true dependency misses, library reload, denial, resident bounds and abandoned producers.
-- Verification: Kernel consumes4112B packet and derived grid only. Existing cache key additionally compares49216B probe constants, projection/inverse and reverseZ. SH/fade/neighbor changes therefore force mask misses even when its complete input is identical. Home69233 shows1379preparations/7reuses but the causal share of this source inefficiency in those counters or FPS is not isolated. No repair/build/runtime result yet.
+- Next action: Owner Home→club checkpoint of69236; quantify real preparation reuse/consumer activation and whole-viewer results. Keep current lighting/quality and completion safety; no FPS gain is inferred from bounded reuse tests.
+- Verification: Corrected persistent key contains only exact4112B mask packet and kernel library/epoch. Current pack/count/manual/projection validation still precedes hits; miss-only full pack/P/I snapshots preserve reentrant failure classification. Canonical completed-lighting-change reuse, true dependency misses, library/epoch switches, abandonment, resident32/32MiB and prefix tests pass in final1225097/34 native run. Staged sourcef99b2daf14; actual Home reuse/FPS benefit remains unmeasured.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8478,16 +8480,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 source correction separates exact packet/library/epoch mask identity from miss-only borrowed full input snapshots. Current lighting remains independently published; positive reuse and original resident/reentrant/abandoned guards are in canonical tests627f59f5b1. Combined compilation/native execution still pending; no runtime FPS benefit inferred.
 
+- 2026-11-17 final native03 and existing renderer correctness pass with sourcef99b2daf14; staged69236 is exact and static verified. PPD361 records the old BASE test rejecting valid cross-cell reuse before its premise correction. No whole-viewer or owner-verified performance result.
+
 ## PPD-359 — New transparent parity fixture expects the wrong output stencil
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex transparent candidate correctness fixture
 - Discovered: 2026-11-17
 - Original reference: Existing native opaque post-deferred owner explicitly clears output stencil to0 before its ordered rendering. Independent source inputs are seeded0x5a to detect ownership effects; output is not required to retain that seed.
 - Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); new almetal_probe_candidate_transparency_test.mm source0ae3410a1bff8217f6a010449de92850886dc3f41a8e675c2d5915e0630d68fa and current renderOpaquePostDeferred pass_config.stencil_load/clear_stencil.
-- Next action: Preserve pre-correction fixture source privately, expect the authoritative output clear0 and verify independent seeded input remains0x5a. Keep exact generic/prepared full color/depth/stencil comparison and positive probe controls.
-- Verification: Independent source review found the incorrect0x5a output expectation before compilation or GPU execution. This is a fixture premise defect, not a demonstrated production regression or a failed GPU result. No tolerance relaxation is authorized.
+- Next action: Retain pre-correction fixtures and both failed native receipts. Corrected simple-alpha fixture uses supported sidedness, rawR32 shadow data and native output-stencil clear0; exact76 renderer arms and positive/activation/source-preservation guards pass. Owner runtime quality remains a separate requirement.
+- Verification: Precompile stencil/sidedness premises and subsequent native02 shadow-format preflight failure are retained. Only fixture expectations/inputs changed, not production validation or pixel tolerances. Native03 passes1225097assertions/34cases including all five transparency cases/76renderer arms; input stencil/depth remains unchanged and output matches native clear policy.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8498,16 +8502,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 further independent precompile review finds the same new fixture sets simple-alpha double_sided=true, which native validation permits only for PBR. Register before correction: use supported simple-alpha flags and retain authored geometry plus nonclear/positive controls. No renderer execution failed and no production behavior is changed to accommodate the fixture.
 
 
+- 2026-11-17 native-correctness-02 atbd8ba63b84 exits42 after569058assertions/26cases (25pass/1fail). Corrected BASE/reuse gate now completes; new transparency cell1 is rejected before drawing because its fixture supplies depth32_float shadow storage while the authoritative forward shadow contract requires raw r32_float. Register this further fixture premise before correction; retain0fb1078 source and failed receipt. Production validation remains unchanged and no pixel mismatch is reported before abort. Later transparency cases are unrun.
+
+- 2026-11-17 fixture shadow format corrected in d8a505f8d9 to authoritative r32_float after native02 failure. Final native03 passes all cases with exact RGBA16F/depth/stencil and positive current-probe/pose/order/activation checks; no production criteria were weakened. Source and failed receipts remain preserved.
+
 ## PPD-360 — Private virtual-lookup oracle can lose raw invalid-offset evidence
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex private GPU correctness harness
 - Discovered: 2026-11-17
 - Original reference: No viewer equivalent; diagnostic failures must retain raw output before declaring an oracle result. CPU verification must not index outside buffers if a GPU-returned offset is invalid.
 - Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); private virtual-lookup-correctness source revisions and compile-01/compile-receipt.json under probe-transparency-preparation-20261117.
-- Next action: Verify corrected bounded-offset checking accumulates errors and retains raw outputs before failure; original source and exact hashes remain retained.
-- Verification: Peer source review identifies a raw-retention gap on an invalid GPU offset before compilation. Agent reports correction and original-source preservation before root notification/register entry. Offlinecompile5/5exit0; actual GPU correctness has just begun, no passing result asserted. This is a private fixture issue, not a production GPU omission.
+- Next action: Retain original/corrected private oracle sources, raw planes and independent review receipts. Do not infer full renderer or FPS qualification from this compute-helper gate.
+- Verification: Corrected oracle offlinecompile5/5 and actualGPU28cases pass203936qualification checks with zero omissions/guard/output/expectation errors, unchanged inputs and full raw outputs retained. Independent review passes203835separate checks and284file hashes; actual tile/oracle shaderValidation1. Invalid-offset raw-retention branch is source reviewed; no out-of-bounds GPU result was injected or observed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8518,19 +8526,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 corrected private virtual oracle compiles5/5exit0 and passes actualGPU28cases/203936qualificationchecks with zero omissions/guard/output/expectation errors and all raw outputs retained. This verifies diagnostic checking/retention under the exercised cases; owner verification remains pending and no production FPS result follows.
 
 
+- 2026-11-17 independent source/hash/raw-output review confirms retained evidence and actual helper scope; final full renderer gates pass separately. No lost failure or CPU out-of-bounds execution was observed.
+
 ## PPD-361 — BASE parity fixture requires rebuilding identical derived masks
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex shared probe correctness fixture
 - Discovered: 2026-11-17
 - Original reference: Mask reuse is valid for the exact derived packet/library/epoch independently of current lighting, PBR state or depth convention when those do not change mask inputs. Full current lighting must still be rendered correctly.
-- Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); private native-correctness-01 receipt at source7db29cac7c/build69234 (actual app version to be checked); almetal_probe_candidate_lighting_test.mm:308.
-- Next action: Require an actual preparation or completed reuse for each prepared arm, retain first-case fresh production and explicit cross-case reuse controls, and keep exact color/depth/stencil and color-changing-probe guards. Update both fresh-only assertions; rerun the aborted full gate.
-- Verification: Combinedbuild exits0. Native run exits42 after243906assertions/25cases (24pass/1fail), at index2 prepared-color equality already passed but fresh-only guard4>4 fails. Correct derived cache reuse is excluded by the old fixture premise. No pixel mismatch or new GPU validation error was reported before abort; later cells/transparency remain unexecuted. Binary/library hashes unchanged.
+- Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); private native-correctness-01 receipt at source7db29cac7c/build69234; almetal_probe_candidate_lighting_test.mm:308.
+- Next action: Retain failed native01 and corrected fixture2fd5b01d00. Final gate requires preparation-or-reuse activity, fresh first-cell production and explicit cross-cell reuse, with unchanged exact output/positive controls. No owner FPS acceptance inferred.
+- Verification: Original native01 exits42 at fresh-only4>4 after prepared pixel equality passes. Corrected fixture preserves generic inactivity, fresh first-cell production, explicit different-lighting/reverse-depth reuse and subsequent same-view completed reuse. Final native03 passes1225097assertions/34cases; strict output/depth/stencil and changed-probe color-response guards remain.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-17 actual failed run retained before fixture correction. This does not establish a production rendering failure or allow loosening pixel criteria.
+
+- 2026-11-17 final native03 atf99b2daf14 passes after fixture-only correction2fd5b01d00. Earlier failure remains retained; no production cache or image behavior was changed to satisfy the old premise.
