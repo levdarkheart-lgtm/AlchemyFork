@@ -7672,6 +7672,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 post-stage read-only saved-frame inspection proves exact draw29008 gates: fragmentbuffer1 config20/6/0/0, all20 SHscales2/fades1, metadata0–18flag0/19flag-1, buffer2 classic0, buffer0 probe-path0, texture37SH4×130. Source mapping corrects buffer ordinal ambiguity; probes are slot1, lighting slot2. These gates allow ambient SH but do not count accepted taps; spatial/depth/neighbor/manual precedence remain. Other six draw gates remain unproved. Raw export disabled/canceled and CUA observation timeout retained; no source edit/profile/newviewer run. Replay stopped and initial UI profile preference restored. Verified69228 stays unchanged while owner checkpoint availability is pending.
 
+- 2026-11-17 02:02UTC boundary recheck: root47d9b90132 clean, staged69228 executable/library hashes exact, no live viewer/recorder and no new Home run after819/69224. The same owner-participation boundary persists across three goal turns; current implementation and all safe qualification are ready, but the requested inter-group Home checkpoint needs owner login/FPS/visual evaluation. Goal is to be marked blocked on that external participation, not complete or awaiting new launch permission. Broad architecture remains paused; preserve launch authorization, source840bae8c33 and all evidence. Next arm the existing collector/launch exact app when owner is present; no unattended login/recording or additional change group.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
