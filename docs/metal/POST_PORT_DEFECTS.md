@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-347 -->
+<!-- next-defect-id: PPD-350 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7869,6 +7869,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 owner69228 warmShared checkpoint stilldeclines27.7→15.6FPS; no wholeviewerFPSgain accepted. Component native/spill/image proofs remain, but liveBool3/4hitfrequency is unobserved because the census/log is legacytiming-gated(PPD338). Do not reinterpret absentrows as disabledselection or claim verifiedlive0spill fromsource/nativeidentity alone. Preserve currentcandidate/evidence; nextnormal-mode telemetry andcurrentGPUattribution followcheckpointdiscussion.
 
+- 2026-11-17 owner recalls settled Home performance before the fix at about14FPS and after it at about17FPS. Retain this as an observed/recalled practical improvement, approximately21%FPS or12.6ms/frame. It is consistent with the controlled304→0spill repair and faster eligible shader cells, but the exact causal share is not isolated. Later normal-mode telemetry confirms the repaired PSO is selected in sampled main draws; fresh untouched Xcode compiler fields remain blank/unknown(PPD343). The remaining within-run decline still needs a whole-frame explanation.
+
 ## PPD-328 — Material-alpha source samples the same SSR ray for two lobes
 
 - Status: investigating
@@ -8183,14 +8185,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-345 — Native exposure histogram construction is serial in one GPU thread
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex Home whole-frame compute optimization
 - Discovered: 2026-11-17
 - Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp8455–8501 constructs the histogram with18,432parallel points into64bins before one-pixel resolve. Original plan requiresRGBA32F histogram; meter/history quantization isRGBA16F.
 - Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md); native almetalworld.cpp exposure dispatch(1,1,1,1,1,1) and almetal_builtin.metal14316–14447; private selector-followup-20261117 exposure source audit.
-- Next action: Test storage/parallel histogram variants that preserve input quantization, weighting, binning, trim/adaptation and history reset/failure behavior. Measure compiled allocation, actual execution and output before production selection; do not reduce precision or change exposure behavior.
-- Verification: Native helper serially scans128×72meter and2parts with two dynamically indexed thread float[64] arrays (512bytes source storage), then performs64bin resolve. Current exposure-history row reports560allocated spill bytes and4.343→3.966ms in separate serialized counter profiles. Exact allocation attribution is unproved; this near-fixed cost is not established as the cause of the Home decline. No selected fix.
+- Next action: Retain the combined69231 candidate and evidence for owner visual/runtime evaluation. Continue the separate growing Home-cost investigation; this fixed-cost repair does not close PPD319 or the original architecture/performance acceptance gates. Do not change precision or exposure behavior to seek further gains.
+- Verification: Selected ordered64-thread SIMD implementation retains tested histogram/history outputs and boundaries. Actual built library passes236exact half-vector cases; isolated primary GPU cost3.872167→0.590303ms with0/150adverse pairs and zero command-envelope overlap. Build/seven renderer cases75059assertions/staged8272nodes/346ARM64/signature/import checks pass. Connected B2/A2 retest observes69.20200→66.48788ms eligible period and46.38444→43.56011ms main wait in80–120s, with all49selected controls equal. Workload differs and only one sequential pair is available; exact live causal share/repeated acceptance remain unproved. New GPR/spill allocation is unknown; earlier560B and serialized~4ms readings remain separate evidence.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8198,6 +8200,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 registered from actual capture and source/original audit. A threadgroup-scratch variant would still be serial; a lower spill count alone cannot establish a performance repair. Parallel work must retain the rounded meter boundary and require actual M1 Max correctness/cost checks.
 
+
+- 2026-11-17 implemented89c1a58838, builder7060967e3069f85d808d7b7ac6cca2bfef836dd2/69231. Build0/68.86s, seven relevant realrenderer cases75059assertionspass (including pending consecutive GPU history). Actualbuilta533 library passes236exacthalf-vectorcases and primarymode1 isolated300samples/arm/150ABBApairs, median3.872167→0.590303ms,0adverse/zeroenvelopeoverlap. All8272stagednodes/346ARM64/signature/import checks pass. GPR/spillbytesunmeasured. FirstHomecandidateconnectionfailsPPD348, noacceptedFPSgain; controllernormallogoutrepairPPD347/retestpending. See [implementation](research/exposure-simd-histogram-20261117.md).
+- 2026-11-17 corrected-controller healthy B2 then A2 both complete recording/normallogout0. Exact80–120s cadence is14.45045baseline versus15.04034candidateFPS, approximately4.08%higher in this pair; observed main wait drops2.82433ms while remainder stays~22.8–22.9ms. Overview agrees and late decodeCPU is0. Both still decline; B has more populated probes/objects/texture bytes, so this is not an isolated or repeated matched-workload acceptance result. Earlier14→17owner selector/spill observation remains separate because both new arms include that fix. PPD345 is ready_for_owner as a qualified component, not verified or a closure of Home/product gates.
 
 ## PPD-346 — New telemetry fixture uses invalid provenance and retained-test parent mode
 
@@ -8216,3 +8221,60 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 registered before fixture/parent correction. Retain failed sourcef035/build69229 receipts; static app staging passes independently but does not establish test success or runtime gain.
 - 2026-11-17 corrected fixture uses explicit synthetic40zero identity and fixture label (outer receipt binds actual source/binary); newly created retained parent chmod0700. Rebuild0/66.83s, affected/native retest0/3.94s with12cases/36846assertions including actual new PSO payload/image checks. First full failure retained; no all-green full-suite rerun claimed.
+
+
+## PPD-347 — Unattended checkpoint shutdown bypasses normal viewer logout
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex unattended checkpoint lifecycle
+- Discovered: 2026-11-17
+- Original reference: LLApp SIGTERM setsQuitting directly, like forceQuit; LLAppViewer::requestQuit performs normal metrics/floaters/logout-request/reply flow. Existing public LLAppViewer.requestQuit listener exposes the intended normal path; no engine change is needed.
+- Evidence: [Home GPU phases](research/home-gpu-phases-69228-20261117.md); llapp.cpp523–539, llappviewer.cpp4917–4968/6160–6235, llappviewerlistener.cpp39–56; private ppd345-home-checkpoint-20261117 A1/B1 launch/API/agent-graceful-close/log receipts.
+- Next action: Retain the qualified private controller and normal-logout evidence for subsequent authorized checkpoints. Do not use setQuitting or Goodbye alone as proof of normal server logout; investigate connection loss separately.
+- Verification: The original owned-process SIGTERM/exit guards worked, but that path skipped requestQuit/logout and final settings snapshots; its description as normal logged-in logout was too strong. Corrected private controller-v2 passes six pure tests, both identity dry-runs and two connected real checkpoints with collectorcomplete0/ownedexit0 and3x49complete settings snapshots each. Normal logout-send/cleanup evidence is retained; server acknowledgement remains separately observable. A causal link from the earlier signal shutdown to PPD348 is still unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before private lifecycle remedy. This is a checkpoint-controller defect, not a requested networking rewrite or permission to change settings, clear caches or alter scene behavior. Owner explicitly delegated saved Login and the diagnostic session lifecycle is retained; no credentials are read or copied.
+- 2026-11-17 private controller-v2 retains its LEAP connection, gates the single saved Login action on recorder readiness, reads only49explicit safe controls at world2s/100s/prequit, and sends one existing LLAppViewer.requestQuit after recorder termination. Six pure framing/lifecycle tests and both pinned app dry-runs pass. Review catches and repairs pre-release late-login and nonzero-viewer-exit success races; the earlier drafts are retained. No signal or forceQuit fallback is used. Public tools179tests pass(one existing skip) in the existing tools environment; initial default Python lacks yaml, and its affected3workflow tests subsequently pass in the existing tools environment.
+- 2026-11-17 connected B2 Alchemy-home-aaul8w0j and A2 Alchemy-home-buin60t0 both finish collector0/complete and owned viewer exit0 through this controller. All three49-control snapshots complete in each run; settings remain equal within/across runs. B2 logs the normal requestQuit service, sanitized logout-send prefix and Goodbye. Full lifecycle/source-mapped log qualification is retained separately; a server acknowledgement is not inferred from a missing INFO reply line. Prior SIGTERM evidence remains unchanged.
+
+## PPD-348 — Candidate Home checkpoint loses simulator and capability connection
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Home checkpoint validity
+- Discovered: 2026-11-17
+- Original reference: AIS, capability404, attachment-expiry and circuit-timeout handlers retain original1eb44 behavior. Whether server, viewer/session handoff, local network or other state causes this incident is unknown; the renderer change is not established as its cause.
+- Evidence: [Home GPU phases](research/home-gpu-phases-69228-20261117.md); private ppd345-home-checkpoint-20261117 native/Overview/log audits for Alchemy-home-vigc4boq.
+- Next action: Preserve and exclude B1 from accepted FPS comparison. After correcting PPD347, make one fresh saved-location connected retest with the unchanged verified candidate and matched baseline if healthy. Stop treating startup capability failures, missing scene population or post-disconnect CPU spin as normal rendering.
+- Verification: B1 has44AISNotFound failure pairs/88warnings from world−6…+1s,21attachment expiries and EventPoll404 at+24s, repeated capability404 and circuit last-ping104.932s/drop/logout alert near+96s. Overview GPU ends+96.842041s; native world invalidates+97.560921s. Main CPU then spins~99.5%one core; native reaches256MiB byte limit+118.33s with full/contention/budget loss. A1 collector passes; B1 recorder0/collectorFAILED. At the common pre-disconnect window, objects7981vs3674, probes27–33vs43–50 and resource/light rectangles differ. No matched whole-viewer gain follows from these two runs.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered from independent native, Overview and log audits before any retest. Both processes were exactly identified and exited after recording; no ERROR/FATAL or confirmed new renderer crash is observed. PPD347 may affect handoff but attribution is not established. Keep saved asset/cache data and all private raw evidence intact.
+- 2026-11-17 one corrected-controller B2 candidate and A2 baseline retest both complete normally. Their retained Overview CPU/GPU coverage spans the intended interval, with181positive GPU cadence buckets each and no B1-style cutoff. Initial/full warning screening finds no repeated AIS/event-poll/circuit failure; all6settings snapshots match. This restores a usable comparison boundary but does not establish the cause of B1 or a network-code repair. Native frame/workload qualification remains separate.
+
+## PPD-349 — Copied checkpoint specifications retain stale version and library metadata
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex private checkpoint provenance
+- Discovered: 2026-11-17
+- Original reference: The private launcher verifies the executable identity; its copied run specification also needs to describe and verify the actual staged app version and metallib rather than inherit earlier labels.
+- Evidence: [Exposure integration and checkpoint](research/exposure-simd-histogram-20261117.md); private ppd345-home-checkpoint-20261117/A1/next-owner-run.json SHA256 0f125d05d8769e3554a5a9bf1ad4c8b0ac70bd989ab5592cc8c5393cfc61d55a and B1/next-owner-run.json SHA256 8fc5c2af538b523eb8d41f582a9eb0816a9861d5c8825781720727df0c8a815d; separately verified actual staged app receipts and runtime executable hashes.
+- Next action: Retain both old specifications and use the qualified controller-v2 pinned specifications/guards for subsequent authorized checkpoints. No engine change is required.
+- Verification: A1 and B1 both incorrectly label app_version as69228; their actual stages are69230 and69231. B1 also retains the baseline a40a2561 metallib hash while the actual candidate library is independently verified a5330e85. The executable hashes and actual app/library receipts still establish which binaries ran; the stale specification fields do not establish a different renderer or invalidate those independent identities. The specification metadata itself is incorrect and its guard is incomplete.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before the private controller specification/guard repair. The original specifications, launch receipts and recordings remain immutable. This incident does not explain the simulator failure or prove an FPS effect.
+- 2026-11-17 first documentation harness rejects the new record because its Evidence field lacks a Markdown citation; added the existing integration/checkpoint note link before rerunning. No runtime or renderer check failed.
+- 2026-11-17 controller-v2 records corrected A69230/e719/executablebb281119/librarya40a256 and B69231/706/executable18fc2872/librarya5330e85 identities, with parent specification hashes. Actual Info.plist version, executable/library hashes and pinned successful staging receipt source/version/assets are checked before launch. Both dry-runs and the subsequent B2/A2 real launches pass those guards; originals remain untouched. Independent read-only review finds no remaining blocking identity/lifecycle issue. Harness33files passes after the citation repair.
