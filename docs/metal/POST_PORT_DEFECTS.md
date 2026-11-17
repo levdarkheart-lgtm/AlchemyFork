@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-361 -->
+<!-- next-defect-id: PPD-362 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -8516,3 +8516,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 registered on root receiving the precompile review/correction report; retain chronological distinction. No CPU out-of-bounds execution or lost GPU failure was observed.
 
 - 2026-11-17 corrected private virtual oracle compiles5/5exit0 and passes actualGPU28cases/203936qualificationchecks with zero omissions/guard/output/expectation errors and all raw outputs retained. This verifies diagnostic checking/retention under the exercised cases; owner verification remains pending and no production FPS result follows.
+
+
+## PPD-361 — BASE parity fixture requires rebuilding identical derived masks
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shared probe correctness fixture
+- Discovered: 2026-11-17
+- Original reference: Mask reuse is valid for the exact derived packet/library/epoch independently of current lighting, PBR state or depth convention when those do not change mask inputs. Full current lighting must still be rendered correctly.
+- Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); private native-correctness-01 receipt at source7db29cac7c/build69234 (actual app version to be checked); almetal_probe_candidate_lighting_test.mm:308.
+- Next action: Require an actual preparation or completed reuse for each prepared arm, retain first-case fresh production and explicit cross-case reuse controls, and keep exact color/depth/stencil and color-changing-probe guards. Update both fresh-only assertions; rerun the aborted full gate.
+- Verification: Combinedbuild exits0. Native run exits42 after243906assertions/25cases (24pass/1fail), at index2 prepared-color equality already passed but fresh-only guard4>4 fails. Correct derived cache reuse is excluded by the old fixture premise. No pixel mismatch or new GPU validation error was reported before abort; later cells/transparency remain unexecuted. Binary/library hashes unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 actual failed run retained before fixture correction. This does not establish a production rendering failure or allow loosening pixel criteria.

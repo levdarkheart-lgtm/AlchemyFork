@@ -303,9 +303,19 @@ TEST_CASE("Prepared probe candidates preserve complete native main and fused-pro
             auto generic=input.render(false);INFO(f.error);REQUIRE(generic);
             const auto expected=f.colors(*generic);requirePositiveFinite(expected);
             CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses==before.candidate_reuses);
             auto prepared=input.render(true);INFO(f.error);REQUIRE(prepared);
             CHECK(f.colors(*prepared)==expected);
-            CHECK(f.data->stats().candidate_preparations>before.candidate_preparations);
+            CHECK(f.data->stats().candidate_preparations+f.data->stats().candidate_reuses>
+                before.candidate_preparations+before.candidate_reuses);
+            if (index==0) CHECK(f.data->stats().candidate_preparations>before.candidate_preparations);
+            if (index==2)
+            {
+                // Same XY/W bounds as the first cell, with different current
+                // lighting and reverse-depth inputs: reuse the derived mask.
+                CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
+                CHECK(f.data->stats().candidate_reuses>before.candidate_reuses);
+            }
             const auto after=f.data->stats();
             auto reused=input.render(true);INFO(f.error);REQUIRE(reused);
             CHECK(f.colors(*reused)==expected);
@@ -326,7 +336,8 @@ TEST_CASE("Prepared probe candidates preserve complete native main and fused-pro
             CHECK(changed!=expected);
             auto changed_prepared=input.render(true);INFO(f.error);REQUIRE(changed_prepared);
             CHECK(f.colors(*changed_prepared)==changed);
-            CHECK(f.data->stats().candidate_preparations>after.candidate_preparations);
+            CHECK(f.data->stats().candidate_preparations+f.data->stats().candidate_reuses>
+                after.candidate_preparations+after.candidate_reuses);
             CHECK(f.data->stats().candidate_failures==before.candidate_failures);
         }
     }
