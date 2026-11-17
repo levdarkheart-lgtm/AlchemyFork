@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-342 -->
+<!-- next-defect-id: PPD-347 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -8057,13 +8057,13 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-338 — Selected-pipeline census is unavailable in normal async capture mode
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex Home runtime instrumentation
 - Discovered: 2026-11-17
 - Original reference: Native diagnostic-only successful-descriptor census; no original GL equivalent. Normal-frame async telemetry deliberately avoids the legacy commandTimingEnabled path and its different scheduling.
 - Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); world.cpp21084 and pipeline.cpp3757; private apd4_a6o/analysis-live bounded-log/source-gate receipts.
-- Next action: After the checkpoint findings discussion, provide bounded opt-in selected-descriptor telemetry independently of legacy command timing, preserving normal batching/overlap and default-off cost. Test actual successful selection, failure/default-off behavior and overhead before another diagnostic app.
+- Next action: Use the separately staged69230 normal-mode diagnostic candidate when the next repair group is ready; assess live sampled coverage and overhead without enabling legacy timing. Whole-viewer performance acceptance remains open.
 - Verification: Both census construction and log emission require ALMetalDevice::commandTimingEnabled. Qualified native async diagnostics alone does not enable it. A bounded64KiB live log read contains no selected-PSO rows, as expected from that source gate. Actual runtime3/4 hit coverage is unobserved, not proved disabled. Existing source/native/selection tests retain their narrower scope.
 - Owner verification: pending
 - Push approval: not_granted
@@ -8071,6 +8071,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-17 discovered during owner69228 checkpoint. Do not change the live run's legacy timing flag to populate counters: that would change the schedule under measurement. No source repair or extra viewer launch was performed for this gap; first full capture and corrected warm-login capture remain valid normal-mode observations.
+
+- 2026-11-17 producer repair4a8da26e27 plus fixture correction414baaf040 built as69230/exactbuilder e7190e89f892734fe017ac7222301d8f7f3f91ee. First full run452pass/4setupfail retainedPPD346; corrected affected/native cases pass12/36846 with API/shader validation. Four actual JSONL rows match successful main/probe descriptors and exact generic-control pixels/depth, rate/failure/default-off checks pass, zero fixture losses. Normal GPU batching/legacy gates preserved; no viewer69230 launch or new FPS/overhead acceptance.
 
 ## PPD-339 — First warm follow-up records settled scene instead of repeating login
 
@@ -8122,3 +8124,95 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-17 private analysts caught/corrected the issues before final findings; root registers their retained histories at integration without inventing prerepair chronology. No production code, sampling settings, input data or comparison thresholds changed. Preliminary totals are explicitly superseded, not accepted measurement evidence.
+
+## PPD-342 — Delegated canvas login attempt remains on the login screen
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex unattended diagnostic login
+- Discovered: 2026-11-17
+- Original reference: Owner explicitly delegates pressing saved Log In at the already selected location/settings. Existing supported --autologin uses stored credentials; no plaintext credential or graphics change is required.
+- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private Alchemy-home-rbdz4m7n launch/native/log/Overview outputs and CUA observations.
+- Next action: Inspect the retained early/late in-world GPU captures from the successful public LLPanelLogin.onClickConnect action. Preserve both failed login-only attempts; use the existing guarded login-button API for delegated saved login without changing credentials, RLVa, location or graphics.
+- Verification: CUA canvas click/held click/Return attempts remained at the login panel; the preliminary log regex read the old enum on state-transition lines, so its exact STATE_LOGIN_SHOW claim was invalid (the panel can be STATE_LOGIN_WAIT). Native menu close eventually ends the first launched process. Saved --autologin also remained on the panel; actual RLVa setting was not inspected or changed. Public LLPanelLogin.onClickConnect then produced STATE_STARTED at08:28:00.817UTC and both early/late GPU captures with status stopped/error0 in private Alchemy-home-vkynqi0_. Input failure cause is unknown; no renderer or credential defect is inferred. Owned PID83495 was exactly identified and gracefully terminated after recording; absence observed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before saved-login fallback launch. Owner is away and explicitly authorized the login action; no new credentials are requested, copied or printed. Base qualified launcher remains unchanged; fallback script, exact args and failed capture remain private. No engine/source rendering change.
+- 2026-11-17 saved --autologin attempt also remained at the panel and is retained separately. Existing public LLPanelLogin.onClickConnect (same guarded button action) succeeds through a private LEAP helper. Both GPU frames stop successfully; Overview recorder exits0 but collector qualification fails on real timestamp gaps (one before world and one overlapping late capture stop). This diagnostic run is excluded from normal-cadence acceptance; originals are preserved.
+
+
+## PPD-343 — Captured pipelines omit a spill-byte value in Xcode
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Home whole-frame GPU diagnosis
+- Discovered: 2026-11-17
+- Original reference: Xcode/Metal compiler diagnostic availability has no original viewer rendering equivalent. An absent diagnostic value cannot establish zero spills or a renderer regression.
+- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private selector-current-gpu-20261117T0832Z working copies and encoder-counter exports; retained prior texture-selector-cut/recording-replay.json.
+- Next action: Preserve the failed availability hypothesis and inspect supported per-function/compiler metadata when useful. Distinguish packaged-binary proof, source recompiled diagnostics and measured aggregate traffic; do not block whole-frame engineering on a blank cell or replace it with zero.
+- Verification: Current captured simple-alpha pair, base-light, projector and several other specialized fragment rows show allocated/high registers but a blank Spilled Bytes field. SSAO reports0bytes and exposure-history compute reports560bytes. Earlier0/304 simple-alpha comparisons were recorded after controlled Xcode source reloads. Exact reason for missing current values is unknown; no new zero-spill claim follows from the blank field.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 owner asks whether spills remain and why current field is blank. Registered before unchanged-source diagnostic reload. Current actual pair PSO has Bool3true/Bool4true and Bool0unset; it is selected in-world. Whole-frame analysis retains all shader/pass costs rather than assigning the Home decline to one spill allocation. Owner recalls prior settled14FPS versus current17FPS (~21% higher FPS/12.6ms lower period); retain as owner-observed improvement consistent with the repair, with exact causal share and matched acceptance unestablished.
+
+
+- 2026-11-17 a comment-only early working-copy Reload completes and reprofiles69.79→71.72ms, but the pair field remains blank/214GPR. This does not confirm a packaged-versus-recompile availability explanation. Temporary comment discarded with Don't Save; GPU Stop/Finished observed. Raw initial exports retained independently; no current zero-spill reading claimed.
+
+## PPD-344 — Bounded native additive lights lack original volume-depth rejection
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home whole-frame lighting optimization
+- Discovered: 2026-11-17
+- Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp11898–12179 uses bounded cube proxies/depth testing and drawn-only inside coverage. Native renders bounded screen rectangles with compare-always depth; merely changing compare state is unsafe because its light vertices useZ0.
+- Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md); private selector-followup-20261117/lighting-source-audit and selector-current-gpu-20261117T0832Z raw counters/inputs.
+- Next action: Qualify exact early radial rejection for bounded count1 points and conservative retained-depth/volume coverage, with actual image/depth and whole-pass cost controls. Keep projector derivatives and legacy shiny light outside cookie behavior intact; do not blindly clip cones or change quality.
+- Verification: Captured10point+60projector screen-rectangle areas plus one fullscreen grid predict296,915,916fragments, within428 of measured296,915,488. Those light counts/rectangles stay fixed early/late; this is substantial additive-light work but does not by itself explain its growing shade cost. Native point rejection follows avoidable GBuffer/material/BRDF work; exact relative attribution and safe net gain remain unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered after actual current-frame counters and original/native source audit. No light-volume/radius implementation or quality reduction selected. Do not count all296.9million fused invocations as base-probe evaluations.
+
+## PPD-345 — Native exposure histogram construction is serial in one GPU thread
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home whole-frame compute optimization
+- Discovered: 2026-11-17
+- Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp8455–8501 constructs the histogram with18,432parallel points into64bins before one-pixel resolve. Original plan requiresRGBA32F histogram; meter/history quantization isRGBA16F.
+- Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md); native almetalworld.cpp exposure dispatch(1,1,1,1,1,1) and almetal_builtin.metal14316–14447; private selector-followup-20261117 exposure source audit.
+- Next action: Test storage/parallel histogram variants that preserve input quantization, weighting, binning, trim/adaptation and history reset/failure behavior. Measure compiled allocation, actual execution and output before production selection; do not reduce precision or change exposure behavior.
+- Verification: Native helper serially scans128×72meter and2parts with two dynamically indexed thread float[64] arrays (512bytes source storage), then performs64bin resolve. Current exposure-history row reports560allocated spill bytes and4.343→3.966ms in separate serialized counter profiles. Exact allocation attribution is unproved; this near-fixed cost is not established as the cause of the Home decline. No selected fix.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered from actual capture and source/original audit. A threadgroup-scratch variant would still be serial; a lower spill count alone cannot establish a performance repair. Parallel work must retain the rounded meter boundary and require actual M1 Max correctness/cost checks.
+
+
+## PPD-346 — New telemetry fixture uses invalid provenance and retained-test parent mode
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex PPD-338 contained qualification
+- Discovered: 2026-11-17
+- Original reference: Native diagnostic/test setup has no original GL equivalent. The sink intentionally requires40hex source identity and capture tests require an owner-only0700 retained-test parent.
+- Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md); private ppd338-normal-telemetry-20261117 renderer-tests-receipt.json/log (exit42,456cases/4failures).
+- Next action: Retain the first failure and corrected test receipts; use owner-only retained-test parents and explicit synthetic valid fixture provenance in future contained qualification. No renderer failure is inferred from this setup incident.
+- Verification: First full run has452passed/4failed cases and2,355,203passed/4failed assertions. New real-PSO fixture stops at D::start with invalid source_sha=ppd338-actual-renderer-fixture. Three existing frame-capture cases stop at retained parent0755 versus required0700. The new payload/pixel assertions have not run; passing preceding checks cannot substitute for them. No product defect is attributed to these setup failures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before fixture/parent correction. Retain failed sourcef035/build69229 receipts; static app staging passes independently but does not establish test success or runtime gain.
+- 2026-11-17 corrected fixture uses explicit synthetic40zero identity and fixture label (outer receipt binds actual source/binary); newly created retained parent chmod0700. Rebuild0/66.83s, affected/native retest0/3.94s with12cases/36846assertions including actual new PSO payload/image checks. First full failure retained; no all-green full-suite rerun claimed.
