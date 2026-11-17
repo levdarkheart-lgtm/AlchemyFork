@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-338 -->
+<!-- next-defect-id: PPD-342 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7646,7 +7646,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes.
-- Next action: Owner Home checkpoint of separately verified source840bae8c33/build69228. Compare initial/settled FPS and pacing while recording actual selected constants0/3/4, probe workload and completion pressure with the qualified low-overhead collector. PPD327 selector repair removes saved-scene spill allocation but replay timing does not establish whole-scene gain. Preserve quality, graphics/scene controls and all probes; original architecture rollout remains paused. Owner drives login/environment; push remains unauthorized. [Selector qualification](research/home-texture-selector-20261117.md).
+- Next action: Review [completed69228 checkpoint](research/home-checkpoint-69228-20261117.md): warm Shared27.70→15.63FPS decline remains, recorded main wait14.77→43.48ms/frame, remainder near21ms. Separate expected cold decoding from warm GPU-completion pressure. Obtain current encoder/shader/resource attribution through GPU frames. Independently repair PPD338 normal-mode selected-PSO telemetry without legacy schedule changes before relying on live hit counters. Preserve all quality/probes and paused broad architecture; no push authorized.
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7673,6 +7673,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 post-stage read-only saved-frame inspection proves exact draw29008 gates: fragmentbuffer1 config20/6/0/0, all20 SHscales2/fades1, metadata0–18flag0/19flag-1, buffer2 classic0, buffer0 probe-path0, texture37SH4×130. Source mapping corrects buffer ordinal ambiguity; probes are slot1, lighting slot2. These gates allow ambient SH but do not count accepted taps; spatial/depth/neighbor/manual precedence remain. Other six draw gates remain unproved. Raw export disabled/canceled and CUA observation timeout retained; no source edit/profile/newviewer run. Replay stopped and initial UI profile preference restored. Verified69228 stays unchanged while owner checkpoint availability is pending.
 
 - 2026-11-17 02:02UTC boundary recheck: root47d9b90132 clean, staged69228 executable/library hashes exact, no live viewer/recorder and no new Home run after819/69224. The same owner-participation boundary persists across three goal turns; current implementation and all safe qualification are ready, but the requested inter-group Home checkpoint needs owner login/FPS/visual evaluation. Goal is to be marked blocked on that external participation, not complete or awaiting new launch permission. Broad architecture remains paused; preserve launch authorization, source840bae8c33 and all evidence. Next arm the existing collector/launch exact app when owner is present; no unattended login/recording or additional change group.
+
+- 2026-11-17 owner returns; exact69228 coldboot/apd4_a6o and corrected warmRELOGIN/7rbc49pc captures complete0 with180s CPU/GPUcoverage. Ownerwarm30→20→19→18→17 and Shared environment; nativewarm27.701→19.919→16.083→15.627FPS, wait14.770→27.460→40.971→43.482ms/frame, otherelapsed21–23ms. Late targets alreadyGPUrunning/delta2, postGPUEndtail<0.45ms, decode~0after60s, mainCPU47→28%wall. Mainprobes1→24→41→49 andordinaryworkgrow; severalGPUcommandenvelopesgrow, notisolatedpasscost. BoththermalNominalwholetrace; actualclocks/bandwidthunknown. Point/projector9/39fixed, notprevious51case. Native314/203contentionloss retainedpartial, allincludedphasewaittargets known. Completefindingsandwarningsourceaudit inlinkedcheckpoint; no fullFPSrepair, matchedgain or new regression attribution. Ownercheckpointdiscussion precedesnextgroup; no sourcechange/push.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -7865,6 +7867,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 local840bae8c33/build69228 combined qualification complete: doctor/build221.23s/strict3608zero, finalCMake library232images exact/27433assertions, actualnative four strict archives/hashidentity, five engine checks466case executions/2387027assertions all0. Full457/2380513 covers actual0/3/4selection, counts1/2/3, standard/custom, rigid/skinned, shadow/probe/unshadowed and reload. Older library80/1 and correct cache modes pass without waivers. Stage8272nonroot nodes exact,346ARM64/deepsignature/mainimports pass. Unchanged180s Home runner dry-run0; availability question pending, no viewer/recording started or push. Ready_for_owner is component qualification, not PPD319/FPS/architecture closure. Private quiet-home-selector-integration-20261117T0120Z retains exact source/exe/lib/commands and failures.
 
+- 2026-11-17 owner69228 warmShared checkpoint stilldeclines27.7→15.6FPS; no wholeviewerFPSgain accepted. Component native/spill/image proofs remain, but liveBool3/4hitfrequency is unobserved because the census/log is legacytiming-gated(PPD338). Do not reinterpret absentrows as disabledselection or claim verifiedlive0spill fromsource/nativeidentity alone. Preserve currentcandidate/evidence; nextnormal-mode telemetry andcurrentGPUattribution followcheckpointdiscussion.
+
 ## PPD-328 — Material-alpha source samples the same SSR ray for two lobes
 
 - Status: investigating
@@ -8050,3 +8054,71 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-17 review found and corrected the private post-parser field interpretation during final receipt preparation. Initial revision/output retained. Registered at integration review before using the corrected optional field; no production source or raw decoder change, second decode, viewer launch or profile.
+
+## PPD-338 — Selected-pipeline census is unavailable in normal async capture mode
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Home runtime instrumentation
+- Discovered: 2026-11-17
+- Original reference: Native diagnostic-only successful-descriptor census; no original GL equivalent. Normal-frame async telemetry deliberately avoids the legacy commandTimingEnabled path and its different scheduling.
+- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); world.cpp21084 and pipeline.cpp3757; private apd4_a6o/analysis-live bounded-log/source-gate receipts.
+- Next action: After the checkpoint findings discussion, provide bounded opt-in selected-descriptor telemetry independently of legacy command timing, preserving normal batching/overlap and default-off cost. Test actual successful selection, failure/default-off behavior and overhead before another diagnostic app.
+- Verification: Both census construction and log emission require ALMetalDevice::commandTimingEnabled. Qualified native async diagnostics alone does not enable it. A bounded64KiB live log read contains no selected-PSO rows, as expected from that source gate. Actual runtime3/4 hit coverage is unobserved, not proved disabled. Existing source/native/selection tests retain their narrower scope.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 discovered during owner69228 checkpoint. Do not change the live run's legacy timing flag to populate counters: that would change the schedule under measurement. No source repair or extra viewer launch was performed for this gap; first full capture and corrected warm-login capture remain valid normal-mode observations.
+
+## PPD-339 — First warm follow-up records settled scene instead of repeating login
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex checkpoint workflow
+- Discovered: 2026-11-17
+- Original reference: Owner's requested warm repeat concerns the login-to-settled FPS transition. This is private capture orchestration, not a rendering or original-viewer defect.
+- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); apd4_a6o/warm-start.json, warm-result.json and preserved warm-overview; corrected7rbc49pc launch/record/result receipts and owner observations.
+- Next action: Use the corrected warm-login capture for the requested comparison; retain the interrupted settled interval separately. Review measured startup/settling evidence with the owner before further engine groups.
+- Verification: Wrong-scope same-session interval starts07:26:20, then owner explicitly requires login repetition. Agent requests graceful stop; target closes, recorder finalizes0/collector1, partial output retained. After that recorder becomes terminal, exact69228 relaunch68936 records the second login, receives owner30FPS startup/Shared environment reports and completes recorder/collector0. Full phase analysis remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 owner correction acknowledged immediately. Urgent stop/owner-driven close/relaunch preceded this register update; chronology is retained rather than claiming prerepair registration. No failed/partial output is relabeled as the requested three-minute warm-login capture, and no renderer/settings change is hidden by the restart.
+
+## PPD-340 — Startup texture-cache bodies disagree with index size metadata
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Home asset/cache audit
+- Discovered: 2026-11-17
+- Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 and current lltexturecache.cpp1855–1874 perform the same startup1/256 entry validation, compare LLFile::size with entries[idx].mBodySize and mark/remove a mismatching entry. This is inherited cache behavior, not a demonstrated selector regression.
+- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private selector-home-checkpoint-69228-20261117T0733Z/log-audit source/whitelisted mismatch receipts, original run logs retained privately.
+- Next action: Preserve caches and evidence. If mismatches recur, audit cache body writes/index updates and interrupted shutdown recovery before any repair. Do not wipe caches, generalize four sampled entries to the whole cache, or attribute the settled FPS decline to these warnings without evidence.
+- Verification: Cold startup logs one mismatch392480actual/156632expected bytes at07:19:09UTC; warm logs three156633/46570,63504/18631,380388/151795 at07:29:12, both before first world. Existing code schedules removal of those entries. Four known entries, not a warning storm or proved frame-critical cost. Warm image decoding later falls nearly to zero while the FPS decline persists.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered at source/log discovery before any cache repair. No new existing PPD for this exact mismatch was found. Source behavior is original-equivalent; data inconsistency and incomplete cache warmness remain real functional context, with origin and FPS contribution unproved. No cache/source/settings change was made.
+
+## PPD-341 — Private checkpoint analysis needs complete warning forms and precise sample bounds
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex private checkpoint analysis
+- Discovered: 2026-11-17
+- Original reference: Private analysis scripts and preparatory queries, not production renderer/tools or original Alchemy behavior. Log records can have untagged or compound category forms; final observed CPU sample time differs from the end of its nominal1ms weight.
+- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private log-audit parser histories, overview-analysis thermal/export/assertion histories and native-analysis/analysis-query-history.json.
+- Next action: Use corrected complete138/118warning totals and separate first/last observed timestamps from weighted spans. Retain initial failures/queries; do not dispatch a failed preparatory export or reparse unchanged inputs just to hide a failed check.
+- Verification: Initial private single-category census101/82 omitted compound/untagged records; corrected parser yields138/118 across38sites, with raw/sanitized phase records preserved. Initial thermal-export script whitespace error occurred before any action, then fresh bounded exports pass. A CPU-span assertion initially added the final1ms sample weight to observed timestamp coverage; corrected distinction requires no input change or second CPU parse. A print-only query typo failed before reading data. Final raw hashes, qualification and findings remain unchanged by the preparatory mistakes.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 private analysts caught/corrected the issues before final findings; root registers their retained histories at integration without inventing prerepair chronology. No production code, sampling settings, input data or comparison thresholds changed. Preliminary totals are explicitly superseded, not accepted measurement evidence.
