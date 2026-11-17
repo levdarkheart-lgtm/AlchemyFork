@@ -103,6 +103,7 @@ target_sources(
     almetalpbrpreview.cpp
     almetalpipeline.mm
     almetalpipelinecache.mm
+    almetalprobecandidates.cpp
     almetalprobeworkload.mm
     almetalresource.mm
     almetalretainedbackground.mm
@@ -144,6 +145,7 @@ target_sources(
       almetalpbrpreview.h
       almetalpipeline.h
       almetalpipelinecache.h
+      almetalprobecandidates.h
       almetalprobepublication.h
       almetalprobeworkload.h
       almetalresource.h
@@ -240,6 +242,8 @@ if(AL_BUILD_TESTS)
             tests/almetal_reflection_policy_test.mm
             tests/almetal_probe_hdr_publication_test.mm
             tests/almetal_pbr_probe_formats_test.mm
+            tests/almetal_probe_candidates_test.cpp
+            tests/almetal_probe_candidate_publication_test.mm
             tests/almetal_finalize_admission_test.mm
             tests/almetal_ssr_isolation_test.mm
             tests/almetal_reference_format_test.mm

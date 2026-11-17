@@ -154,6 +154,16 @@ bool ALMetalCommandCompletion::isComplete() const noexcept
            status == MTLCommandBufferStatusError;
 }
 
+ALMetalCommandStatus ALMetalCommandCompletion::status() const noexcept
+{
+    if (!mImpl || !mImpl->command_buffer ||
+        mImpl->abandoned.load(std::memory_order_acquire))
+    {
+        return ALMetalCommandStatus::unknown;
+    }
+    return commandStatus(mImpl->command_buffer.status);
+}
+
 ALMetalCommandTimingStatus ALMetalCommandCompletion::gpuTime(
     ALMetalCommandGPUTime& output) const noexcept
 {

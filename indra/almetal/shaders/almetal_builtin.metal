@@ -747,6 +747,61 @@ struct ALMetalWorldReflectionProbeVolumeConstants
     uint4 config;
 };
 
+// Matches ALMetalProbeCandidatePacket. The producer retains the original probe
+// indices and supplies conservative half-open pixel rectangles for this view.
+struct ALMetalProbeCandidatePacket
+{
+    uint4 bounds[256];
+    uint4 config; // effective count, width, height, usable (exactly one)
+};
+
+// Preparation only: one invocation owns one 32-probe word of one 16px tile.
+// The caller bounds allocation/dispatch and retains packet/output to completion.
+// Invalid or incompatible packets produce full masks, preserving generic holds.
+kernel void almetal_world_probe_candidate_tiles(
+    constant ALMetalProbeCandidatePacket& packet [[buffer(0)]],
+    device uint* masks [[buffer(1)]],
+    constant uint4& grid [[buffer(2)]], // tile columns/rows, pixel width/height
+    uint3 tile [[thread_position_in_grid]])
+{
+    if (tile.x >= grid.x || tile.y >= grid.y || tile.z >= 8u)
+    {
+        return;
+    }
+    const size_t output_index =
+        (size_t(tile.y) * size_t(grid.x) + size_t(tile.x)) * 8u + tile.z;
+    const bool valid = packet.config.w == 1u &&
+        packet.config.x >= 1u && packet.config.x <= 256u &&
+        grid.z != 0u && grid.w != 0u &&
+        packet.config.y == grid.z && packet.config.z == grid.w &&
+        grid.x == 1u + (grid.z - 1u) / 16u &&
+        grid.y == 1u + (grid.w - 1u) / 16u;
+    if (!valid)
+    {
+        masks[output_index] = 0xffffffffu;
+        return;
+    }
+
+    const uint2 first = tile.xy * 16u;
+    const uint2 end = first + min(uint2(16u), grid.zw - first);
+    const uint start_index = tile.z * 32u;
+    const uint end_index = min(start_index + 32u, packet.config.x);
+    uint word = tile.z == 0u ? 1u : 0u; // default0 remains a candidate
+    for (uint index = start_index; index < end_index; ++index)
+    {
+        const uint4 rectangle = packet.bounds[index];
+        const bool malformed = any(rectangle.xy > rectangle.zw) ||
+            any(rectangle.zw > grid.zw);
+        if (malformed ||
+            (all(rectangle.xy < rectangle.zw) &&
+             all(rectangle.xy < end) && all(rectangle.zw > first)))
+        {
+            word |= 1u << (index - start_index);
+        }
+    }
+    masks[output_index] = word;
+}
+
 struct ALMetalWorldHeroProbeConstants
 {
     float4x4 hero_box;
@@ -6380,7 +6435,9 @@ static void almetal_sample_base_probes(
     constant ALMetalWorldReflectionProbeConstants& probes,
     thread float3& ambient_environment,
     thread float3& gloss_environment,
-    thread float3& legacy_environment)
+    thread float3& legacy_environment,
+    const device uint* candidate_masks = nullptr,
+    size_t candidate_word_offset = 0u)
 {
     const float3 reflection = normalize(reflect(position, normal));
     const float perceptual_roughness = 1.0 - glossiness;
@@ -6427,6 +6484,14 @@ static void almetal_sample_base_probes(
             {
                 continue;
             }
+        }
+        // A mask may only reject an existing failed containment test. Keep
+        // traversal and neighbor pivot exactly where the original accepts it.
+        if (candidate_masks && candidate >= 0 && candidate < 256 &&
+            (candidate_masks[candidate_word_offset + (uint(candidate) >> 5u)] &
+                (1u << (uint(candidate) & 31u))) == 0u)
+        {
+            continue;
         }
         bool boxed = false;
         float3 box_position = 0.0;
@@ -13703,7 +13768,9 @@ static float4 almetal_world_base_light_geometry(
     texturecube<float> legacy_environment_map,
     sampler point_sampler,
     sampler probe_sampler,
-    sampler brdf_sampler)
+    sampler brdf_sampler,
+    const device uint* candidate_masks = nullptr,
+    size_t candidate_word_offset = 0u)
 {
     const float depth = depth_texture.sample(
         point_sampler, input.texcoord).r;
@@ -13779,7 +13846,8 @@ static float4 almetal_world_base_light_geometry(
             pbr, position.xyz, normal, glossiness,
             environment_intensity, ambient, classic_mode,
             probe_radiance, probe_irradiance, probe_sampler, probes,
-            irradiance, radiance, legacy_environment);
+            irradiance, radiance, legacy_environment,
+            candidate_masks, candidate_word_offset);
     }
 
     const float3 mirror_direction = normalize(
@@ -14049,6 +14117,92 @@ fragment float4 almetal_world_probe_tile_base_light_fragment(
         depth_texture, shadow_occlusion, probe_radiance, probe_irradiance,
         brdf_lut, hero_radiance, ssr_scene_color, ssr_scene_depth,
         legacy_environment_map, point_sampler, probe_sampler, brdf_sampler);
+}
+
+// Prepared candidates are opt-in resources; the original entry points remain
+// valid for uncertified views, missing preparation and old loaded libraries.
+fragment float4 almetal_world_base_light_geometry_candidates_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldBaseLightingConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(2)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(3)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> emissive_texture [[texture(3)]],
+    texture2d<float> depth_texture [[texture(4)]],
+    texture2d<float> light_map [[texture(5)]],
+    texturecube_array<float> probe_radiance [[texture(6)]],
+    texture2d<uint> probe_irradiance [[texture(7)]],
+    texture2d<float> brdf_lut [[texture(8)]],
+    texturecube<float> hero_radiance [[texture(9)]],
+    texture2d<float> ssr_scene_color [[texture(10)]],
+    texture2d<float> ssr_scene_depth [[texture(11)]],
+    texturecube<float> legacy_environment_map [[texture(12)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler brdf_sampler [[sampler(2)]],
+    const device uint* candidate_masks [[buffer(4)]],
+    constant uint4& candidate_grid [[buffer(5)]])
+{
+    // Only certified viewport-zero mappings select this entry point. Bounds
+    // checks retain generic evaluation outside the prepared output domain.
+    const bool pixel_inside = all(input.position.xy >= float2(0.0)) &&
+        all(input.position.xy < float2(candidate_grid.zw));
+    const uint2 tile = pixel_inside ? uint2(input.position.xy) / 16u : uint2(0u);
+    const bool inside = pixel_inside && all(tile < candidate_grid.xy);
+    const size_t word_offset =
+        (size_t(tile.y) * size_t(candidate_grid.x) + size_t(tile.x)) * 8u;
+    const device uint* selected_masks = inside ? candidate_masks : nullptr;
+    return almetal_world_base_light_geometry(input, constants, probes, hero, ssr,
+        albedo_texture, specular_texture, normal_texture, emissive_texture,
+        depth_texture, light_map.sample(point_sampler, input.texcoord).rg, probe_radiance, probe_irradiance,
+        brdf_lut, hero_radiance, ssr_scene_color, ssr_scene_depth,
+        legacy_environment_map, point_sampler, probe_sampler, brdf_sampler,
+        selected_masks, word_offset);
+}
+
+fragment float4 almetal_world_probe_tile_base_light_candidates_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldBaseLightingConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(2)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(3)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> emissive_texture [[texture(3)]],
+    texture2d<float> depth_texture [[texture(4)]],
+    float2 shadow_occlusion [[color(1), raster_order_group(0)]],
+    texturecube_array<float> probe_radiance [[texture(6)]],
+    texture2d<uint> probe_irradiance [[texture(7)]],
+    texture2d<float> brdf_lut [[texture(8)]],
+    texturecube<float> hero_radiance [[texture(9)]],
+    texture2d<float> ssr_scene_color [[texture(10)]],
+    texture2d<float> ssr_scene_depth [[texture(11)]],
+    texturecube<float> legacy_environment_map [[texture(12)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler brdf_sampler [[sampler(2)]],
+    const device uint* candidate_masks [[buffer(4)]],
+    constant uint4& candidate_grid [[buffer(5)]])
+{
+    // Only certified viewport-zero mappings select this entry point. Bounds
+    // checks retain generic evaluation outside the prepared output domain.
+    const bool pixel_inside = all(input.position.xy >= float2(0.0)) &&
+        all(input.position.xy < float2(candidate_grid.zw));
+    const uint2 tile = pixel_inside ? uint2(input.position.xy) / 16u : uint2(0u);
+    const bool inside = pixel_inside && all(tile < candidate_grid.xy);
+    const size_t word_offset =
+        (size_t(tile.y) * size_t(candidate_grid.x) + size_t(tile.x)) * 8u;
+    const device uint* selected_masks = inside ? candidate_masks : nullptr;
+    return almetal_world_base_light_geometry(input, constants, probes, hero, ssr,
+        albedo_texture, specular_texture, normal_texture, emissive_texture,
+        depth_texture, shadow_occlusion, probe_radiance, probe_irradiance,
+        brdf_lut, hero_radiance, ssr_scene_color, ssr_scene_depth,
+        legacy_environment_map, point_sampler, probe_sampler, brdf_sampler,
+        selected_masks, word_offset);
 }
 
 static float3 almetal_pbr_neutral_tonemap(float3 color)

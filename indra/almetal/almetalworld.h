@@ -43,6 +43,7 @@ class ALMetalWorldMaterialSource;
 class ALMetalWorldMaterialDataCache;
 class ALMetalWorldTerrainPass;
 class ALMetalShadowEncodingContext;
+struct ALMetalProbeCandidatePacket;
 
 // Ordinary probe scratch/filter output and manager publication must agree on
 // storage: the publication blit copies bytes and does not convert formats.
@@ -2620,6 +2621,10 @@ struct ALMetalWorldBaseLightingScene
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
         nullptr;
     ALMetalWorldBaseLightingConstants constants;
+    // Exact production camera projection before the native vertex Y inversion.
+    // Unknown/custom callers leave this invalid and retain the generic probe walk.
+    float projection[16]{};
+    bool projection_valid = false;
     // The integrated main-world route continues this owner through local and
     // projector accumulation, then opaque-forward rendering. Carrying the
     // exact G-buffer depth here removes the lighting-composition target and
@@ -2701,6 +2706,9 @@ struct ALMetalWorldFrameDataStats
     std::uint64_t terrain_published_bytes = 0;
     std::uint64_t terrain_source_draws = 0, terrain_source_fallback_draws = 0;
     std::size_t retired_pages = 0;
+    std::uint64_t candidate_preparations = 0, candidate_reuses = 0;
+    std::uint64_t candidate_declines = 0, candidate_failures = 0;
+    std::uint64_t published_mask_bytes = 0;
 };
 
 class ALMetalShadowMaterials;
@@ -2708,6 +2716,18 @@ struct ALMetalShadowMaterialStats;
 
 // Immutable draw data shared by main, ordinary probe and hero renderers. Each
 // frame owns its published ranges until every referencing command completes.
+enum class ALMetalProbeCandidatePreparation { unavailable, ready, failed };
+
+struct ALMetalProbeCandidateBinding
+{
+    const ALMetalBuffer* masks = nullptr;
+    std::array<std::uint32_t,4> grid{}; // tile columns/rows, viewport width/height
+    std::shared_ptr<const void> owner;
+    // This command contains (or may have begun) the producing compute prefix.
+    // A failed result with this flag must never be serially replayed.
+    bool native_prefix = false;
+};
+
 class ALMetalWorldFrameData final
 {
 public:
@@ -2764,6 +2784,18 @@ public:
     bool requestSourcePublication(const ALMetalWorldSourcePublicationWork&,
                                   std::shared_ptr<const void>& credit);
     std::shared_ptr<ALMetalWorldSourceCommands> worldSourceCommands(std::string* error=nullptr);
+    // Existing submission-owner thread only. No queue/commit/wait/readback.
+    // Compare the complete immutable input values, not a frame number/hash.
+    // Missing optional pipeline/library, pre-prefix admission/capacity declines,
+    // invalid or all-full bounds preserve the generic probe walk.
+    ALMetalProbeCandidatePreparation prepareProbeCandidates(
+        ALMetalCommandBuffer& command, const ALMetalComputePipeline* pipeline,
+        std::shared_ptr<const ALMetalShaderLibrary> library,
+        std::uint64_t library_epoch, const ALMetalProbeCandidatePacket& packet,
+        const ALMetalWorldReflectionProbeConstants& probes,
+        std::span<const float,16> projection,
+        std::span<const float,16> inverse_projection, bool reverse_z,
+        ALMetalProbeCandidateBinding& binding, std::string* error = nullptr);
     ALMetalShadowMaterialStats shadowMaterialStats() const noexcept;
     // Retire only shader-derived material encoders/tables. Existing command
     // leases remain valid; draw-data arenas and their frame generation stay.

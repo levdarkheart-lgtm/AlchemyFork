@@ -29,8 +29,10 @@ TEST_CASE("almetal: completion tokens survive wrappers and distinguish abandonme
         REQUIRE(token);
         CHECK(token == command->completionToken());
         CHECK_FALSE(token->isComplete());
+        CHECK(token->status() == ALMetalCommandStatus::not_enqueued);
         command.reset();
         CHECK(token->isComplete());
+        CHECK(token->status() == ALMetalCommandStatus::unknown);
     }
 
     SECTION("submitted GPU work remains pending after wrapper destruction")
@@ -66,10 +68,13 @@ TEST_CASE("almetal: completion tokens survive wrappers and distinguish abandonme
         REQUIRE(command->commit(&error));
         command.reset();
         CHECK_FALSE(token->isComplete());
+        CHECK(token->status() != ALMetalCommandStatus::completed);
+        CHECK(token->status() != ALMetalCommandStatus::error);
         native_command = nil;
         gate.signaledValue = 1;
         REQUIRE(device->waitUntilIdle(&error));
         CHECK(token->isComplete());
+        CHECK(token->status() == ALMetalCommandStatus::completed);
         CHECK(static_cast<const unsigned char*>(buffer->mappedBytes())[0] == 0x73);
     }
 }

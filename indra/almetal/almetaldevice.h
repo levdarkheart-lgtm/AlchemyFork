@@ -117,6 +117,9 @@ class ALMetalCommandCompletion final
 public:
     ~ALMetalCommandCompletion();
     bool isComplete() const noexcept;
+    // Native execution state without timestamp collection. Abandoned/missing
+    // commands are unknown, never successful producers of reusable output.
+    ALMetalCommandStatus status() const noexcept;
 
     // Poll this command's native GPU execution interval after completion.
     // Queue delay and CPU encoding/commit time are excluded. The interval is

@@ -17,6 +17,7 @@
 #include "almetalshadowmaterials.h"
 #include "almetalshadowprepare.h"
 #include "almetalframeadmission.h"
+#include "almetalprobecandidates.h"
 
 #include "../newview/SMAAAreaTex.h"
 #include "../newview/SMAASearchTex.h"
@@ -1650,6 +1651,117 @@ struct ALMetalWorldFrameData::Impl
     ALMetalWorldSourcePages::PublicationAdmission source_publication_admission;
     std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> direct_source_admission;
     std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
+    struct ProbeCandidateKey
+    {
+        ALMetalProbeCandidatePacket packet{};
+        ALMetalWorldReflectionProbeConstants probes{};
+        std::array<float,16> projection{}, inverse_projection{};
+        void* library_identity = nullptr;
+        std::uint64_t library_epoch = 0;
+        bool reverse_z = false;
+        bool matches(const ProbeCandidateKey& other) const noexcept
+        {
+            return library_identity==other.library_identity && library_epoch==other.library_epoch &&
+                reverse_z==other.reverse_z && std::memcmp(&packet,&other.packet,sizeof(packet))==0 &&
+                std::memcmp(&probes,&other.probes,sizeof(probes))==0 &&
+                std::memcmp(projection.data(),other.projection.data(),sizeof(projection))==0 &&
+                std::memcmp(inverse_projection.data(),other.inverse_projection.data(),sizeof(inverse_projection))==0;
+        }
+    };
+    struct ProbeCandidatePublication
+    {
+        ProbeCandidateKey key;
+        // Prevent native library-address recycling while it remains a key.
+        std::shared_ptr<const ALMetalShaderLibrary> library;
+        std::unique_ptr<ALMetalBuffer> packet, masks;
+        std::array<std::uint32_t,4> grid{};
+        std::shared_ptr<const ALMetalCommandCompletion> producer;
+        std::size_t resident_bytes = 0;
+        bool prefix_started = false, encoded = false, completed = false, failed = false;
+    };
+    static_assert(std::is_trivially_copyable_v<ProbeCandidateKey>);
+    static constexpr std::size_t probe_candidate_capacity = 32;
+    static constexpr std::size_t probe_candidate_byte_limit = 32u*1024u*1024u;
+    std::array<std::shared_ptr<ProbeCandidatePublication>,probe_candidate_capacity> probe_candidates{};
+    std::size_t probe_candidate_count = 0;
+    void* probe_candidate_library_identity = nullptr;
+    std::uint64_t probe_candidate_library_epoch = 0;
+    // Cache eviction cannot hide an allocation retained by a pending command.
+    std::array<std::weak_ptr<ProbeCandidatePublication>,probe_candidate_capacity> probe_candidate_residents{};
+
+    void eraseProbeCandidate(std::size_t index) noexcept
+    {
+        for (std::size_t next=index+1;next<probe_candidate_count;++next)
+            probe_candidates[next-1]=std::move(probe_candidates[next]);
+        probe_candidates[--probe_candidate_count].reset();
+    }
+    void refreshProbeCandidates() noexcept
+    {
+        for (auto& weak:probe_candidate_residents)
+            if (auto record=weak.lock();record && record->producer)
+            {
+                const auto status=record->producer->status();
+                if (status==ALMetalCommandStatus::completed)
+                {
+                    record->completed=true;
+                    // Do not pin an old native command's entire resource graph.
+                    record->producer.reset();
+                }
+                else if (status==ALMetalCommandStatus::error || status==ALMetalCommandStatus::unknown)
+                {
+                    record->failed=true;
+                    record->producer.reset();
+                }
+            }
+        for (std::size_t index=0;index<probe_candidate_count;)
+            if (probe_candidates[index]->failed) eraseProbeCandidate(index);
+            else ++index;
+    }
+    std::pair<std::size_t,std::size_t> probeCandidateUsage() const noexcept
+    {
+        std::size_t count=0,bytes=0;
+        for (const auto& weak:probe_candidate_residents)
+            if (auto record=weak.lock()) {++count;bytes+=record->resident_bytes;}
+        return {count,bytes};
+    }
+    bool probeCandidateHasPrefix(
+        const std::shared_ptr<const ALMetalCommandCompletion>& token) const noexcept
+    {
+        if (!token) return false;
+        for (const auto& weak : probe_candidate_residents)
+            if (auto record = weak.lock(); record && record->prefix_started &&
+                record->producer == token) return true;
+        return false;
+    }
+    bool makeProbeCandidateRoom(std::size_t bytes) noexcept
+    {
+        refreshProbeCandidates();
+        for (;;)
+        {
+            const auto [count,live]=probeCandidateUsage();
+            if (count<probe_candidate_capacity && live<=probe_candidate_byte_limit &&
+                bytes<=probe_candidate_byte_limit-live) return true;
+            if (!probe_candidate_count) return false;
+            eraseProbeCandidate(0);
+        }
+    }
+    std::shared_ptr<ProbeCandidatePublication> reusableProbeCandidate(
+        const ProbeCandidateKey& key,
+        const std::shared_ptr<const ALMetalCommandCompletion>& command) noexcept
+    {
+        refreshProbeCandidates();
+        for (std::size_t next=probe_candidate_count;next>0;--next)
+        {
+            const auto index=next-1;
+            auto record=probe_candidates[index];
+            if (!record->encoded || !record->key.matches(key) ||
+                (!record->completed && record->producer!=command)) continue;
+            eraseProbeCandidate(index);
+            probe_candidates[probe_candidate_count++]=record;
+            return record;
+        }
+        return {};
+    }
 };
 
 ALMetalWorldFrameData::ALMetalWorldFrameData(std::unique_ptr<Impl> impl)
@@ -1688,6 +1800,7 @@ std::shared_ptr<ALMetalWorldFrameData> ALMetalWorldFrameData::create(
 
 void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
 {
+    mImpl->refreshProbeCandidates();
     if (mImpl->initialized && mImpl->generation == generation) return;
     mImpl->initialized = true;
     mImpl->generation = generation;
@@ -1807,6 +1920,184 @@ bool ALMetalWorldFrameData::requestSourcePublication(
         credit=(*policy)(work);return bool(credit);
     }
     catch(const std::bad_alloc&){return false;}
+}
+
+ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
+    ALMetalCommandBuffer& command, const ALMetalComputePipeline* pipeline,
+    std::shared_ptr<const ALMetalShaderLibrary> library,
+    std::uint64_t library_epoch, const ALMetalProbeCandidatePacket& packet,
+    const ALMetalWorldReflectionProbeConstants& probes,
+    std::span<const float,16> projection,
+    std::span<const float,16> inverse_projection, bool reverse_z,
+    ALMetalProbeCandidateBinding& binding, std::string* error)
+{
+    binding={};
+    std::shared_ptr<const ALMetalCommandCompletion> token;
+    bool prefix_before_policy = false;
+    const auto decline=[&]() {
+        if (mImpl && mImpl->probeCandidateHasPrefix(token)) binding.native_prefix = true;
+        if (error) error->clear();
+        if (mImpl) ++mImpl->statistics.candidate_declines;
+        return ALMetalProbeCandidatePreparation::unavailable;
+    };
+    const auto failure=[&]() {
+        if (error && error->empty()) setError(error,"Metal probe candidate preparation failed after its native prefix");
+        ++mImpl->statistics.candidate_failures;
+        return ALMetalProbeCandidatePreparation::failed;
+    };
+    const auto policy_decline = [&]() {
+        // A reentrant policy may itself prepare on this exact command. Never
+        // advertise replay after that prefix, including denial/exception.
+        if (command.isCommitted() || (!prefix_before_policy &&
+            mImpl && mImpl->probeCandidateHasPrefix(token)))
+        {
+            binding.native_prefix = true;
+            return failure();
+        }
+        return decline();
+    };
+    try
+    {
+        if (!mImpl || !pipeline || !library || !library->nativeHandle() ||
+            command.isCommitted() || !command.nativeHandle() ||
+            command.nativeDevice()!=mImpl->device->nativeHandle() ||
+            packet.config[3]!=1 || !packet.config[1] || !packet.config[2] ||
+            !finiteValues(probes.config,4) || probes.config[0]<0.f ||
+            probes.config[0]>256.f || std::floor(probes.config[0])!=probes.config[0] ||
+            !finiteValues(projection.data(),16) || !finiteValues(inverse_projection.data(),16))
+            return decline();
+        const auto count=std::max(1u,static_cast<std::uint32_t>(probes.config[0]));
+        if (packet.config[0]!=count) return decline();
+        const auto width=packet.config[1],height=packet.config[2];
+        const auto full=[&](const ALMetalProbeCandidateRect& rect) {
+            return rect.x_min==0 && rect.y_min==0 && rect.x_max==width && rect.y_max==height;
+        };
+        if (!full(packet.bounds[0])) return decline();
+        bool all_full=true;
+        for (std::uint32_t index=1;index<count;++index)
+        {
+            const auto& rect=packet.bounds[index];
+            if (rect.x_min>rect.x_max || rect.y_min>rect.y_max ||
+                rect.x_max>width || rect.y_max>height ||
+                (probes.ref_index[index][3]!=0 && !full(rect))) return decline();
+            all_full=all_full && full(rect);
+        }
+        if (all_full) return decline();
+        const std::uint64_t columns=1u+(width-1u)/16u,rows=1u+(height-1u)/16u;
+        const std::uint64_t output_bytes=columns*rows*8u*sizeof(std::uint32_t);
+        if (output_bytes>Impl::probe_candidate_byte_limit) return decline();
+        constexpr std::size_t packet_allocation=(sizeof(ALMetalProbeCandidatePacket)+4095u)&~std::size_t(4095u);
+        const auto output_allocation=(output_bytes+4095u)&~std::uint64_t(4095u);
+        // CPU identity/control-block/cache bookkeeping is resident too.
+        constexpr std::size_t record_allocation=sizeof(Impl::ProbeCandidatePublication)+256u;
+        const std::uint64_t resident_bytes=packet_allocation+output_allocation+record_allocation;
+        if (resident_bytes>Impl::probe_candidate_byte_limit) return decline();
+
+        Impl::ProbeCandidateKey key;
+        std::memcpy(&key.packet,&packet,sizeof(packet));
+        std::memcpy(&key.probes,&probes,sizeof(probes));
+        std::memcpy(key.projection.data(),projection.data(),sizeof(key.projection));
+        std::memcpy(key.inverse_projection.data(),inverse_projection.data(),sizeof(key.inverse_projection));
+        key.library_identity=library->nativeHandle(); key.library_epoch=library_epoch; key.reverse_z=reverse_z;
+        if (mImpl->probe_candidate_library_identity != key.library_identity ||
+            mImpl->probe_candidate_library_epoch != key.library_epoch)
+        {
+            while (mImpl->probe_candidate_count) mImpl->eraseProbeCandidate(0);
+            mImpl->probe_candidate_library_identity = key.library_identity;
+            mImpl->probe_candidate_library_epoch = key.library_epoch;
+        }
+        token=command.completionToken();
+        if (!token) return decline();
+        prefix_before_policy = mImpl->probeCandidateHasPrefix(token);
+        const auto bind=[&](const auto& record) {
+            binding.native_prefix=!record->completed && record->producer==token;
+            if (!command.retainUntilCompletion(record,error)) return false;
+            binding.masks=record->masks.get(); binding.grid=record->grid; binding.owner=record;
+            return true;
+        };
+        if (auto record=mImpl->reusableProbeCandidate(key,token))
+        {
+            if (!bind(record)) return binding.native_prefix ? failure() : decline();
+            ++mImpl->statistics.candidate_reuses;
+            return ALMetalProbeCandidatePreparation::ready;
+        }
+        // An explicitly loaded older library remains an ordinary renderer.
+        if (!library->hasFunction("almetal_world_probe_candidate_tiles")) return decline();
+        const auto generation=mImpl->generation;
+        const auto owner_epoch=mImpl->builtin_library_epoch;
+        ALMetalWorldSourcePublicationWork work;
+        work.allocation_bytes=resident_bytes;
+        work.copied_page_bytes=2u*sizeof(Impl::ProbeCandidateKey)+sizeof(packet);
+        work.encoded_mapping_bytes=output_bytes;
+        std::shared_ptr<const void> credit;
+        if (!requestSourcePublication(work,credit)) return policy_decline();
+        // The policy is reentrant. Borrowed inputs and ownership may change;
+        // retain no cache iterators across the callback and recheck them all.
+        if (generation!=mImpl->generation || owner_epoch!=mImpl->builtin_library_epoch ||
+            key.library_identity!=mImpl->probe_candidate_library_identity ||
+            key.library_epoch!=mImpl->probe_candidate_library_epoch || command.isCommitted() ||
+            std::memcmp(&key.packet,&packet,sizeof(packet)) ||
+            std::memcmp(&key.probes,&probes,sizeof(probes)) ||
+            std::memcmp(key.projection.data(),projection.data(),sizeof(key.projection)) ||
+            std::memcmp(key.inverse_projection.data(),inverse_projection.data(),sizeof(key.inverse_projection)))
+            return policy_decline();
+        if (auto record=mImpl->reusableProbeCandidate(key,token))
+        {
+            if (!bind(record)) return binding.native_prefix ? failure() : decline();
+            ++mImpl->statistics.candidate_reuses;
+            return ALMetalProbeCandidatePreparation::ready;
+        }
+        if (!mImpl->makeProbeCandidateRoom(static_cast<std::size_t>(resident_bytes))) return decline();
+        auto record=std::make_shared<Impl::ProbeCandidatePublication>();
+        std::memcpy(&record->key,&key,sizeof(key));
+        record->library=std::move(library);
+        record->grid={static_cast<std::uint32_t>(columns),static_cast<std::uint32_t>(rows),width,height};
+        record->producer=token; record->resident_bytes=static_cast<std::size_t>(resident_bytes);
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length=sizeof(packet); descriptor.storage=ALMetalStorageMode::shared;
+        descriptor.cpu_cache=ALMetalCpuCacheMode::write_combined;
+        descriptor.label="Alchemy immutable probe candidate bounds";
+        record->packet=ALMetalBuffer::create(*mImpl->device,descriptor,error);
+        descriptor.length=static_cast<std::size_t>(output_bytes); descriptor.storage=ALMetalStorageMode::private_gpu;
+        descriptor.cpu_cache=ALMetalCpuCacheMode::default_cache;
+        descriptor.label="Alchemy immutable per-view probe tile masks";
+        record->masks=ALMetalBuffer::create(*mImpl->device,descriptor,error);
+        if (!record->packet || !record->masks ||
+            !record->packet->write(0,&record->key.packet,sizeof(packet),error)) return decline();
+        auto slot=std::find_if(mImpl->probe_candidate_residents.begin(),mImpl->probe_candidate_residents.end(),
+            [](const auto& weak) {return weak.expired();});
+        if (slot==mImpl->probe_candidate_residents.end()) return decline();
+        *slot=record;
+        // Work credit is producer debt, not idle-cache debt. The command owns
+        // it through completion independently of cache eviction/reuse.
+        if (!command.retainUntilCompletion(record,error) ||
+            (credit && !command.retainUntilCompletion(credit,error))) return decline();
+        // begin() may allocate C++ storage after creating a native encoder.
+        // From this attempt onward failure cannot safely request serial replay.
+        binding.native_prefix=true;
+        record->prefix_started=true;
+        auto encoder=ALMetalComputeEncoder::begin(command,"Alchemy per-view probe candidate preparation",error);
+        if (!encoder) {record->failed=true;return failure();}
+        const auto group=std::min(32u,pipeline->maximumTotalThreadsPerThreadgroup());
+        const bool encoded=group && encoder->setPipeline(*pipeline,error) &&
+            encoder->setBuffer(0,*record->packet,0,error) &&
+            encoder->setBuffer(1,*record->masks,0,error) &&
+            encoder->setBytes(2,record->grid.data(),sizeof(record->grid),error) &&
+            encoder->dispatch(record->grid[0],record->grid[1],8,group,1,1,error);
+        const bool ended=encoder->end(error);
+        if (!encoded || !ended) {record->failed=true;return failure();}
+        record->encoded=true;
+        mImpl->probe_candidates[mImpl->probe_candidate_count++]=record;
+        binding.masks=record->masks.get(); binding.grid=record->grid; binding.owner=record;
+        ++mImpl->statistics.candidate_preparations;
+        mImpl->statistics.published_mask_bytes+=output_bytes;
+        return ALMetalProbeCandidatePreparation::ready;
+    }
+    catch (...)
+    {
+        if (binding.native_prefix) return failure();
+        return policy_decline();
+    }
 }
 
 std::shared_ptr<ALMetalWorldSourceCommands> ALMetalWorldFrameData::worldSourceCommands(std::string* error)
@@ -2919,6 +3210,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         probe_tile_light_map_pipelines, probe_tile_base_pipelines, probe_tile_sky_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         high_probe_tile_light_map_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        candidate_base_pipelines, candidate_probe_tile_base_pipelines;
+    std::unique_ptr<ALMetalComputePipeline> probe_candidate_pipeline;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> hero_probe_filter_pipeline;
     std::unique_ptr<ALMetalComputePipeline> probe_gaussian_pipeline;
@@ -5871,6 +6165,16 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             return nullptr;
         }
 
+        if (impl->library->hasFunction("almetal_world_base_light_geometry_candidates_fragment"))
+        {
+            auto prepared = descriptor;
+            prepared.fragment_function = "almetal_world_base_light_geometry_candidates_fragment";
+            prepared.label = "Alchemy prepared world base-light geometry pipeline";
+            std::string optional_error;
+            impl->candidate_base_pipelines[hdr] =
+                ALMetalRenderPipeline::create(device, prepared, &optional_error);
+        }
+
         descriptor.fragment_function =
             "almetal_world_base_light_sky_fragment";
         descriptor.label = hdr
@@ -5922,6 +6226,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 impl->probe_tile_base_pipelines[hdr] = std::move(base);
                 impl->probe_tile_sky_pipelines[hdr] = std::move(sky);
             }
+        }
+
+        if (impl->probe_tile_base_pipelines[hdr] &&
+            impl->library->hasFunction("almetal_world_probe_tile_base_light_candidates_fragment"))
+        {
+            auto prepared = impl->probe_tile_base_pipelines[hdr]->descriptor();
+            prepared.library = impl->library.get();
+            prepared.fragment_function = "almetal_world_probe_tile_base_light_candidates_fragment";
+            prepared.label = "Alchemy prepared probe tile base-light pipeline";
+            std::string optional_error;
+            impl->candidate_probe_tile_base_pipelines[hdr] =
+                ALMetalRenderPipeline::create(device, prepared, &optional_error);
         }
 
         ALMetalRenderPipelineDescriptor sky_behind_descriptor;
@@ -6141,6 +6457,17 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->brdf_lut_pipeline)
     {
         return nullptr;
+    }
+
+    if (impl->library->hasFunction("almetal_world_probe_candidate_tiles"))
+    {
+        ALMetalComputePipelineDescriptor candidates;
+        candidates.library = impl->library.get();
+        candidates.function = "almetal_world_probe_candidate_tiles";
+        candidates.label = "Alchemy per-view probe candidate preparation pipeline";
+        std::string optional_error;
+        impl->probe_candidate_pipeline =
+            ALMetalComputePipeline::create(device, candidates, &optional_error);
     }
 
     ALMetalComputePipelineDescriptor hero_filter_descriptor;
@@ -26188,6 +26515,51 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         return nullptr;
     }
 
+    ALMetalProbeCandidateBinding candidate_binding;
+    const std::size_t candidate_pipeline_index = scene.hdr ? 1u : 0u;
+    const auto* candidate_pipeline = tile_light_map
+        ? mImpl->candidate_probe_tile_base_pipelines[candidate_pipeline_index].get()
+        : mImpl->candidate_base_pipelines[candidate_pipeline_index].get();
+    if (scene.projection_valid && scene.reflection_probes &&
+        scene.constants.environment_config[0] == 0u &&
+        probe_constants.config[0] > 1.f && candidate_pipeline &&
+        mImpl->probe_candidate_pipeline && mImpl->frame_data)
+    {
+        const auto mapping = alMetalCertifyBaseProbeMapping(
+            std::span<const float,16>(scene.projection),
+            std::span<const float,16>(scene.constants.inverse_projection),
+            scene.constants.config[0] != 0u, input.width, input.height);
+        if (mapping.certified)
+        {
+            ALMetalProbeCandidateView view;
+            std::copy_n(scene.projection, 16, view.projection);
+            view.width = input.width; view.height = input.height;
+            view.raster_mapping_certified = true;
+            view.pixel_guard = mapping.pixel_guard;
+            std::array<ALMetalProbeCandidateSphere,256> spheres{};
+            for (std::size_t index = 0; index < spheres.size(); ++index)
+            {
+                std::copy_n(probe_constants.ref_sphere[index], 4,
+                            spheres[index].center_radius);
+                spheres[index].priority = probe_constants.ref_index[index][3];
+            }
+            const auto packet = alMetalBuildProbeCandidates(spheres, probe_constants.config[0], view);
+            std::string preparation_error;
+            const auto prepared = mImpl->frame_data->prepareProbeCandidates(
+                *command, mImpl->probe_candidate_pipeline.get(), mImpl->library,
+                mImpl->frame_data->builtinLibraryEpoch(), packet, probe_constants,
+                std::span<const float,16>(scene.projection),
+                std::span<const float,16>(scene.constants.inverse_projection),
+                scene.constants.config[0] != 0u, candidate_binding, &preparation_error);
+            if (candidate_binding.native_prefix && native_prefix) *native_prefix = true;
+            if (prepared == ALMetalProbeCandidatePreparation::failed)
+            {
+                setError(error, preparation_error);
+                return nullptr;
+            }
+        }
+    }
+
     if (tile_visibility && !command->retainUntilCompletion(tile_visibility))
     {
         setError(error, "Metal probe tile visibility requires native completion ownership");
@@ -26315,7 +26687,9 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         encoder->setVertexBytes(
             0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setPipeline(
-            *(tile_light_map ? mImpl->probe_tile_base_pipelines[pipeline_index] : mImpl->base_light_pipelines[pipeline_index]), error) &&
+            *(candidate_binding.masks ? candidate_pipeline :
+                (tile_light_map ? mImpl->probe_tile_base_pipelines[pipeline_index].get() :
+                                 mImpl->base_light_pipelines[pipeline_index].get())), error) &&
         encoder->setFragmentBytes(
             0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setFragmentBuffer(
@@ -26324,6 +26698,10 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
             2, &hero_constants, sizeof(hero_constants), error) &&
         encoder->setFragmentBytes(
             3, &ssr_constants, sizeof(ssr_constants), error) &&
+        (!candidate_binding.masks ||
+            (encoder->setFragmentBuffer(4, *candidate_binding.masks, 0, error) &&
+             encoder->setFragmentBytes(5, candidate_binding.grid.data(),
+                                       sizeof(candidate_binding.grid), error))) &&
         encoder->setFragmentTexture(0, albedo, error) &&
         encoder->setFragmentTexture(1, specular, error) &&
         encoder->setFragmentTexture(2, normal, error) &&

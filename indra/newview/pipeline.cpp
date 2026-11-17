@@ -3397,6 +3397,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", publications/reuses/logical_bytes=" << terrain_data.terrain_publications << '/'
                 << terrain_data.terrain_reuses << '/' << terrain_data.terrain_published_bytes
                 << ", scope=shared_main_probe_frame_data_cumulative" << LL_ENDL;
+            LL_INFOS("MetalScene") << "Native probe candidate preparation: prepared/reused/declined/failed="
+                << terrain_data.candidate_preparations << '/' << terrain_data.candidate_reuses << '/'
+                << terrain_data.candidate_declines << '/' << terrain_data.candidate_failures
+                << ", published_mask_bytes=" << terrain_data.published_mask_bytes
+                << ", scope=shared_main_probe_frame_data_cumulative" << LL_ENDL;
             const auto& main_light = capture.main_light_encoding;
             LL_INFOS("MetalFramePlan") << "Native main encode/light-values: requested/started/budget_denied/declined="
                 << main_light.requested << '/' << main_light.started << '/' << main_light.budget_denied << '/' << main_light.declined
@@ -18283,6 +18288,11 @@ void LLPipeline::renderMetalWorldBaseLighting(
     // valid and presentable while the next ordinary frame publishes history.
 
     ALMetalWorldBaseLightingScene scene;
+    // Production view input: candidate preparation must consume the exact
+    // projection that produced this view, independently of private capture.
+    std::memcpy(scene.projection, camera.getProjection().getF32ptr(),
+                sizeof(scene.projection));
+    scene.projection_valid = true;
     scene.diagnostic_view.frame_index = gFrameCount;
     scene.diagnostic_view.view_kind = capture.hero_probe_face_capture ? 2
         : capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0;
@@ -18290,7 +18300,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
         ? capture.hero_probe_face : capture.reflection_probe_face_capture
         ? capture.reflection_probe_face : 0;
     std::memcpy(scene.diagnostic_view.projection,
-                camera.getProjection().getF32ptr(),
+                scene.projection,
                 sizeof(scene.diagnostic_view.projection));
     scene.gbuffer = capture.target.get();
     scene.light_map = capture.base_light_map_target
