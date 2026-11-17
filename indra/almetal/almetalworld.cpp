@@ -21183,7 +21183,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     static_assert(sizeof(ForwardCandidateConstants)==80);
     const bool has_candidate_simple=has_pre_water_simple && std::any_of(
         scene.batches,scene.batches+scene.batch_count,[](const ALMetalWorldSimpleBatch& batch) {
-            return batch.pre_water_alpha && batch.pre_water_simple && !batch.avatar_alpha &&
+            return (batch.pre_water_alpha || batch.post_water_alpha) &&
+                batch.pre_water_simple && !batch.avatar_alpha &&
                 !batch.post_water_depth_only && batch.pre_water_source_rgb==ALMetalBlendFactor::source_alpha &&
                 batch.pre_water_destination_rgb==ALMetalBlendFactor::one_minus_source_alpha;
         });
