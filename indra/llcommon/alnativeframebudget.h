@@ -73,6 +73,19 @@ public:
         bool draining = false;
         bool main_busy = false;
         bool memory_pressure = false;
+        // Current-frame admission operands, not GPU execution/busy time.
+        // Wait CPU is already included in required_main_cpu_ns. Only the
+        // measured non-CPU remainder is an additional pressure component.
+        std::uint64_t required_main_cpu_ns = 0;
+        std::uint64_t required_main_gpu_wait_wall_ns = 0;
+        std::uint64_t required_main_gpu_wait_thread_cpu_ns = 0;
+        std::uint64_t required_main_gpu_wait_non_cpu_ns = 0;
+        std::uint64_t required_main_gpu_wait_observations = 0; // Includes unknown CPU clocks.
+        std::uint64_t required_main_gpu_wait_unknown_observations = 0;
+        std::uint64_t required_main_pressure_ns = 0;
+        bool required_main_gpu_wait_saturated = false;
+        bool required_main_pressure_saturated = false;
+        bool main_observations_open = false;
         StreamingBacklog streaming;
         std::uint64_t upload_bytes_in_flight = 0;
         unsigned uploads_in_flight = 0;
@@ -128,6 +141,17 @@ public:
     // Duplicate/nested or stale frame starts cannot refill the current plan.
     void beginFrame(const FrameInputs&);
     void recordRequiredMainWork(std::uint64_t cpu_nanoseconds);
+    // Report ONLY the actual older-required-main-group admission wait. Capture
+    // frame before waiting; utility/probe/presentation waits are not inputs.
+    // The accepted beginFrame caller owns observations until explicit close.
+    // Wrong thread/frame, closed, uninitialized and draining reports return
+    // false without changing counters or admission. nullopt records unknown
+    // CPU-clock incidence and wall time, but invents no blocked-time operand.
+    bool recordRequiredMainGpuWait(Frame frame, std::uint64_t wall_nanoseconds,
+                                  std::optional<std::uint64_t> thread_cpu_nanoseconds);
+    // Retains final pressure/counters for later phases; the next beginFrame
+    // resets observations. Only this frame's observation owner may close it.
+    bool closeMainObservations(Frame frame);
     void updateStreaming(const StreamingBacklog&);
     void setPendingPublications(std::uint64_t);
     // Scene publication accounts one coalesced dirty source batch, separately

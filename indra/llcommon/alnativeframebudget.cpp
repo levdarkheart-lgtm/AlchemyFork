@@ -8,6 +8,20 @@
 #include <algorithm>
 #include <array>
 #include <mutex>
+#include <thread>
+
+namespace
+{
+std::uint64_t saturatedSum(std::uint64_t left, std::uint64_t right, bool& saturated) noexcept
+{
+    if (right > std::numeric_limits<std::uint64_t>::max() - left)
+    {
+        saturated = true;
+        return std::numeric_limits<std::uint64_t>::max();
+    }
+    return left + right;
+}
+}
 
 struct ALNativeFrameBudget::State
 {
@@ -34,6 +48,24 @@ struct ALNativeFrameBudget::State
     Limits limits;
     FrameInputs inputs;
     Snapshot stats;
+    std::thread::id main_observation_owner;
+    bool mayObserveMain(Frame frame) const noexcept
+    {
+        return stats.initialized && stats.main_observations_open && !stats.draining &&
+            frame == stats.frame && std::this_thread::get_id() == main_observation_owner;
+    }
+    void updateMainPressure() noexcept
+    {
+        stats.required_main_cpu_ns = inputs.required_main_cpu_ns;
+        stats.required_main_pressure_saturated = false;
+        stats.required_main_pressure_ns = saturatedSum(
+            inputs.required_main_cpu_ns, stats.required_main_gpu_wait_non_cpu_ns,
+            stats.required_main_pressure_saturated);
+        const auto interval = inputs.frame_interval_ns;
+        // The original threshold is retained; division avoids overflow.
+        stats.main_busy = interval != 0 &&
+            stats.required_main_pressure_ns > interval - interval / 4;
+    }
     unsigned ordinary_this_frame = 0;
     unsigned hero_this_frame = 0;
     bool oversized_scene_in_flight = false;
@@ -203,6 +235,14 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     state.inputs = inputs;
     state.stats.initialized = true;
     state.stats.frame = inputs.frame;
+    state.main_observation_owner = std::this_thread::get_id();
+    state.stats.main_observations_open = !state.stats.draining;
+    state.stats.required_main_gpu_wait_wall_ns = 0;
+    state.stats.required_main_gpu_wait_thread_cpu_ns = 0;
+    state.stats.required_main_gpu_wait_non_cpu_ns = 0;
+    state.stats.required_main_gpu_wait_observations = 0;
+    state.stats.required_main_gpu_wait_unknown_observations = 0;
+    state.stats.required_main_gpu_wait_saturated = false;
     state.stats.uploads_this_frame = 0;
     state.stats.upload_bytes_this_frame = 0;
     state.stats.scene_publications_this_frame = 0;
@@ -211,9 +251,7 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     state.stats.maintenance_bytes_this_frame = 0;
     state.stats.optional_views_this_frame = 0;
     state.ordinary_this_frame = state.hero_this_frame = 0;
-    // Compare by division to avoid overflow in a caller-supplied interval.
-    state.stats.main_busy = inputs.frame_interval_ns != 0 &&
-        inputs.required_main_cpu_ns > inputs.frame_interval_ns - inputs.frame_interval_ns / 4;
+    state.updateMainPressure();
     state.stats.memory_pressure =
         (inputs.native_budget_bytes != 0 && inputs.native_allocated_bytes >= inputs.native_budget_bytes) ||
         (inputs.os_available_bytes != unknown_bytes && inputs.os_available_bytes < inputs.minimum_headroom_bytes) ||
@@ -224,8 +262,40 @@ void ALNativeFrameBudget::recordRequiredMainWork(std::uint64_t cpu_nanoseconds)
 {
     std::lock_guard lock(mState->mutex);
     mState->inputs.required_main_cpu_ns = cpu_nanoseconds;
-    const auto interval = mState->inputs.frame_interval_ns;
-    mState->stats.main_busy = interval != 0 && cpu_nanoseconds > interval - interval / 4;
+    mState->updateMainPressure();
+}
+
+bool ALNativeFrameBudget::recordRequiredMainGpuWait(
+    Frame frame, std::uint64_t wall_nanoseconds,
+    std::optional<std::uint64_t> thread_cpu_nanoseconds)
+{
+    std::lock_guard lock(mState->mutex);
+    auto& state = *mState;
+    if (!state.mayObserveMain(frame)) return false;
+    auto& stats = state.stats;
+    auto add = [&](std::uint64_t& value, std::uint64_t increment)
+    { value = saturatedSum(value, increment, stats.required_main_gpu_wait_saturated); };
+    add(stats.required_main_gpu_wait_observations, 1);
+    add(stats.required_main_gpu_wait_wall_ns, wall_nanoseconds);
+    if (thread_cpu_nanoseconds)
+    {
+        add(stats.required_main_gpu_wait_thread_cpu_ns, *thread_cpu_nanoseconds);
+        // Clamp per observation: CPU clock noise must not erase a previous
+        // wait's measured remainder or create unsigned underflow.
+        add(stats.required_main_gpu_wait_non_cpu_ns,
+            wall_nanoseconds - std::min(wall_nanoseconds, *thread_cpu_nanoseconds));
+    }
+    else add(stats.required_main_gpu_wait_unknown_observations, 1);
+    state.updateMainPressure();
+    return true;
+}
+
+bool ALNativeFrameBudget::closeMainObservations(Frame frame)
+{
+    std::lock_guard lock(mState->mutex);
+    if (!mState->mayObserveMain(frame)) return false;
+    mState->stats.main_observations_open = false;
+    return true;
 }
 
 void ALNativeFrameBudget::updateStreaming(const StreamingBacklog& backlog)
@@ -516,4 +586,5 @@ void ALNativeFrameBudget::beginDrain()
 {
     std::lock_guard lock(mState->mutex);
     mState->stats.draining = true;
+    mState->stats.main_observations_open = false;
 }

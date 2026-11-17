@@ -1033,6 +1033,199 @@ TEST_CASE("Preparation byte debt retires once on the actual last CPU owner acros
     retire_after_owner.join();
 }
 
+TEST_CASE("Required main GPU wait observations belong to one open current-frame owner",
+          "[native-frame-budget][main-gpu-feedback]")
+{
+    Budget budget;
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(1, 10, 0));
+    CHECK_FALSE(budget.closeMainObservations(1));
+    budget.beginFrame(frame(1));
+    REQUIRE(budget.snapshot().main_observations_open);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 0, 0));
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 7'000'000, std::nullopt));
+    auto observed = budget.snapshot();
+    CHECK(observed.required_main_gpu_wait_observations == 2);
+    CHECK(observed.required_main_gpu_wait_unknown_observations == 1);
+    CHECK(observed.required_main_gpu_wait_wall_ns == 7'000'000);
+    CHECK(observed.required_main_gpu_wait_thread_cpu_ns == 0);
+    CHECK(observed.required_main_gpu_wait_non_cpu_ns == 0);
+    CHECK(observed.required_main_pressure_ns == 20'000'000);
+    CHECK_FALSE(observed.main_busy);
+
+    bool worker_record = true, worker_close = true;
+    std::thread other([&] {
+        worker_record = budget.recordRequiredMainGpuWait(1, 50'000'000, 0);
+        worker_close = budget.closeMainObservations(1);
+    });
+    other.join();
+    CHECK_FALSE(worker_record); CHECK_FALSE(worker_close);
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(0, 50'000'000, 0));
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(2, 50'000'000, 0));
+    CHECK_FALSE(budget.closeMainObservations(2));
+    budget.beginFrame(frame(1)); // Duplicate start cannot refill or erase observations.
+    auto unchanged = budget.snapshot();
+    CHECK(unchanged.main_observations_open);
+    CHECK(unchanged.required_main_gpu_wait_observations == observed.required_main_gpu_wait_observations);
+    CHECK(unchanged.required_main_gpu_wait_wall_ns == observed.required_main_gpu_wait_wall_ns);
+    CHECK(unchanged.required_main_pressure_ns == observed.required_main_pressure_ns);
+    REQUIRE(budget.closeMainObservations(1));
+    CHECK_FALSE(budget.closeMainObservations(1));
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(1, 50'000'000, 0));
+    CHECK_FALSE(budget.snapshot().main_observations_open);
+    CHECK(budget.snapshot().required_main_gpu_wait_observations == 2);
+    CHECK(budget.snapshot().required_main_gpu_wait_wall_ns == 7'000'000);
+
+    budget.beginFrame(frame(4)); // A frame gap cannot carry prior GPU pressure.
+    CHECK(budget.snapshot().main_observations_open);
+    CHECK(budget.snapshot().required_main_gpu_wait_observations == 0);
+    CHECK(budget.snapshot().required_main_gpu_wait_unknown_observations == 0);
+    CHECK(budget.snapshot().required_main_gpu_wait_wall_ns == 0);
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == 0);
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(1, 50'000'000, 0));
+    CHECK(budget.recordRequiredMainGpuWait(4, 1, 0));
+}
+
+TEST_CASE("Current main CPU plus non-CPU wait defers fresh views without starving aged groups",
+          "[native-frame-budget][main-gpu-feedback]")
+{
+    Budget budget(small()), cpu_only(small());
+    auto input = frame(20);
+    input.frame_interval_ns = 64'000'000;
+    input.required_main_cpu_ns = 14'000'000;
+    budget.beginFrame(input); cpu_only.beginFrame(input);
+    REQUIRE(cpu_only.tryAcquire(Budget::Work::ordinary_probe, 0, 20));
+    REQUIRE(budget.recordRequiredMainGpuWait(20, 39'000'000, 1'000'000));
+    auto pressure = budget.snapshot();
+    CHECK(pressure.required_main_cpu_ns == 14'000'000);
+    CHECK(pressure.required_main_gpu_wait_wall_ns == 39'000'000);
+    CHECK(pressure.required_main_gpu_wait_thread_cpu_ns == 1'000'000);
+    CHECK(pressure.required_main_gpu_wait_non_cpu_ns == 38'000'000);
+    CHECK(pressure.required_main_pressure_ns == 52'000'000);
+    REQUIRE(pressure.main_busy);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 20));
+    auto ordinary = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 17);
+    auto hero = budget.tryAcquire(Budget::Work::hero_probe, 0, 17);
+    REQUIRE(ordinary); REQUIRE(hero);
+    CHECK(ordinary.reason == Budget::Reason::progress);
+    CHECK(hero.reason == Budget::Reason::progress);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 17));
+    auto continuation_owner = ordinary.credit;
+    ordinary.credit.reset();
+    REQUIRE(budget.closeMainObservations(20));
+    CHECK(budget.snapshot().main_busy); // Close preserves the final plan.
+    budget.beginFrame(frame(21));
+    CHECK(budget.snapshot().optional_views_in_flight == 2);
+    REQUIRE(budget.recordRequiredMainGpuWait(21, 39'000'000, 1'000'000));
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 21));
+    auto next_ordinary = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 17);
+    auto next_hero = budget.tryAcquire(Budget::Work::hero_probe, 0, 17);
+    REQUIRE(next_ordinary); REQUIRE(next_hero);
+    // Existing hard capacity is two frames of optional_views_per_frame:
+    // two held old groups plus today's two aged groups, not two total.
+    CHECK(budget.snapshot().optional_views_in_flight == 4);
+    auto over_capacity = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 17);
+    CHECK_FALSE(over_capacity);
+    CHECK(over_capacity.reason == Budget::Reason::in_flight);
+    CHECK(continuation_owner->work() == Budget::Work::ordinary_probe);
+    continuation_owner.reset(); hero.credit.reset();
+    CHECK(budget.snapshot().optional_views_in_flight == 2);
+    next_ordinary.credit.reset(); next_hero.credit.reset();
+    CHECK(budget.snapshot().optional_views_in_flight == 0);
+    CHECK(budget.snapshot().retired == 4);
+}
+
+TEST_CASE("Required main wait CPU is not counted twice and current CPU refresh preserves its remainder",
+          "[native-frame-budget][main-gpu-feedback]")
+{
+    Budget budget;
+    auto input = frame(1); input.frame_interval_ns = 40'000'000;
+    input.required_main_cpu_ns = 24'000'000;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 20'000'000, 16'000'000));
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == 4'000'000);
+    CHECK(budget.snapshot().required_main_pressure_ns == 28'000'000);
+    CHECK_FALSE(budget.snapshot().main_busy); // Adding full wall would falsely produce44ms.
+    budget.recordRequiredMainWork(26'000'000);
+    CHECK(budget.snapshot().required_main_pressure_ns == 30'000'000);
+    CHECK_FALSE(budget.snapshot().main_busy); // Exact existing3/4 threshold.
+    budget.recordRequiredMainWork(26'000'001);
+    CHECK(budget.snapshot().main_busy);
+    budget.recordRequiredMainWork(0);
+    CHECK(budget.snapshot().required_main_pressure_ns == 4'000'000);
+    CHECK_FALSE(budget.snapshot().main_busy);
+    // Multiple observations clamp individually. Later CPU-clock noise cannot
+    // subtract the first wait's remainder or wrap unsigned arithmetic.
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 3'000'000, 9'000'000));
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == 4'000'000);
+    CHECK(budget.snapshot().required_main_gpu_wait_thread_cpu_ns == 25'000'000);
+    CHECK(budget.snapshot().required_main_gpu_wait_wall_ns == 23'000'000);
+}
+
+TEST_CASE("Unknown wait CPU clocks remain explicit and no-wait frames preserve CPU-only admission",
+          "[native-frame-budget][main-gpu-feedback]")
+{
+    Budget budget;
+    auto input = frame(1); input.required_main_cpu_ns = 10'000'000;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 90'000'000, std::nullopt));
+    CHECK(budget.snapshot().required_main_gpu_wait_unknown_observations == 1);
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == 0);
+    CHECK(budget.snapshot().required_main_pressure_ns == 10'000'000);
+    CHECK_FALSE(budget.snapshot().main_busy);
+    CHECK(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 1));
+    auto next = frame(2); next.required_main_cpu_ns = 45'000'000;
+    budget.beginFrame(next);
+    CHECK(budget.snapshot().required_main_gpu_wait_observations == 0);
+    CHECK(budget.snapshot().main_busy); // Original CPU-only behavior remains.
+    budget.recordRequiredMainWork(0);
+    CHECK_FALSE(budget.snapshot().main_busy);
+    CHECK(budget.snapshot().required_main_pressure_ns == 0);
+}
+
+TEST_CASE("Required main pressure and diagnostic operands saturate rather than wrap",
+          "[native-frame-budget][main-gpu-feedback]")
+{
+    constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+    Budget budget;
+    auto input = frame(1); input.frame_interval_ns = maximum;
+    input.required_main_cpu_ns = maximum - 10;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 20, 0));
+    CHECK(budget.snapshot().required_main_pressure_ns == maximum);
+    CHECK(budget.snapshot().required_main_pressure_saturated);
+    CHECK_FALSE(budget.snapshot().required_main_gpu_wait_saturated);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, maximum, 0));
+    CHECK(budget.snapshot().required_main_gpu_wait_wall_ns == maximum);
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == maximum);
+    CHECK(budget.snapshot().required_main_gpu_wait_saturated);
+    CHECK(budget.snapshot().required_main_pressure_ns == maximum);
+    CHECK(budget.snapshot().main_busy);
+    budget.beginFrame(frame(3));
+    CHECK_FALSE(budget.snapshot().required_main_gpu_wait_saturated);
+    CHECK_FALSE(budget.snapshot().required_main_pressure_saturated);
+    CHECK(budget.snapshot().required_main_gpu_wait_wall_ns == 0);
+    CHECK(budget.snapshot().required_main_pressure_ns == 20'000'000);
+}
+
+TEST_CASE("Required main feedback closes on draining without revoking completion owners",
+          "[native-frame-budget][main-gpu-feedback]")
+{
+    Budget budget;
+    budget.beginFrame(frame(1));
+    auto owner = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 1).credit;
+    REQUIRE(owner);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 40'000'000, 0));
+    budget.beginDrain();
+    CHECK_FALSE(budget.snapshot().main_observations_open);
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(1, 10'000'000, 0));
+    CHECK(budget.snapshot().required_main_gpu_wait_observations == 1);
+    CHECK(budget.snapshot().optional_views_in_flight == 1);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 0));
+    CHECK(budget.tryAcquire(Budget::Work::upload, 1)); // Existing drain progress.
+    owner.reset();
+    CHECK(budget.snapshot().optional_views_in_flight == 0);
+}
+
 TEST_CASE("Retained packet bytes respect memory pressure while useful CPU preparation survives a busy frame",
           "[native-frame-budget][preparation-bytes]")
 {
