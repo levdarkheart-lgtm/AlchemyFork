@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-350 -->
+<!-- next-defect-id: PPD-352 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7645,8 +7645,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex whole-engine performance assessment
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
-- Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes.
-- Next action: Review [completed69228 checkpoint](research/home-checkpoint-69228-20261117.md): warm Shared27.70→15.63FPS decline remains, recorded main wait14.77→43.48ms/frame, remainder near21ms. Separate expected cold decoding from warm GPU-completion pressure. Obtain current encoder/shader/resource attribution through GPU frames. Independently repair PPD338 normal-mode selected-PSO telemetry without legacy schedule changes before relying on live hit counters. Preserve all quality/probes and paused broad architecture; no push authorized.
+- Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.
+- Next action: Continue the [actual receiver diagnostic](research/home-whole-shader-map-20261117.md): compare exact early/late main probe packs on reconstructed captured depth, including same-receiver pack controls. Use candidate/accepted/positive-SH incidence and measured shader cost together before selecting a shared probe change; retain fixed SSAO/light floors and changing alpha/probe views. PPD338 normal-mode telemetry is already repaired and observed in healthy A2/B2. Preserve all quality/probes,69231 and paused broad architecture; no push authorized.
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7675,6 +7675,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 02:02UTC boundary recheck: root47d9b90132 clean, staged69228 executable/library hashes exact, no live viewer/recorder and no new Home run after819/69224. The same owner-participation boundary persists across three goal turns; current implementation and all safe qualification are ready, but the requested inter-group Home checkpoint needs owner login/FPS/visual evaluation. Goal is to be marked blocked on that external participation, not complete or awaiting new launch permission. Broad architecture remains paused; preserve launch authorization, source840bae8c33 and all evidence. Next arm the existing collector/launch exact app when owner is present; no unattended login/recording or additional change group.
 
 - 2026-11-17 owner returns; exact69228 coldboot/apd4_a6o and corrected warmRELOGIN/7rbc49pc captures complete0 with180s CPU/GPUcoverage. Ownerwarm30→20→19→18→17 and Shared environment; nativewarm27.701→19.919→16.083→15.627FPS, wait14.770→27.460→40.971→43.482ms/frame, otherelapsed21–23ms. Late targets alreadyGPUrunning/delta2, postGPUEndtail<0.45ms, decode~0after60s, mainCPU47→28%wall. Mainprobes1→24→41→49 andordinaryworkgrow; severalGPUcommandenvelopesgrow, notisolatedpasscost. BoththermalNominalwholetrace; actualclocks/bandwidthunknown. Point/projector9/39fixed, notprevious51case. Native314/203contentionloss retainedpartial, allincludedphasewaittargets known. Completefindingsandwarningsourceaudit inlinkedcheckpoint; no fullFPSrepair, matchedgain or new regression attribution. Ownercheckpointdiscussion precedesnextgroup; no sourcechange/push.
+
+- 2026-11-17 fresh whole-frame census/call stacks and exact main early/late probe/base/depth exports localize growing source demand: scalar64×40fourpack/receiver controls show1→~7.31positiveSHentries independentofreceivergeometry; bounded vectorized latefullimage afterscalar-equivalence shows6,242,661depthselectedreceivers/45,731,807positiveSHentries(~7.3257),144,101,229holds,286near-boundaryreceiverflags. These are source-demand counts, not GPUinstructions/timing; alpha incidence and complete criticalpath remainunknown. Next PRIVATE experiment before any production edit: producerGPU decode the existing HALF-quantized packedSH into derived exactfloatcoefficients once perpublication, preservingepochs/halfrounding/allprobes/alllighting and currentconsumerarithmetic. Qualifydecode/output/cost againstactualinputs; larger108/144Bpayload mayloseversus64Bpacked. No CPUreadback/publicationwait or quality reduction; do not select from source/register changes alone. Earlierambient/scalar/PCF/inline failures remainretained. [Map](research/home-whole-shader-map-20261117.md).
+
+- 2026-11-17 private7wide112Bdecodedfloat-bit prototype/source-review preserves27coefficientorder andoriginalSHexpression/guard/parallax. Exactactual4×130RGBA32UintKTXhash/payload retained. Rootbaseline/candidateMetal+metallibcompile4/4exit0; physicalGPUdecode/parity/cost andhostpublicationintegration notexecuted. Candidatecurrentlyrequires7widebindingandmustnotreplacecurrentviewer4wideresource. Best69231unchanged; nofix/gainacceptedfromcompile.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -8153,7 +8157,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex Home whole-frame GPU diagnosis
 - Discovered: 2026-11-17
 - Original reference: Xcode/Metal compiler diagnostic availability has no original viewer rendering equivalent. An absent diagnostic value cannot establish zero spills or a renderer regression.
-- Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private selector-current-gpu-20261117T0832Z working copies and encoder-counter exports; retained prior texture-selector-cut/recording-replay.json.
+- Evidence: [Whole-frame shader map](research/home-whole-shader-map-20261117.md), [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private selector-current-gpu-20261117T0832Z working copies and encoder-counter exports; retained prior texture-selector-cut/recording-replay.json.
 - Next action: Preserve the failed availability hypothesis and inspect supported per-function/compiler metadata when useful. Distinguish packaged-binary proof, source recompiled diagnostics and measured aggregate traffic; do not block whole-frame engineering on a blank cell or replace it with zero.
 - Verification: Current captured simple-alpha pair, base-light, projector and several other specialized fragment rows show allocated/high registers but a blank Spilled Bytes field. SSAO reports0bytes and exposure-history compute reports560bytes. Earlier0/304 simple-alpha comparisons were recorded after controlled Xcode source reloads. Exact reason for missing current values is unknown; no new zero-spill claim follows from the blank field.
 - Owner verification: pending
@@ -8166,6 +8170,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 a comment-only early working-copy Reload completes and reprofiles69.79→71.72ms, but the pair field remains blank/214GPR. This does not confirm a packaged-versus-recompile availability explanation. Temporary comment discarded with Don't Save; GPU Stop/Finished observed. Raw initial exports retained independently; no current zero-spill reading claimed.
 
+- 2026-11-17 complete fresh late69228 Xcode Shaders census retains138rows(70fragment/62vertex/6compute):62explicit0,75blank,1nonzero oldexposure560B. Main base214GPR/simplepair214/projector188/PBRalpha254/materialalpha242 areblank;SSAOblur83/lightmap188 report0. Same-name/label variants remain separate. SourceCallStack attributes inclusive69.89%base and54.46%simplepair samples tosharedbaseprobes; no summed subtree or liveFPS claim. Oldexposureallocation is not69231 parallelresolverallocation. Allreplaysstopped, source unchanged; metadataavailability remains unresolved.
+
 ## PPD-344 — Bounded native additive lights lack original volume-depth rejection
 
 - Status: investigating
@@ -8173,15 +8179,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex Home whole-frame lighting optimization
 - Discovered: 2026-11-17
 - Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp11898–12179 uses bounded cube proxies/depth testing and drawn-only inside coverage. Native renders bounded screen rectangles with compare-always depth; merely changing compare state is unsafe because its light vertices useZ0.
-- Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md); private selector-followup-20261117/lighting-source-audit and selector-current-gpu-20261117T0832Z raw counters/inputs.
-- Next action: Qualify exact early radial rejection for bounded count1 points and conservative retained-depth/volume coverage, with actual image/depth and whole-pass cost controls. Keep projector derivatives and legacy shiny light outside cookie behavior intact; do not blindly clip cones or change quality.
-- Verification: Captured10point+60projector screen-rectangle areas plus one fullscreen grid predict296,915,916fragments, within428 of measured296,915,488. Those light counts/rectangles stay fixed early/late; this is substantial additive-light work but does not by itself explain its growing shade cost. Native point rejection follows avoidable GBuffer/material/BRDF work; exact relative attribution and safe net gain remain unproved.
+- Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md), [lighting qualification](research/lighting-rejection-qualification-20261117.md); private selector-followup-20261117/lighting-source-audit and selector-current-gpu-20261117T0832Z raw counters/inputs.
+- Next action: Follow owner steering: inventory other whole-frame shader spills and remaining FPS-growth costs before further variants. Retain rejected point/projector shortcuts and unchanged69231; future volume/depth work still must preserve projector derivatives and legacy shiny behavior with actual image/cost qualification.
+- Verification: Captured10point+60projector rectangles plus one fullscreen grid predict296,915,916fragments, within428of measured296,915,488; counts/areas stay fixed early/late and are not proof of the growing cost's cause. Private point runtime shortcut passes216strict finite cases but regresses fully accepted GPU cells~2%; finite count1 variant fails two large-cell half components(PPD351) before timing. Projector reorder passes122cases/eight large checks but regresses useful shadowed/unshadowed cells~4–9%. All remain unselected; production is unchanged and safe net gain is unproved.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-17 registered after actual current-frame counters and original/native source audit. No light-volume/radius implementation or quality reduction selected. Do not count all296.9million fused invocations as base-probe evaluations.
+- 2026-11-17 next proposal registered before private shader editing: for uniform count1 only, evaluate the existing length(light.position_radius.xyz-position.xyz)/radius >1 predicate immediately after the unchanged depth/position reconstruction and return float4(0) before material/BRDF reads. Preserve the existing NaN-comparison fall-through, exact radius edge, sky discard and additive zero output; no squared-distance rewrite, new discard, projector change, volume/depth claim or multi-light arithmetic change. Original pointLightF tests radius before material work; current native repeats rejection after it. Require strict full-image/depth/binding and contained actual GPU-cost controls before selecting production code.
+- 2026-11-17 second private proposal registered before editing: projector position reconstruction and both raw dfdx/dfdy stay unconditional; move the existing sky and center_distance>=radius rejection ahead of normal sampling/oct decoding and geometric-normal receiver-plane adjustment. Surviving pixels retain the exact raw gradients, normal math and adjusted shadow inputs. Original spotLightF rejects radius before getNormRaw; original shadowUtil explains the native direct-shadow derivative requirement. Keep every later projected-Z, attenuation, cookie, shadow and outside-cookie legacy reflection condition unchanged. Source audit permits this precise order only; strict derivative-edge images and actual cost remain required before selection.
+- 2026-11-17 point runtime-branch candidate compiles and passes216strict half-image/depth/stencil/alpha/query cases after PPD350 fixture ownership correction. Six actual1024x576cost cells retain2400measured samples/100ABBApairs per cell, zero overlap and exact large-cell prechecks, validation disabled. Mixed PBR/legacy and rejected-only cells improve, but fully accepted PBR/legacy regress~2.16%/~2.44% with81/100 and72/100adverse pairs. This variant is unselected; production stays unchanged. Next private proposal uses a finite optional count1 function-constant PSO with literal loop count1 and an unchanged generic fallback, preserving the same exact predicate and outputs. Qualify old-library compatibility, inside/outside cost and real selection before integration.
+- 2026-11-17 projector reordering passes122strict finite cases with API/GPU validation, including legacy shiny outside the main cookie and both shadow channels. Eight1024x576cost cells retain3200measured samples/800ABBApairs with exact per-cell large-image/depth/stencil/alpha checks, actual validation disabled2 and zero command overlap. Rejected-only improves~4.63%, but representative lit cells regress~4.12–9.37% with92–100/100adverse pairs. Candidate is rejected; no production integration or viewer launch. Finite count1 point specialization also remains unselected after PPD351's strict large-cell difference. Owner requests whole-frame other-spill and remaining FPS-decline mapping before further optimization variants; best combined69231 stays unchanged.
 
 ## PPD-345 — Native exposure histogram construction is serial in one GPU thread
 
@@ -8278,3 +8288,40 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 registered before the private controller specification/guard repair. The original specifications, launch receipts and recordings remain immutable. This incident does not explain the simulator failure or prove an FPS effect.
 - 2026-11-17 first documentation harness rejects the new record because its Evidence field lacks a Markdown citation; added the existing integration/checkpoint note link before rerunning. No runtime or renderer check failed.
 - 2026-11-17 controller-v2 records corrected A69230/e719/executablebb281119/librarya40a256 and B69231/706/executable18fc2872/librarya5330e85 identities, with parent specification hashes. Actual Info.plist version, executable/library hashes and pinned successful staging receipt source/version/assets are checked before launch. Both dry-runs and the subsequent B2/A2 real launches pass those guards; originals remain untouched. Independent read-only review finds no remaining blocking identity/lifecycle issue. Harness33files passes after the citation repair.
+
+## PPD-350 — Point-light optimization fixture reports different visibility counts
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex PPD-344 query/correctness qualification
+- Discovered: 2026-11-17
+- Original reference: The production point-light pass and actual viewer occlusion-query owners must determine the applicable query contract. A private counting query around a light draw is not automatically a production query invariant.
+- Evidence: [Lighting qualification](research/lighting-rejection-qualification-20261117.md); private ppd344-point-rejection-20261117/point-qualification-20261117T110600Z compile/parity receipts, frozen fixture and initial raw case0 images/depth/stencil.
+- Next action: Keep independent per-arm visibility buffers in the fixture and retain both failed runs/drafts. Continue separate PPD344 cost qualification before selecting production code; keep the unchanged real query ownership boundary covered by renderer checks.
+- Verification: Original fixture shares one visibility buffer across two fresh render encoders; SDK26 documents reset on encoder creation. Diagnostic first case has baseline0/candidate531 despite exact image/depth/stencil/alpha. With independent per-arm buffers and all assertions unchanged,216/216cases pass, both first counts531,0different half components, exact depth/stencil/alpha/query counts and80positive cases. Production queries already create a fresh unique buffer per query-enabled pass/view and never attach it to point lighting; no production query defect or source change is established. GPU-cost qualification remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before changing the private fixture diagnostics or interpreting the failure. Candidate uses an exact count1 early zero return, not a new discard. The failed visibility comparison does not by itself establish a viewer query regression or justify removing query behavior.
+- 2026-11-17 diagnostic refinement preserves all assertions and records exact first-case baseline0/candidate531counts,531active pixels, zero differing half components and exact depth/stencil/alpha. Production query audit finds visibility enabled only for dedicated shadow/GBuffer proxy draws and explicitly disabled afterward; fresh point passes have no visibility buffer. SDK26 also documents default visibilityResultType reset on encoder creation. The fixture shares one result buffer across two fresh arm encoders; a reset of the first slot by the second encoder is a concrete setup hypothesis. Next repair isolates per-arm buffers without weakening equality or changing production; retest pending.
+- 2026-11-17 independent per-arm buffer repair confirms the setup hypothesis: compiled fixture582bfde4 against unchanged baselinea533/candidatedde699 completes216cases with exact RGBA16F/depth/stencil/alpha/counts,80positive/136intentionalzero cases, API/GPU validation enabled. First counts531/531. Both initial failures and all source/raw planes remain retained under point-qualification-20261117T110600Z and point-query-diagnostic-20261117T110939Z; successful retest is point-isolated-query-20261117T111220Z. The actual renderer audit finds fresh buffers per GBuffer/shadow view and no sharing across query-enabled encoders. No approximation exception or assertion weakening is used.
+
+## PPD-351 — Finite point-light variant differs in two large-fixture half components
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex PPD-344 specialization qualification
+- Discovered: 2026-11-17
+- Original reference: PPD344 retains existing native light math and radius conditions. Optional Bool5 forces one light and a literal loop count; compiler arithmetic/code-generation effects need qualification against the actual baseline.
+- Evidence: [Lighting qualification](research/lighting-rejection-qualification-20261117.md); private ppd344-point-rejection-20261117/point-specialized-parity-20261117T112801Z and point-specialized-cost-20261117T112839Z source/compile/PSO/raw-image receipts.
+- Next action: Retain strict failure and inspect exact coordinates, half values and source arithmetic before changing the variant or acceptance contract. No timing or production selection follows from a failed precheck.
+- Verification: Candidate8554b7/library source27091e46 with optional Bool5 true only for count1 passes216small finite cases with exact color/depth/stencil/alpha/query counts. The1024x576PBR mixed cost precheck reports2different half components, with0depth/stencil/alpha/nonfinite errors. Actual PSOs report shader validation disabled2 for cost; no cost samples were collected. Production and staged69231 remain unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before diagnosis or alternative shader editing. The failed precheck stops cost execution; an ensuing preparatory statistics query has no samples and raises an empty-median error, which is retained and provides no GPU evidence. No strict threshold has been relaxed.
+- 2026-11-17 raw diagnosis finds only blue at609,370 and438,376 changes by minus1halfULP (absolute3.0517578125e-5); other2,359,294components, depth/stencil/alpha remain exact. Nominal normalized distances~0.672/~0.690 are well inside the radius, so radius-edge classification is not supported as the immediate cause. Literal-count/fast-math code generation is consistent with the result but unproved. Earlier216case validationON1 and large-cell validationOFF2 also differ in instrumentation and pixel coverage; resolution alone is not established as the cause. No timing follows and the candidate remains unselected pending the owner-requested whole-frame evidence review.
