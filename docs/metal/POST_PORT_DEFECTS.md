@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-366 -->
+<!-- next-defect-id: PPD-368 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7699,6 +7699,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 owner-authorized fresh69238Home GPU capture covers login and world0–152.51s with successful early214→215/late1428→1429stopped traces. Normalcollector gate remainsFAILED at5.1109sGPU gap aligned with8.447s capture stop; realrecorder/all3exports0, raws retained, no thresholdchange/rerun. Capture-censored28.58→15.20FPS/wait7.38→39.83ms reproduces decline; no clean69236gain comparison. CurrentMedium/Overlappingreplay74.36→119.32ms localizes growth: fixedmain fragmentcount/ALUperfragment1.77×, fewerlargealpha fragments/ALUperfragment4.93×. Exactmainprobes1→26/lightrects/targetfixed. Actualhot38566 genericHigh2pair/no8/9mask whilepreparedpostencodingactiveelsewhere; fallback/SHcostsplitunrecorded. Original23,521nodes/10.693GBhashes unchanged; viewerclosed/Goodbye/replaysstopped. No sourceedit/recompile/newoptimization/push. [69238 Home replay findings](research/home-replay-checkpoint-69238-20261117.md).
 
+- 2026-11-17 current69238saved-framehelpercontrols qualify substantial global retained probe and shadow work: SHoff122.19→100.26→124.91ms; sharedprobe-bypass124.91→64.43→122.32; shadow-bypass122.32→100.89→129.84; syntheticacceptedtap129.84→89.14→120.81. These are deliberately altered lighting, global dependent views and nonadditive replay diagnostics, not shipped fixes/liveFPS. SoloSHinline120.81→116.65→123.64 remains inconclusive and unpromoted. General decision/capture build69241is separately verified for owner Home+club reason collection; exact hot fallback, exclusive data-access cost and whole-engine improvement remain unresolved. [Current group](work/active/home-probe-cost-integration-20261117.md).
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -8195,6 +8197,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 unchanged69238Home initialreplays retain129early/112lateobservedshaderrows:59explicitzerosineach,70/53blank,nonzerorows0. Expensivegeneric simple/BASE214GPR eachhaveblankspillfields; no spill-free claim. Currentbufferread/ALUcostgrowthisobserved,butFSdevicebufferwritesdonotshowoldGiB-scalewrites. No sourcerecompile/metadataforcing or currentcontrolledA/B wasdone. Per-line/helperandactualspillallocation/costremainunknown; sourceandcapturetablecompletenesslimits retained in [69238 Home replay findings](research/home-replay-checkpoint-69238-20261117.md).
 
+- 2026-11-17 fresh69238recompiled/restored controls and coarse helper variants retain blank spill fields for expensive simple/BASE/PBR/material rows; restored simple/BASE214GPR is observed, not zero spill. No per-line stall or complete shader-table coverage is credited. Expected source hashes and critical transcribed AX excerpts are explicitly qualified; they are not actual exported editor buffers/full trees. All variants were restored and stopped; source-MSL/library hashes unchanged. The solo inline trial is inconclusive, so no compiler repair or spill elimination is claimed. [Current group](work/active/home-probe-cost-integration-20261117.md).
+
 ## PPD-344 — Bounded native additive lights lack original volume-depth rejection
 
 - Status: investigating
@@ -8609,16 +8613,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 typed decision diagnostics2109c8d3af/builder712f1faf3b pass test-target build and API/GPU validation1,803,683assertions/37cases, including strict fallback/restoration color/depth/stencil, current prerequisites, admission/reentrant/residency reason partitioning and reload history. Independent source review finds no behavior-selection change. No new shader math, in-world classification or FPS gain is claimed; combined staging is pending.
 
+- 2026-11-17 finalbuildercb3e148ec9/rootimplementationd5e93bbed2 passes combined build, current core1,805,166/47 and existing renderer50,843/18, plus strict3610files0blockers/errors. Separately staged69241matches8272nonrootnodes/346ARM64/signature/ownedimports. Typed per-call reasons and successful CPU binding observations are ready for owner Home+club qualification. No rendering math or lighting quality change is selected; the actual69238hot fallback remains unknown until current decision evidence is collected. [Current group](work/active/home-probe-cost-integration-20261117.md).
+
 ## PPD-364 — Initial multi-scene capture draft retains teleport permission across terminal invalidation
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex diagnostic capture orchestration
 - Discovered: 2026-11-17
 - Original reference: Native diagnostic mechanism has no upstream equivalent. A second capture generation is authorized only for a connected post-teleport scene; logout/disconnect/exit must not revive collection, and failed captures remain terminal.
 - Evidence: [Integration group](work/active/home-probe-cost-integration-20261117.md); private home-probe-cost-integration-20261117/capture-policy/orchestration-pre-review.diff retains the uncommitted first draft. Independent source review finds teleport_pending can survive a subsequent non-teleport invalidation and permit a later same-process readiness event to rearm. No viewer execution, unexpected capture or overwritten evidence was observed.
 - Next action: Clear pending permission on terminal non-teleport invalidation and exclude simultaneous disconnect/logout/exit from the teleport-only signal. Qualify policy and caller guards before the combined build/checkpoint.
-- Verification: Pending correction/source review; pure policy tests do not exercise viewer invalidation-reason classification.
+- Verification: Corrected caller source review and actual controller fresh-process positive/revocation tests pass. Two real stopped early captures prove generation2/private distinct output/Home preservation; revocation keeps capture_failed false while preventing later readiness from rearming. Seven controller cases265assertions pass under capture-supported configuration; full build/staging pass. Four actual SL workload captures and owner acceptance remain pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8628,9 +8634,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 corrected caller guards revoke pending permission on non-teleport invalidation and suppress simultaneous disconnect/logout/exit. Independent source review passes; policy native-failure/expiry nonrevival and two-generation budget pass1483CPUassertions/10cases. Viewer orchestration execution remains untested; combined build pending.
 
+- 2026-11-17 actual controller selectors rearm/revoke/conflict/native/cutoff/off/budget pass265assertions/seven fresh processes. Rearm produces two distinct stopped tiny-blit captures, original metadata/sentinel stay unchanged, third generation is refused; source-guarded terminal invalidation revokes permission without hiding behind a failure flag. No viewer or four-phase SL coverage is inferred. Initial unsupported validation configuration failures remain separately registeredPPD366.
+
 ## PPD-365 — Private capture-aware receipt fails on a missing GPU export family
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex private capture qualification helper
 - Discovered: 2026-11-17
@@ -8644,3 +8652,41 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-17 registered on receipt of the independent helper's red-test notice; agent correction completed before root registration and both versions remain retained. Later review found CPU-gap eligibility omitted from a coverage boolean; preserve that intermediate source and its correction too. These are private evidence-tool development failures; no engine or runtime failure is inferred.
+
+## PPD-366 — Actual capture-controller qualification fails to start under the initial validation configuration
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex native capture qualification harness
+- Discovered: 2026-11-17
+- Original reference: Diagnostic capture controller must be qualified under supported Metal capture settings, separately from shader-correctness validation. A failed native capture start is not a successful rearm or runtime checkpoint.
+- Evidence: [Integration group](work/active/home-probe-cost-integration-20261117.md); private controller-rearm-01 at buildercb3e148ec9 exits42 after21passing assertions, capture_active false. Retained native metadata records start_failed/native_error_code1 with API validation1, shader validation1 and capture enabled1. Actual factory created its private output directory; no successful trace or second-scene test is credited.
+- Next action: Use the qualified API-validation1/shader-validation0 capture-controller mode; preserve initial/repeated unsupported configuration controls. Core shader correctness remains separately validated with shader validation1. Owner performance captures already disable validation; no viewer code repair is required for this private harness configuration.
+- Verification: Local SDK identifies native code1 as MTLCaptureErrorNotSupported. Same binary and rearm fixture fail before authored work with API1/shader1/capture1, pass78assertions with only shader validation changed to0, and fail again under restored shader1. Supported-mode controller suite passes265assertions/seven fresh processes. This is installed-runtime/configuration evidence, not a universal Metal incompatibility claim. Core renderer1,805,166/47 and existing renderer50,843/18 retain shader validation1 and pass.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before configuration repair. Shader-validation incompatibility is a hypothesis until the native error and controlled configuration retest establish the cause. No viewer launch, lost owner recording or rendering regression was observed.
+
+- 2026-11-17 controlled same-binary validation1→0→1 sequence retains failures42/pass0/failure42 and corresponding native metadata/error1; output and source guards are unchanged. Private runner now explicitly records capture shader-validation mode0. Seven supported-mode actual controller cases pass, including rearm/revocation. No renderer/shader correctness test or normal five-second coverage threshold was weakened; actual SL capture behavior remains an owner checkpoint gate.
+
+## PPD-367 — Private checkpoint launcher emits unclosed-file ResourceWarnings
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex private checkpoint launcher
+- Discovered: 2026-11-17
+- Original reference: Binary identity checks must close their read handles explicitly and leave dry runs free of file mutations or process launches. The original private launcher supplied exe.open directly to file_digest; this group added the same pattern for the Metal library.
+- Evidence: [Integration group](work/active/home-probe-cost-integration-20261117.md); private runtime-recording-controller/launcher-unit-01.log retains five passing controls plus ResourceWarnings from the two unclosed temporary read handles. The before-explicit-close launcher snapshot is retained; no persistent descriptor leak or viewer FPS effect was observed.
+- Next action: Keep explicit context managers and warning-free no-launch guards; preserve initial launcher/logs. Owner runtime checkpoint remains pending.
+- Verification: Corrected launcher passes five CPU controls including ResourceWarning catch/gc checks. Both actual staged-identity dry modes pass with zero warnings/Popen/settings writes/GPU activity, preserving19architecture arguments and validating executable/metallib hashes. Earlier two-warning dry runs and source snapshot remain retained; no persistent leak or FPS effect is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correcting private launcher read ownership. This is launcher startup hygiene, not a demonstrated renderer or FPS defect; warning relevance is investigated rather than dismissed.
+
+- 2026-11-17 explicit context-manager correction leaves hash comparisons unchanged. Five launcher checks and both actual69241identity dry runs pass warning-free without launching anything. The launcher defaults to replay capture; --normal-control explicitly disables the capture layer. No viewer or shader source change follows from this private fix.
