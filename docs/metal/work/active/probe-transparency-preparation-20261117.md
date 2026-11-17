@@ -52,3 +52,8 @@ Stop here as the owner requested after the first coherent group. **No viewer, pr
 PPD363 independently confirms a source eligibility omission for valid post-water-only simple alpha; the new authored fixture exercised pre-water only. Runtime per-draw stage incidence is unretained, so actual activation is unproved rather than globally inferred absent from snapshots. Group1's intended transparency boundary is **not accepted in-world**. Repair/test that boundary before judging its performance or proceeding with shader conclusions. PPD362 preserves the separate root512MiB capture setup error and successful256MiB replacement. All raw data/failures remain local; no source fix, additional profile, build or push occurred during this assessment.
 
 Fresh current-build GPU frame captures/counters are needed for replay, exact draws/shaders and remaining compiler spill evidence; today’s continuous Overview/native traces do not provide those fields. Preserve quality/valid contributions and pursue the approved later groups from current evidence.
+
+
+## Post-water repair ready for re-recording
+
+[PPD363 repair](probe-transparency-post-water-repair-20261117.md) reproduces the missing post-only owner with actual0-versus2prepared draws, then corrects eligibility while retaining stage/depth/math behavior. New cumulative pre/post activity prevents later call snapshots hiding earlier CPU encodings. Native exact-output/reload/fallback checks and the separately verified69238combined app pass; in-world activation and FPS acceptance remain pending. Preserve the69236checkpoint above as the evidence that exposed this integration gap. No new viewer recording or push during repair.
