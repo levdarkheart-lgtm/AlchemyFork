@@ -18,6 +18,7 @@
 #include "almetalshadowprepare.h"
 #include "almetalframeadmission.h"
 #include "almetalprobecandidates.h"
+#include "alnativeframebudget.h"
 
 #include "../newview/SMAAAreaTex.h"
 #include "../newview/SMAASearchTex.h"
@@ -30,11 +31,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <exception>
 #include <limits>
 #include <new>
 #include <numeric>
+#include <optional>
 #include <functional>
 #include <string_view>
 #include <type_traits>
@@ -46,6 +49,20 @@
 namespace
 {
     using CommandSettlementObserver = std::function<void(bool)>;
+
+    std::optional<std::uint64_t> currentThreadCpuNanoseconds() noexcept
+    {
+        timespec value{};
+        if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &value) != 0 ||
+            value.tv_sec < 0 || value.tv_nsec < 0 || value.tv_nsec >= 1000000000L)
+            return std::nullopt;
+        constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+        const auto seconds = static_cast<std::uint64_t>(value.tv_sec);
+        const auto nanoseconds = static_cast<std::uint64_t>(value.tv_nsec);
+        if (seconds > (maximum - nanoseconds) / 1000000000ULL)
+            return std::nullopt;
+        return seconds * 1000000000ULL + nanoseconds;
+    }
 
     void recordSimpleAlphaPSOMetrics(
         const ALMetalWorldSimpleShadowPSOCensus& census) noexcept
@@ -2851,6 +2868,9 @@ struct ALMetalWorldGBufferRenderer::Impl
             }
             const auto tickets = main_admission.submittedTickets(decision.blocking_frame);
             ++main_stats.older_group_waits;
+            auto& frame_budget = ALNativeFrameBudget::instance();
+            const auto observation_frame = frame_budget.snapshot().frame;
+            const auto cpu_start = currentThreadCpuNanoseconds();
             const auto start = std::chrono::steady_clock::now();
             bool waited = false;
             std::string failure;
@@ -2863,9 +2883,22 @@ struct ALMetalWorldGBufferRenderer::Impl
                 if (!pending.command->waitUntilCompleted(&wait_error) && failure.empty())
                     failure = wait_error.empty() ? "An older Metal main frame failed" : wait_error;
             }
-            main_stats.wait_nanoseconds += static_cast<std::uint64_t>(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::steady_clock::now() - start).count());
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            const auto cpu_end = currentThreadCpuNanoseconds();
+            const auto wall_nanoseconds = elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0;
+            main_stats.wait_nanoseconds += wall_nanoseconds;
+            if (waited)
+            {
+                std::optional<std::uint64_t> cpu_nanoseconds;
+                if (cpu_start && cpu_end && *cpu_end >= *cpu_start)
+                    cpu_nanoseconds = *cpu_end - *cpu_start;
+                // Only the older required-main completion wait is observed.
+                // CPU inside this span is already included by the outer owner;
+                // the budget adds only proven nonCPU blocking, never GPU time.
+                frame_budget.recordRequiredMainGpuWait(
+                    observation_frame, wall_nanoseconds, cpu_nanoseconds);
+            }
             std::string retirement_error;
             const bool retired = pruneMainBatches(&retirement_error);
             if (!failure.empty() || !retired)

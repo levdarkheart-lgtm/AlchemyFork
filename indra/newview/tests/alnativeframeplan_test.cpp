@@ -37,6 +37,8 @@ TEST_CASE("Native outer frame scope advances once and nested scopes cannot refil
         first = budget.snapshot().frame;
         CHECK(first == previous + 1);
         CHECK(budget.snapshot().initialized);
+        CHECK(budget.snapshot().main_observations_open);
+        REQUIRE(budget.recordRequiredMainGpuWait(first, 100, 0));
         CHECK_FALSE(budget.snapshot().memory_pressure);
         for (unsigned at = 0; at < Budget::Limits{}.uploads_per_frame; ++at)
         {
@@ -52,6 +54,8 @@ TEST_CASE("Native outer frame scope advances once and nested scopes cannot refil
             CHECK(budget.snapshot().frame == first);
             CHECK(budget.snapshot().uploads_this_frame == exhausted.uploads_this_frame);
             CHECK_FALSE(budget.snapshot().memory_pressure);
+            CHECK(budget.snapshot().main_observations_open);
+            CHECK(budget.snapshot().required_main_gpu_wait_observations == 1);
             const auto denied = budget.tryAcquire(Budget::Work::upload, 1);
             CHECK_FALSE(denied);
             CHECK(denied.reason == Budget::Reason::frame_work);
@@ -60,12 +64,17 @@ TEST_CASE("Native outer frame scope advances once and nested scopes cannot refil
         // active, including for a later nested display/snapshot recursion.
         MainScope later_nested(frameInputs());
         CHECK(budget.snapshot().frame == first);
+        CHECK(budget.snapshot().main_observations_open);
         CHECK(budget.snapshot().uploads_this_frame == exhausted.uploads_this_frame);
         outer.recordRequiredWork();
     }
+    CHECK_FALSE(budget.snapshot().main_observations_open);
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(first, 1, 0));
     MainScope next(frameInputs());
     CHECK(budget.snapshot().frame == first + 1);
     CHECK(budget.snapshot().uploads_this_frame == 0);
+    CHECK(budget.snapshot().main_observations_open);
+    CHECK(budget.snapshot().required_main_gpu_wait_observations == 0);
     CHECK(budget.tryAcquire(Budget::Work::upload, 1));
 }
 

@@ -3468,6 +3468,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const auto frame_plan = ALNativeFrameBudget::instance().snapshot();
             LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
                 << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
+                << ", required_main_cpu/wait_wall/wait_cpu/non_cpu/pressure_ns="
+                << frame_plan.required_main_cpu_ns << '/' << frame_plan.required_main_gpu_wait_wall_ns
+                << '/' << frame_plan.required_main_gpu_wait_thread_cpu_ns << '/'
+                << frame_plan.required_main_gpu_wait_non_cpu_ns << '/' << frame_plan.required_main_pressure_ns
+                << ", main_wait_observations/unknown/open="
+                << frame_plan.required_main_gpu_wait_observations << '/'
+                << frame_plan.required_main_gpu_wait_unknown_observations << '/' << frame_plan.main_observations_open
                 << ", admitted/deferred/progress/retired=" << frame_plan.admitted << '/' << frame_plan.deferred << '/' << frame_plan.progress_admissions << '/' << frame_plan.retired
                 << ", uploads_inflight/count_bytes=" << frame_plan.uploads_in_flight << '/' << frame_plan.upload_bytes_in_flight
                 << ", maintenance_this_frame/count_bytes=" << frame_plan.maintenance_this_frame << '/' << frame_plan.maintenance_bytes_this_frame

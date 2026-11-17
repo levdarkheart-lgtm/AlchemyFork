@@ -1697,6 +1697,24 @@ bool LLAppViewer::doFrame()
                 // destructor records the full outer frame, excluding CPU
                 // spent inside explicitly admitted optional update groups.
                 native_frame_plan.recordRequiredWork();
+                if (ALMetalDiagnosticTelemetry::enabled())
+                {
+                    const auto pressure = ALNativeFrameBudget::instance().snapshot();
+                    const std::uint64_t flags =
+                        (pressure.main_busy ? 1ULL : 0ULL) |
+                        (pressure.main_observations_open ? 2ULL : 0ULL) |
+                        (pressure.required_main_gpu_wait_saturated ? 4ULL : 0ULL) |
+                        (pressure.required_main_pressure_saturated ? 8ULL : 0ULL) |
+                        (pressure.required_main_gpu_wait_unknown_observations ? 16ULL : 0ULL);
+                    ALMetalDiagnosticTelemetry::recordMetrics(
+                        ALMetalDiagnosticTelemetry::currentFrameTag(), "required_main_pressure",
+                        {pressure.frame, pressure.required_main_cpu_ns,
+                         pressure.required_main_gpu_wait_wall_ns,
+                         pressure.required_main_gpu_wait_thread_cpu_ns,
+                         pressure.required_main_gpu_wait_non_cpu_ns,
+                         pressure.required_main_pressure_ns,
+                         pressure.required_main_gpu_wait_observations, flags});
+                }
                 ALNativeFramePlan::observeMainCompletion(
                     gViewerWindow->getWindow()
                         ? gViewerWindow->getWindow()->getMetalFrameScheduler() : nullptr,

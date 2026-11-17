@@ -5,12 +5,14 @@
  */
 #include "../almetalworld.h"
 #include "../almetalpipeline.h"
+#include "alnativeframebudget.h"
 #import <Metal/Metal.h>
 #include <catch2/catch_test_macros.hpp>
 #include <dispatch/dispatch.h>
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <thread>
 
 namespace
@@ -77,6 +79,35 @@ struct Gate
     bool watchdogTripped() const { return state->load() == 2; }
     ~Gate() { release(); }
 };
+
+struct BudgetObservation
+{
+    ALNativeFrameBudget& budget = ALNativeFrameBudget::instance();
+    ALNativeFrameBudget::Frame frame = 0;
+    BudgetObservation()
+    {
+        const auto previous = budget.snapshot();
+        REQUIRE(previous.frame < std::numeric_limits<ALNativeFrameBudget::Frame>::max() - 1);
+        REQUIRE_FALSE(previous.draining);
+        frame = previous.frame + 1;
+        ALNativeFrameBudget::FrameInputs inputs;
+        inputs.frame = frame;
+        inputs.frame_interval_ns = 64000000;
+        inputs.required_main_cpu_ns = 14000000;
+        budget.beginFrame(inputs);
+        REQUIRE_FALSE(budget.snapshot().main_busy);
+    }
+    ~BudgetObservation()
+    {
+        budget.closeMainObservations(frame);
+        // Leave the shared native-test singleton without synthetic pressure.
+        // Outstanding resource credits still retire through their own leases.
+        ALNativeFrameBudget::FrameInputs neutral;
+        neutral.frame = frame + 1;
+        budget.beginFrame(neutral);
+        budget.closeMainObservations(neutral.frame);
+    }
+};
 }
 
 TEST_CASE("almetal: main admission preserves three early commits and waits only older frame groups",
@@ -85,6 +116,7 @@ TEST_CASE("almetal: main admission preserves three early commits and waits only 
     @autoreleasepool
     {
         Fixture f;
+        BudgetObservation observation;
         Gate gate(f);
         std::vector<std::unique_ptr<ALMetalRenderTarget>> targets;
         std::vector<std::shared_ptr<const ALMetalCommandCompletion>> completions;
@@ -110,6 +142,7 @@ TEST_CASE("almetal: main admission preserves three early commits and waits only 
         auto stats = f.renderer->mainFrameStats();
         CHECK(stats.pending_groups == 2); CHECK(stats.pending_commands == 6);
         CHECK(stats.older_group_waits == 0); CHECK(stats.reservations == 0);
+        CHECK(observation.budget.snapshot().required_main_gpu_wait_observations == 0);
         CHECK_FALSE(f.renderer->beginMainFrameBatch(2, "Fourth main stage denied", &f.error));
         CHECK_FALSE(f.renderer->beginMainFrameBatch(1, "Stale main group denied", &f.error));
         CHECK(f.renderer->mainFrameStats().width_denials == 1);
@@ -127,6 +160,14 @@ TEST_CASE("almetal: main admission preserves three early commits and waits only 
         CHECK(released->load());
         CHECK(f.renderer->mainFrameStats().older_group_waits == 1);
         CHECK(f.renderer->mainFrameStats().wait_nanoseconds > 0);
+        const auto pressure = observation.budget.snapshot();
+        CHECK(pressure.required_main_gpu_wait_observations == 1);
+        CHECK(pressure.required_main_gpu_wait_unknown_observations == 0);
+        CHECK(pressure.required_main_gpu_wait_wall_ns > 0);
+        CHECK(pressure.required_main_gpu_wait_non_cpu_ns > 0);
+        CHECK(pressure.required_main_pressure_ns ==
+            pressure.required_main_cpu_ns + pressure.required_main_gpu_wait_non_cpu_ns);
+        CHECK(pressure.main_busy);
         f.renderer->cancelCommandBatch();
         gate.release(); REQUIRE(f.device->waitUntilIdle(&f.error));
         for (unsigned i = 0; i < targets.size(); ++i) f.checkColor(*targets[i], i % 3);
@@ -186,6 +227,7 @@ TEST_CASE("almetal: main authority survives shader reload and retires through le
     @autoreleasepool
     {
         Fixture f;
+        BudgetObservation observation;
         Gate gate(f);
         for (unsigned i = 0; i < 3; ++i)
         {
@@ -200,11 +242,24 @@ TEST_CASE("almetal: main authority survives shader reload and retires through le
         const std::array owners{f.renderer.get()};
         REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data, owners, &f.error));
         CHECK(f.renderer->mainFrameStats().pending_commands == 3);
+        Gate utility_gate(f);
         REQUIRE(f.renderer->beginCommandBatch("Legacy utility retains one-command cap", &f.error, 1));
-        auto utility = f.clear(1); REQUIRE(f.renderer->commitCommandBatch(&f.error));
+        auto utility = f.clear(1);
+        auto utility_completion = f.renderer->commandBatchCompletion(); REQUIRE(utility_completion);
+        REQUIRE(f.renderer->commitCommandBatch(&f.error));
+        CHECK_FALSE(utility_completion->isComplete());
         CHECK(f.renderer->mainFrameStats().pending_commands == 0);
         CHECK(f.renderer->mainFrameStats().completed == 3);
+        id<MTLSharedEvent> utility_event = utility_gate.event;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+            dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                utility_event.signaledValue = 1;
+            });
         REQUIRE(f.renderer->beginMainFrameBatch(2, "Main after utility", &f.error));
+        CHECK(utility_completion->isComplete());
+        CHECK(observation.budget.snapshot().required_main_gpu_wait_observations == 0);
+        CHECK_FALSE(observation.budget.snapshot().main_busy);
+        utility_gate.release();
         auto main = f.clear(2); REQUIRE(f.renderer->commitCommandBatch(&f.error));
         REQUIRE(f.renderer->beginShadowFrameBatch(1, "Independent shadow authority", &f.error));
         f.renderer->cancelCommandBatch();

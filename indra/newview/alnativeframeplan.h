@@ -50,6 +50,7 @@ private:
     void begin(ALNativeFrameBudget::FrameInputs inputs);
     std::uint64_t mCpuStart = 0;
     std::uint64_t mOptionalCpu = 0;
+    ALNativeFrameBudget::Frame mBudgetFrame = 0;
     bool mActive = false;
 };
 

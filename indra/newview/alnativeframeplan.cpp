@@ -96,6 +96,7 @@ ALNativeFramePlan::MainScope::MainScope(double interval_seconds, std::uint64_t m
 void ALNativeFramePlan::MainScope::begin(ALNativeFrameBudget::FrameInputs inputs)
 {
     inputs.frame = ++frame_serial;
+    mBudgetFrame = inputs.frame;
     inputs.required_main_cpu_ns = previous_required_cpu;
     ALNativeFrameBudget::instance().beginFrame(inputs);
     current_main = this;
@@ -106,6 +107,7 @@ ALNativeFramePlan::MainScope::~MainScope()
 {
     if (!mActive) return;
     recordRequiredWork();
+    ALNativeFrameBudget::instance().closeMainObservations(mBudgetFrame);
     current_main = nullptr;
 }
 

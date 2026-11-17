@@ -39,6 +39,9 @@ FRAME_FIELDS = ("iteration_id", "start_mach_ns", "end_mach_ns", "begin_display_f
 FRAME_WIDTH = len(FRAME_FIELDS)
 FRAME_INDEX = {name: i for i, name in enumerate(FRAME_FIELDS)}
 METRIC_FIELDS = {
+    "required_main_pressure": ("budget_frame", "required_main_cpu_ns", "wait_wall_ns",
+                               "wait_thread_cpu_ns", "wait_non_cpu_ns", "pressure_ns",
+                               "wait_observations", "flags_busy_open_waitsat_pressuresat_unknowncpu"),
     "source_cache": ("entries", "unique_resources", "estimated_bytes", "max_bytes", "byte_rejections",
                      "entry_and_byte_rejections", "capacity_evictions", "new_retains"),
     "vertex_uploads": ("full_uploads", "partial_uploads", "uploaded_bytes", "recycled_generations",
