@@ -18,7 +18,7 @@
 #include "almetalshadowprepare.h"
 #include "almetalframeadmission.h"
 #include "almetalprobecandidates.h"
-#include "alnativeframebudget.h"
+#include "../llcommon/alnativeframebudget.h"
 
 #include "../newview/SMAAAreaTex.h"
 #include "../newview/SMAASearchTex.h"

@@ -5,7 +5,7 @@
  */
 #include "../almetalworld.h"
 #include "../almetalpipeline.h"
-#include "alnativeframebudget.h"
+#include "../../llcommon/alnativeframebudget.h"
 #import <Metal/Metal.h>
 #include <catch2/catch_test_macros.hpp>
 #include <dispatch/dispatch.h>
