@@ -50,6 +50,23 @@ scene-2 directory without overwrite. PPD364 retains the first draft's stale
 teleport permission and its corrected source review. Orchestration runtime and
 four replayable frames remain unverified until the owner checkpoint.
 
+These changes apply to every supported scene. Home supplies the diagnosed
+workload, not fixed coordinates, lighting or probe IDs in product code. Scene
+selection, valid contributions and rendering quality remain unchanged. Camera
+eye-plane language describes general conservative geometry; its applicability
+to the inspected draw is still being tested, not used to justify dropping taps.
+
+An independent audit recovers the earlier [producer-SH qualification](../../research/home-producer-sh-qualification-20261117.md).
+Both C/H coefficient-layout variants already failed net-cost acceptance on
+bounded actual-atlas/native synthetic draws; current core helper bodies are
+identical to that baseline. Do not repeat their representation change without a
+new demonstrated question. Probe-specific parallax means its SH direction/basis
+cannot be shared once per pixel or view without changing lighting. Fresh helper
+ablations answer a different question about the69238saved workload; none has
+yet produced a valid B/restored-control result. One comment-only recompiled
+control reports113.42ms with214GPR/blankspill, not a performance improvement.
+PPD334 retains the subsequent AX tooling blockage and normal-Quit recovery.
+
 Private evidence root is the original checkout's ignored
 `artifacts/metal/home-probe-cost-integration-20261117/`. It retains source patches,
 native stdout/stderr/receipts, policy red/green sources and results, exact Xcode

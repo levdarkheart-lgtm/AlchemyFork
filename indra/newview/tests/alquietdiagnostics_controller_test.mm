@@ -18,6 +18,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <sys/stat.h>
@@ -118,6 +119,34 @@ void reachFirstAttempt(ALMetalDevice& device, Shutdown& shutdown)
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     REQUIRE(alQuietDiagnosticsStatistics().attempts == 1);
+}
+
+std::string readText(const fs::path& path)
+{
+    std::ifstream input(path);
+    REQUIRE(input.is_open());
+    return {std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>()};
+}
+
+void completeCapturedBlit(ALMetalDevice& device,Shutdown& shutdown,unsigned char value)
+{
+    REQUIRE(alQuietDiagnosticsStatistics().capture_active);
+    REQUIRE([MTLCaptureManager sharedCaptureManager].isCapturing);
+    std::string error;
+    ALMetalBufferDescriptor descriptor;
+    descriptor.length=4;descriptor.storage=ALMetalStorageMode::shared;
+    auto output=ALMetalBuffer::create(device,descriptor,&error);REQUIRE(output);
+    auto command=device.makeCommandBuffer("Quiet controller scene-rearm ordinary work",&error);REQUIRE(command);
+    auto native_command=(__bridge id<MTLCommandBuffer>)command->nativeHandle();
+    auto blit=[native_command blitCommandEncoder];REQUIRE(blit);
+    [blit fillBuffer:(__bridge id<MTLBuffer>)output->nativeHandle()
+               range:NSMakeRange(0,4) value:value];
+    [blit endEncoding];REQUIRE(command->commit(&error));
+    alQuietDiagnosticsAdvanceDisplay(&device,quietNormalDisplay(++shutdown.frame));
+    CHECK_FALSE(alQuietDiagnosticsStatistics().capture_active);
+    CHECK_FALSE([MTLCaptureManager sharedCaptureManager].isCapturing);
+    REQUIRE(command->waitUntilCompleted(&error)); // Test-only, after controller stop.
+    CHECK(*static_cast<const unsigned*>(output->mappedBytes())==unsigned(value)*0x01010101u);
 }
 }
 
@@ -278,6 +307,115 @@ TEST_CASE("quiet controller: actual factory collision consumes one failed attemp
             alQuietDiagnosticsAdvanceDisplay(device.get(), quietNormalDisplay(++shutdown.frame));
         CHECK(alQuietDiagnosticsStatistics().attempts == 1);
         CHECK_FALSE(fs::exists(directory.path / ALMetalFrameCapture::quiet_late_directory));
+        // Even a later genuine teleport cannot retry a native factory failure.
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,true);
+        alQuietDiagnosticsAdvanceDisplay(device.get(),quietNormalDisplay(++shutdown.frame));
+        const auto after_teleport=alQuietDiagnosticsStatistics();
+        CHECK(after_teleport.capture_failed);
+        CHECK(after_teleport.terminal);
+        CHECK(after_teleport.scene_generation==1);
+        CHECK(after_teleport.total_attempts==1);
+        CHECK_FALSE(fs::exists(directory.path/"scene-2"));
+        CHECK(readText(sentinel)=="preserved");
+    }
+}
+
+TEST_CASE("quiet controller: completed Home capture rearms Club after heartbeat-only teleport",
+          "[.][quiet-controller-rearm]")
+{
+    if(!nativeRequested())return;
+    @autoreleasepool
+    {
+        REQUIRE(std::getenv("MTL_CAPTURE_ENABLED"));
+        REQUIRE(std::strcmp(std::getenv("MTL_CAPTURE_ENABLED"),"1")==0);
+        Environment environment;Directory directory;std::string error;
+        auto device=ALMetalDevice::create(&error);REQUIRE(device);
+        auto manager=[MTLCaptureManager sharedCaptureManager];
+        REQUIRE([manager supportsDestination:MTLCaptureDestinationGPUTraceDocument]);
+        REQUIRE_FALSE(manager.isCapturing);
+        Shutdown shutdown;alQuietDiagnosticsInitialize();REQUIRE(D::enabled());
+        reachFirstAttempt(*device,shutdown);
+        completeCapturedBlit(*device,shutdown,0x31);
+        const auto home=directory.path/ALMetalFrameCapture::quiet_early_directory;
+        const auto home_trace=home/ALMetalFrameCapture::trace_name;
+        REQUIRE(fs::exists(home_trace));
+        const auto home_metadata=readText(home/ALMetalFrameCapture::metadata_name);
+        CHECK(home_metadata.find("\"status\":\"stopped\"")!=std::string::npos);
+        const auto sentinel=home/"sentinel";
+        {std::ofstream output(sentinel);output<<"Home-preserved";}
+        CHECK(alQuietDiagnosticsStatistics().scene_generation==1);
+        CHECK(alQuietDiagnosticsStatistics().total_attempts==1);
+
+        // Neither display call carries teleport. Only the actual app heartbeat
+        // observes the transition. A prior false teleport signal must not
+        // prevent a subsequently observed genuine teleport from permitting it.
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,false);
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,true);
+        auto stats=alQuietDiagnosticsStatistics();
+        CHECK(stats.terminal);CHECK_FALSE(stats.capture_failed);CHECK_FALSE(stats.capture_active);
+        alQuietDiagnosticsAdvanceDisplay(device.get(),quietNormalDisplay(++shutdown.frame));
+        stats=alQuietDiagnosticsStatistics();
+        REQUIRE(stats.scene_generation==2);
+        CHECK(stats.started);CHECK_FALSE(stats.terminal);CHECK_FALSE(stats.capture_failed);
+        CHECK(stats.attempts==0);CHECK(stats.total_attempts==1);
+        const auto club=directory.path/"scene-2";
+        struct stat status{};REQUIRE(lstat(club.c_str(),&status)==0);
+        CHECK(S_ISDIR(status.st_mode));CHECK(status.st_uid==geteuid());
+        CHECK((status.st_mode&07777)==0700);
+
+        reachFirstAttempt(*device,shutdown);
+        CHECK(alQuietDiagnosticsStatistics().scene_generation==2);
+        CHECK(alQuietDiagnosticsStatistics().total_attempts==2);
+        completeCapturedBlit(*device,shutdown,0x32);
+        const auto club_early=club/ALMetalFrameCapture::quiet_early_directory;
+        REQUIRE(fs::exists(club_early/ALMetalFrameCapture::trace_name));
+        CHECK_FALSE(fs::equivalent(home_trace,club_early/ALMetalFrameCapture::trace_name));
+        CHECK(readText(club_early/ALMetalFrameCapture::metadata_name).find("\"status\":\"stopped\"")!=std::string::npos);
+        CHECK(readText(home/ALMetalFrameCapture::metadata_name)==home_metadata);
+        CHECK(readText(sentinel)=="Home-preserved");
+        CHECK_FALSE(fs::exists(directory.path/ALMetalFrameCapture::quiet_late_directory));
+        CHECK_FALSE(fs::exists(club/ALMetalFrameCapture::quiet_late_directory));
+
+        // Another teleport cannot create a third generation, even though this
+        // fixture intentionally completes only one capture in each generation.
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,true);
+        alQuietDiagnosticsAdvanceDisplay(device.get(),quietNormalDisplay(++shutdown.frame));
+        stats=alQuietDiagnosticsStatistics();
+        CHECK(stats.scene_generation==2);CHECK(stats.total_attempts==2);
+        CHECK(stats.terminal);CHECK_FALSE(stats.capture_failed);CHECK_FALSE(stats.capture_active);
+        CHECK_FALSE(fs::exists(directory.path/"scene-3"));
+    }
+}
+
+TEST_CASE("quiet controller: terminal nonteleport invalidation revokes an observed teleport",
+          "[.][quiet-controller-revoke]")
+{
+    if(!nativeRequested())return;
+    @autoreleasepool
+    {
+        REQUIRE(std::getenv("MTL_CAPTURE_ENABLED"));
+        REQUIRE(std::strcmp(std::getenv("MTL_CAPTURE_ENABLED"),"1")==0);
+        Environment environment;Directory directory;std::string error;
+        auto device=ALMetalDevice::create(&error);REQUIRE(device);
+        auto manager=[MTLCaptureManager sharedCaptureManager];
+        REQUIRE([manager supportsDestination:MTLCaptureDestinationGPUTraceDocument]);
+        REQUIRE_FALSE(manager.isCapturing);
+        Shutdown shutdown;alQuietDiagnosticsInitialize();REQUIRE(D::enabled());
+        reachFirstAttempt(*device,shutdown);completeCapturedBlit(*device,shutdown,0x33);
+        // A false signal before the positive teleport must not permanently
+        // disable genuine arrival. The later terminal false signal must revoke
+        // its permission: PPD364's first draft left that permission sticky.
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,false);
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,true);
+        alQuietDiagnosticsHeartbeat(++shutdown.frame,true,true,false);
+        for(unsigned i=0;i<4;++i)
+            alQuietDiagnosticsAdvanceDisplay(device.get(),quietNormalDisplay(++shutdown.frame));
+        const auto stats=alQuietDiagnosticsStatistics();
+        CHECK(stats.started);CHECK(stats.terminal);CHECK_FALSE(stats.capture_failed);
+        CHECK_FALSE(stats.capture_active);CHECK_FALSE(manager.isCapturing);
+        CHECK(stats.scene_generation==1);CHECK(stats.attempts==1);CHECK(stats.total_attempts==1);
+        CHECK_FALSE(fs::exists(directory.path/"scene-2"));
+        CHECK_FALSE(fs::exists(directory.path/ALMetalFrameCapture::quiet_late_directory));
     }
 }
 

@@ -8025,6 +8025,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 bounded workaround exports both nativePSO archives and verifies strict archive hits; actualGPUobject code present. Installed native dumper/explicitAGX2 cannot print this GPU ISA, so spill/call metrics remain unavailable. No new draw/replay/profile occurred, inputs unchanged. Preserve this partial tooling success; no Xcode repair or second-candidate scene acceptance is claimed.
 
+- 2026-11-17 distinct tooling limitation during69238working-copy analysis: raw resource Export stays disabled; actual scalar views recover26probe tuples. Comment-only source reload succeeds and matchedMedium/Overlapping control reports113.42ms, simple214GPR/spillblank. Whole-file source transfer then causes CUA AX access timeouts before any altered B shader or restored A2 runs. Process remains alive; root2s sample shows mostly ordinary main event-loop wait, not evidence of a new crash or a proven application hang. Root recovers through Activity Monitor's normal Quit, actual Save Modified Shader Sources/Don't Save for the disposable comment edit, then observes fresh Xcode Welcome UI. No force quit, production/source/library change or original capture mutation. Further surgical working-copy experiments remain unqualified; do not infer a B result or compare control-only timing as a gain. [Current integration](work/active/home-probe-cost-integration-20261117.md).
+
 ## PPD-335 — Private extended PCF fixture can discard deep receivers
 
 - Status: ready_for_owner
