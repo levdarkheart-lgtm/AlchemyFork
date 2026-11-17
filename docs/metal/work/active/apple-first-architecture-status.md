@@ -1,6 +1,8 @@
 # Apple-first architecture implementation status
 
-Updated2026-11-16. The original whole-engine architecture is **active with runtime-backed follow-up work; acceptance remains partial**.
+Updated2026-11-17. First owner-directed GPU candidate-preparation group is built and separately verified as69233/source647dc369d1. [Current checkpoint](probe-candidate-preparation-20261117.md) records exact main/probe BASE integration, conservative mapping, admission/completion ownership and passing correctness checks. The owner requests a pause here before live evaluation; no viewer/performance measurement has started. Alpha preparation, tile-local light lists and useful disabled visibility/command routes remain incomplete/unselected. Whole-engine architecture/performance acceptance stays partial.
+
+The dated69122–69172 account below is retained history, superseded by that current checkpoint.
 The owner has now supplied quiet-house and teleport/club runtime samples; see
 [the two-scene analysis](../../research/integrated-build-69122-quiet-club-20261115.md).
 Detached render-preparation counters stayed0 in both, so useful parallel-render

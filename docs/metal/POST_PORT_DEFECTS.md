@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-352 -->
+<!-- next-defect-id: PPD-358 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7646,7 +7646,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.
-- Next action: Continue the [actual receiver diagnostic](research/home-whole-shader-map-20261117.md): compare exact early/late main probe packs on reconstructed captured depth, including same-receiver pack controls. Use candidate/accepted/positive-SH incidence and measured shader cost together before selecting a shared probe change; retain fixed SSAO/light floors and changing alpha/probe views. PPD338 normal-mode telemetry is already repaired and observed in healthy A2/B2. Preserve all quality/probes,69231 and paused broad architecture; no push authorized.
+- Next action: Pause at the owner-requested [69233 checkpoint](work/active/probe-candidate-preparation-20261117.md). First main/probe BASE candidate group is built, correctness-qualified and separately staged; no live FPS gain is established. Await owner readiness for Home startup/settlement and club teleport/loading/settlement before another implementation group. Preserve all lighting and prior69231; no push authorized.
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7679,6 +7679,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 fresh whole-frame census/call stacks and exact main early/late probe/base/depth exports localize growing source demand: scalar64×40fourpack/receiver controls show1→~7.31positiveSHentries independentofreceivergeometry; bounded vectorized latefullimage afterscalar-equivalence shows6,242,661depthselectedreceivers/45,731,807positiveSHentries(~7.3257),144,101,229holds,286near-boundaryreceiverflags. These are source-demand counts, not GPUinstructions/timing; alpha incidence and complete criticalpath remainunknown. Next PRIVATE experiment before any production edit: producerGPU decode the existing HALF-quantized packedSH into derived exactfloatcoefficients once perpublication, preservingepochs/halfrounding/allprobes/alllighting and currentconsumerarithmetic. Qualifydecode/output/cost againstactualinputs; larger108/144Bpayload mayloseversus64Bpacked. No CPUreadback/publicationwait or quality reduction; do not select from source/register changes alone. Earlierambient/scalar/PCF/inline failures remainretained. [Map](research/home-whole-shader-map-20261117.md).
 
 - 2026-11-17 private7wide112Bdecodedfloat-bit prototype/source-review preserves27coefficientorder andoriginalSHexpression/guard/parallax. Exactactual4×130RGBA32UintKTXhash/payload retained. Rootbaseline/candidateMetal+metallibcompile4/4exit0; physicalGPUdecode/parity/cost andhostpublicationintegration notexecuted. Candidatecurrentlyrequires7widebindingandmustnotreplacecurrentviewer4wideresource. Best69231unchanged; nofix/gainacceptedfromcompile.
+
+- 2026-11-17 precision-preserving C21f73 passes all12large1024×576strictprechecks/validationOFF2 and actualsourcecountcensus1/8/8/8/5/32. Completed-GPU300samples/arm/cell×12modes showALLregressions:reusepairedmedian+3.79…+6.97%,decode+consumer+9.46…+12.80%;producer130rowmedian4.999usGPU(213.167usownerwall),7,990observedintervals/zerooverlap. C112Bfloat-expanded layout is REJECTED despite exactoutput; B remainsfailedstrict. NEXTPRIVATEproposal beforeediting:7×HRGBA16Float56Bderivedrows, rawhalfbit shufflefromauthoritativepackedrow, typedhalfconsumerwithoriginalhalf2→float assembly; preservepackedproducer/preview/allprobes/math andsamepublicationrequirements. Do not infergainfromsmallerpayload; exhaustivehalfstore/read+strictconsumer/cost gates first. No production/nativepublication integration,viewerlaunch orpush.
+
+- 2026-11-17 H56Bnative-half representation passes rawhalf/CPU/originalfragment/Hfragment28casebitgate andfull1,103consumercomparisons/24,825assertions.12largeprechecks/off2andfreshcensuspass.7,990completedintervals/zerooverlap showreuseneutraldefault(−0.11%,73/150adverse),relevant8tapreuse+1.41/+1.60/+2.03%,manual+0.88%,cap+1.93%;combined+4.08…+7.72%. H isunselected forlackofnetgain; stopcoefficientrepresentation/direct-blitvariants. NEXTPRIVATEproposal beforeediting: use optionalMetalfunctionconstant5 tospecializeONLYpublishedpacks whoseclampedactiveprobe metadata(includingdefault0)allhavepriorityw==0(automatic spheres). Removeprovablyunreachablemanual/box/family paths whilepreservingoriginalpackedSH,allactualtaps/order/weights/halfmath/countcaps; genericfalse/unset path formixed/invalidpacks/oldlibrary. Currentcapturedmain28allw0provesrelevance; offmaineligibilitymustbeperactualpack, neverglobalmainstate. Requirestrictgeneric/eligible/ineligiblecasesandactualproductioncost beforeselection; noqualitycut,newGPUresource/pass orassumedspillfix.
+
+- 2026-11-17 privateautomatic-sphere sourcea123856b/libraryf27d1b5f compiles/links2of2exit0 withexactproductionMetalflags;oneexistingunusedSKY_MAX_METEORSwarning. Originalpacked4resource,halfpolynomial,traversal,caps andwaterautomatic=false rejectionretained; optionalFC5trueonlyallactivew0includingdefault0. Independent source review andstrictpacked4fixture preparationongoing; nohostselector, GPUparity/cost/native-spill or viewerchange yet. [Qualification](research/home-producer-sh-qualification-20261117.md).
+
+- 2026-11-17 owner redirects active work from further Home-only shader experiments to implementing the missing architecture, then repeating runtime measurements. First group: conservative per-view probe candidate preparation from the exact immutable published pack/projection/viewport, consumed without changing ordered walk, neighbor/default/manual precedence, accepted cap or lighting. Default/manual/unknown/near-W/invalid cases fail open; masks may skip only provably false containment tests. Base/alpha reuse requires identical bound pack/view/viewport, and admission/retirement follows command completion. CPU producer plus GPU preparation/consumer costs require contained correctness/cost qualification, then one combined staged viewer and owner Home→club checkpoint. Broad architecture/performance gates remain partial. This is a PPD319 implementation proposal, not a new defect or accepted fix; next defect remains356. AutoSphere private results are preserved/unselected; no more profiling before an integrated change warrants it.
+
+- 2026-11-17 firstowner-directedarchitecturegroup integratede17e705926/9a7f0d10fa andbuilder647dc369d1/build69233. Producer-ownedexactper-viewprojection+pack derivesconservativebounds; nativeGPUtilemasks consumedinmain/probeBASE, admittedonexistingcommand andretainedthroughcompletion;32-entry/32MiBaccountedstoragecache countsleasedrecords,exactinput/libraryepochsandfallbacks. CPU117704/8;integerGPU29cases/266520words;actualreceiver17/33 zeroomissions;generic1134strictcomparisons;finalnative518887/25+existingintegration14189/16PASS(no uniquecountsum). Separatestaging8272exactnodes/346ARM64/signature/importsPASS; app647sourceembedded. NoFPS/newspill/physicalRAMclaim;alphagenericandtilelights/nativevisibility remainderpartial. Ownerrequestednomeasurementsnowandpauseaftergroup; viewerclosed,no newprofile/push.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -8325,3 +8335,121 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 registered before diagnosis or alternative shader editing. The failed precheck stops cost execution; an ensuing preparatory statistics query has no samples and raises an empty-median error, which is retained and provides no GPU evidence. No strict threshold has been relaxed.
 - 2026-11-17 raw diagnosis finds only blue at609,370 and438,376 changes by minus1halfULP (absolute3.0517578125e-5); other2,359,294components, depth/stencil/alpha remain exact. Nominal normalized distances~0.672/~0.690 are well inside the radius, so radius-edge classification is not supported as the immediate cause. Literal-count/fast-math code generation is consistent with the result but unproved. Earlier216case validationON1 and large-cell validationOFF2 also differ in instrumentation and pixel coverage; resolution alone is not established as the cause. No timing follows and the candidate remains unselected pending the owner-requested whole-frame evidence review.
+
+## PPD-352 — Private SH parity guard rejects valid black coefficient rows
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex contained GPU qualification
+- Discovered: 2026-11-17
+- Original reference: Original1eb44 SH evaluation and current native almetal_probe_sh_irradiance clamp a zero coefficient result to black; with modern SH scale1 the ambient result is zero. Rendering a black result is not a missing fragment write.
+- Evidence: [Whole-frame/actual-input map](research/home-whole-shader-map-20261117.md); private home-producer-sh-decode-20261117/ownership-audit/harness-source-review.md and parity-harness source/draft receipts; root-xcode-inspection actual packed SH.
+- Next action: Retain corrected strict fixture and all75physically passing black controls in C/H. Keep exact RGBA16F bits, finite/written-alpha/nonclear checks and separate positive controls in subsequent fixtures. This is a private fixture correction, not a viewer repair or Home FPS explanation.
+- Verification: Read-only actual coefficient inspection confirms75of130rows have all27coefficients zero, while all28active main probe layers are nonzero. The draft universal maxRGB>1e-4 guard would reject the valid zero-row helper output. Before execution, the corrected fixture explicitly classifies those rows at scale1, requires exact black/written alpha and retains positive-RGB assertions for positive cases. Corrected fixture now executes all75explicit black controls with exact bits and written-output guards in the matching half-provenance control: full1,103comparisons/24,821assertions pass under API/GPU-validation logs. Classic mode returns supplied ambient and must retain that nonzero fallback; disabling sampling does not make every output zero.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 pre-run root/peer source review identifies the false-positive premise in private drafted fixture e4cafa84; corrected frozen bb92b685 preserves bit-equality and distinguishes intentional black from missing writes. No negative-control tolerance was relaxed and no production source changed. The mistaken classic-output attribution was corrected during review before compiling/running. Registering the source finding separately from any later physical GPU result.
+
+- 2026-11-17 corrected zero-control guards pass all75actual black-row cases in the complete strict1,103comparison C-control run; no comparator tolerance or source lighting was changed. Fixture remedy ready_for_owner, separate from unselected B candidate failure and the subsequently rejected C/H cost results.
+
+## PPD-353 — Private producer-decoded SH differs in an actual-coefficient base pixel
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Home probe optimization qualification
+- Discovered: 2026-11-17
+- Original reference: Current native final half-packed coefficients and unchanged SH polynomial are the preservation contract; original1eb44 SH/half packing is mapped in the private ownership audit. This is an unselected private optimization, not an observed production viewer regression.
+- Evidence: [Whole-frame/actual-input map](research/home-whole-shader-map-20261117.md); private home-producer-sh-decode-20261117/coefficient-harness/run-20261117T124528.438999Z and parity-harness/strict-20261117T1247Z complete sources, receipts and failure planes.
+- Next action: Preserve B failure planes and C conversion-provenance control. C/H pass strict output but are both rejected for cost; do not integrate or continue representation variants without new evidence. Exact optimizer cause remains unknown. Preserve shared producer-publication direction and all current production behavior.
+- Verification: Coefficient gate passes28cases/12host controls with CPUinteger, producercompute and fragment-stage reference bits equal for all63,488finite encodings in each27channels plus3,510actual coefficients; actual shader validation1. Consumer first36shadow cases and actualrow0helper match exactly. Actualrow0 production base differs in one RGBA16F component; finite/written/depth/stencil checks pass. Catch abort exits42 after38comparisons, leaving1,065planned comparisons unexecuted. Exact numerical cause is not established; code-generation/precision provenance is a hypothesis, not a proved compiler defect or performance result.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 private coefficient and strict consumer GPU tests executed on M1Max with API/GPU validation. Consumer failure retained before any cost run; original candidate4d388 and harnessbb92 remain frozen. Root registers before further private shader variants. No production edit, viewer launch, quality change or push. The fixture's PPD352 black-output premise is separate and does not explain this nonzero-row bit difference.
+
+- 2026-11-17 exact failure analysis locates B pixel50,0blue:0x29d1→0x29d2(+1halfULP=0.000030517578125), allother10,239components equal; savedderivedtexture exactlymatchesCPU/compute/fragmentcoefficientproof. One privatecontrol retains sevenreads but restores14half2conversionpairs/originalcoefficientassembly (source21f73f19/library38ab0904). Failing actual-input tag now passes578comparisons, then complete4test/1,103comparison/24,821assertion matrix passes with75explicitblack controls. ActualCkernel also passes28case/1,714,176exhaustive-coefficient-bit gate. This supports precision-provenance/codegen sensitivity, not a specific FMA/compiler-bug proof. No cost yet; B staysunselected, C remainsprivateawaiting large-image/cost checks and allhostpublication integration.
+
+- 2026-11-17 C largeprechecks and7,990completedintervals qualify butallcells regress; C unselected. Native-halfH rawcoefficient/full1,103comparison/24,825assertion gates pass, butanother7,990intervals show no usefulreusesaving andcombined+4.08…7.72%;H unselected. Stopthislayoutavenue. TheoriginalB failure remainsretained andunexplainedatoptimizerlevel; neithercontroljustifiesa tolerancechange orcompiler-bugclaim. No productionregression or viewerfix claimed.
+
+## PPD-354 — Private specialization fixture can skip missing-constant rejection
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex contained GPU qualification
+- Discovered: 2026-11-17
+- Original reference: Exact named Metal function-constant metadata and explicit specialization are required before labelling a pipeline false/true. An empty function-constant dictionary cannot prove that a requested optimization was selected.
+- Evidence: [Home probe qualification](research/home-producer-sh-qualification-20261117.md); private home-automatic-probe-specialization-20261117/parity-harness draft7a71417d and independent evidence-agent source review.
+- Next action: Before compilation/execution, move optional Bool5 metadata validation outside the nonempty-dictionary branch; require its presence for explicit false/true modes, and retain generic old-library handling separately. Preserve the draft and review.
+- Verification: Root and peer source inspection find the explicit-mode presence/type/index assertions nested under dictionary.count!=0. A dictionary with no constants skips them and can mislabel a generic pipeline. Current candidate source is pinned, but the fixture must fail closed independently. No native compilation or GPU run has used this draft.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 chronology correction: the fixture author had already added an outside-dictionary requested-mode guard in draft344950b1 before the peer reply and this registration. Exact7a714pre-fix draft is retained; registration precedes the remaining required/name/type/index metadata hardening. No compilation/GPU execution occurred in either draft and no result is relabelled. This is a private harness validation defect; no production PSO selection, viewer behavior or Home FPS attribution is established. Strict pixel thresholds remain unchanged.
+
+- 2026-11-17 corrected metadata guards execute in the preserved all-caller run:40pipeline rows validate named optionalBool5 and actual validationEnabled1 before the separate PPD355 pixel failure. No missing-constant path is relabelled; private fixture correction is ready_for_owner, not a viewer fix.
+
+## PPD-355 — Private automatic-probe specialization changes strict water-helper output
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex Home GPU qualification
+- Discovered: 2026-11-17
+- Original reference: Water suppresses nondefault automatic probes and samples default0; original packed SH, sphere policy and lighting math remain authoritative. Private optional FC5 must preserve its scoped callers before selection.
+- Evidence: [Home probe qualification](research/home-producer-sh-qualification-20261117.md); private home-automatic-probe-specialization-20261117/parity-harness/strict-01 run and failure planes, source82df/candidatea123/libraryf27d.
+- Next action: Quantify exact differing components and check saved pack/resource/mode equality. Preserve strict failure and do not select/time a failed water path. Determine separate production base/simple eligibility without treating shared-helper parity as every-caller acceptance.
+- Verification: Compile/link exit0. Validation-on GPU run exits42 after18comparisons (six each unset/false/true),40actual pipeline metadata rows valid. In targeted actual-SH all-automatic70/cap layout, helper/base/simple/shadow non-water true controls pass first; water helper true differs132RGBA16Fcomponents while unset/false match. Finite/written/depth/stencil guards pass. Full2,815comparison matrix remains incomplete; magnitude/cause unmeasured at registration.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 failure registered before further analysis or variants. Corrected PPD354 metadata guards physically report optional Bool5 true selection; no run is relabelled. No production source, viewer or selected policy changed, and no candidate cost has run. All original/candidate resources and failure planes remain private.
+
+- 2026-11-17 before follow-up: qualify the intended first production scope separately, enabling true only for direct base/simple/shadow-simple tests. Preserve all1,134logical generic unset/false controls, including water/helper, and retain the failed all-caller run. A new private fixture clone will omit true draws only for helper paths, with exact strict pixel/depth/stencil criteria unchanged; expected2,546comparisons (1,134unset+1,134false+278productiontrue). Water/PBR/material true will remain unselected. This scopes the proposal; it does not repair/relabel the water failure or claim complete shared-helper parity. No cost until that production scope passes.
+
+- 2026-11-17 independent raw analysis finds132differences across129pixels, only glossMRT1 RGB (23red/104green/5blue), every candidate+1halfULP; maximumabsolute0.000244140625, median0.0001220703125. All alpha/other MRTs exact; allfinite. Count70/allw0 means water rejects every local and taps default0 only, not32water taps. Packed bytes identical; one immutable radiance object is shared and water does not read SH. Cause remains unknown; possible contraction/reassociation is a hypothesis. Owner redirects to architecture implementation before the compiled production-scoped fixture runs; all variants remain unselected.
+
+## PPD-356 — New tile-mask preparation includes interior empty rectangles
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex probe candidate preparation
+- Discovered: 2026-11-17
+- Original reference: Candidate bounds are half-open rectangles; a zero-width or zero-height rectangle has no covered pixels. Default0 remains deliberately included independently.
+- Evidence: [Implementation ledger](work/active/probe-candidate-preparation-20261117.md); new almetal_world_probe_candidate_tiles source and independent pre-execution fixture review.
+- Next action: Require nonempty axes for ordinary intersection while retaining malformed-rectangle fail-open and unconditional default0. Check exact GPU output against an independent rectangle oracle.
+- Verification: The initial four intersection comparisons can include an interior zero-width rectangle. This is conservative extra inclusion, not lost lighting. No consumer, GPU execution or performance claim exists yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 source finding registered before correction; new preparation is not connected to viewer consumers. Keep malformed rectangles full-candidate and invalid packets all-ones.
+
+- 2026-11-17 explicit nonempty-axis predicate integrated before execution. Actual kernel correctness29cases/266,520words passes exact oracle, zero guard changes/nonfinite native errors and input bytes unchanged, API/GPU validation enabled. Default0/malformed/invalid fail-open behavior retained. No scene/performance or owner acceptance inferred.
+
+## PPD-357 — Reentrant candidate admission can hide an existing native prefix
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex probe candidate integration
+- Discovered: 2026-11-17
+- Original reference: After native encoding starts, a failed lighting preparation must not request serial replay. Existing publication admission is explicitly reentrant; input/generation/library changes are rechecked after its callback.
+- Evidence: [Implementation ledger](work/active/probe-candidate-preparation-20261117.md); new FrameData prepareProbeCandidates policy-return paths and retained producer records.
+- Next action: Retain the verified prefix classification and eight passing native publication cases for the owner checkpoint. Generic pressure declines propagate an existing prefix; a newly introduced reentrant prefix cannot be hidden by denial/exception/identity changes. No post-prefix native device fault was injected; source review covers that remaining error boundary.
+- Verification: Source callback can capture the current command, prepare another candidate publication and then deny or change the library marker. Existing outer denial/change paths return unavailable with a fresh false prefix flag despite that same token's encoded record. No production incident or GPU failure has been observed; the new path is not staged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 source finding registered before correction; this concerns new integration failure classification, not a demonstrated Home FPS cause. Generic pre-prefix capacity/admission declines must remain available.
+
+- 2026-11-17 sourcefix andeightcanonicalpublicationcases pass in final69233native run. A newly introduced nested prefix plus outer denial is failed/native_prefixtrue; an already-known prefix plus ordinary deniednewmask remains unavailable/native_prefixtrue without extra allocation/failure/commit. Same-command/completed reuse, abandoned rejection, completion credit/lifetime and32-entry/byte bounds also pass. No native post-prefix device fault was injected; source review covers those error paths. Owner confirmation remains pending.
