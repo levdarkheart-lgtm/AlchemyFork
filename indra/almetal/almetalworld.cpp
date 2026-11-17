@@ -14200,10 +14200,15 @@ ALMetalWorldGBufferRenderer::renderExposureInternal(
         encoded = exposure_encoder->setTexture(
             1, output->colorTexture(0), error);
     }
+    // The histogram has one scalar accumulator owner per bin. Both initial
+    // and history kernels require one complete 64-thread group; the typed
+    // encoder validates the pipeline's actual supported group size.
+    constexpr std::uint32_t exposure_histogram_bins = 64;
     encoded = encoded &&
         exposure_encoder->setBytes(
             0, &exposure_constants, sizeof(exposure_constants), error) &&
-        exposure_encoder->dispatch(1, 1, 1, 1, 1, 1, error) &&
+        exposure_encoder->dispatch(exposure_histogram_bins, 1, 1,
+            exposure_histogram_bins, 1, 1, error) &&
         exposure_encoder->end(error);
     if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {

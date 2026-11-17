@@ -24061,10 +24061,33 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
             "Alchemy world exposure bright source");
         exposure_scene.source = bright_source.get();
         exposure_scene.previous = exposure->colorTexture(0);
+        const std::uint64_t adapted_batch_count =
+            ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy consecutive exposure-history regression", &error));
         auto adapted = renderer->renderExposure(
             exposure_scene, &error);
         INFO(error);
         REQUIRE(adapted);
+
+        // The next frame consumes the pending GPU output, not a CPU EV or a
+        // separately completed command. Returning to the darker source also
+        // exercises the asymmetric downward rate after upward adaptation.
+        ALMetalWorldExposureScene darker_scene = exposure_scene;
+        darker_scene.source = source.get();
+        darker_scene.previous = adapted->colorTexture(0);
+        auto darker_adapted = renderer->renderExposure(
+            darker_scene, &error);
+        INFO(error);
+        REQUIRE(darker_adapted);
+        CHECK(renderer->commandBatchActive());
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              adapted_batch_count);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        CHECK_FALSE(renderer->commandBatchActive());
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              adapted_batch_count + 1);
         REQUIRE(adapted->colorTexture(0)->readback(
             *device, 0, 0, {}, exposure_pixel.data(),
             sizeof(exposure_pixel), &error));
@@ -24075,6 +24098,22 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
                        bright_target) < 0.003f);
         CHECK(std::abs(half_to_float(exposure_pixel[1]) -
                        expected_adapted) < 0.003f);
+        const float rounded_adapted_ev = half_to_float(exposure_pixel[1]);
+        REQUIRE(darker_adapted->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        const float expected_darker = rounded_adapted_ev +
+            (target_ev - rounded_adapted_ev) *
+                (1.f - std::exp(-darker_scene.speed_down *
+                               darker_scene.delta_seconds));
+        CHECK(std::abs(expected_darker - expected_ev) > 0.01f);
+        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
+                       target_ev) < 0.003f);
+        CHECK(std::abs(half_to_float(exposure_pixel[1]) -
+                       expected_darker) < 0.003f);
+        CHECK(std::abs(half_to_float(exposure_pixel[0]) -
+                       std::exp2(-expected_darker)) < 0.003f);
+        CHECK(exposure_pixel[3] == 0x3c00u);
 
         // A main-world renderer that finishes warming after GL has already
         // adapted cannot continue from that unowned history. Its synchronized

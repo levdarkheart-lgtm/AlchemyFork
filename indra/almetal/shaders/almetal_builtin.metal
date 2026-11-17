@@ -14316,59 +14316,93 @@ kernel void almetal_world_depth_exposure_meter(
         scene_sampler, constants.patch, constants.config.xy, position);
 }
 
-static float4 almetal_world_resolve_exposure(
+// PPD-345: exactly one 64-thread group owns all histogram bins.
+// Each SIMD lane prepares one cell; ordered broadcasts retain the original
+// y/x/ground-then-sky accumulation order independently in each bin owner.
+static void almetal_world_build_exposure_histogram(
     texture2d<float> meter,
     constant ALMetalWorldExposureConstants& constants,
-    float previous_ev)
+    threadgroup float2* histogram,
+    uint owner, uint lane, uint simd_width)
 {
     constexpr uint bins = 64;
     constexpr float minimum_histogram_ev = -16.0;
     constexpr float maximum_histogram_ev = 12.0;
     constexpr float bins_per_ev =
         float(bins) / (maximum_histogram_ev - minimum_histogram_ev);
-    thread float histogram_weight[bins];
-    thread float histogram_log[bins];
-    for (uint bin = 0; bin < bins; ++bin)
+    const uint width = meter.get_width();
+    const uint cells = width * meter.get_height();
+    const float2 meter_size = float2(width, meter.get_height());
+    // Only 64 threads are dispatched. Each SIMD group broadcasts only its
+    // active owners, including a partial group on a wider future device.
+    const uint group_owner_begin = owner - lane;
+    const uint active_lanes = min(simd_width, bins - group_owner_begin);
+    float bin_weight = 0.0;
+    float bin_log = 0.0;
+    for (uint chunk = 0; chunk < cells; chunk += active_lanes)
     {
-        histogram_weight[bin] = 0.0;
-        histogram_log[bin] = 0.0;
-    }
-
-    const float2 meter_size = float2(meter.get_width(), meter.get_height());
-    for (uint y = 0; y < meter.get_height(); ++y)
-    {
-        for (uint x = 0; x < meter.get_width(); ++x)
+        const uint cell_index = chunk + lane;
+        uint ground_bin = bins, sky_bin = bins;
+        float ground_weight = 0.0, sky_weight = 0.0;
+        float ground_ev = 0.0, sky_ev = 0.0;
+        if (cell_index < cells)
         {
-            const float4 cell = meter.read(uint2(x, y));
-            for (uint sky_part = 0; sky_part < 2; ++sky_part)
+            const uint2 position(cell_index % width, cell_index / width);
+            const float4 cell = meter.read(position);
+            const float2 uv = (float2(position) + 0.5) / meter_size;
+            const float spatial = almetal_world_meter_weight(uv, constants.meter.y);
+            ground_weight = (1.0 - cell.b) * spatial * 1.0;
+            sky_weight = cell.b * spatial * constants.meter.x;
+            if (ground_weight > 0.0 && cell.r > 0.0)
             {
-                const bool is_sky = sky_part != 0;
-                const float luminance = is_sky ? cell.g : cell.r;
-                const float share = is_sky ? cell.b : 1.0 - cell.b;
-                const float2 uv = (float2(x, y) + 0.5) / meter_size;
-                const float weight = share *
-                    almetal_world_meter_weight(uv, constants.meter.y) *
-                    (is_sky ? constants.meter.x : 1.0);
-                if (weight > 0.0 && luminance > 0.0)
-                {
-                    const float ev = clamp(
-                        log2(max(luminance, 1.0e-10)),
-                        minimum_histogram_ev, maximum_histogram_ev);
-                    const uint bin = min(
-                        uint(floor((ev - minimum_histogram_ev) *
-                                   bins_per_ev)),
-                        bins - 1);
-                    histogram_weight[bin] += weight;
-                    histogram_log[bin] += weight * ev;
-                }
+                ground_ev = clamp(log2(max(cell.r, 1.0e-10)),
+                    minimum_histogram_ev, maximum_histogram_ev);
+                ground_bin = min(uint(floor((ground_ev - minimum_histogram_ev) *
+                    bins_per_ev)), bins - 1);
+            }
+            if (sky_weight > 0.0 && cell.g > 0.0)
+            {
+                sky_ev = clamp(log2(max(cell.g, 1.0e-10)),
+                    minimum_histogram_ev, maximum_histogram_ev);
+                sky_bin = min(uint(floor((sky_ev - minimum_histogram_ev) *
+                    bins_per_ev)), bins - 1);
+            }
+        }
+        const uint valid_lanes = min(active_lanes, cells - chunk);
+        for (uint source_lane = 0; source_lane < valid_lanes; ++source_lane)
+        {
+            const uint ground = simd_broadcast(ground_bin, source_lane);
+            const float weight0 = simd_broadcast(ground_weight, source_lane);
+            const float ev0 = simd_broadcast(ground_ev, source_lane);
+            if (owner == ground)
+            {
+                bin_weight += weight0;
+                bin_log += weight0 * ev0;
+            }
+            const uint sky = simd_broadcast(sky_bin, source_lane);
+            const float weight1 = simd_broadcast(sky_weight, source_lane);
+            const float ev1 = simd_broadcast(sky_ev, source_lane);
+            if (owner == sky)
+            {
+                bin_weight += weight1;
+                bin_log += weight1 * ev1;
             }
         }
     }
+    histogram[owner] = float2(bin_weight, bin_log);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+}
 
+static float4 almetal_world_resolve_exposure_histogram(
+    threadgroup const float2* histogram,
+    constant ALMetalWorldExposureConstants& constants,
+    float previous_ev)
+{
+    constexpr uint bins = 64;
     float total = 0.0;
     for (uint bin = 0; bin < bins; ++bin)
     {
-        total += histogram_weight[bin];
+        total += histogram[bin].x;
     }
     const float low = total * constants.adaptation.x;
     const float high = total * constants.adaptation.y;
@@ -14377,14 +14411,14 @@ static float4 almetal_world_resolve_exposure(
     float kept_log = 0.0;
     for (uint bin = 0; bin < bins; ++bin)
     {
-        const float weight = histogram_weight[bin];
+        const float weight = histogram[bin].x;
         const float from = max(low, below);
         const float to = min(high, below + weight);
         if (to > from)
         {
             const float fraction = (to - from) / weight;
             kept += weight * fraction;
-            kept_log += histogram_log[bin] * fraction;
+            kept_log += histogram[bin].y * fraction;
         }
         below += weight;
     }
@@ -14405,18 +14439,21 @@ static float4 almetal_world_resolve_exposure(
     return float4(exp2(-ev), ev, target, 1.0);
 }
 
+
 kernel void almetal_world_exposure_initial(
     texture2d<float> meter [[texture(0)]],
     texture2d<float, access::write> exposure [[texture(1)]],
     constant ALMetalWorldExposureConstants& constants [[buffer(0)]],
-    uint thread_index [[thread_position_in_grid]])
+    uint owner [[thread_position_in_grid]],
+    uint lane [[thread_index_in_simdgroup]],
+    uint simd_width [[threads_per_simdgroup]])
 {
-    if (thread_index == 0)
-    {
-        exposure.write(
-            almetal_world_resolve_exposure(meter, constants, 0.0),
-            uint2(0));
-    }
+    threadgroup float2 histogram[64];
+    almetal_world_build_exposure_histogram(
+        meter, constants, histogram, owner, lane, simd_width);
+    if (owner == 0)
+        exposure.write(almetal_world_resolve_exposure_histogram(
+            histogram, constants, 0.0), uint2(0));
 }
 
 kernel void almetal_world_exposure_history(
@@ -14424,15 +14461,16 @@ kernel void almetal_world_exposure_history(
     texture2d<float> previous [[texture(1)]],
     texture2d<float, access::write> exposure [[texture(2)]],
     constant ALMetalWorldExposureConstants& constants [[buffer(0)]],
-    uint thread_index [[thread_position_in_grid]])
+    uint owner [[thread_position_in_grid]],
+    uint lane [[thread_index_in_simdgroup]],
+    uint simd_width [[threads_per_simdgroup]])
 {
-    if (thread_index == 0)
-    {
-        exposure.write(
-            almetal_world_resolve_exposure(
-                meter, constants, previous.read(uint2(0)).g),
-            uint2(0));
-    }
+    threadgroup float2 histogram[64];
+    almetal_world_build_exposure_histogram(
+        meter, constants, histogram, owner, lane, simd_width);
+    if (owner == 0)
+        exposure.write(almetal_world_resolve_exposure_histogram(
+            histogram, constants, previous.read(uint2(0)).g), uint2(0));
 }
 
 struct ALMetalWorldDepthOfFieldConstants
