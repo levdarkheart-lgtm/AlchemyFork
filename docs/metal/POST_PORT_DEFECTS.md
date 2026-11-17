@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-335 -->
+<!-- next-defect-id: PPD-338 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7646,7 +7646,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes.
-- Next action: Discuss [closed69224 Home findings](research/home-checkpoint-69224-20261116.md) with the owner before further implementation. High2 was present in the exact launched app, but simple-alpha304byte spilling and the Home decline remain. Qualify the next quality-preserving probe/alpha hypothesis on the saved scene, including coupled background probe work; retain all valid probes, material/lighting and completion/overlap behavior. Original architecture remains paused; no new viewer launch/profile/push without instruction.
+- Next action: Owner Home checkpoint of separately verified source840bae8c33/build69228. Compare initial/settled FPS and pacing while recording actual selected constants0/3/4, probe workload and completion pressure with the qualified low-overhead collector. PPD327 selector repair removes saved-scene spill allocation but replay timing does not establish whole-scene gain. Preserve quality, graphics/scene controls and all probes; original architecture rollout remains paused. Owner drives login/environment; push remains unauthorized. [Selector qualification](research/home-texture-selector-20261117.md).
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7667,6 +7667,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 closed-run analysis complete: Region25.51→15.34FPS/mainwait15.57→45.17ms; secondrun26.13→15.48/16.66→46.04ms. Early second-run lighting is unconfirmed; after ownerMidday receipt,80–120/120–150s are15.18/15.06FPS with47.11/48.66mswait. Post-targetGPUendwait stays<0.43ms; configured mainprobes1→41/42 and ordinaryprobes85, main light rectangles settle by~10s. New51projectors vsold39/+10.56%projectorrectanglepixels prevent matched FPS-gain attribution. Owner corrected initial answer: DID change environment before first quit;20:16:25same-layoutreset/native-only56→1probes matches14.78→25.27FPS recovery then regrowth/decline, outsideOverview and not an unchanged-scene control. Full0–120 retained/no iteration gaps/bytecutoff, but293/251contentionlosses mean event-partial. All243structuredwarnings/37knownsites mapped,0ERROR/FATAL, no new renderer category. Exact app includes High2; saved-replay simple-alpha304byte spill persists, no new live per-shader counters. No new implementation/runtime/push; findings discussion next, goal/PPD319 unresolved.
 
+
+- 2026-11-17 PPD327 isolates a compiler-generated32texture selector table, with saved-scene spill304→0 after only a two-resource selector intervention, but replay controls139.96/114.01ms drift and no whole-scene speedup is accepted. Exact-count1/2 engine variants pass bitexact sparse and full renderer/build/stage gates as840bae8c33/69228; private eligible overdrawcosts improve14.6–15.8%. This does not close the Home decline. Owner Home initial/settled check is next; original architecture remains paused, no new viewer run/recording/push started.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -7807,16 +7809,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 actual controller targetbuild0 at285c85e7df,18fresh-process startup/header checks PASS with API/GPU validation. Unset/empty/default and64/65/72/128/255/256/leading-zero boundaries accepted; out-of-range,negative/plus/whitespace/junk/overflow rejected beforeoutput. Source/binary/command/log/header receipts retained in privatequiet-home-fix-20261116T183158Z/controller-budget. No viewer run or complete180s native retention claim yet.
 
-## PPD-327 — Native probe accumulator codegen and alpha shader spilling need qualification
+## PPD-327 — Native simple-alpha spilling and generated texture-selector storage
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex quiet GPU diagnosis
 - Discovered: 2026-11-16
 - Original reference: Pinned1eb44 class3/deferred/reflectionProbeF.glsl601–641 uses named automatic/manual scalar pairs and explicit branches. Native almetal_builtin.metal6293–6338 stores five two-element thread-private arrays and indexes them by runtime family. Source semantics correspond; storage/compiler shape differs. This confirmed difference is a performance hypothesis, not proof of a regression or spill cause.
 - Evidence: [Actual quiet GPU findings](research/quiet-gpu-frame-findings-20261116.md); private quiet-frame-analysis-20261116T174649Z/analysis-gpu source audit and parent-replay-counter-observations.json. Actual early/late captures have mainprobe bounds1/20. Saved late recompiled shader A/B/A default-only traversal control125.57/91.45/121.62ms is a separate workload intervention; it does not rewrite accumulator storage.
-- Next action: Qualify the exact High2 PCF weight-array/unroll boundary against current High2, preserving full6×6 math and generic/probe policy. Remaining wx/wy arrays are observed only in pre-PSO AIR, not proved to cause304Bspill. Dedicated ambient-only/scalar candidates were rejected; forced-SH-inline is fixture-only after PPD334 interrupts its scene check. Verify expensive alpha bindings before any main-only count selector. No new implementation is selected; actual GPU/owner acceptance remains required.
-- Verification: Recompiled original-expression A and runtime-default-only B both report245simple-alpha/214base/254PBR-material registers; Xcode reports SpilledBytes304simple/80PBR/32material, with base blank/unknown. The alpha encoders report~1.05–1.12GiB buffer-device writes despite no explicit device stores in the dominant simple fragment. Addressable private arrays/stack/spills are plausible mechanisms; the counter is not itself a spill-attribution measurement. Installed offline-binary spill penalty, scalar-variant correctness/cost and live FPS effect remain unproved.
+- Next action: Owner Home checkpoint of local840bae8c33/build69228; compare initial/settled FPS and quality and inspect actual selected pipeline census. Exact bound counts one/two select the qualified variants; generic owners remain. Keep all rejected experiments and timing drift. Broad architecture and PPD319 remain open. [Selector evidence](research/home-texture-selector-20261117.md).
+- Verification: Saved old69200 High2 selector A/B/A139.96/116.80/114.01ms; B214registers/0spill, restored A2224/304B with full lighting. Spill allocation removal confirmed, replay timing gain not established. All seven hot draws count2. Actual CMake librarya40a256 preserves generic native2716f and pair6ad8f without recognized stack ops; strict archives/sparse232images exact/27433assertions pass. Integrated466case executions/2387027assertions, doctor/build/strictsource/346ARM64/signature/exactstage pass. Private eligible overdrawcells14.6–15.8% lower GPU time, not live FPS. Full304B decomposition/dynamic traffic and owner acceptance remain unknown.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7838,6 +7840,26 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 forced-SH-inline private control compiles and removes separate SH definition from optimized AIR; native7584/2 pass. Two arm orders retain240costobservations: paired GPUmedians−2.98/−2.46%, reversed−1.58/−4.78% automatic/mixed. Saved-scene A1High2control118.85ms completed, but Xcode source indexer exited before B timing/counters (PPD334); no exact new spill number or scene gain. Source-current819/library hashes and raw failures retained. Candidate remains unselected; final-device binary/remarks and missing main/alpha binding attribution are next evidence boundaries, not an accepted fix.
 
 - 2026-11-16 native binary archives export/reopen/fail-on-miss successfully for both currentHigh2 arms; actual GPU slices confirmed, but installed dumper cannot print AGX2 ISA/metrics. No new spill number. Owner Apple-input audit identifies PCFwx/wy6 and6dynamiclocalGEPs in pre-PSO AIR; originalkernel6boundary/sourcearrays mapped. Earlier5-indexremoval was accumulator-only. Next exactHigh2PCF representation check is qualified as a hypothesis, not a proved304Bcause. Compute threadgroup knobs do not directly control this raster fragment. All private sources/failures retained; noenginechange/launch/push.
+
+- 2026-11-16 register before private PCF control: current819High2 reference versus a quality2-only PCF implementation with12named weights and9explicit2×2blocks in original by/bx order. All36depth reads/comparisons, receiver bias, clamping, normalization and precision retained; generic0/1/3 and single-tap policy unchanged. Initial production-fragment parity/cost gate has known edge/reverse/probe coverage gaps; extend only if cost justifies integration. No engine selection, assumed spill removal or owner runtime result.
+
+- 2026-11-16 PCF firstgate passes7584assertions/525images under existing tolerances; maxabsoluteerror6.1035e-5 (notbitexact). Normal/reversed fixture pairedmedians automatic−3.22/−1.39%, mixed−4.87/−3.00%, all240observations retained. Broader private depth/edge/probe and stricttile gates running; actualscene/newspill/GPR/occupancy/FPS unknown. No engine selection. [PCF control](research/home-pcf-control-20261116.md).
+
+- 2026-11-16 PCF qualifiedcorrectness but UNSELECTED actualscene:121.27→116.97→116.32ms; candidate222/restored224registers, spill304Bboth.461nativecases/2381786assertions +1050extendedimages/39703assertions pass, stricttile retained. Source/safe input/currentviewer unchanged; fulloriginalshaderrestored, GPUstopped/Don'tSave observed. Owner next explicitly authorizes major diagnostic cuts with incorrectimages but preservedsetup/safeexecution; preparing probe/shadow/SH bisection privately before replay. No inferredspillfix or acceptedFPSgain. [Bisection](research/home-shader-bisection-20261116.md).
+
+- 2026-11-16 completed4cut sourceA/B/controlseries: controls122.88/118.94/123.88/150.17/124.28ms; simpleprobesoff98.47ms220/32B, sharedSHoff103.46ms222/304B, directguardedSHtap092.17ms222/32B, basehelperinline115.93ms224/304B. Alloriginalsourceundone/stopped/Don'tSave/Replay observed. FullSHremovalnotnecessaryfor304; genericpathdependentallocation notuniquesourceobject. InlinefrontIRchanges4consumers but targetentrybodyunchanged; no acceptedwholegain. Allrawcontrols/drift/privacy retained.
+
+- 2026-11-16 register new nativecode hypothesis before private edit: reviewedpinnedBSD G13decoder successfully reads existingcurrent819High2nativefragmentobject.16xyzw stackstores materialize32literalpairs(index0..31,1024); indexedstackload feedsdiffusetexturesample. This suggests compiler-generated texture-selector storage, not proof all304B or exactdynamictraffic. Next diagnostic replaces ONLY simple-surface diffuse selector withtexture0; fullprobe/SH/shadow retained, intentionallywrongtexture/alphacoverage recorded. Originallookup and exactboundcount1 specialization contract audit precedesanyproposedfix. No enginechange/newviewerrecording/push.
+
+- 2026-11-17 register productionproposal before edits: all7hot2256draws nowconfirmed firstvertextexture_count2 (uniformbatchcount), index0notproofallvertices0. Nativeconstanttexture0 cut removesall18recognizedstackops whilefullprobes/SH/shadows retained. FinalprivateoptionalBool4 almetal_simple_diffuse_pair source6c129787 compiles/strictarchivehits; unset/false nativecodeEXACTbaseline2716f, trueEXACTreviewedtwo-resourceSSA6ad8f withnostacktable. Source supports exactboundcount1or2, retainedguard/magenta/oneimplicit sample. Proposed40prebuiltstandardblend simple variants+matchingHigh2 compositions useactualbatchcountafterexistingprobe/highselection; avatar/custom/depthonlyremaingeneric. Missing/wrong-name/wrong-type4librariesmustretainoriginalpipeline. Sparsebinding/pixel/cost/actualselection/reload/cache/build/ownerchecks pending; no FPSfixaccepted, allprivatefailed/refinement-sourcevariantsretained.
+
+- 2026-11-17 prebuild source review corrects proposedpair-pipeline borrowed pointer qualifier (const-auto-pointer wouldnotassigntotheexistingmutablepipelinepointer). No build/native successclaimedbeforethisrepair; rendererstate/specializationpolicy unchanged.
+
+- 2026-11-17 completed saved-scene selector A/B/A:139.96→116.80→114.01ms. Pair selector gives214registers/0spilled bytes; restored generic gives224/304B. Medium/Overlapping freshly verified and all heavy CPU/GPU work held quiet. Full lighting retained, but replay edit affects all simple batches and is not a pixel-parity gate. Timing does not establish gain. Original diffuse/runtime-quality expressions restored, Stop/Don'tSave/Replay/Finished observed; original capture unchanged. Private232-row sparse correctness gate now compiling; initial fixture compile defect retained separately asPPD336. No viewer launch/recording/push.
+
+- 2026-11-17 private pair gate passes232image comparisons/27433assertions, exact half bits/maxerror0 with actual2560nonclear pixels per arm/row. Sparse count1only0/count2only0and1 API validation passes; no dummy bindings. Five-cell overdraw cost retains400raw observations,30measured alternating pairs per cell: eligible four cells -14.580% through -15.790% paired medians,0/30 adverse each; generic32 neutral -0.798%,13/30 adverse. No whole-scene/FPS gain inferred. Actual production source/native/renderer/build gates remain pending; full replay timing drift retained.
+
+- 2026-11-17 local840bae8c33/build69228 combined qualification complete: doctor/build221.23s/strict3608zero, finalCMake library232images exact/27433assertions, actualnative four strict archives/hashidentity, five engine checks466case executions/2387027assertions all0. Full457/2380513 covers actual0/3/4selection, counts1/2/3, standard/custom, rigid/skinned, shadow/probe/unshadowed and reload. Older library80/1 and correct cache modes pass without waivers. Stage8272nonroot nodes exact,346ARM64/deepsignature/mainimports pass. Unchanged180s Home runner dry-run0; availability question pending, no viewer/recording started or push. Ready_for_owner is component qualification, not PPD319/FPS/architecture closure. Private quiet-home-selector-integration-20261117T0120Z retains exact source/exe/lib/commands and failures.
 
 ## PPD-328 — Material-alpha source samples the same SSR ray for two lobes
 
@@ -7969,3 +7991,58 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered before tooling workaround. A1High2control118.85ms completed; ambient-plus-forced-inline edits were prepared, then Xcode exited before B produced a result. Raw crash evidence copied privately. Existing first ambient-only ABA/rejection remains valid and separate. No engine source change, viewer launch/recording or push; bounded alternate evidence acquisition proceeds independently of this external-tool failure.
 
 - 2026-11-16 bounded workaround exports both nativePSO archives and verifies strict archive hits; actualGPUobject code present. Installed native dumper/explicitAGX2 cannot print this GPU ISA, so spill/call metrics remain unavailable. No new draw/replay/profile occurred, inputs unchanged. Preserve this partial tooling success; no Xcode repair or second-candidate scene acceptance is claimed.
+
+## PPD-335 — Private extended PCF fixture can discard deep receivers
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex private GPU qualification fixture
+- Discovered: 2026-11-16
+- Original reference: Private experimental extension of the production-fragment fixture, not an original-viewer defect. Production water-plane discard is required behavior. New deep cascade/boundary receiver cases inherited the fixture plane z+8 and water_fog.z1; the intended surface can be discarded before shadow evaluation.
+- Evidence: [PCF control](research/home-pcf-control-20261116.md); private quiet-home-pcf-20261116T221358Z/extended-parity/ source revisions and independent review retained.
+- Next action: Before executing the new gate, move its synthetic plane below the receiver range and require actual non-clear covered pixels per case. Retain the initial source and review; do not weaken production discard or comparison tolerances.
+- Verification: Independent pre-run source review found eye_z below-8 triggers the inherited water plane. Positive clear RGB/alpha makes the proposed nonzero-image counter insufficient. No passing runtime result from these cases is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-16 registered before qualification repair. This invalidates the proposed extra-case coverage until corrected; existing frozen firstgate results do not claim these new deep cases. Engine/shipped fixture and owner captures remain unchanged.
+
+- 2026-11-16 corrected private setup and measured zero-draw clear controls pass39703assertions/1case and1050actual-production-fragment A/Bimages. Everyarm/case has2560/2560nonclearpixels; exacthalf output equality and finite/pixel thresholds pass.350runtimeprobe/bool0true and210genericQ2/High2pairs match;10ordinary-vs-probetap contrasts differ. Rawinitialunexecutedrevisions retained. No production water/shader policy changed, viewer launch or owner acceptance.
+
+## PPD-336 — Private selector fixture compound assertions do not compile
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex private GPU qualification fixture
+- Discovered: 2026-11-17
+- Original reference: Private Catch2 selector specialization fixture, not an original-viewer or production shader defect. Catch2 requires parenthesized compound expressions in these REQUIRE calls.
+- Evidence: [Selector qualification](research/home-texture-selector-20261117.md); private quiet-home-shader-bisection-20261116T2245Z/texture-pair-specialization-checks first compile log/source/receipt.
+- Next action: Retain failed initial source/log and the successful fresh-build receipt; qualify the actual integrated renderer separately. No production assertion or correctness threshold change is required.
+- Verification: First compile fails at fixture lines209/839 before linking/GPU execution. Parenthesization-only private repair compiles/links0; fresh sparse gate passes232images/27433assertions with exact bits and non-clear coverage, followed by bounded cost check. No result credited to the failed attempt and no production shader defect inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered at first compile failure before the next compile. Repair is confined to private assertion syntax; no Metal source, binding policy or correctness threshold changes authorized by this record.
+
+- 2026-11-17 unchanged guard conditions compile after parentheses; fresh executable passes the232image gate before costs. Initial failing source and log retained. Automated success is ready_for_owner, not record closure or push approval.
+
+## PPD-337 — Private native post-parser uses the wrong optional texture-field shift
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex native evidence tooling
+- Discovered: 2026-11-17
+- Original reference: Private post-processing of reverse-engineered G13 decoder output, not an original-viewer or Metal driver defect. Reviewed TextureDesc combines fields at bit32/width6 and bit78/width2.
+- Evidence: [Final production selector qualification](research/home-texture-selector-20261117.md); private texture-pair-specialization/final-production-20261117T011653Z/report.md, retained initial parser/output and corrected qualification.json.
+- Next action: Retain both parser revisions; use corrected field interpretation and raw decoder assembly for resource-operand attribution. Do not infer runtime traffic from encoded fields.
+- Verification: Initial optional texture-field extraction used the wrong bit offset. Corrected against the pinned decoder definition; raw decoded assembly, native byte identities, complete coverage, operation counts and the zero recognized stack operations are unchanged. No draw, timing or FPS result depended on this optional field.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 review found and corrected the private post-parser field interpretation during final receipt preparation. Initial revision/output retained. Registered at integration review before using the corrected optional field; no production source or raw decoder change, second decode, viewer launch or profile.

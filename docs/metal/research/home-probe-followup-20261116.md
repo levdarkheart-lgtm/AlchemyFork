@@ -220,3 +220,12 @@ actual haze was only0.7–0.8% of shader cost, versus about34% simple alpha in o
 late replay; the new untouched replay has27.84% simple alpha and0.61% actual
 haze. These are variable counter-replay shares, not live FPS attribution.
 The expensive transparent/probe lighting remains the target, not the label.
+
+The subsequent [exact High2 PCF control](home-pcf-control-20261116.md) now passes
+the extended depth/edge/probe and strict tile gates. Its modest fixture gain
+does not survive the actual-scene controls reliably:121.27→116.97→116.32ms.
+Candidate/restored registers222/224, spill304B both. Prototype stays private
+and unselected; no engine or Home-FPS acceptance. Actual compiler remarks and
+per-line memory cost remain needed before assigning the304B to source objects.
+Shared early-fragment tests are not qualified globally; required depth/discard
+consumers and the narrow read-only candidate are mapped separately.
