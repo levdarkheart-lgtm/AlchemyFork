@@ -1667,6 +1667,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     // Same producer-generation lease contract as the G-buffer scene; forward
     // commands must preserve backing bytes after capture storage is recycled.
     std::shared_ptr<const void> source_owner;
+    // Independent forward-lighting input. Virtual candidate coordinates use
+    // this projection with the actual interpolated eye position, never opaque
+    // depth or an assumed equality with any batch's rounded MVP/MV matrices.
+    float forward_probe_projection[16]{};
+    bool forward_probe_projection_valid = false;
     const ALMetalRenderTarget* gbuffer = nullptr;
     const ALMetalRenderTarget* composed_lighting = nullptr;
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -2785,7 +2790,9 @@ public:
                                   std::shared_ptr<const void>& credit);
     std::shared_ptr<ALMetalWorldSourceCommands> worldSourceCommands(std::string* error=nullptr);
     // Existing submission-owner thread only. No queue/commit/wait/readback.
-    // Compare the complete immutable input values, not a frame number/hash.
+    // Compare the complete mask-producing packet and kernel library/epoch,
+    // not a frame/hash or unrelated lighting values. Validate the current
+    // consumer inputs before reuse; preserve full inputs across miss admission.
     // Missing optional pipeline/library, pre-prefix admission/capacity declines,
     // invalid or all-full bounds preserve the generic probe walk.
     ALMetalProbeCandidatePreparation prepareProbeCandidates(

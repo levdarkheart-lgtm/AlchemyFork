@@ -67,6 +67,18 @@ ALMetalProbeCandidatePacket alMetalBuildProbeCandidates(
     std::span<const ALMetalProbeCandidateSphere> probes,
     float published_count, const ALMetalProbeCandidateView& view) noexcept;
 
+// Forward lighting uses a VIRTUAL projective coordinate computed from the
+// exact interpolated eye position passed to probe containment. It does not
+// use raster XY, opaque depth, or an MVP == projection*MV assumption. The
+// matching MSL lookup falls back to generic traversal for |eye|>2^20,
+// projected W<2^-20 or coordinates outside this virtual view. Finite bounded
+// coefficients/extent prevent overflow and keep pixel rounding below the
+// existing two-pixel outward guard. An unsupported projection returns usable0.
+ALMetalProbeCandidatePacket alMetalBuildProbeEyeCandidates(
+    std::span<const ALMetalProbeCandidateSphere> probes,
+    float published_count, std::span<const float,16> projection,
+    std::uint32_t width, std::uint32_t height) noexcept;
+
 struct ALMetalProbeBaseMappingCertificate
 {
     bool certified = false;

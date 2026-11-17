@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-358 -->
+<!-- next-defect-id: PPD-361 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -8456,3 +8456,63 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 source finding registered before correction; this concerns new integration failure classification, not a demonstrated Home FPS cause. Generic pre-prefix capacity/admission declines must remain available.
 
 - 2026-11-17 sourcefix andeightcanonicalpublicationcases pass in final69233native run. A newly introduced nested prefix plus outer denial is failed/native_prefixtrue; an already-known prefix plus ordinary deniednewmask remains unavailable/native_prefixtrue without extra allocation/failure/commit. Same-command/completed reuse, abandoned rejection, completion credit/lifetime and32-entry/byte bounds also pass. No native post-prefix device fault was injected; source review covers those error paths. Owner confirmation remains pending.
+
+
+## PPD-358 — Probe mask cache identity includes unrelated lighting inputs
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared probe preparation
+- Discovered: 2026-11-17
+- Original reference: Native tile-mask publication is new; original1eb44 reflectionProbeF.glsl probeHolds/traversal consumes current eye-space geometry and probe selection independently from SH/radiance values. Preserve all current lighting inputs and accepted taps.
+- Evidence: [Transparency preparation group](work/active/probe-transparency-preparation-20261117.md); almetalworld.cpp ProbeCandidateKey/prepareProbeCandidates and almetal_builtin.metal almetal_world_probe_candidate_tiles.
+- Next action: Persist only the exact mask-producing packet plus kernel library identity/epoch. Keep full current input validation and a separate miss-only snapshot across reentrant admission. Test completed reuse with changed lighting, true dependency misses, library reload, denial, resident bounds and abandoned producers.
+- Verification: Kernel consumes4112B packet and derived grid only. Existing cache key additionally compares49216B probe constants, projection/inverse and reverseZ. SH/fade/neighbor changes therefore force mask misses even when its complete input is identical. Home69233 shows1379preparations/7reuses but the causal share of this source inefficiency in those counters or FPS is not isolated. No repair/build/runtime result yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 source finding registered before production correction. Completion/epoch safety, exact per-call pack validation and actual lighting publication must remain independent of mask reuse. No whole-viewer gain claimed.
+
+
+- 2026-11-17 source correction separates exact packet/library/epoch mask identity from miss-only borrowed full input snapshots. Current lighting remains independently published; positive reuse and original resident/reentrant/abandoned guards are in canonical tests627f59f5b1. Combined compilation/native execution still pending; no runtime FPS benefit inferred.
+
+## PPD-359 — New transparent parity fixture expects the wrong output stencil
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex transparent candidate correctness fixture
+- Discovered: 2026-11-17
+- Original reference: Existing native opaque post-deferred owner explicitly clears output stencil to0 before its ordered rendering. Independent source inputs are seeded0x5a to detect ownership effects; output is not required to retain that seed.
+- Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); new almetal_probe_candidate_transparency_test.mm source0ae3410a1bff8217f6a010449de92850886dc3f41a8e675c2d5915e0630d68fa and current renderOpaquePostDeferred pass_config.stencil_load/clear_stencil.
+- Next action: Preserve pre-correction fixture source privately, expect the authoritative output clear0 and verify independent seeded input remains0x5a. Keep exact generic/prepared full color/depth/stencil comparison and positive probe controls.
+- Verification: Independent source review found the incorrect0x5a output expectation before compilation or GPU execution. This is a fixture premise defect, not a demonstrated production regression or a failed GPU result. No tolerance relaxation is authorized.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correction. A separate counter-semantic ambiguity was resolved before compilation by explicitly documenting disjoint prepared unshadowed/shadowed draw counters; it has no executed failure.
+
+- 2026-11-17 further independent precompile review finds the same new fixture sets simple-alpha double_sided=true, which native validation permits only for PBR. Register before correction: use supported simple-alpha flags and retain authored geometry plus nonclear/positive controls. No renderer execution failed and no production behavior is changed to accommodate the fixture.
+
+
+## PPD-360 — Private virtual-lookup oracle can lose raw invalid-offset evidence
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex private GPU correctness harness
+- Discovered: 2026-11-17
+- Original reference: No viewer equivalent; diagnostic failures must retain raw output before declaring an oracle result. CPU verification must not index outside buffers if a GPU-returned offset is invalid.
+- Evidence: [Transparency group](work/active/probe-transparency-preparation-20261117.md); private virtual-lookup-correctness source revisions and compile-01/compile-receipt.json under probe-transparency-preparation-20261117.
+- Next action: Verify corrected bounded-offset checking accumulates errors and retains raw outputs before failure; original source and exact hashes remain retained.
+- Verification: Peer source review identifies a raw-retention gap on an invalid GPU offset before compilation. Agent reports correction and original-source preservation before root notification/register entry. Offlinecompile5/5exit0; actual GPU correctness has just begun, no passing result asserted. This is a private fixture issue, not a production GPU omission.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered on root receiving the precompile review/correction report; retain chronological distinction. No CPU out-of-bounds execution or lost GPU failure was observed.
+
+- 2026-11-17 corrected private virtual oracle compiles5/5exit0 and passes actualGPU28cases/203936qualificationchecks with zero omissions/guard/output/expectation errors and all raw outputs retained. This verifies diagnostic checking/retention under the exercised cases; owner verification remains pending and no production FPS result follows.

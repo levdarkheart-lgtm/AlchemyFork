@@ -245,6 +245,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_probe_candidates_test.cpp
             tests/almetal_probe_candidate_publication_test.mm
             tests/almetal_probe_candidate_lighting_test.mm
+            tests/almetal_probe_candidate_transparency_test.mm
             tests/almetal_finalize_admission_test.mm
             tests/almetal_ssr_isolation_test.mm
             tests/almetal_reference_format_test.mm

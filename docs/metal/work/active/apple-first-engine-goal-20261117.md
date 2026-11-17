@@ -15,3 +15,6 @@ The next group is being selected from the dependency audit of probe preparation/
 ## Goal tool state
 
 The tool `create_goal` was invoked with the full objective above and returned: `cannot create a new goal because this thread has an unfinished goal; complete the existing goal first`. The existing goal is active and unachieved. It has not been marked complete, paused or replaced to bypass that restriction. This document and the linked active ledger record the revised engineering scope; the app's existing goal text was not changed.
+
+
+Owner subsequently replaced the app objective directly and reactivated it. The active four-step order is shared-preparation reuse/transparency, evidence-backed per-pixel shader work, separately completion-aware optional updates, then justified tile-local opportunities. [Group1](probe-transparency-preparation-20261117.md) is in progress. Earlier goal-tool refusal above is retained history, not the current app-goal limitation.

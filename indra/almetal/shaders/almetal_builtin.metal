@@ -755,6 +755,38 @@ struct ALMetalProbeCandidatePacket
     uint4 config; // effective count, width, height, usable (exactly one)
 };
 
+struct ALMetalProbeEyeProjection
+{
+    float4x4 projection;
+    uint4 grid; // tile columns/rows, virtual width/height
+};
+
+// The forward owner supplies finite |Pij|<=2^16 and extents<=2^14.
+// Use the EXACT eye value supplied to containment, not raster XY or opaque
+// depth. Thus independent MVP/MV rounding, skinning and interpolation cannot
+// invalidate this mapping. Bounds include f32/FMA/FTZ projection error and an
+// outward two-pixel guard. Uncertain/outside coordinates keep generic holds.
+static bool almetal_probe_eye_mask_offset(
+    float3 eye, constant ALMetalProbeEyeProjection& view,
+    thread size_t& word_offset)
+{
+    // Integer classification survives fast-math; reject NaN/Inf/huge eye
+    // values BEFORE any new FP operation. Bounded products cannot overflow.
+    if (any((as_type<uint3>(eye) & uint3(0x7fffffffu)) > uint3(0x49800000u)) ||
+        any(view.grid.zw == uint2(0u)) || any(view.grid.zw > uint2(16384u)) ||
+        any(view.grid.xy != 1u + (view.grid.zw - 1u) / 16u)) return false;
+    const float4 clip = view.projection * float4(eye,1.0);
+    const uint w_bits = as_type<uint>(clip.w);
+    if (w_bits < 0x35800000u || w_bits >= 0x7f800000u) return false;
+    const float2 ndc = clip.xy / clip.w;
+    if (any(ndc < float2(-1.0)) || any(ndc >= float2(1.0))) return false;
+    const float2 pixel = (ndc + 1.0) * (float2(view.grid.zw) * 0.5);
+    if (any(pixel < float2(0.0)) || any(pixel >= float2(view.grid.zw))) return false;
+    const uint2 tile = uint2(pixel) / 16u;
+    word_offset = (size_t(tile.y)*size_t(view.grid.x)+size_t(tile.x))*8u;
+    return true;
+}
+
 // Preparation only: one invocation owns one 32-probe word of one 16px tile.
 // The caller bounds allocation/dispatch and retains packet/output to completion.
 // Invalid or incompatible packets produce full masks, preserving generic holds.
@@ -9063,7 +9095,9 @@ static float4 almetal_world_pre_water_simple_lighting(
     sampler probe_sampler,
     constant ALMetalWorldAlphaEnvironment& environment,
     constant ALMetalWorldReflectionProbeConstants& probes,
-    constant ALMetalWorldLegacyAlphaLighting& lighting)
+    constant ALMetalWorldLegacyAlphaLighting& lighting,
+    const device uint* candidate_masks = nullptr,
+    size_t candidate_word_offset = 0)
 {
     const bool classic_mode = lighting.parameters.w != 0.0;
     const float ambient_facing = 1.0 -
@@ -9101,7 +9135,8 @@ static float4 almetal_world_pre_water_simple_lighting(
             ambient, classic_mode,
             reflection_radiance, reflection_irradiance,
             probe_sampler, probes,
-            irradiance, gloss_environment, legacy_environment);
+            irradiance, gloss_environment, legacy_environment,
+            candidate_masks, candidate_word_offset);
     }
 
     float directional = clamp(dot(
@@ -9195,6 +9230,77 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
         reflection_radiance, reflection_irradiance,
         legacy_sky,
         probe_sampler, environment, probes, lighting);
+}
+
+// Optional prepared forward consumers. Generic entry points above remain
+// unchanged for unsupported inputs, old libraries and other alpha families.
+fragment float4 almetal_world_pre_water_simple_candidates_fragment(
+    ALMetalWorldShinyVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    texturecube<float> legacy_sky [[texture(39)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant ALMetalProbeEyeProjection& candidate_view [[buffer(8)]],
+    const device uint* candidate_masks [[buffer(9)]])
+{
+    float4 diffuse;
+    float3 normal;
+    almetal_world_pre_water_simple_surface(
+        input, diffuse_textures, diffuse_sampler,
+        environment, diffuse, normal);
+    size_t candidate_word_offset = 0;
+    const device uint* selected_masks = almetal_probe_eye_mask_offset(
+        input.eye_position, candidate_view, candidate_word_offset) ? candidate_masks : nullptr;
+    return almetal_world_pre_water_simple_lighting(
+        input, diffuse, normal, 1.0,
+        reflection_radiance, reflection_irradiance,
+        legacy_sky,
+        probe_sampler, environment, probes, lighting, selected_masks, candidate_word_offset);
+}
+
+fragment float4 almetal_world_pre_water_simple_shadow_candidates_fragment(
+    ALMetalWorldShinyVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> legacy_sky [[texture(39)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalProbeEyeProjection& candidate_view [[buffer(8)]],
+    const device uint* candidate_masks [[buffer(9)]])
+{
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    float4 diffuse;
+    float3 normal;
+    almetal_world_pre_water_simple_surface(
+        input, diffuse_textures, diffuse_sampler,
+        environment, diffuse, normal);
+    const float2 gl_fragment_position = float2(
+        input.position.x, shadows.parameters.w - input.position.y);
+    const float directional_visibility = almetal_directional_shadow(
+        shadow_maps, shadows, input.eye_position, normal,
+        position_dx, position_dy,
+        gl_fragment_position / shadows.resolution.zw,
+        environment.light_direction.xyz);
+    size_t candidate_word_offset = 0;
+    const device uint* selected_masks = almetal_probe_eye_mask_offset(
+        input.eye_position, candidate_view, candidate_word_offset) ? candidate_masks : nullptr;
+    return almetal_world_pre_water_simple_lighting(
+        input, diffuse, normal, directional_visibility,
+        reflection_radiance, reflection_irradiance,
+        legacy_sky,
+        probe_sampler, environment, probes, lighting, selected_masks, candidate_word_offset);
 }
 
 fragment float4 almetal_world_pre_water_material_fragment(

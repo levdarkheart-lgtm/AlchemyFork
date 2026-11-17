@@ -147,6 +147,21 @@ ALMetalProbeCandidatePacket alMetalBuildProbeCandidates(
     return packet;
 }
 
+ALMetalProbeCandidatePacket alMetalBuildProbeEyeCandidates(
+    std::span<const ALMetalProbeCandidateSphere> probes,
+    float published_count, std::span<const float,16> projection,
+    std::uint32_t width, std::uint32_t height) noexcept
+{
+    ALMetalProbeCandidateView view;
+    std::copy_n(projection.data(),16,view.projection);
+    view.width=width; view.height=height;
+    view.raster_mapping_certified=width && height && width<=16384u && height<=16384u &&
+        std::all_of(projection.begin(),projection.end(),[](float value) {
+            return std::isfinite(value) && std::abs(value)<=65536.f;
+        });
+    return alMetalBuildProbeCandidates(probes,published_count,view);
+}
+
 ALMetalProbeBaseMappingCertificate alMetalCertifyBaseProbeMapping(
     std::span<const float, 16> projection,
     std::span<const float, 16> inverse_projection,

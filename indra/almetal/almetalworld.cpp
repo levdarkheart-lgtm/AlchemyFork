@@ -1654,18 +1654,12 @@ struct ALMetalWorldFrameData::Impl
     struct ProbeCandidateKey
     {
         ALMetalProbeCandidatePacket packet{};
-        ALMetalWorldReflectionProbeConstants probes{};
-        std::array<float,16> projection{}, inverse_projection{};
         void* library_identity = nullptr;
         std::uint64_t library_epoch = 0;
-        bool reverse_z = false;
         bool matches(const ProbeCandidateKey& other) const noexcept
         {
             return library_identity==other.library_identity && library_epoch==other.library_epoch &&
-                reverse_z==other.reverse_z && std::memcmp(&packet,&other.packet,sizeof(packet))==0 &&
-                std::memcmp(&probes,&other.probes,sizeof(probes))==0 &&
-                std::memcmp(projection.data(),other.projection.data(),sizeof(projection))==0 &&
-                std::memcmp(inverse_projection.data(),other.inverse_projection.data(),sizeof(inverse_projection))==0;
+                std::memcmp(&packet,&other.packet,sizeof(packet))==0;
         }
     };
     struct ProbeCandidatePublication
@@ -1931,6 +1925,10 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
     std::span<const float,16> inverse_projection, bool reverse_z,
     ALMetalProbeCandidateBinding& binding, std::string* error)
 {
+    // Reverse depth and the full lighting pack affect the current consumer,
+    // not this kernel's packet->mask output. They must never revive stale
+    // lighting, but need not invalidate identical derived masks (PPD358).
+    (void)reverse_z;
     binding={};
     std::shared_ptr<const ALMetalCommandCompletion> token;
     bool prefix_before_policy = false;
@@ -1995,10 +1993,7 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
 
         Impl::ProbeCandidateKey key;
         std::memcpy(&key.packet,&packet,sizeof(packet));
-        std::memcpy(&key.probes,&probes,sizeof(probes));
-        std::memcpy(key.projection.data(),projection.data(),sizeof(key.projection));
-        std::memcpy(key.inverse_projection.data(),inverse_projection.data(),sizeof(key.inverse_projection));
-        key.library_identity=library->nativeHandle(); key.library_epoch=library_epoch; key.reverse_z=reverse_z;
+        key.library_identity=library->nativeHandle(); key.library_epoch=library_epoch;
         if (mImpl->probe_candidate_library_identity != key.library_identity ||
             mImpl->probe_candidate_library_epoch != key.library_epoch)
         {
@@ -2023,11 +2018,19 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
         }
         // An explicitly loaded older library remains an ordinary renderer.
         if (!library->hasFunction("almetal_world_probe_candidate_tiles")) return decline();
+        // Only a miss crosses reentrant admission. Preserve the complete
+        // borrowed input here independently of the smaller persistent key;
+        // callback changes must still invalidate this preparation attempt.
+        const auto probe_snapshot = probes;
+        std::array<float,16> projection_snapshot{}, inverse_snapshot{};
+        std::copy_n(projection.data(),16,projection_snapshot.data());
+        std::copy_n(inverse_projection.data(),16,inverse_snapshot.data());
         const auto generation=mImpl->generation;
         const auto owner_epoch=mImpl->builtin_library_epoch;
         ALMetalWorldSourcePublicationWork work;
         work.allocation_bytes=resident_bytes;
-        work.copied_page_bytes=2u*sizeof(Impl::ProbeCandidateKey)+sizeof(packet);
+        work.copied_page_bytes=2u*sizeof(Impl::ProbeCandidateKey)+sizeof(packet)+
+            sizeof(probe_snapshot)+sizeof(projection_snapshot)+sizeof(inverse_snapshot);
         work.encoded_mapping_bytes=output_bytes;
         std::shared_ptr<const void> credit;
         if (!requestSourcePublication(work,credit)) return policy_decline();
@@ -2037,9 +2040,9 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
             key.library_identity!=mImpl->probe_candidate_library_identity ||
             key.library_epoch!=mImpl->probe_candidate_library_epoch || command.isCommitted() ||
             std::memcmp(&key.packet,&packet,sizeof(packet)) ||
-            std::memcmp(&key.probes,&probes,sizeof(probes)) ||
-            std::memcmp(key.projection.data(),projection.data(),sizeof(key.projection)) ||
-            std::memcmp(key.inverse_projection.data(),inverse_projection.data(),sizeof(key.inverse_projection)))
+            std::memcmp(&probe_snapshot,&probes,sizeof(probes)) ||
+            std::memcmp(projection_snapshot.data(),projection.data(),sizeof(projection_snapshot)) ||
+            std::memcmp(inverse_snapshot.data(),inverse_projection.data(),sizeof(inverse_snapshot)))
             return policy_decline();
         if (auto record=mImpl->reusableProbeCandidate(key,token))
         {
@@ -3159,6 +3162,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     // selector specialized for one or two actual bound textures.
     decltype(pre_water_simple_pipelines) pair_pre_water_simple_pipelines;
     decltype(high_pre_water_simple_pipelines) pair_high_pre_water_simple_pipelines;
+    decltype(pre_water_simple_pipelines) candidate_pre_water_simple_pipelines;
+    decltype(high_pre_water_simple_pipelines) candidate_high_pre_water_simple_pipelines;
+    decltype(pre_water_simple_pipelines) candidate_pair_pre_water_simple_pipelines;
+    decltype(high_pre_water_simple_pipelines) candidate_pair_high_pre_water_simple_pipelines;
     // HDR x coverage x shadows x rigid/skinned/cloth system-avatar mesh x
     // color-write state. The latter keeps the middle pass of three-pass
     // hair/skirt depth-only without changing its alpha-cutout shader.
@@ -6949,6 +6956,38 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                             if (!pair_high) return nullptr;
                         }
                     }
+                }
+
+                // Optional prepared variants preserve the current blend,
+                // rigging, shadow and exact two-texture contracts. Prebuild
+                // all variants here; encoding never creates pipelines.
+                for (std::size_t shadows=0;shadows<3;++shadows)
+                {
+                    const char* fragment=shadows
+                        ? "almetal_world_pre_water_simple_shadow_candidates_fragment"
+                        : "almetal_world_pre_water_simple_candidates_fragment";
+                    if (!impl->library->hasFunction(fragment)) continue;
+                    const auto make_candidate=[&](const auto& source,auto& destination)
+                    {
+                        if (!source) return true;
+                        auto descriptor=source->descriptor();
+                        descriptor.library=impl->library.get();
+                        descriptor.fragment_function=fragment;
+                        descriptor.label+=" (prepared probes)";
+                        destination=ALMetalRenderPipeline::create(device,descriptor,error);
+                        return bool(destination);
+                    };
+                    if (!make_candidate(impl->pre_water_simple_pipelines[hdr][coverage][shadows][rigged],
+                            impl->candidate_pre_water_simple_pipelines[hdr][coverage][shadows][rigged]) ||
+                        !make_candidate(impl->pair_pre_water_simple_pipelines[hdr][coverage][shadows][rigged],
+                            impl->candidate_pair_pre_water_simple_pipelines[hdr][coverage][shadows][rigged]))
+                        return nullptr;
+                    if (shadows &&
+                        (!make_candidate(impl->high_pre_water_simple_pipelines[hdr][coverage][shadows-1][rigged],
+                            impl->candidate_high_pre_water_simple_pipelines[hdr][coverage][shadows-1][rigged]) ||
+                         !make_candidate(impl->pair_high_pre_water_simple_pipelines[hdr][coverage][shadows-1][rigged],
+                            impl->candidate_pair_high_pre_water_simple_pipelines[hdr][coverage][shadows-1][rigged])))
+                        return nullptr;
                 }
 
                 alpha_descriptor.fragment_bool_constants.clear();
@@ -20899,6 +20938,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
+    // One immutable snapshot supplies BOTH current lighting publication and
+    // derived bounds. Reused masks never rebind an older lighting pack.
+    const ALMetalWorldReflectionProbeConstants forward_probe_constants=scene.reflection_probes
+        ? scene.reflection_probes->constants : ALMetalWorldReflectionProbeConstants{};
+    std::array<float,16> forward_probe_projection{};
+    std::copy_n(scene.forward_probe_projection,16,forward_probe_projection.data());
     std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
     if (has_shiny || has_pre_water_simple || has_pre_water_material ||
         has_pre_water_pbr || has_above_water_surface)
@@ -20911,13 +20956,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             "Alchemy world opaque post-deferred reflection constants";
         probe_constants_buffer = ALMetalBuffer::create(
             *mImpl->device, descriptor, error);
-        const ALMetalWorldReflectionProbeConstants inactive_constants{};
-        const ALMetalWorldReflectionProbeConstants& constants =
-            scene.reflection_probes
-                ? scene.reflection_probes->constants
-                : inactive_constants;
         if (!probe_constants_buffer || !probe_constants_buffer->write(
-                0, &constants,
+                0, &forward_probe_constants,
                 descriptor.length, error))
         {
             return nullptr;
@@ -21130,6 +21170,48 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         return fail_command();
     }
+
+    ALMetalProbeCandidateBinding forward_candidates;
+    struct alignas(16) ForwardCandidateConstants
+    {
+        std::array<float,16> projection{};
+        std::array<std::uint32_t,4> grid{};
+    } forward_candidate_constants;
+    static_assert(sizeof(ForwardCandidateConstants)==80);
+    const bool has_candidate_simple=has_pre_water_simple && std::any_of(
+        scene.batches,scene.batches+scene.batch_count,[](const ALMetalWorldSimpleBatch& batch) {
+            return batch.pre_water_alpha && batch.pre_water_simple && !batch.avatar_alpha &&
+                !batch.post_water_depth_only && batch.pre_water_source_rgb==ALMetalBlendFactor::source_alpha &&
+                batch.pre_water_destination_rgb==ALMetalBlendFactor::one_minus_source_alpha;
+        });
+    if (has_candidate_simple && scene.forward_probe_projection_valid &&
+        probe_environment && scene.alpha_environment &&
+        scene.alpha_environment->environment_config[0]==0u &&
+        mImpl->frame_data && mImpl->probe_candidate_pipeline &&
+        mImpl->candidate_pre_water_simple_pipelines[scene.hdr?1:0][0][0][0])
+    {
+        std::array<ALMetalProbeCandidateSphere,256> spheres{};
+        for (std::size_t index=0;index<spheres.size();++index)
+        {
+            std::copy_n(forward_probe_constants.ref_sphere[index],4,spheres[index].center_radius);
+            spheres[index].priority=forward_probe_constants.ref_index[index][3];
+        }
+        const auto packet=alMetalBuildProbeEyeCandidates(spheres,forward_probe_constants.config[0],
+            forward_probe_projection,scene.width,scene.height);
+        const std::array<float,16> unused_inverse{}; // No depth reconstruction in forward lighting.
+        std::string preparation_error;
+        const auto result=mImpl->frame_data->prepareProbeCandidates(*command,
+            mImpl->probe_candidate_pipeline.get(),mImpl->library,mImpl->frame_data->builtinLibraryEpoch(),
+            packet,forward_probe_constants,forward_probe_projection,unused_inverse,scene.reverse_z,
+            forward_candidates,&preparation_error);
+        if (result==ALMetalProbeCandidatePreparation::failed)
+        {
+            setError(error,preparation_error); return fail_command();
+        }
+        forward_candidate_constants.projection=forward_probe_projection;
+        forward_candidate_constants.grid=forward_candidates.grid;
+    }
+    std::uint64_t candidate_simple_batches=0,candidate_simple_shadow_batches=0;
 
     if (scene.far_plane_overlay_column_count != 0)
     {
@@ -22480,6 +22562,27 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 if (pair_pipeline) alpha_pipeline = pair_pipeline;
             }
 
+            bool candidate_simple=false;
+            if (forward_candidates.masks && standard_blend && !batch.avatar_alpha &&
+                !batch.post_water_depth_only && alpha_family==Impl::PreWaterAlphaFamily::simple)
+            {
+                const bool high=highShadowQuality(alpha_shadow_constants) &&
+                    simple_shadow_mode!=Impl::SimpleShadowMode::none;
+                const bool pair=batch.texture_count>=1 && batch.texture_count<=2 &&
+                    (high ? bool(mImpl->pair_high_pre_water_simple_pipelines[scene.hdr?1:0]
+                        [batch.pre_water_alpha_writes_coverage?1:0][static_cast<std::size_t>(simple_shadow_mode)-1][rigged?1:0])
+                        : bool(mImpl->pair_pre_water_simple_pipelines[scene.hdr?1:0]
+                        [batch.pre_water_alpha_writes_coverage?1:0][static_cast<std::size_t>(simple_shadow_mode)][rigged?1:0]));
+                auto* pipeline=high
+                    ? (pair ? mImpl->candidate_pair_high_pre_water_simple_pipelines
+                        : mImpl->candidate_high_pre_water_simple_pipelines)[scene.hdr?1:0]
+                        [batch.pre_water_alpha_writes_coverage?1:0][static_cast<std::size_t>(simple_shadow_mode)-1][rigged?1:0].get()
+                    : (pair ? mImpl->candidate_pair_pre_water_simple_pipelines
+                        : mImpl->candidate_pre_water_simple_pipelines)[scene.hdr?1:0]
+                        [batch.pre_water_alpha_writes_coverage?1:0][static_cast<std::size_t>(simple_shadow_mode)][rigged?1:0].get();
+                if (pipeline) {alpha_pipeline=pipeline;candidate_simple=true;}
+            }
+
             if (probe_pbr_shadow && standard_blend)
             {
                 alpha_pipeline = mImpl->probePBRAlphaPipeline(
@@ -22713,6 +22816,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             error);
                 }
             }
+            if (encoded && candidate_simple)
+            {
+                encoded=mImpl->setFragmentData(*encoder,*command,8,&forward_candidate_constants,
+                    sizeof(forward_candidate_constants),error) &&
+                    encoder->setFragmentBuffer(9,*forward_candidates.masks,0,error);
+            }
             if (encoded && rigged)
             {
                 encoded =
@@ -22749,13 +22858,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,
                 batch.index_offset, 1, error);
+            if (encoded && candidate_simple)
+            {
+                if (simple_shadow_mode==Impl::SimpleShadowMode::none) ++candidate_simple_batches;
+                else ++candidate_simple_shadow_batches;
+            }
             if (encoded && selected_simple_shadow_psos)
             {
                 const auto& selected = alpha_pipeline->descriptor();
                 const bool simple_shadow = selected.fragment_function ==
-                    "almetal_world_pre_water_simple_shadow_fragment";
+                    "almetal_world_pre_water_simple_shadow_fragment" || selected.fragment_function ==
+                    "almetal_world_pre_water_simple_shadow_candidates_fragment";
                 const bool simple_unshadowed = selected.fragment_function ==
-                    "almetal_world_pre_water_simple_fragment";
+                    "almetal_world_pre_water_simple_fragment" || selected.fragment_function ==
+                    "almetal_world_pre_water_simple_candidates_fragment";
                 if (simple_shadow || simple_unshadowed)
                 {
                     std::size_t constant_state = 0; // Undefined optional bool.
@@ -24616,6 +24732,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         stats.diagnostic_initial_family_view_kind = scene.diagnostic_view_kind;
         stats.diagnostic_initial_family_view_index = scene.diagnostic_view_index;
     }
+    mImpl->opaque_diagnostics.probe_candidate_simple_batches=candidate_simple_batches;
+    mImpl->opaque_diagnostics.probe_candidate_simple_shadow_batches=candidate_simple_shadow_batches;
+    mImpl->opaque_diagnostics.probe_candidate_frame_index=scene.diagnostic_frame_index;
+    mImpl->opaque_diagnostics.probe_candidate_view_kind=scene.diagnostic_view_kind;
+    mImpl->opaque_diagnostics.probe_candidate_view_index=scene.diagnostic_view_index;
     if (encoded_water_draws) *encoded_water_draws = water_draws;
     return output;
 }

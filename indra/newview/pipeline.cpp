@@ -3355,6 +3355,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             {
                 if (!value) return;
                 static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
+                const auto prepared=value->renderer ? value->renderer->opaquePostDiagnostics() : ALMetalWorldPostDiagnostics{};
+                LL_INFOS("MetalScene") << "Native prepared probe alpha: view=" << view
+                    << ", last_encoded(unshadowed/shadowed)=" << prepared.probe_candidate_simple_batches
+                    << '/' << prepared.probe_candidate_simple_shadow_batches
+                    << ", source_frame/kind/index=" << prepared.probe_candidate_frame_index
+                    << '/' << prepared.probe_candidate_view_kind << '/' << prepared.probe_candidate_view_index
+                    << ", scope=last_successful_cpu_encoding_not_gpu_coverage" << LL_ENDL;
                 static LLCachedControl<bool> cpu_visibility_requested(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
                 const auto cpu_visibility=value->renderer ? value->renderer->worldCpuVisibilityStats() : ALMetalWorldCpuVisibilityStats{};
                 LL_INFOS("MetalScene") << "Native published CPU visibility: view=" << view
@@ -8624,6 +8631,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.composed_light_target)
     {
         ALMetalWorldOpaquePostDeferredScene scene;
+        // Owned forward-view projection; virtual lookup uses exact alpha eye
+        // positions independently of every batch's rounded MV and MVP.
+        std::memcpy(scene.forward_probe_projection,LLViewerCamera::getCurrent().getProjection().getF32ptr(),
+                    sizeof(scene.forward_probe_projection));
+        scene.forward_probe_projection_valid=true;
         scene.source_owner = capture.world_resources;
         scene.probe_pbr_shadow_specialization = true;
         scene.probe_water_shadow_specialization = true;

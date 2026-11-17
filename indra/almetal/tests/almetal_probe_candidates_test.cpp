@@ -374,3 +374,29 @@ TEST_CASE("BASE certificate guard contains independent f32 reconstructed raster 
     CHECK(certified == 100);
     CHECK(checked == 10000);
 }
+
+TEST_CASE("Forward probe candidate coordinates have an independent bounded contract",
+          "[almetal][probe-candidates]")
+{
+    auto view=perspective();
+    std::array<Sphere,3> probes{};
+    probes[1]={{.5f,.25f,-4.f,.25f},0};
+    probes[2]={{0.f,0.f,-4.f,.1f},-1}; // A manual box must stay a candidate.
+    const auto packet=alMetalBuildProbeEyeCandidates(probes,3.f,view.projection,view.width,view.height);
+    REQUIRE(packet.config[3]==1);
+    CHECK(full(packet.bounds[0],view)); CHECK(full(packet.bounds[2],view));
+    CHECK_FALSE(full(packet.bounds[1],view));
+    for(float x : {.25f,.5f,.75f})
+        checkPoint(probes[1],{x,.25f,-4.f},view,packet.bounds[1]);
+    // No inverse projection/raster/MVP is supplied: the consumer projects its
+    // actual eye position. Unsupported sizes and coefficient ranges fail open.
+    CHECK(alMetalBuildProbeEyeCandidates(probes,3.f,view.projection,16385,64).config[3]==0);
+    CHECK(alMetalBuildProbeEyeCandidates(probes,3.f,view.projection,64,16385).config[3]==0);
+    CHECK(alMetalBuildProbeEyeCandidates(probes,3.f,view.projection,0,64).config[3]==0);
+    for(float invalid : {65537.f,-65537.f,std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()})
+    {
+        view.projection[0]=invalid;
+        CHECK(alMetalBuildProbeEyeCandidates(probes,3.f,view.projection,64,64).config[3]==0);
+    }
+}

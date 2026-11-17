@@ -119,6 +119,12 @@ struct ALMetalWorldPostDiagnostics
     // Last successful optional encoder diagnostic, independent of the sparse census.
     // Zero encoders means unsplit. Nonzero counts actual initial family encoders.
     std::uint64_t diagnostic_initial_family_encoders = 0;
+    // Last successful render: disjoint unshadowed/shadowed draws using the
+    // prepared simple-alpha entry points, independent of timing. Not GPU work.
+    std::uint64_t probe_candidate_simple_batches = 0;
+    std::uint64_t probe_candidate_simple_shadow_batches = 0;
+    std::uint64_t probe_candidate_frame_index = 0;
+    std::uint32_t probe_candidate_view_kind = 0, probe_candidate_view_index = 0;
     std::uint64_t diagnostic_initial_family_frame = 0;
     std::uint32_t diagnostic_initial_family_view_kind = 0;
     std::uint32_t diagnostic_initial_family_view_index = 0;
