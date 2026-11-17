@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-364 -->
+<!-- next-defect-id: PPD-366 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -8604,3 +8604,41 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 fresh69238Home recording shows monotonic cumulative preparedpostencoding: lastsamplemain25,425/54,553eligible,probe87/49,660;pre0/candidatefailure samples0. Actualcapturedhotdraw38566isgeneric fragmentHigh2pair/read-onlydepth,probesbuffer1/no8or9mask. Seven2256-indexdrawsshareitsdisplayedshadergroup; individualbindingproofscopedto38566. Earlycount1 intentionallyall-full; latecount26fallbackreasonunretained. Gate repair is active but does not establish100%selection, visual acceptance or FPS gain. No newroutingbug inferred or shader/enginefixmade. [69238 Home replay findings](research/home-replay-checkpoint-69238-20261117.md).
 
 - 2026-11-17 owner activates whole-engine goal beginning this measured probe growth. Before another behavior change, source audit confirms unavailable masks can arise from valid all-full bounds, unsupported scene/packet/library inputs, shared publication admission or completion-owned residency; current aggregate counters cannot distinguish these. Add bounded typed decline reasons and successful-call source-tagged binding observations without forcing preparation or changing probe selection. Actual hot-frame classification and controlled saved-frame costs remain unknown pending input/editor recovery. Capture workflow must retain separate Home and post-teleport club generations; existing single-generation invalidation and normal collector5s gap failures stay recorded.
+
+- 2026-11-17 typed decision diagnostics2109c8d3af/builder712f1faf3b pass test-target build and API/GPU validation1,803,683assertions/37cases, including strict fallback/restoration color/depth/stencil, current prerequisites, admission/reentrant/residency reason partitioning and reload history. Independent source review finds no behavior-selection change. No new shader math, in-world classification or FPS gain is claimed; combined staging is pending.
+
+## PPD-364 — Initial multi-scene capture draft retains teleport permission across terminal invalidation
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex diagnostic capture orchestration
+- Discovered: 2026-11-17
+- Original reference: Native diagnostic mechanism has no upstream equivalent. A second capture generation is authorized only for a connected post-teleport scene; logout/disconnect/exit must not revive collection, and failed captures remain terminal.
+- Evidence: [Integration group](work/active/home-probe-cost-integration-20261117.md); private home-probe-cost-integration-20261117/capture-policy/orchestration-pre-review.diff retains the uncommitted first draft. Independent source review finds teleport_pending can survive a subsequent non-teleport invalidation and permit a later same-process readiness event to rearm. No viewer execution, unexpected capture or overwritten evidence was observed.
+- Next action: Clear pending permission on terminal non-teleport invalidation and exclude simultaneous disconnect/logout/exit from the teleport-only signal. Qualify policy and caller guards before the combined build/checkpoint.
+- Verification: Pending correction/source review; pure policy tests do not exercise viewer invalidation-reason classification.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correcting the first orchestration draft. This is a source-confirmed diagnostic control issue, not an observed rendering or FPS regression. Preserve the draft and review; no runtime acceptance is claimed.
+
+- 2026-11-17 corrected caller guards revoke pending permission on non-teleport invalidation and suppress simultaneous disconnect/logout/exit. Independent source review passes; policy native-failure/expiry nonrevival and two-generation budget pass1483CPUassertions/10cases. Viewer orchestration execution remains untested; combined build pending.
+
+## PPD-365 — Private capture-aware receipt fails on a missing GPU export family
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex private capture qualification helper
+- Discovered: 2026-11-17
+- Original reference: Missing evidence must produce an explicit partial/failed diagnostic receipt while retaining the normal collector failure; it must not crash or imply coverage.
+- Evidence: [Integration group](work/active/home-probe-cost-integration-20261117.md); private home-probe-cost-integration-20261117/runtime-recording-controller/unit-01.log retains seven passing controls and one KeyError for missing maximum_start_gap_ns in the wrong-target/missing-GPU-family negative control. No viewer, GPU capture or canonical collector behavior changed.
+- Next action: Preserve private helper's10passing synthetic controls and actual Home-only partial receipt; bind future Home+club captures and actual replay receipts without overriding normal qualification.
+- Verification: First synthetic unit run7pass/1error retained. Corrected helper passes10tests, including missing/wrong GPU family, CPU gap eligibility, clock/target/source mismatches, incomplete/failed replay slots and no overwrite. Actual69238Home result exits2 as expected: normal collectorFAILED/5.1109s gap preserved, capture API overlap labelled, club/formal replay inputs missing; continuous coverage and normal FPS eligibility remain false.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered on receipt of the independent helper's red-test notice; agent correction completed before root registration and both versions remain retained. Later review found CPU-gap eligibility omitted from a coverage boolean; preserve that intermediate source and its correction too. These are private evidence-tool development failures; no engine or runtime failure is inferred.

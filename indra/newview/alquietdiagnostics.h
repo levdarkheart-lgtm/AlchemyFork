@@ -23,6 +23,7 @@ struct ALQuietDiagnosticDisplay
     bool normal_display = false;
     bool world_ready = false;
     bool world_invalidated = false;
+    bool teleport_in_progress = false;
     bool cadence_valid = false;
     std::uint32_t width = 0, height = 0;
     std::uint64_t tracked_texture_bytes = 0, tracked_device_bytes = 0;
@@ -37,7 +38,8 @@ void alQuietDiagnosticsAdvanceDisplay(ALMetalDevice* device,
 // App iterations continue even without display; cancel an unfinished capture
 // after invalidation or a finite wall limit instead of awaiting another view.
 void alQuietDiagnosticsHeartbeat(std::uint64_t frame,
-    bool world_invalidated, bool cadence_valid = true) noexcept;
+    bool world_invalidated, bool cadence_valid = true,
+    bool teleport_in_progress = false) noexcept;
 
 // Main-owner observations for capture attribution and contained controller
 // checks. This is not a renderer state or a runtime control interface.
@@ -46,6 +48,7 @@ struct ALQuietDiagnosticStatistics
     bool automatic = false, started = false, terminal = false;
     bool capture_active = false, capture_failed = false;
     std::uint32_t attempts = 0;
+    std::uint32_t scene_generation = 1, total_attempts = 0;
 };
 ALQuietDiagnosticStatistics alQuietDiagnosticsStatistics() noexcept;
 

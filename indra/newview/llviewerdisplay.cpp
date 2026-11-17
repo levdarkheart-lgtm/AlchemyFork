@@ -1541,6 +1541,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         quiet.world_invalidated = gTeleportDisplay ||
             gAgent.getTeleportState() != LLAgent::TELEPORT_NONE || gDisconnected ||
             LLAppViewer::instance()->logoutRequestSent() || LLApp::isExiting();
+        quiet.teleport_in_progress = (gTeleportDisplay ||
+            gAgent.getTeleportState() != LLAgent::TELEPORT_NONE) &&
+            !gDisconnected && !LLAppViewer::instance()->logoutRequestSent() && !LLApp::isExiting();
         quiet.world_ready = LLStartUp::getStartupState() >= STATE_STARTED &&
             !quiet.world_invalidated && !display_window_hidden() &&
             !gPipeline.windowResizePending();

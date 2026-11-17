@@ -23,12 +23,13 @@ namespace D = ALMetalDiagnosticTelemetry;
 struct Session
 {
     bool initialized = false, automatic = false;
-    std::string directory;
+    std::string directory, capture_directory;
     ALMetalQuietCapturePolicy policy;
     std::unique_ptr<ALMetalFrameCapture> capture;
     std::uint64_t capture_start_ns = 0, last_resource_ns = 0;
     std::uint64_t world_start_ns = 0;
     bool world_invalidated = false;
+    bool teleport_pending = false;
 };
 Session& quietSession() { static Session value; return value; }
 
@@ -52,7 +53,8 @@ void cancel(Session& value, std::uint64_t frame, const char* reason,
     if (value.capture)
     {
         std::string error;
-        value.capture->cancelDisplayInterval(frame, &error);
+        if (!value.capture->cancelDisplayInterval(frame, &error))
+            value.policy.markCaptureFailed();
         value.capture.reset();
         D::recordMarker(reason, {frame, D::ViewKind::main, -1});
     }
@@ -73,6 +75,7 @@ void alQuietDiagnosticsInitialize() noexcept
         if (!privateDirectory(directory))
         { warning("Diagnostics require an existing owned mode0700 directory"); return; }
         value.directory = directory;
+        value.capture_directory = directory;
         const auto& version = LLVersionInfo::instance();
         D::Config config;
         config.path = (std::filesystem::path(directory) / "diagnostic.jsonl").string();
@@ -109,7 +112,7 @@ void alQuietDiagnosticsInitialize() noexcept
             policy.fallback_age_ns, policy.maximum_age_ns, value.automatic});
         D::recordMetrics({}, "quiet_policy_stability", {
             static_cast<std::uint64_t>(policy.adjacent_window_mean_tolerance * 1000),
-            0, 0, 0, 0, 0, 0, 0});
+            policy.maximum_scene_generations, 0, 0, 0, 0, 0, 0});
         LL_INFOS("QuietDiagnostics") << "Private asynchronous command/frame telemetry armed; automatic captures="
             << value.automatic << "; normal rendering and graphics settings retained" << LL_ENDL;
     }
@@ -122,9 +125,16 @@ void alQuietDiagnosticsInitialize() noexcept
 }
 
 void alQuietDiagnosticsHeartbeat(std::uint64_t frame,
-    bool world_invalidated, bool cadence_valid) noexcept
+    bool world_invalidated, bool cadence_valid, bool teleport_in_progress) noexcept
 {
     auto& value = quietSession();
+    // The caller excludes disconnect/logout/exit from its teleport signal,
+    // including simultaneous terminal invalidation. Such a transition must
+    // revoke a previously observed teleport before any later readiness.
+    if (world_invalidated && !teleport_in_progress)
+        value.teleport_pending = false;
+    if (teleport_in_progress && value.policy.stats().started)
+        value.teleport_pending = true;
     if (world_invalidated && value.world_start_ns && !value.world_invalidated)
     {
         value.world_invalidated = true;
@@ -184,7 +194,41 @@ void alQuietDiagnosticsAdvanceDisplay(ALMetalDevice* device,
         const bool captured = value.capture &&
             value.capture->stats().state == ALMetalFrameCapture::State::capturing;
         alQuietDiagnosticsHeartbeat(observation.frame, observation.world_invalidated,
-            !observation.normal_display || observation.cadence_valid);
+            !observation.normal_display || observation.cadence_valid,
+            observation.teleport_in_progress);
+        const ALMetalQuietCapturePolicy::Input policy_input{now, observation.frame,
+            observation.world_ready, observation.normal_display, observation.cadence_valid,
+            observation.world_invalidated, captured};
+        // Only an observed teleport may open a second scene generation, and
+        // only after the old native capture has been released. Disconnect,
+        // logout, expiry and capture failure never silently restart capture.
+        if (value.teleport_pending && !value.capture &&
+            value.policy.rearmAfterInvalidation(policy_input))
+        {
+            const auto scene_directory = std::filesystem::path(value.directory) /
+                ("scene-" + std::to_string(value.policy.stats().scene_generation));
+            if (!std::filesystem::create_directory(scene_directory))
+            {
+                value.policy.markCaptureFailed();
+                warning("Post-teleport capture directory exists; no overwrite or capture attempted");
+                return;
+            }
+            std::filesystem::permissions(scene_directory, std::filesystem::perms::owner_all,
+                std::filesystem::perm_options::replace);
+            const auto path = scene_directory.string();
+            if (!privateDirectory(path.c_str()))
+            {
+                value.policy.markCaptureFailed();
+                warning("Post-teleport capture directory is not private; capture disabled");
+                return;
+            }
+            value.capture_directory = path;
+            value.world_invalidated = false;
+            value.teleport_pending = false;
+            D::recordMetrics(tag, "quiet_scene_started", {
+                value.policy.stats().scene_generation, value.policy.stats().total_attempts,
+                now, 0, 0, 0, 0, 0});
+        }
         if (value.capture)
         {
             std::string error;
@@ -199,9 +243,7 @@ void alQuietDiagnosticsAdvanceDisplay(ALMetalDevice* device,
                 value.capture_start_ns = 0;
             }
         }
-        const auto action = value.policy.update({now, observation.frame,
-            observation.world_ready, observation.normal_display, observation.cadence_valid,
-            observation.world_invalidated, captured});
+        const auto action = value.policy.update(policy_input);
         using A = ALMetalQuietCapturePolicy::Action;
         if (action == A::none) return;
         if (action == A::invalidated || action == A::expired)
@@ -217,13 +259,14 @@ void alQuietDiagnosticsAdvanceDisplay(ALMetalDevice* device,
             static_cast<std::uint64_t>(stats.last_window_mean_period_ns), stats.cadence_suspensions});
         D::recordMetrics(tag, "quiet_capture_windows", {
             static_cast<std::uint64_t>(stats.previous_window_mean_period_ns),
-            static_cast<std::uint64_t>(stats.last_window_mean_period_ns), 0, 0, 0, 0, 0, 0});
+            static_cast<std::uint64_t>(stats.last_window_mean_period_ns),
+            stats.scene_generation, stats.total_attempts, 0, 0, 0, 0});
         const auto trigger = action == A::early ? ALMetalFrameCapture::Trigger::quiet_early :
             action == A::late_decline ? ALMetalFrameCapture::Trigger::quiet_late_decline :
             ALMetalFrameCapture::Trigger::quiet_late_fallback;
         std::string error;
         if (device) value.capture = ALMetalFrameCapture::createTriggeredDisplay(
-            *device, value.directory.c_str(), trigger, &error);
+            *device, value.capture_directory.c_str(), trigger, &error);
         if (!value.capture || !value.capture->beginDisplayInterval(observation.frame, &error))
         {
             D::recordMarker("quiet_capture_start_failed", tag, static_cast<std::uint64_t>(action));
@@ -257,5 +300,5 @@ ALQuietDiagnosticStatistics alQuietDiagnosticsStatistics() noexcept
     const auto& policy = value.policy.stats();
     return {value.automatic, policy.started, policy.terminal,
         value.capture && value.capture->stats().state == ALMetalFrameCapture::State::capturing,
-        policy.capture_failed, policy.attempts};
+        policy.capture_failed, policy.attempts, policy.scene_generation, policy.total_attempts};
 }

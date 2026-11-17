@@ -54,6 +54,13 @@ METRIC_FIELDS = {
                            "width", "height", "with_depth", "needs_shadows"),
     "base_lighting_features": ("width", "height", "configured_probe_count", "hero_ready", "ssr_ready",
                                "ssr_trace_iterations", "ssr_samples", "tile_light_map"),
+    "probe_candidate_decision": ("schema", "reason_code", "configured_probe_count",
+                                 "nondefault_full_rects", "nondefault_bounded_rects",
+                                 "empty_rects_subset", "eligible_batches", "prepared_batches"),
+    "probe_candidate_pipeline_fallback": ("schema", "missing_variant_batches", "unused2",
+                                          "unused3", "unused4", "unused5", "unused6", "unused7"),
+    "quiet_scene_started": ("scene_generation", "total_capture_attempts", "world_start_mach_ns",
+                            "unused3", "unused4", "unused5", "unused6", "unused7"),
 }
 CAPTURE_END_MARKERS = {"quiet_capture_stopped", "quiet_capture_world_invalidated",
                        "quiet_capture_cadence_invalid", "quiet_capture_interval_timeout",
@@ -275,7 +282,12 @@ def metadata_captures(directory):
     result, receipts = [], []
     if directory is None:
         return result, receipts
-    for child in ("quiet-early-frame-capture", "quiet-late-frame-capture"):
+    children = ["quiet-early-frame-capture", "quiet-late-frame-capture"]
+    # The bounded native policy can explicitly rearm once after teleport.
+    # Do not recursively follow arbitrary directories or infer a club visit.
+    if (Path(directory) / "scene-2").is_dir():
+        children += ["scene-2/quiet-early-frame-capture", "scene-2/quiet-late-frame-capture"]
+    for child in children:
         path = Path(directory) / child / "metadata.jsonl"
         if not path.exists():
             receipts.append({"relative_path": child + "/metadata.jsonl", "missing": True})
@@ -461,7 +473,8 @@ class Analyzer:
                     self.budget.limits["frame_capacity"] += 1
                 else:
                     self.frames.extend(values)
-            if event == "marker" or (event == "metrics" and row.get("name") == "quiet_capture_trigger"):
+            if event == "marker" or (event == "metrics" and row.get("name") in
+                                     ("quiet_capture_trigger", "quiet_scene_started")):
                 if len(self.markers) < MAX_MARKERS:
                     self.markers.append({"name": row.get("name"), "mach_ns": now,
                                          "frame_id": integer(row.get("frame_id"), 0),

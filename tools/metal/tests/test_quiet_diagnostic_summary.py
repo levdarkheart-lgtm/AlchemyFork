@@ -149,6 +149,33 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(result["first_post_capture_contaminated_periods"],[(BASE+round(2.1*NS),BASE+round(3.1*NS))])
         self.assertEqual(phase["period_exclusion_occurrences_overlap"]["first_post_capture_period"],1)
 
+    def test_two_scene_capture_bounds_survive_explicit_post_teleport_reduction(self):
+        captures = self.directory / "captures"
+        for generation, offset in (("",0),("scene-2",100)):
+            for label, age in (("early",2),("late",65)):
+                path=captures/generation/("quiet-"+label+"-frame-capture")
+                path.mkdir(parents=True)
+                row={"quiet_cpu_clock":"mach_absolute_time_ns", "status":"stopped",
+                     "quiet_start_request_monotonic_ns":BASE+(offset+age)*NS,
+                     "quiet_stop_return_monotonic_ns":BASE+(offset+age+1)*NS,
+                     "quiet_trigger":"quiet_"+label}
+                (path/"metadata.jsonl").write_text(json.dumps(row)+"\n")
+        stream=Stream();stream.marker("quiet_world_started",0)
+        stream.marker("quiet_world_invalidated",95)
+        stream.add("metrics",100,name="quiet_scene_started",values=[2,2,BASE+100*NS,0,0,0,0,0])
+        stream.add("metrics",101,name="probe_candidate_decision",values=[1,9,26,25,0,0,7,0])
+        stream.frame(1,101);stream.frame(2,102);stream.frame(3,103)
+        result=self.analyze(stream,capture_directory=captures,world_start=BASE+100*NS)
+        self.assertEqual(len(result["capture_cpu_intervals"]),4)
+        self.assertEqual([r["start_ns"] for r in result["capture_cpu_intervals"]],
+                         [BASE+age*NS for age in (2,65,102,165)])
+        phase=result["phases"][0]
+        decision=phase["metrics"]["probe_candidate_decision:main"]
+        self.assertEqual(decision["last"],[1,9,26,25,0,0,7,0])
+        self.assertEqual(decision["field_names"][1],"reason_code")
+        self.assertEqual(phase["metrics"]["quiet_scene_started:main"]["last"][0],2)
+        self.assertEqual(phase["capture_excluded_control_periods"]["count"],0)
+
     def test_helper_cpu_bounds_refine_one_capture_without_losing_later_marker_capture(self):
         capture = self.directory / "captures" / "quiet-early-frame-capture"
         capture.mkdir(parents=True)

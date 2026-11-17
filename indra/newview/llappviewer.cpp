@@ -1449,7 +1449,9 @@ public:
             mApp.logoutRequestSent() || LLApp::isExiting(),
             gFocusMgr.getAppHasFocus() && gViewerWindow && gViewerWindow->getWindow() &&
                 gViewerWindow->getWindow()->getVisible() &&
-                !gViewerWindow->getWindow()->getMinimized() && !gNonInteractive);
+                !gViewerWindow->getWindow()->getMinimized() && !gNonInteractive,
+            (gTeleportDisplay || gAgent.getTeleportState() != LLAgent::TELEPORT_NONE) &&
+                !gDisconnected && !mApp.logoutRequestSent() && !LLApp::isExiting());
     }
     void completed() noexcept
     { if (mEnabled) mFrame.outcome = QD::FrameOutcome::completed; }
