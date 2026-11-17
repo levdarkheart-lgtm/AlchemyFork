@@ -36,6 +36,20 @@ public:
     const std::shared_ptr<const ALMetalBuffer>& vertexLease() const noexcept { return mVertices; }
     const std::shared_ptr<const ALMetalBuffer>& indexLease() const noexcept { return mIndices; }
     std::span<const std::shared_ptr<const ALMetalTexture>> textureLeases() const noexcept { return mTextures; }
+    // Conservative record-owned CPU allocation charge, including reserved
+    // texture slots and immutable coverage. Native resources have separate
+    // working-set leases; this is neither their bytes nor physical RAM.
+    std::uint64_t ownedBytes() const noexcept
+    {
+        constexpr std::uint64_t shared_control_block = 4 * sizeof(void*);
+        const std::uint64_t fixed = sizeof(*this) + shared_control_block +
+            (mPrototype.sharedCoverageData()
+                ? sizeof(ALMetalWorldSpotShadowBatch::CoverageData) + shared_control_block : 0);
+        constexpr std::uint64_t slot = sizeof(std::shared_ptr<const ALMetalTexture>);
+        constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+        if (mTextures.capacity() > (maximum - fixed) / slot) return maximum;
+        return fixed + static_cast<std::uint64_t>(mTextures.capacity()) * slot;
+    }
     // Cheap certification of the exact immutable geometry/material tuple.
     // View MVP, current pose and animated texture matrix are deliberately NOT
     // certified here. Shared producer-independent sources supply identity UV;
