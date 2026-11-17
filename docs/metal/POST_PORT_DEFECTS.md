@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-362 -->
+<!-- next-defect-id: PPD-364 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7646,7 +7646,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.
-- Next action: Owner checkpoint of separately staged69236/sourcef99b2daf14: Home login/loading/settlement then club teleport/loading/settlement. [Group1 evidence](work/active/probe-transparency-preparation-20261117.md) qualifies dependency-correct mask reuse and standard simple-alpha consumers; runtime benefit is unmeasured. Implementation pauses here as requested. Preserve settings/quality and record actual main-target dimensions automatically; their previous height difference is unexplained and does not establish an owner setting change. No push.
+- Next action: Repair and verify PPD363 actual pre/post-water preparation eligibility before accepting the intended transparent consumer. Then fresh early/settled GPU frame captures of the corrected build can localize current shader/register/spill and pass costs; the new Overview is not replayable shader evidence. Club additionally has substantial CPU shadow/scene/decode work. [69236 checkpoint](research/probe-transparency-checkpoint-69236-20261117.md); no further source/runtime change during this assessment.
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7694,6 +7694,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 owner-authorized exact69233/source647dc369d1 Home recording completed0 with all world0–120 CPU/GPU phases retained; viewer closed after normal quit log path (process exit code uncollected). Owner region-environment31→16FPS; native29.690→15.886 with main wait11.616→43.026ms/frame and other elapsed22.066→19.923ms. Late waits target already-running GPU work two frames older; decoder late0.001CPU-s/main28% of one core. New candidate path active: last unambiguous in-Overview sample1379preparations/7reuses/2665declines/0failures;964569088cumulative mask bytes are not resident memory. Low reuse does not establish its FPS cost. All49controls/19args equal oldB2, but3456×2168 versus3456×1916(+13.15% pixels), light/probe/object/resource workloads differ; no causal gain/regression accepted. Native-only tail55→1probe reset/~24FPS recovery follows owner-confirmed environment change; no Overview there or unchanged-scene attribution.153warnings/40sites/0ERRORFATAL+3PNG source-mapped, actual cache mismatch/attachment/HTTP failures retained without FPS shares.231native contention drops retain partial evidence. PPD343spill fields unmeasured;356/357remain ready_for_owner. No club capture, new source group, further profile or push; discuss linked checkpoint first.
 
 - 2026-11-17 group1 candidate69236/sourcef99b2daf14 is ready for owner, root production791d03b070 plus fixture commits2fd5/d8, exactindra ad9459ed8d2f. Cache key now packet/library/epoch with independent full current-lighting publication and reentrant snapshot guards. Standard simple alpha gains independently proven virtual-eye masks preserving every valid tap/order/SH/blend/shadow. Actual GPU oracle28cases/zero omissions; final native1225097assertions/34cases including76strict renderer arms; existing renderer/reload50837/18 PASS, overlapping counts. Final build/static8272exactnodes/346ARM64/signatures/ownedimports PASS. Two fixture failures/corrections retained under359/361; no pixel tolerance change. No new viewer/profile/FPS/spill/physical-memory outcome; Home decline remains open. Owner keeps same test/settings: logged3456x1916 versus3456x2168 are main lighting target dimensions, not proof of changed physical drawable or quality. Stopped at requested inter-group checkpoint; later shader/admission/tile-local groups remain pending.
+
+- 2026-11-17 corrected69236Home→club Overview/native/log checkpoint completes both collectors0 with full requested0–120windows. Home31.060→16.103FPS; late period62.101ms/wait42.999ms/other19.102ms. Versus69233same-size late15.886FPS/62.949/wait43.026, wait changes only0.0266ms. Both49Home controls match; projector workloads51→39 and probe/resource/loading differences remain. Shared reuse is active (sample289prep/1589reuse), no failures, but every sampled prepared-alpha count0/0; PPD363 source gate excludes valid post-water-only callers. Intended group benefit is therefore not established. Club native60–12018.510FPS/wait9.984ms; Overview80–120main72.84%onecore/decode49.178CPU-s, with sun/shadow CPU10.213s/40s. No single Home GPU explanation applies to Club.324warnings/44sites/0ERRORFATAL mapped. Native bytecutoff after both traces retains425contention/110budget losses and27pendingcommitted unknown at cutoff, not GPU failure. Owner manual quit logs normalGoodbye; exitcodeuncollected. Initial512controller attempt362 separately preserved; no engine fix/profile/push after assessment.
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -8546,3 +8548,43 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 actual failed run retained before fixture correction. This does not establish a production rendering failure or allow loosening pixel criteria.
 
 - 2026-11-17 final native03 atf99b2daf14 passes after fixture-only correction2fd5b01d00. Earlier failure remains retained; no production cache or image behavior was changed to satisfy the old premise.
+
+
+## PPD-362 — Runtime controller requests an unsupported diagnostic byte cap
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Codex runtime capture controller
+- Discovered: 2026-11-17
+- Original reference: Qualified native telemetry and quiet_capture CLI both permit64..256MiB. Existing manual256MiB controller is the reference.
+- Evidence: [69236 checkpoint and replacement](research/probe-transparency-checkpoint-69236-20261117.md); private runtime-recording-controller and /Users/dekstroza/Alchemy-home-v5xr0z4g preserved launch/collector/log records.
+- Next action: Keep supported256MiB writer/collector limits and verify native header before the Login cue, as in the successful replacement. Preserve original preparation.json/failed512runner and failed attempt separately; corrected receipt identifies current runner. Two-scene prefix may reach its bound after traces and must remain labelled partial.
+- Verification: Private controller restored256MiB. Corrected startup header explicitly confirms sourcef99/build69236/PID42620/max268435456 before Login cue. Both Home and club collectors complete0 with requested0–120 coverage. Native reaches byte limit after both timed traces; evidence remains event-partial. No native metrics from the earlier512attempt are used.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correcting controller/restarting. Preserve rawOverview/failed receipts and all prior evidence. No engine source or graphics settings changed.
+
+
+- 2026-11-17 replacement Alchemy-home-e2onni_5 records both scenes successfully with supported limits; preparation-corrected256.json binds corrected controller/spec/commands. Initial Alchemy-home-v5xr0z4g and invalid configuration remain retained. No engine or graphics setting was changed by this repair.
+
+## PPD-363 — Prepared transparency is not observed in the69236 owner checkpoint
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex forward probe preparation integration
+- Discovered: 2026-11-17
+- Original reference: Simple-alpha forward lighting serves the existing ordered pre/post-water rendering owners. Preparation should be selected only for supported standard simple consumers and preserve generic fallbacks; no broad activation claim follows from mask production alone.
+- Evidence: [Group1](work/active/probe-transparency-preparation-20261117.md); private goodrun /Users/dekstroza/Alchemy-home-e2onni_5 analysis/log-audit and actual Native prepared probe alpha log rows.
+- Next action: On implementation continuation, include both valid pre/post-water simple owners in preparation eligibility, preserve exclusions for avatar/custom/depth/non-simple owners, and add actual post-water regression coverage including readonly-depth behavior. Confirm cumulative/actual consumer use so last-call snapshots cannot hide earlier invocations. Rebuild/verify before fresh GPU frame captures or another owner performance check.
+- Verification: Fresh sampled prepared-alpha counts are0/0 in38Home and56Club rows. Shared BASE preparation/reuse advances with zero failures. Independent source audit atf99 confirms has_candidate_simple requires pre_water_alpha although draw acceptance and candidate selection support post_water_alpha; pipeline publishes mutually exclusive stage flags with simple family independently. A valid post-water-only scene is guaranteed not to prepare. Actual live pre/post histogram is absent, so this proves a source gap consistent with samples, not the sole reason for every zero. Authored transparency fixture always used pre-water and missed this boundary; no repair yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 observed runtime discrepancy registered before source repair. Contained authored pre-water alpha tests passed; that scope does not prove real post-water owner selection. Full Home and club Overview data remain retained.
+
+- 2026-11-17 independent source review confirms almetalworld.cpp21181–85 versus22326+/candidate selection, pipeline12959–63/13046–52 and exclusive capture begin/end8109–8182. No production edit or new runtime after discovery; initial source/test success does not establish in-world transparent activation or FPS benefit. Source, zero snapshots and full two-scene evidence are linked in the69236 report.
