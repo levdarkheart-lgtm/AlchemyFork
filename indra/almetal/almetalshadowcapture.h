@@ -134,7 +134,9 @@ public:
     }
     // Packet/job admission declined after snapshot: restore the untouched CPU
     // arrays for ordinary synchronous encoding. A copied scene() owner keeps
-    // the separate BODY completion lease; no per-draw reconstruction is needed.
+    // the separate BODY completion lease; a caller using CPU-only publication
+    // inputs also keeps cpuOwner() until those restored inputs are encoded.
+    // No per-draw reconstruction is needed.
     bool restoreCPUStorage(Batches& empty_batches, Queries& empty_queries) noexcept
     {
         if (!empty_batches.empty() || !empty_queries.empty()) return false;
@@ -152,10 +154,23 @@ public:
         mOwners->target = std::move(target);
         return true;
     }
+    // Publication rows and other CPU-only inputs survive encoding/join, but
+    // never enter scene().source_owner or its GPU completion aggregate. The
+    // external byte charge covers only this owner's own container capacity;
+    // shared published rows retain their independent publication accounting.
+    bool retainCPUOwner(std::shared_ptr<const void> owner, std::uint64_t owned_bytes = 0) noexcept
+    {
+        if (!mOwners || !owner || mBatchesRecycled || mCPUReservation) return false;
+        mCPUOwner = std::move(owner);
+        mCPUOwnerBytes = owned_bytes;
+        return true;
+    }
+    std::shared_ptr<const void> cpuOwner() const noexcept { return mCPUOwner; }
     // Logical CPU-owned packet capacity, not native/physical resident RAM.
-    // Shared producer/native/pose owners and CompletionOwners (including its
-    // BODY pointer array) are GPU-lifetime owners and excluded. This charges
-    // only the CPU packet wrapper and arrays held while next capture allocates.
+    // Cached publication rows keep their independent accounting. GPU-lifetime
+    // CompletionOwners (including its BODY array) are excluded. This charges
+    // the CPU packet, its arrays and an explicitly supplied CPU-owner container
+    // while the next capture allocates.
     std::uint64_t ownedCPUBytes() const noexcept
     {
         std::uint64_t bytes = sizeof(*this);
@@ -167,6 +182,7 @@ public:
         };
         add(mBatches.capacity(), sizeof(ALMetalWorldSpotShadowBatch));
         add(mQueries.capacity(), sizeof(ALMetalWorldVisibilityQuery));
+        add(mCPUOwnerBytes, 1);
         return bytes;
     }
 
@@ -191,11 +207,18 @@ private:
 
     void releaseCPUReservationIfRecycled() noexcept
     {
-        if (mBatchesRecycled && mQueriesRecycled) mCPUReservation.reset();
+        if (mBatchesRecycled && mQueriesRecycled)
+        {
+            mCPUOwner.reset();
+            mCPUOwnerBytes = 0;
+            mCPUReservation.reset();
+        }
     }
     // This reservation must NOT enter CompletionOwners/scene.source_owner.
     // Declared first so destruction releases it after the CPU arrays die.
     std::shared_ptr<const void> mCPUReservation;
+    std::shared_ptr<const void> mCPUOwner;
+    std::uint64_t mCPUOwnerBytes = 0;
     ALMetalWorldSpotShadowScene mScene;
     Batches mBatches;
     Queries mQueries;

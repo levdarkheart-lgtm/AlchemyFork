@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -324,6 +325,12 @@ TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and ret
         plan.produce(first, 0, true);
         const auto first_query_bytes = first.queries.capacity() * sizeof(ALMetalWorldVisibilityQuery);
         auto packet = first.take(f.error);
+        using CPUStorage = std::array<std::byte, 1024>;
+        constexpr auto cpu_owner_bytes = sizeof(CPUStorage) + 4 * sizeof(void*);
+        auto cpu_owner = std::make_shared<CPUStorage>();
+        const std::weak_ptr<CPUStorage> weak_cpu_owner = cpu_owner;
+        REQUIRE(packet->retainCPUOwner(cpu_owner, cpu_owner_bytes));
+        cpu_owner.reset();
         const auto packet_capacity = packet->ownedCPUBytes();
         ALNativeFrameBudget::Limits limits; limits.preparation_jobs = 2;
         limits.preparation_bytes_in_flight = packet_capacity * 2;
@@ -338,6 +345,7 @@ TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and ret
         while (!first_task->encodingComplete() && std::chrono::steady_clock::now() < deadline)
             std::this_thread::yield();
         REQUIRE(first_task->encodingComplete()); CHECK(first_task->active());
+        CHECK_FALSE(weak_cpu_owner.expired());
         CHECK(ALMetalDevice::committedCommandBufferCount() == committed);
         const auto retained_bytes = budget.snapshot().preparation_bytes_in_flight;
         REQUIRE(retained_bytes > packet_capacity); CHECK(budget.snapshot().preparation_in_flight == 1);
@@ -345,6 +353,10 @@ TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and ret
         plan.produce(next, 1, true);
         const auto next_batch_bytes = next.batches.capacity() * sizeof(Batch);
         auto next_packet = next.take(f.error);
+        auto next_cpu_owner = std::make_shared<CPUStorage>();
+        const std::weak_ptr<CPUStorage> weak_next_cpu_owner = next_cpu_owner;
+        REQUIRE(next_packet->retainCPUOwner(next_cpu_owner, cpu_owner_bytes));
+        next_cpu_owner.reset();
         const auto next_command = f.renderer->commandBatchCompletion();
         auto* next_identity = next_packet.get();
         CHECK_FALSE(next_task->start(*f.renderer, 1, next_packet, target, 1, &budget, &f.error));
@@ -355,16 +367,20 @@ TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and ret
         auto outcome = first_task->finish(true, &f.error); REQUIRE(outcome.submitted);
         CHECK(outcome.retained_cpu_bytes == retained_bytes);
         auto held_packet = std::move(outcome.packet);
+        CHECK_FALSE(held_packet->retainCPUOwner(std::make_shared<CPUStorage>(), cpu_owner_bytes));
         outcome = {}; first_task.reset(); // Neither move nor task death releases CPU storage debt.
         CHECK(budget.snapshot().preparation_bytes_in_flight == retained_bytes);
         CHECK_FALSE(original->isComplete()); // GPU remains blocked independently.
+        CHECK_FALSE(weak_cpu_owner.expired());
         Packet::Batches batches; Packet::Queries queries;
         batches.reserve(4096); queries.reserve(64); // Empty may still own substantial capacity.
         REQUIRE(held_packet->recycleBatches(batches));
-        CHECK(held_packet->ownedCPUBytes() == sizeof(Packet) + first_query_bytes);
+        CHECK(held_packet->ownedCPUBytes() == sizeof(Packet) + first_query_bytes + cpu_owner_bytes);
+        CHECK_FALSE(weak_cpu_owner.expired());
         CHECK(budget.snapshot().preparation_bytes_in_flight == retained_bytes); // Queries still retained.
         REQUIRE(held_packet->recycleQueries(queries));
         CHECK(held_packet->ownedCPUBytes() == sizeof(Packet));
+        CHECK(weak_cpu_owner.expired());
         CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
         CHECK(budget.snapshot().preparation_in_flight == 0);
         CHECK_FALSE(original->isComplete()); // CPU recycle never waits on GPU retirement.
@@ -379,27 +395,35 @@ TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and ret
         Packet::Queries reverse_queries; reverse_queries.reserve(64);
         Packet::Batches reverse_batches; reverse_batches.reserve(4096);
         REQUIRE(canceled.packet->recycleQueries(reverse_queries));
-        CHECK(canceled.packet->ownedCPUBytes() == sizeof(Packet) + next_batch_bytes);
+        CHECK(canceled.packet->ownedCPUBytes() == sizeof(Packet) + next_batch_bytes + cpu_owner_bytes);
+        CHECK_FALSE(weak_next_cpu_owner.expired());
         CHECK(budget.snapshot().preparation_bytes_in_flight == canceled.retained_cpu_bytes);
         REQUIRE(canceled.packet->recycleBatches(reverse_batches));
         CHECK(canceled.packet->ownedCPUBytes() == sizeof(Packet));
+        CHECK(weak_next_cpu_owner.expired());
         canceled.packet.reset();
         CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
         CHECK(budget.snapshot().preparation_in_flight == 0);
         for (const bool restore : {true, false})
         {
             Capture capture; plan.produce(capture, 2, true); auto candidate = capture.take(f.error);
+            auto cpu_storage = std::make_shared<CPUStorage>();
+            const std::weak_ptr<CPUStorage> weak_restored_cpu = cpu_storage;
+            REQUIRE(candidate->retainCPUOwner(cpu_storage, cpu_owner_bytes));
+            cpu_storage.reset();
             REQUIRE(f.renderer->beginShadowFrameBatch(1, "CPU restore or packet destruction", &f.error));
             REQUIRE(next_task->start(*f.renderer, 1, candidate, target, 2, &budget, &f.error));
             auto discarded = next_task->finish(false, &f.error); REQUIRE(discarded.packet);
             CHECK(budget.snapshot().preparation_bytes_in_flight == discarded.retained_cpu_bytes);
+            std::shared_ptr<const void> restored_cpu_owner;
             if (restore)
             {
                 const auto frozen = discarded.packet->scene();
+                restored_cpu_owner = discarded.packet->cpuOwner();
                 Packet::Batches restored_batches; restored_batches.reserve(4096);
                 Packet::Queries restored_queries; restored_queries.reserve(64);
                 REQUIRE(discarded.packet->restoreCPUStorage(restored_batches, restored_queries));
-                CHECK(discarded.packet->ownedCPUBytes() == sizeof(Packet));
+                CHECK(discarded.packet->ownedCPUBytes() == sizeof(Packet) + cpu_owner_bytes);
                 CHECK(restored_batches.data() == frozen.batches);
                 CHECK(restored_queries.data() == frozen.visibility_queries);
                 CHECK(restored_batches.size() == frozen.batch_count);
@@ -407,6 +431,9 @@ TEST_CASE("almetal: completed shadow packet keeps CPU debt through moves and ret
                 CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
             }
             discarded.packet.reset(); // Destruction without recycle also retires once.
+            CHECK(weak_restored_cpu.expired() == !restore);
+            restored_cpu_owner.reset();
+            CHECK(weak_restored_cpu.expired());
             CHECK(budget.snapshot().preparation_bytes_in_flight == 0);
             CHECK(budget.snapshot().preparation_in_flight == 0);
         }

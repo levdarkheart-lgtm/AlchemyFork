@@ -168,8 +168,10 @@ struct ALMetalShadowPrepareStats
 };
 
 // Synchronous dependency join, not a new frame queue. The caller allocates the
-// output once and retains its immutable input packet through native encoding;
-// the scene's source_owner transfers that packet lease to command completion.
+// output once and retains immutable source/coverage/pose through CPU encoding.
+// Native resources remain owned through actual command completion. A legacy
+// scene source_owner can retain both; split publication owners keep CPU records
+// through encoding/join and transfer only native leases to completion.
 // Prepared outputs borrow source/coverage/pose with no per-output refcounting.
 // The caller publishes output ONLY on true. An epoch change cancels the packet;
 // false resets every output and never publishes a valid-looking prefix.
@@ -184,9 +186,9 @@ bool alMetalPrepareShadowBatches(
     ALMetalShadowPrepareStats* stats = nullptr,
     std::string* error = nullptr);
 
-// Compact production overload. The caller keeps the aggregate source/pose
-// lease alive throughout this join, encoding and actual GPU completion via
-// scene.source_owner. Instance scratch itself may be reused after the join;
+// Compact production overload. CPU source/pose leases survive join/encoding;
+// native generations survive actual GPU completion via scene.source_owner.
+// Instance scratch itself may be reused after the join;
 // outputs borrow only immutable records, never instance/context storage.
 bool alMetalPrepareShadowBatches(
     std::span<const ALMetalShadowPrepareInstance> inputs,

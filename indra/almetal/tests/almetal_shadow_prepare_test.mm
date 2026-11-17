@@ -23,6 +23,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_set>
+#include <cstddef>
 #include <utility>
 
 TEST_CASE("shadow capture: CPU batch storage recycles before native generations retire",
@@ -58,6 +59,12 @@ TEST_CASE("shadow capture: CPU batch storage recycles before native generations 
     auto packet = ALMetalCapturedShadowView::take(input, batches, bodies, &error);
     INFO(error);
     REQUIRE(packet);
+    auto cpu_storage = std::make_shared<std::array<std::byte, 64>>();
+    const std::weak_ptr<std::array<std::byte, 64>> weak_cpu_storage = cpu_storage;
+    const auto before_cpu_owner = packet->ownedCPUBytes();
+    REQUIRE(packet->retainCPUOwner(cpu_storage, sizeof(*cpu_storage)));
+    CHECK(packet->ownedCPUBytes() == before_cpu_owner + sizeof(*cpu_storage));
+    cpu_storage.reset();
     CHECK(batches.empty());
     CHECK(bodies.empty());
     auto native_scene = packet->scene();
@@ -89,6 +96,7 @@ TEST_CASE("shadow capture: CPU batch storage recycles before native generations 
     body.reset();
     batches.clear();
     REQUIRE(packet->recycleBatches(batches));
+    CHECK(weak_cpu_storage.expired());
     CHECK(batches.data() == captured_storage);
     CHECK(batches.capacity() == captured_capacity);
     packet.reset();
