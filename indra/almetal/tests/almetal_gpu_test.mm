@@ -14263,8 +14263,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             D::Config telemetry_config;
             telemetry_config.path =
                 (selected_telemetry.directory / "selected-pso.jsonl").string();
-            telemetry_config.source_sha = "ppd338-actual-renderer-fixture";
-            telemetry_config.build_id = "almetal_gpu_test";
+            // Explicit synthetic fixture provenance; the outer test receipt binds
+            // the actual executed binary, source revision and artifact hashes.
+            telemetry_config.source_sha = std::string(40, '0');
+            telemetry_config.build_id = "ppd338-almetal-gpu-fixture";
             telemetry_config.max_duration_seconds = 30;
             telemetry_config.max_bytes = 4u * 1024u * 1024u;
             telemetry_config.ring_records = 1024;
