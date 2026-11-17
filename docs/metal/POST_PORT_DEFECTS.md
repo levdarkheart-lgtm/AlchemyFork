@@ -7670,6 +7670,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 PPD327 isolates a compiler-generated32texture selector table, with saved-scene spill304→0 after only a two-resource selector intervention, but replay controls139.96/114.01ms drift and no whole-scene speedup is accepted. Exact-count1/2 engine variants pass bitexact sparse and full renderer/build/stage gates as840bae8c33/69228; private eligible overdrawcosts improve14.6–15.8%. This does not close the Home decline. Owner Home initial/settled check is next; original architecture remains paused, no new viewer run/recording/push started.
 
+- 2026-11-17 post-stage read-only saved-frame inspection proves exact draw29008 gates: fragmentbuffer1 config20/6/0/0, all20 SHscales2/fades1, metadata0–18flag0/19flag-1, buffer2 classic0, buffer0 probe-path0, texture37SH4×130. Source mapping corrects buffer ordinal ambiguity; probes are slot1, lighting slot2. These gates allow ambient SH but do not count accepted taps; spatial/depth/neighbor/manual precedence remain. Other six draw gates remain unproved. Raw export disabled/canceled and CUA observation timeout retained; no source edit/profile/newviewer run. Replay stopped and initial UI profile preference restored. Verified69228 stays unchanged while owner checkpoint availability is pending.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner

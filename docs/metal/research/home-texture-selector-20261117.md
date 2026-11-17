@@ -184,3 +184,50 @@ Earlier failed/unselected accumulator, ambient, PCF and inline experiments are
 preserved in [the bisection history](home-shader-bisection-20261116.md) and its
 linked reports. This discovery corrects source attribution; it does not erase
 the measured probe-dependent cost or explain the complete live decline alone.
+
+## Post-stage inspection of actual probe inputs
+
+With owner availability still pending, a read-only inspection of the saved
+old69200 frame narrows an earlier evidence gap. No staged code changed, no
+counter profile ran and no viewer started. Xcode's actual named arguments,
+rather than UI resource ordinals, establish probes at fragment buffer1,
+lighting at2, environment at0 and SH at texture37.
+
+For **draw29008**, the exact2256-index unrigged simple-shadow draw:
+
+| Bound input | Observed value |
+| --- | --- |
+| Probe buffer1, binding offset0, config at49200 |20 listed probes, maximum radiance LOD6 |
+| Probe params0–19, starting20480 with16-byte stride |SH scale2, radiance scale1, fade1 for every listed row |
+| Probe metadata0–18 |Shape/priority flag0; row0 includes the default |
+| Probe metadata19 |Flag-1, manual box, physical SH row7 |
+| Lighting buffer2, binding offset0x400, parameters at relative480 |(368,0.004,1,0): classic flag off |
+| Environment buffer0, binding offset0x200, config at relative304 |uint4(0,0,0,0): probe path selected |
+| SH texture37 |Warming probe SH,4×130,RGBA32Uint |
+
+These inputs permit the ordinary ambient SH path for this draw: classic and
+legacy branches are off, irradiance scales are positive and fade weights full.
+The source does not explicitly skip SH evaluation solely for a zero fade.
+They do **not** prove20SH evaluations per fragment. Depth buckets, containment,
+neighbors, manual-box precedence and the32accepted-tap bound still intervene.
+Actual accepted work needs pixel eye position/normal and the spatial pack.
+The other six hot draws' exact gates are not generalized from this one.
+
+The observations are UI-displayed values, not retained raw float bits.
+Changing the buffer viewer's type/offset affects interpretation only, not GPU
+contents. Float8 rounds the config view origin to0xC020; its final four floats
+are the config at0xC030. Absolute offsets for the larger immutable draw-data
+buffer include each argument's actual binding offset.
+
+An attempted raw-buffer export remained disabled and was canceled; no raw
+export file or successful-export claim exists. A30s CUA observation timed out
+while opening lighting; the same running Xcode was rebound and its exact typed
+lighting row was then observed. No duplicate replay or restart was issued.
+No shader source was edited. Replay stopped, its original profile-after-replay
+checkbox was restored, and Replay / Finished running was observed.
+
+Private `probe-capture-followup/late-29008-ui-observations.json` retains the
+exact field observations,20metadata rows, bounds and failures. The source/ABI
+map and the bounded tool-route audit sit beside it. This is additional recorded
+workload evidence, not a new FPS result or a reason to alter the verified
+candidate before the Home checkpoint.
