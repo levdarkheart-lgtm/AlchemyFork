@@ -13,13 +13,16 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
 {
 using Result = ALMetalProbeCandidatePreparation;
 using Binding = ALMetalProbeCandidateBinding;
+using Reason = ALMetalProbeCandidateReason;
 
 struct Fixture
 {
@@ -96,6 +99,23 @@ struct Fixture
     }
 };
 
+void checkDeclineReasons(const Fixture& fixture,
+    std::initializer_list<std::pair<Reason,std::uint64_t>> counts = {})
+{
+    std::array<std::uint64_t,alMetalProbeCandidateReasonCount> expected{};
+    std::uint64_t total = 0;
+    for (const auto& [reason,count] : counts)
+    {
+        expected[static_cast<std::size_t>(reason)] = count;
+        total += count;
+    }
+    const auto stats = fixture.data->stats();
+    // Each unavailable attempt has one cause. Ready/reused work and fatal
+    // native-prefix failures must not populate these decline buckets.
+    CHECK(stats.candidate_decline_reasons == expected);
+    CHECK(stats.candidate_declines == total);
+}
+
 template<class Predicate> bool eventually(Predicate predicate)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -117,24 +137,33 @@ TEST_CASE("Probe publication declines before native work for missing or unusable
         CHECK(f.data->prepareProbeCandidates(*command, nullptr, f.library,
             f.data->builtinLibraryEpoch(), f.packet, f.probes, f.projection, f.inverse,
             false, binding, &f.error) == Result::unavailable);
+        CHECK(binding.reason == Reason::unsupported_inputs);
         CHECK_FALSE(binding.masks); CHECK_FALSE(binding.owner); CHECK_FALSE(binding.native_prefix);
         auto original = f.packet;
         f.packet.config[3] = 0;
         CHECK(f.prepare(*command,binding) == Result::unavailable);
+        CHECK(binding.reason == Reason::unsupported_inputs);
         f.packet = original; f.packet.config[0] = 257;
         CHECK(f.prepare(*command,binding) == Result::unavailable);
+        CHECK(binding.reason == Reason::unsupported_inputs);
         f.packet = original; f.packet.bounds[0].x_min = 1;
         CHECK(f.prepare(*command,binding) == Result::unavailable);
+        CHECK(binding.reason == Reason::invalid_bounds);
         f.packet = original; f.packet.bounds[1] = f.packet.bounds[0];
         CHECK(f.prepare(*command,binding) == Result::unavailable); // all full
+        CHECK(binding.reason == Reason::all_full);
         f.packet = original; f.packet.bounds[2] = {0,0,1,1};
         CHECK(f.prepare(*command,binding) == Result::unavailable); // manual cannot be bounded
+        CHECK(binding.reason == Reason::invalid_bounds);
         f.packet = original; f.resize(65536,65536);
         CHECK(f.prepare(*command,binding) == Result::unavailable); // per-record byte cap
+        CHECK(binding.reason == Reason::byte_budget);
         CHECK_FALSE(binding.masks); CHECK_FALSE(binding.owner); CHECK_FALSE(binding.native_prefix);
         CHECK(f.error.empty());
         CHECK(f.data->stats().candidate_preparations == 0);
         CHECK(f.data->stats().candidate_failures == 0);
+        checkDeclineReasons(f, {{Reason::unsupported_inputs,3}, {Reason::invalid_bounds,2},
+            {Reason::all_full,1}, {Reason::byte_budget,1}});
         CHECK(alMetalResourceAllocationStats().buffers_created == buffers);
         CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
     }
@@ -158,6 +187,7 @@ TEST_CASE("Probe publication reuses one command and retains output through compl
         const auto commits = ALMetalDevice::committedCommandBufferCount();
         Binding first;
         REQUIRE(f.prepare(*command,first) == Result::ready);
+        CHECK(first.reason == Reason::none);
         REQUIRE(first.masks); REQUIRE(first.owner); CHECK(first.native_prefix);
         CHECK((first.grid == std::array<std::uint32_t,4>{5,3,65,33}));
         CHECK(first.masks->length() == 480);
@@ -165,10 +195,12 @@ TEST_CASE("Probe publication reuses one command and retains output through compl
         const auto buffers = alMetalResourceAllocationStats().buffers_created;
         Binding second;
         REQUIRE(f.prepare(*command,second) == Result::ready);
+        CHECK(second.reason == Reason::none);
         CHECK(second.masks == first.masks); CHECK(second.owner == first.owner); CHECK(second.native_prefix);
         CHECK(admissions == 1);
         CHECK(f.data->stats().candidate_preparations == 1);
         CHECK(f.data->stats().candidate_reuses == 1);
+        checkDeclineReasons(f);
         CHECK(alMetalResourceAllocationStats().buffers_created == buffers);
         CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
         auto readback = f.copyMasks(*command, first);
@@ -196,8 +228,10 @@ TEST_CASE("Probe publication rejects another pending producer and reuses complet
         Fixture f;
         auto first_command = f.command(); Binding first;
         REQUIRE(f.prepare(*first_command,first) == Result::ready);
+        CHECK(first.reason == Reason::none);
         auto pending_command = f.command(); Binding pending;
         REQUIRE(f.prepare(*pending_command,pending) == Result::ready);
+        CHECK(pending.reason == Reason::none);
         CHECK(pending.owner != first.owner); CHECK(pending.masks != first.masks);
         CHECK(pending.native_prefix);
         CHECK(f.data->stats().candidate_preparations == 2);
@@ -208,10 +242,12 @@ TEST_CASE("Probe publication rejects another pending producer and reuses complet
         auto consumer = f.command(); Binding completed;
         const auto allocations = alMetalResourceAllocationStats().buffers_created;
         REQUIRE(f.prepare(*consumer,completed) == Result::ready);
+        CHECK(completed.reason == Reason::none);
         CHECK(completed.owner == first.owner); CHECK(completed.masks == first.masks);
         CHECK_FALSE(completed.native_prefix);
         CHECK(f.data->stats().candidate_preparations == 2);
         CHECK(f.data->stats().candidate_reuses == 1);
+        checkDeclineReasons(f);
         CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
         REQUIRE(consumer->commitAndWait(&f.error));
     }
@@ -224,16 +260,19 @@ TEST_CASE("Abandoned probe publication is never certified by generic completion"
     {
         Fixture f; auto abandoned = f.command(); Binding old;
         REQUIRE(f.prepare(*abandoned,old) == Result::ready);
+        CHECK(old.reason == Reason::none);
         const auto token = abandoned->completionToken();
         abandoned.reset();
         CHECK(token->isComplete());
         CHECK(token->status() == ALMetalCommandStatus::unknown);
         auto replacement = f.command(); Binding fresh;
         REQUIRE(f.prepare(*replacement,fresh) == Result::ready);
+        CHECK(fresh.reason == Reason::none);
         CHECK(fresh.owner != old.owner); CHECK(fresh.masks != old.masks);
         CHECK(fresh.native_prefix);
         CHECK(f.data->stats().candidate_preparations == 2);
         CHECK(f.data->stats().candidate_reuses == 0);
+        checkDeclineReasons(f);
         REQUIRE(replacement->commitAndWait(&f.error));
     }
 }
@@ -252,17 +291,20 @@ TEST_CASE("Probe publication denial preserves generic work and completed hits ne
         auto consumer = f.command(); Binding hit;
         const auto allocations = alMetalResourceAllocationStats().buffers_created;
         REQUIRE(f.prepare(*consumer,hit) == Result::ready);
+        CHECK(hit.reason == Reason::none);
         CHECK(hit.owner == original.owner); CHECK_FALSE(hit.native_prefix);
         CHECK(admissions == 0);
         CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
         f.key(1); Binding denied;
         CHECK(f.prepare(*consumer,denied) == Result::unavailable);
+        CHECK(denied.reason == Reason::admission_denied);
         CHECK_FALSE(denied.masks); CHECK_FALSE(denied.owner); CHECK_FALSE(denied.native_prefix);
         CHECK(admissions == 1); CHECK(f.error.empty());
         CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
         CHECK(f.data->stats().candidate_preparations == 1);
         CHECK(f.data->stats().candidate_reuses == 1);
         CHECK(f.data->stats().candidate_failures == 0);
+        checkDeclineReasons(f, {{Reason::admission_denied,1}});
         REQUIRE(consumer->commitAndWait(&f.error));
     }
 }
@@ -301,6 +343,7 @@ TEST_CASE("Completed probe masks reuse exact derived inputs across current light
         auto consumer = f.command(); Binding reused;
         const auto allocations = alMetalResourceAllocationStats().buffers_created;
         REQUIRE(f.prepare(*consumer,reused) == Result::ready);
+        CHECK(reused.reason == Reason::none);
         CHECK(reused.owner == original.owner); CHECK(reused.masks == original.masks);
         CHECK_FALSE(reused.native_prefix); CHECK(admissions == 0);
         CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
@@ -309,13 +352,16 @@ TEST_CASE("Completed probe masks reuse exact derived inputs across current light
         // A matching cache key cannot bypass current input validation.
         f.probes.ref_index[1][3] = 1; Binding rejected;
         CHECK(f.prepare(*consumer,rejected) == Result::unavailable);
+        CHECK(rejected.reason == Reason::invalid_bounds);
         CHECK_FALSE(rejected.owner); CHECK_FALSE(rejected.native_prefix);
         f.probes.ref_index[1][3] = 0;
         f.probes.config[0] = 4.f;
         CHECK(f.prepare(*consumer,rejected) == Result::unavailable);
+        CHECK(rejected.reason == Reason::unsupported_inputs);
         CHECK_FALSE(rejected.owner); CHECK_FALSE(rejected.native_prefix);
         f.probes.config[0] = 3.f; f.packet.config[3] = 0;
         CHECK(f.prepare(*consumer,rejected) == Result::unavailable);
+        CHECK(rejected.reason == Reason::unsupported_inputs);
         CHECK_FALSE(rejected.owner); CHECK_FALSE(rejected.native_prefix);
         f.packet = packet;
         CHECK(admissions == 0);
@@ -330,6 +376,7 @@ TEST_CASE("Completed probe masks reuse exact derived inputs across current light
             for (unsigned word = 0; word < 8; ++word)
                 CHECK(after[tile*8+word] == (word ? 0u : (tile ? 5u : 7u)));
         CHECK(f.data->stats().candidate_failures == 0);
+        checkDeclineReasons(f, {{Reason::invalid_bounds,1}, {Reason::unsupported_inputs,2}});
     }
 }
 
@@ -363,6 +410,7 @@ TEST_CASE("Probe mask publications remain isolated by actual library identity an
         }
         auto command = f.command(); Binding replacement;
         REQUIRE(f.prepare(*command,replacement) == Result::ready);
+        CHECK(replacement.reason == Reason::none);
         CHECK(replacement.owner != original.owner); CHECK(replacement.masks != original.masks);
         CHECK(replacement.native_prefix);
         auto readback = f.copyMasks(*command,replacement);
@@ -380,10 +428,12 @@ TEST_CASE("Probe mask publications remain isolated by actual library identity an
         f.library = old_library; f.library_epoch = old_epoch;
         auto returned_command = f.command(); Binding returned;
         REQUIRE(f.prepare(*returned_command,returned) == Result::ready);
+        CHECK(returned.reason == Reason::none);
         CHECK(returned.owner != original.owner); CHECK(returned.owner != replacement.owner);
         CHECK(returned.native_prefix);
         CHECK(f.data->stats().candidate_preparations == 3);
         CHECK(f.data->stats().candidate_reuses == 0);
+        checkDeclineReasons(f);
         REQUIRE(returned_command->commitAndWait(&f.error));
     }
 }
@@ -427,17 +477,21 @@ TEST_CASE("Probe publication rechecks full borrowed input snapshots after miss a
                 const auto commits = ALMetalDevice::committedCommandBufferCount();
                 Binding outer;
                 CHECK(f.prepare(*command,outer) == (nested_prefix ? Result::failed : Result::unavailable));
+                CHECK(outer.reason == (nested_prefix ? Reason::native_failure : Reason::inputs_changed));
                 CHECK_FALSE(outer.masks); CHECK_FALSE(outer.owner);
                 CHECK(outer.native_prefix == nested_prefix);
                 CHECK(admissions == (nested_prefix ? 2u : 1u));
                 CHECK(f.data->stats().candidate_preparations == (nested_prefix ? 1u : 0u));
                 CHECK(f.data->stats().candidate_failures == (nested_prefix ? 1u : 0u));
+                if (nested_prefix) checkDeclineReasons(f);
+                else checkDeclineReasons(f, {{Reason::inputs_changed,1}});
                 CHECK(alMetalResourceAllocationStats().buffers_created == allocations+(nested_prefix ? 2u : 0u));
                 CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
                 CHECK_FALSE(command->isCommitted());
                 if (nested_prefix)
                 {
                     REQUIRE(nested_result == Result::ready);
+                    CHECK(nested.reason == Reason::none);
                     REQUIRE(nested.owner); REQUIRE(nested.masks); CHECK(nested.native_prefix);
                 }
                 const auto token = command->completionToken();
@@ -478,14 +532,17 @@ TEST_CASE("Reentrant probe publication makes outer denial fatal after a native p
         Binding outer;
         const auto result = f.prepare(*command,outer);
         REQUIRE(nested_result == Result::ready);
+        CHECK(nested.reason == Reason::none);
         REQUIRE(nested.masks); REQUIRE(nested.owner); CHECK(nested.native_prefix);
         CHECK(admissions == 2);
         CHECK(result == Result::failed);
+        CHECK(outer.reason == Reason::native_failure);
         CHECK(outer.native_prefix); // Generic replay could duplicate the existing native prefix.
         CHECK_FALSE(command->isCommitted());
         CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
         CHECK(f.data->stats().candidate_preparations == 1);
         CHECK(f.data->stats().candidate_failures == 1);
+        checkDeclineReasons(f);
         const auto token = command->completionToken();
         command.reset(); // This negative case never executes the GPU prefix.
         CHECK(token->status() == ALMetalCommandStatus::unknown);
@@ -510,11 +567,13 @@ TEST_CASE("Probe publication pressure preserves an already known command prefix 
         f.key(1); // A distinct mask request after the caller's existing prefix.
         Binding denied;
         CHECK(f.prepare(*command,denied) == Result::unavailable);
+        CHECK(denied.reason == Reason::admission_denied);
         CHECK(denied.native_prefix); // Preserve the prefix; ordinary same-command generic work remains valid.
         CHECK_FALSE(denied.masks); CHECK_FALSE(denied.owner);
         CHECK(admissions == 1);
         CHECK(f.data->stats().candidate_preparations == 1);
         CHECK(f.data->stats().candidate_failures == 0);
+        checkDeclineReasons(f, {{Reason::admission_denied,1}});
         CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
         CHECK_FALSE(command->isCommitted());
         CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
@@ -545,20 +604,26 @@ TEST_CASE("Probe publication resident bounds include cache-evicted command and b
             const auto allocations = alMetalResourceAllocationStats().buffers_created;
             f.key(32); Binding denied;
             CHECK(f.prepare(*producer,denied) == Result::unavailable);
+            CHECK(denied.reason == Reason::residency);
             CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
             // The failed room request can evict every idle-cache entry, but
             // the original command and external bindings still own 32 records.
             held[0] = {};
             CHECK(f.prepare(*producer,denied) == Result::unavailable);
+            CHECK(denied.reason == Reason::residency);
+            checkDeclineReasons(f, {{Reason::residency,2}});
             CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
             producer.reset();
             // One record now expires; the other31 remain externally retained.
             auto next = f.command(); Binding admitted;
             REQUIRE(f.prepare(*next,admitted) == Result::ready);
+            CHECK(admitted.reason == Reason::none);
             CHECK(f.data->stats().candidate_preparations == 33);
             CHECK(alMetalResourceAllocationStats().buffers_created == allocations + 2);
             f.key(33);
             CHECK(f.prepare(*next,denied) == Result::unavailable);
+            CHECK(denied.reason == Reason::residency);
+            checkDeclineReasons(f, {{Reason::residency,3}});
             CHECK(alMetalResourceAllocationStats().buffers_created == allocations + 2);
             REQUIRE(next->commitAndWait(&f.error));
         }
@@ -574,6 +639,8 @@ TEST_CASE("Probe publication resident bounds include cache-evicted command and b
             const auto allocations = alMetalResourceAllocationStats().buffers_created;
             f.key(3); Binding denied;
             CHECK(f.prepare(*producer,denied) == Result::unavailable);
+            CHECK(denied.reason == Reason::residency);
+            checkDeclineReasons(f, {{Reason::residency,1}});
             CHECK(denied.native_prefix); // Earlier preparations on this same command remain intact.
             CHECK(alMetalResourceAllocationStats().buffers_created == allocations);
             CHECK(f.data->stats().candidate_preparations == 3);

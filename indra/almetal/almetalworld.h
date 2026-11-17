@@ -2713,6 +2713,7 @@ struct ALMetalWorldFrameDataStats
     std::size_t retired_pages = 0;
     std::uint64_t candidate_preparations = 0, candidate_reuses = 0;
     std::uint64_t candidate_declines = 0, candidate_failures = 0;
+    std::array<std::uint64_t, alMetalProbeCandidateReasonCount> candidate_decline_reasons{};
     std::uint64_t published_mask_bytes = 0;
 };
 
@@ -2731,6 +2732,7 @@ struct ALMetalProbeCandidateBinding
     // This command contains (or may have begun) the producing compute prefix.
     // A failed result with this flag must never be serially replayed.
     bool native_prefix = false;
+    ALMetalProbeCandidateReason reason = ALMetalProbeCandidateReason::none;
 };
 
 class ALMetalWorldFrameData final

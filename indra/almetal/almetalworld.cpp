@@ -1932,18 +1932,25 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
     binding={};
     std::shared_ptr<const ALMetalCommandCompletion> token;
     bool prefix_before_policy = false;
-    const auto decline=[&]() {
+    using Reason = ALMetalProbeCandidateReason;
+    const auto decline=[&](Reason reason) {
         if (mImpl && mImpl->probeCandidateHasPrefix(token)) binding.native_prefix = true;
+        binding.reason = reason;
         if (error) error->clear();
-        if (mImpl) ++mImpl->statistics.candidate_declines;
+        if (mImpl)
+        {
+            ++mImpl->statistics.candidate_declines;
+            ++mImpl->statistics.candidate_decline_reasons[static_cast<std::size_t>(reason)];
+        }
         return ALMetalProbeCandidatePreparation::unavailable;
     };
     const auto failure=[&]() {
+        binding.reason = Reason::native_failure;
         if (error && error->empty()) setError(error,"Metal probe candidate preparation failed after its native prefix");
         ++mImpl->statistics.candidate_failures;
         return ALMetalProbeCandidatePreparation::failed;
     };
-    const auto policy_decline = [&]() {
+    const auto policy_decline = [&](Reason reason) {
         // A reentrant policy may itself prepare on this exact command. Never
         // advertise replay after that prefix, including denial/exception.
         if (command.isCommitted() || (!prefix_before_policy &&
@@ -1952,7 +1959,7 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
             binding.native_prefix = true;
             return failure();
         }
-        return decline();
+        return decline(reason);
     };
     try
     {
@@ -1963,33 +1970,33 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
             !finiteValues(probes.config,4) || probes.config[0]<0.f ||
             probes.config[0]>256.f || std::floor(probes.config[0])!=probes.config[0] ||
             !finiteValues(projection.data(),16) || !finiteValues(inverse_projection.data(),16))
-            return decline();
+            return decline(Reason::unsupported_inputs);
         const auto count=std::max(1u,static_cast<std::uint32_t>(probes.config[0]));
-        if (packet.config[0]!=count) return decline();
+        if (packet.config[0]!=count) return decline(Reason::unsupported_inputs);
         const auto width=packet.config[1],height=packet.config[2];
         const auto full=[&](const ALMetalProbeCandidateRect& rect) {
             return rect.x_min==0 && rect.y_min==0 && rect.x_max==width && rect.y_max==height;
         };
-        if (!full(packet.bounds[0])) return decline();
+        if (!full(packet.bounds[0])) return decline(Reason::invalid_bounds);
         bool all_full=true;
         for (std::uint32_t index=1;index<count;++index)
         {
             const auto& rect=packet.bounds[index];
             if (rect.x_min>rect.x_max || rect.y_min>rect.y_max ||
                 rect.x_max>width || rect.y_max>height ||
-                (probes.ref_index[index][3]!=0 && !full(rect))) return decline();
+                (probes.ref_index[index][3]!=0 && !full(rect))) return decline(Reason::invalid_bounds);
             all_full=all_full && full(rect);
         }
-        if (all_full) return decline();
+        if (all_full) return decline(Reason::all_full);
         const std::uint64_t columns=1u+(width-1u)/16u,rows=1u+(height-1u)/16u;
         const std::uint64_t output_bytes=columns*rows*8u*sizeof(std::uint32_t);
-        if (output_bytes>Impl::probe_candidate_byte_limit) return decline();
+        if (output_bytes>Impl::probe_candidate_byte_limit) return decline(Reason::byte_budget);
         constexpr std::size_t packet_allocation=(sizeof(ALMetalProbeCandidatePacket)+4095u)&~std::size_t(4095u);
         const auto output_allocation=(output_bytes+4095u)&~std::uint64_t(4095u);
         // CPU identity/control-block/cache bookkeeping is resident too.
         constexpr std::size_t record_allocation=sizeof(Impl::ProbeCandidatePublication)+256u;
         const std::uint64_t resident_bytes=packet_allocation+output_allocation+record_allocation;
-        if (resident_bytes>Impl::probe_candidate_byte_limit) return decline();
+        if (resident_bytes>Impl::probe_candidate_byte_limit) return decline(Reason::byte_budget);
 
         Impl::ProbeCandidateKey key;
         std::memcpy(&key.packet,&packet,sizeof(packet));
@@ -2002,7 +2009,7 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
             mImpl->probe_candidate_library_epoch = key.library_epoch;
         }
         token=command.completionToken();
-        if (!token) return decline();
+        if (!token) return decline(Reason::completion_token);
         prefix_before_policy = mImpl->probeCandidateHasPrefix(token);
         const auto bind=[&](const auto& record) {
             binding.native_prefix=!record->completed && record->producer==token;
@@ -2012,12 +2019,12 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
         };
         if (auto record=mImpl->reusableProbeCandidate(key,token))
         {
-            if (!bind(record)) return binding.native_prefix ? failure() : decline();
+            if (!bind(record)) return binding.native_prefix ? failure() : decline(Reason::retention);
             ++mImpl->statistics.candidate_reuses;
             return ALMetalProbeCandidatePreparation::ready;
         }
         // An explicitly loaded older library remains an ordinary renderer.
-        if (!library->hasFunction("almetal_world_probe_candidate_tiles")) return decline();
+        if (!library->hasFunction("almetal_world_probe_candidate_tiles")) return decline(Reason::library_capability);
         // Only a miss crosses reentrant admission. Preserve the complete
         // borrowed input here independently of the smaller persistent key;
         // callback changes must still invalidate this preparation attempt.
@@ -2033,7 +2040,7 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
             sizeof(probe_snapshot)+sizeof(projection_snapshot)+sizeof(inverse_snapshot);
         work.encoded_mapping_bytes=output_bytes;
         std::shared_ptr<const void> credit;
-        if (!requestSourcePublication(work,credit)) return policy_decline();
+        if (!requestSourcePublication(work,credit)) return policy_decline(Reason::admission_denied);
         // The policy is reentrant. Borrowed inputs and ownership may change;
         // retain no cache iterators across the callback and recheck them all.
         if (generation!=mImpl->generation || owner_epoch!=mImpl->builtin_library_epoch ||
@@ -2043,14 +2050,14 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
             std::memcmp(&probe_snapshot,&probes,sizeof(probes)) ||
             std::memcmp(projection_snapshot.data(),projection.data(),sizeof(projection_snapshot)) ||
             std::memcmp(inverse_snapshot.data(),inverse_projection.data(),sizeof(inverse_snapshot)))
-            return policy_decline();
+            return policy_decline(Reason::inputs_changed);
         if (auto record=mImpl->reusableProbeCandidate(key,token))
         {
-            if (!bind(record)) return binding.native_prefix ? failure() : decline();
+            if (!bind(record)) return binding.native_prefix ? failure() : decline(Reason::retention);
             ++mImpl->statistics.candidate_reuses;
             return ALMetalProbeCandidatePreparation::ready;
         }
-        if (!mImpl->makeProbeCandidateRoom(static_cast<std::size_t>(resident_bytes))) return decline();
+        if (!mImpl->makeProbeCandidateRoom(static_cast<std::size_t>(resident_bytes))) return decline(Reason::residency);
         auto record=std::make_shared<Impl::ProbeCandidatePublication>();
         std::memcpy(&record->key,&key,sizeof(key));
         record->library=std::move(library);
@@ -2066,15 +2073,15 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
         descriptor.label="Alchemy immutable per-view probe tile masks";
         record->masks=ALMetalBuffer::create(*mImpl->device,descriptor,error);
         if (!record->packet || !record->masks ||
-            !record->packet->write(0,&record->key.packet,sizeof(packet),error)) return decline();
+            !record->packet->write(0,&record->key.packet,sizeof(packet),error)) return decline(Reason::allocation);
         auto slot=std::find_if(mImpl->probe_candidate_residents.begin(),mImpl->probe_candidate_residents.end(),
             [](const auto& weak) {return weak.expired();});
-        if (slot==mImpl->probe_candidate_residents.end()) return decline();
+        if (slot==mImpl->probe_candidate_residents.end()) return decline(Reason::residency);
         *slot=record;
         // Work credit is producer debt, not idle-cache debt. The command owns
         // it through completion independently of cache eviction/reuse.
         if (!command.retainUntilCompletion(record,error) ||
-            (credit && !command.retainUntilCompletion(credit,error))) return decline();
+            (credit && !command.retainUntilCompletion(credit,error))) return decline(Reason::retention);
         // begin() may allocate C++ storage after creating a native encoder.
         // From this attempt onward failure cannot safely request serial replay.
         binding.native_prefix=true;
@@ -2099,7 +2106,7 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
     catch (...)
     {
         if (binding.native_prefix) return failure();
-        return policy_decline();
+        return policy_decline(Reason::exception);
     }
 }
 
@@ -21181,6 +21188,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         std::array<std::uint32_t,4> grid{};
     } forward_candidate_constants;
     static_assert(sizeof(ForwardCandidateConstants)==80);
+    using CandidateReason = ALMetalProbeCandidateReason;
+    ALMetalWorldProbeCandidateDecision candidate_decision;
+    candidate_decision.valid = true;
+    candidate_decision.source_frame_index = scene.diagnostic_frame_index;
+    candidate_decision.source_view_kind = scene.diagnostic_view_kind;
+    candidate_decision.source_view_index = scene.diagnostic_view_index;
+    if (std::isfinite(forward_probe_constants.config[0]))
+        candidate_decision.probe_count = static_cast<std::uint32_t>(
+            std::clamp(forward_probe_constants.config[0], 0.f, 256.f));
     const bool has_candidate_simple=has_pre_water_simple && std::any_of(
         scene.batches,scene.batches+scene.batch_count,[](const ALMetalWorldSimpleBatch& batch) {
             return (batch.pre_water_alpha || batch.post_water_alpha) &&
@@ -21188,11 +21204,22 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 !batch.post_water_depth_only && batch.pre_water_source_rgb==ALMetalBlendFactor::source_alpha &&
                 batch.pre_water_destination_rgb==ALMetalBlendFactor::one_minus_source_alpha;
         });
-    if (has_candidate_simple && scene.forward_probe_projection_valid &&
-        probe_environment && scene.alpha_environment &&
-        scene.alpha_environment->environment_config[0]==0u &&
-        mImpl->frame_data && mImpl->probe_candidate_pipeline &&
-        mImpl->candidate_pre_water_simple_pipelines[scene.hdr?1:0][0][0][0])
+    if (has_candidate_simple)
+    {
+        if (!scene.forward_probe_projection_valid)
+            candidate_decision.reason = CandidateReason::projection_unavailable;
+        else if (!probe_environment || !scene.alpha_environment)
+            candidate_decision.reason = CandidateReason::probe_environment_unavailable;
+        else if (scene.alpha_environment->environment_config[0] != 0u)
+            candidate_decision.reason = CandidateReason::sky_only_environment;
+        else if (!mImpl->frame_data)
+            candidate_decision.reason = CandidateReason::frame_data_unavailable;
+        else if (!mImpl->probe_candidate_pipeline ||
+            !mImpl->candidate_pre_water_simple_pipelines[scene.hdr?1:0][0][0][0])
+            candidate_decision.reason = CandidateReason::pipeline_unavailable;
+        else candidate_decision.reason = CandidateReason::none;
+    }
+    if (candidate_decision.reason == CandidateReason::none)
     {
         std::array<ALMetalProbeCandidateSphere,256> spheres{};
         for (std::size_t index=0;index<spheres.size();++index)
@@ -21202,6 +21229,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         const auto packet=alMetalBuildProbeEyeCandidates(spheres,forward_probe_constants.config[0],
             forward_probe_projection,scene.width,scene.height);
+        candidate_decision.packet_usable = packet.config[3] == 1;
+        for (std::uint32_t index = 1; index < packet.config[0]; ++index)
+        {
+            const auto& rect = packet.bounds[index];
+            const bool full = rect.x_min == 0 && rect.y_min == 0 &&
+                rect.x_max == scene.width && rect.y_max == scene.height;
+            if (full) ++candidate_decision.full_rects;
+            else ++candidate_decision.bounded_rects;
+            if (rect.x_min == rect.x_max || rect.y_min == rect.y_max)
+                ++candidate_decision.empty_rects;
+        }
         const std::array<float,16> unused_inverse{}; // No depth reconstruction in forward lighting.
         std::string preparation_error;
         const auto result=mImpl->frame_data->prepareProbeCandidates(*command,
@@ -21212,6 +21250,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             setError(error,preparation_error); return fail_command();
         }
+        candidate_decision.reason = forward_candidates.reason;
+        candidate_decision.masks_bound = forward_candidates.masks != nullptr;
         forward_candidate_constants.projection=forward_probe_projection;
         forward_candidate_constants.grid=forward_candidates.grid;
     }
@@ -22586,6 +22626,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         : mImpl->candidate_pre_water_simple_pipelines)[scene.hdr?1:0]
                         [batch.pre_water_alpha_writes_coverage?1:0][static_cast<std::size_t>(simple_shadow_mode)][rigged?1:0].get();
                 if (pipeline) {alpha_pipeline=pipeline;candidate_simple=true;}
+                else ++candidate_decision.pipeline_fallback_batches;
             }
 
             if (probe_pbr_shadow && standard_blend)
@@ -24756,6 +24797,33 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         mImpl->probe_candidate_activity.eligible_batches[owner]+=candidate_activity.eligible_batches[owner];
         mImpl->probe_candidate_activity.prepared_batches[owner]+=candidate_activity.prepared_batches[owner];
+        candidate_decision.eligible_batches += candidate_activity.eligible_batches[owner];
+        candidate_decision.prepared_batches += candidate_activity.prepared_batches[owner];
+    }
+    if (candidate_decision.eligible_batches && !candidate_decision.masks_bound)
+        ++mImpl->probe_candidate_activity.unavailable_calls[
+            static_cast<std::size_t>(candidate_decision.reason)];
+    mImpl->probe_candidate_activity.pipeline_fallback_batches +=
+        candidate_decision.pipeline_fallback_batches;
+    mImpl->opaque_diagnostics.probe_candidate_decision = candidate_decision;
+    if (candidate_decision.eligible_batches && ALMetalDiagnosticTelemetry::enabled())
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        const D::FrameTag tag{scene.diagnostic_frame_index,
+            static_cast<D::ViewKind>(scene.diagnostic_view_kind),
+            scene.diagnostic_view_kind == 1u ? -1 :
+                static_cast<std::int32_t>(scene.diagnostic_view_index)};
+        // One fixed row per successful eligible call, so a retained capture
+        // frame can be joined without relying on the sparse log sample. No
+        // GPU readback, unbounded payload or extra publication is introduced.
+        D::recordMetrics(tag, "probe_candidate_decision", {1u,
+            static_cast<std::uint64_t>(candidate_decision.reason),
+            candidate_decision.probe_count, candidate_decision.full_rects,
+            candidate_decision.bounded_rects, candidate_decision.empty_rects,
+            candidate_decision.eligible_batches, candidate_decision.prepared_batches});
+        if (candidate_decision.pipeline_fallback_batches)
+            D::recordMetrics(tag, "probe_candidate_pipeline_fallback", {1u,
+                candidate_decision.pipeline_fallback_batches, 0, 0, 0, 0, 0, 0});
     }
     if (encoded_water_draws) *encoded_water_draws = water_draws;
     return output;

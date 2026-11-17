@@ -15,6 +15,39 @@
 
 struct ALMetalWorldOpaquePostDeferredScene;
 
+// Why an eligible forward consumer retained the ordinary shader, or a shared
+// mask publication declined. These describe CPU decisions, never GPU cost.
+enum class ALMetalProbeCandidateReason : std::size_t
+{
+    none, not_eligible, projection_unavailable, probe_environment_unavailable,
+    sky_only_environment, frame_data_unavailable, pipeline_unavailable,
+    unsupported_inputs, invalid_bounds, all_full, byte_budget,
+    completion_token, library_capability, admission_denied, inputs_changed,
+    residency, allocation, retention, exception, native_failure, count
+};
+inline constexpr std::size_t alMetalProbeCandidateReasonCount =
+    static_cast<std::size_t>(ALMetalProbeCandidateReason::count);
+inline constexpr std::array<const char*, alMetalProbeCandidateReasonCount>
+    alMetalProbeCandidateReasonNames{
+        "none", "not_eligible", "projection_unavailable", "probe_environment_unavailable",
+        "sky_only_environment", "frame_data_unavailable", "pipeline_unavailable",
+        "unsupported_inputs", "invalid_bounds", "all_full", "byte_budget",
+        "completion_token", "library_capability", "admission_denied", "inputs_changed",
+        "residency", "allocation", "retention", "exception", "native_failure"};
+
+struct ALMetalWorldProbeCandidateDecision
+{
+    bool valid = false, packet_usable = false, masks_bound = false;
+    ALMetalProbeCandidateReason reason = ALMetalProbeCandidateReason::not_eligible;
+    std::uint64_t source_frame_index = 0;
+    std::uint32_t source_view_kind = 0, source_view_index = 0, probe_count = 0;
+    // Nondefault bounds only; empty is a subset of bounded. Full bounds may
+    // be conservative or genuinely cover the view, not a correctness defect.
+    std::uint32_t full_rects = 0, bounded_rects = 0, empty_rects = 0;
+    std::uint64_t eligible_batches = 0, prepared_batches = 0;
+    std::uint64_t pipeline_fallback_batches = 0;
+};
+
 // Cumulative arena-backed common-constant bindings in accepted G-buffer
 // renders. Reuses stay within one render/command; these are not GPU timings.
 struct ALMetalWorldConstantStats
@@ -106,6 +139,10 @@ struct ALMetalWorldProbeCandidateActivity
     std::uint64_t encoded_calls = 0;
     // Disjoint pre-water/post-water owners; only standard simple-alpha draws.
     std::array<std::uint64_t, 2> eligible_batches{}, prepared_batches{};
+    // Eligible calls without a usable shared mask, grouped by their final
+    // preparation decision; separate from per-draw missing-variant fallback.
+    std::array<std::uint64_t, alMetalProbeCandidateReasonCount> unavailable_calls{};
+    std::uint64_t pipeline_fallback_batches = 0;
 };
 
 struct ALMetalWorldPostDiagnostics
@@ -135,6 +172,7 @@ struct ALMetalWorldPostDiagnostics
     std::uint64_t probe_candidate_frame_index = 0;
     std::uint32_t probe_candidate_view_kind = 0, probe_candidate_view_index = 0;
     ALMetalWorldProbeCandidateActivity probe_candidate_activity;
+    ALMetalWorldProbeCandidateDecision probe_candidate_decision;
     std::uint64_t diagnostic_initial_family_frame = 0;
     std::uint32_t diagnostic_initial_family_view_kind = 0;
     std::uint32_t diagnostic_initial_family_view_index = 0;

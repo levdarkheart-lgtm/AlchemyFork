@@ -3356,6 +3356,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 if (!value) return;
                 static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
                 const auto prepared=value->renderer ? value->renderer->opaquePostDiagnostics() : ALMetalWorldPostDiagnostics{};
+                const auto reasons = [](const auto& counts)
+                {
+                    std::ostringstream out;
+                    for (std::size_t index = 0; index < counts.size(); ++index)
+                        if (counts[index]) out << alMetalProbeCandidateReasonNames[index]
+                            << '=' << counts[index] << ';';
+                    return out.str();
+                };
                 LL_INFOS("MetalScene") << "Native prepared probe alpha: view=" << view
                     << ", last_encoded(unshadowed/shadowed)=" << prepared.probe_candidate_simple_batches
                     << '/' << prepared.probe_candidate_simple_shadow_batches
@@ -3366,7 +3374,22 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << prepared.probe_candidate_activity.eligible_batches[1]
                     << ", cumulative_prepared(pre/post)=" << prepared.probe_candidate_activity.prepared_batches[0]
                     << '/' << prepared.probe_candidate_activity.prepared_batches[1]
+                    << ", unavailable_calls=" << reasons(prepared.probe_candidate_activity.unavailable_calls)
+                    << ", missing_variant_batches=" << prepared.probe_candidate_activity.pipeline_fallback_batches
                     << ", scope=renderer_lifetime_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
+                const auto& decision = prepared.probe_candidate_decision;
+                LL_INFOS("MetalScene") << "Native probe alpha decision: view=" << view
+                    << ", valid=" << decision.valid
+                    << ", source_frame/kind/index=" << decision.source_frame_index
+                    << '/' << decision.source_view_kind << '/' << decision.source_view_index
+                    << ", reason=" << alMetalProbeCandidateReasonNames[static_cast<std::size_t>(decision.reason)]
+                    << ", probes/usable/masks=" << decision.probe_count << '/'
+                    << decision.packet_usable << '/' << decision.masks_bound
+                    << ", nondefault_rects(full/bounded/empty_subset)=" << decision.full_rects
+                    << '/' << decision.bounded_rects << '/' << decision.empty_rects
+                    << ", eligible/prepared/missing_variant=" << decision.eligible_batches
+                    << '/' << decision.prepared_batches << '/' << decision.pipeline_fallback_batches
+                    << ", scope=latest_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
                 static LLCachedControl<bool> cpu_visibility_requested(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
                 const auto cpu_visibility=value->renderer ? value->renderer->worldCpuVisibilityStats() : ALMetalWorldCpuVisibilityStats{};
                 LL_INFOS("MetalScene") << "Native published CPU visibility: view=" << view
@@ -3414,6 +3437,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << terrain_data.candidate_declines << '/' << terrain_data.candidate_failures
                 << ", published_mask_bytes=" << terrain_data.published_mask_bytes
                 << ", scope=shared_main_probe_frame_data_cumulative" << LL_ENDL;
+            {
+                std::ostringstream reasons;
+                for (std::size_t index = 0; index < terrain_data.candidate_decline_reasons.size(); ++index)
+                    if (terrain_data.candidate_decline_reasons[index])
+                        reasons << alMetalProbeCandidateReasonNames[index] << '='
+                            << terrain_data.candidate_decline_reasons[index] << ';';
+                LL_INFOS("MetalScene") << "Native probe preparation declines: reasons=" << reasons.str()
+                    << ", scope=shared_main_probe_frame_data_cumulative_unavailable_only" << LL_ENDL;
+            }
             const auto& main_light = capture.main_light_encoding;
             LL_INFOS("MetalFramePlan") << "Native main encode/light-values: requested/started/budget_denied/declined="
                 << main_light.requested << '/' << main_light.started << '/' << main_light.budget_denied << '/' << main_light.declined

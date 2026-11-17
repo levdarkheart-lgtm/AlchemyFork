@@ -540,6 +540,8 @@ TEST_CASE("Cumulative prepared alpha activity survives later same-frame generic 
         CHECK(reloaded.encoded_calls==custom.diagnostics.probe_candidate_activity.encoded_calls);
         CHECK(reloaded.eligible_batches==custom.diagnostics.probe_candidate_activity.eligible_batches);
         CHECK(reloaded.prepared_batches==custom.diagnostics.probe_candidate_activity.prepared_batches);
+        CHECK(reloaded.unavailable_calls==custom.diagnostics.probe_candidate_activity.unavailable_calls);
+        CHECK(reloaded.pipeline_fallback_batches==custom.diagnostics.probe_candidate_activity.pipeline_fallback_batches);
         auto after_reload=input.render(true);CHECK(after_reload.planes==custom.planes);encoded(after_reload,false,0);
         activity(after_reload,4,4,2);
         // A preflight failure must not publish activity, even when its
@@ -553,5 +555,56 @@ TEST_CASE("Cumulative prepared alpha activity survives later same-frame generic 
         CHECK(after.encoded_calls==after_reload.diagnostics.probe_candidate_activity.encoded_calls);
         CHECK(after.eligible_batches==after_reload.diagnostics.probe_candidate_activity.eligible_batches);
         CHECK(after.prepared_batches==after_reload.diagnostics.probe_candidate_activity.prepared_batches);
+        CHECK(after.unavailable_calls==after_reload.diagnostics.probe_candidate_activity.unavailable_calls);
+    }
+}
+
+TEST_CASE("Forward probe decisions retain distinct conservative and admission fallbacks",
+          "[almetal][probe-candidate-transparency]")
+{
+    @autoreleasepool
+    {
+        using Reason = ALMetalProbeCandidateReason;
+        Fixture f; Inputs input(f,{false,true,true,false,true,97,65}); input.postWaterOnly();
+        input.scene.diagnostic_frame_index=771;
+        input.scene.diagnostic_view_kind=1; input.scene.diagnostic_view_index=0;
+        const auto inspect=[&](const Inputs::Rendered& result,Reason reason,bool masks) {
+            const auto& value=result.diagnostics.probe_candidate_decision;
+            CHECK(value.valid); CHECK(value.reason==reason); CHECK(value.masks_bound==masks);
+            CHECK(value.source_frame_index==771); CHECK(value.source_view_kind==1);
+            CHECK(value.source_view_index==0); CHECK(value.probe_count==20);
+            CHECK(value.eligible_batches==2); CHECK(value.prepared_batches==(masks?2u:0u));
+            CHECK(value.pipeline_fallback_batches==0);
+            if(reason!=Reason::none)
+                CHECK(result.diagnostics.probe_candidate_activity.unavailable_calls[
+                    static_cast<std::size_t>(reason)]>0);
+        };
+        auto generic=input.render(false); positive(generic.planes,false,true);
+        inspect(generic,Reason::projection_unavailable,false);
+        auto prepared=input.render(true); CHECK(prepared.planes==generic.planes);
+        inspect(prepared,Reason::none,true);
+        CHECK(prepared.diagnostics.probe_candidate_decision.packet_usable);
+        CHECK(prepared.diagnostics.probe_candidate_decision.bounded_rects==19);
+        CHECK(prepared.diagnostics.probe_candidate_decision.full_rects==0);
+        // Every local sphere contains the eye: full bounds are legitimate,
+        // and the ordinary shader must preserve their lighting contributions.
+        for(unsigned index=1;index<20;++index)input.probes.constants.ref_sphere[index][3]=128.f;
+        auto full_generic=input.render(false); auto full=input.render(true);
+        CHECK(full.planes==full_generic.planes); inspect(full,Reason::all_full,false);
+        CHECK(full.diagnostics.probe_candidate_decision.packet_usable);
+        CHECK(full.diagnostics.probe_candidate_decision.full_rects==19);
+        CHECK(full.diagnostics.probe_candidate_decision.bounded_rects==0);
+        input.spatial(); input.probes.constants.ref_sphere[1][0]+=.125f; // New immutable key.
+        unsigned denied=0;
+        f.data->setSourcePublicationAdmission([&](const ALMetalWorldSourcePublicationWork&)
+            ->std::shared_ptr<const void> {++denied;return {};});
+        auto denied_generic=input.render(false); auto unavailable=input.render(true);
+        REQUIRE(denied==1); CHECK(unavailable.planes==denied_generic.planes);
+        inspect(unavailable,Reason::admission_denied,false);
+        CHECK(unavailable.diagnostics.probe_candidate_decision.bounded_rects==19);
+        f.data->setSourcePublicationAdmission({});
+        auto restored=input.render(true); CHECK(restored.planes==denied_generic.planes);
+        inspect(restored,Reason::none,true);
+        CHECK(f.data->stats().candidate_failures==0);
     }
 }
