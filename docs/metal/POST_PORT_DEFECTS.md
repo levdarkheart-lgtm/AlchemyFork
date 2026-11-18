@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-453 -->
+<!-- next-defect-id: PPD-462 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10078,6 +10078,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before any cache correction. Retain original9a/native2558/10 and all four cost cells unchanged; optimize the operational shared tracking boundary rather than abandoning it.
 
+- 2026-11-18 Independent all36strict prechecks pass sixcells×threemodepairs×twomatchedversions with actualrender/computevalidation2, exactpixels/pattern/conservation and no warm/measured rows; receiptc3b47377cabf7e965a65790fb5de9a9452214651d8f85114b83690837bf3309d. Quiet primary12processes then pass0,7200rawrows,300observations/arm/cell; receipt2526d4ea3e7d3e6101c09e83e8b767de18d46bfb683d09710d28c1bdc66b477d. Cache enabled/disabled CPUratios cells0–5=1.03645,1.03437,1.03018,1.03670,1.08875,1.20683; wall=1.00402,1.00520,1.00840,1.00977,1.01410,1.04703. Repeated256 tax improves fromoriginal1.09192 to1.03018; alternating/unique remain adverse. Absolute unique CPUincrement21.502us/256draw,19.349us encoding; alternating6.295us/5.799us encoding. Source mutex/map/sharedptr costs remain hypotheses within measured encode scope. Preserve allorders/adverse/power/thermal data; no universalwin/FPSclaim, actualWorldcost/defaultselection stillpending.
 
 ## PPD-436 — Contained surface fixture can leave SDL initialized on constructor skip
 
@@ -10262,6 +10263,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered all28 occurrences before any link-graph repair; complete raw text and target grouping retained. This register does not declare the warnings irrelevant merely from their location.
 
+- 2026-11-18 Read-only audit maps all28warning targets/rules to exact repeated installed paths in Release LINK_LIBRARIES:26font/compression rows, one91Abseil WebRTC row, one96archive viewer row. Duplicate-warning subset exactly matchesbuild01; overall29vs28 differs because old01 also reports unused SKY_MAX_METEORS. Receipt dc13d3cc08f8e17cb97c0ca098559ec5665cc42b62c654d91b0ff32556b1bfeb retains fullgraph/pathcounts and prior398 attribution. No suppression, changedobject selection or runtime/FPS inference.
 
 ## PPD-446 — Exact CLI test bytes fail an inapplicable app-envelope staging gate
 
@@ -10280,6 +10282,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before the context-specific private runner correction; original failed staging receipts retained. Production69267/69268 strict app verification already passes independently.
 
+- 2026-11-18 Stage05 qualifies byte-identical original bare linker signature, mode/CDHash/ARM64 and22OS-absolute imports; private wrapper explicitly remains unsealed, with no resign. Receipt43b48a189c3626290a64db9a9170a3cfdee8dfabe04e9e84c4580519c5957d79. Exact wrapper then executes producer698assertions/18cases pass0; production sealed viewer signature requirements remain unchanged.
 
 ## PPD-447 — Private producer cost runner inherits diagnostic environment overrides
 
@@ -10300,6 +10303,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 PPD447 also covers unrun E3-production-routing-01/run-owner-cost.py with the same partial prefix sanitation. Apply one explicit policy to both private runners; no native execution by either occurred.
 
+- 2026-11-18 Private producer and E3 runners now clear full inherited renderer/debug/capture/cost prefixes and record environment-policy-v1 before explicit inputs. Negative CPU environment and subset controls pass; no preexisting stale receipt is promoted. Native strict prechecks and timing remain separately required.
 
 ## PPD-448 — First enabled-graph lighting gate fails a legacy probe-change positive control
 
@@ -10358,6 +10362,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Actual supported --list-tests --verbosity quiet inventory succeeds and retains exact547case selection; initial unsupported-option failure remains. Broad native execution subsequently stops on451 then452, so inventory success is not a full suite pass.
 
+- 2026-11-18 Tail197 selection preflight catches four invalid filters for comma-containing exact names in a quoted Catch input file. Inventory-only command exits0 but exact-name guard rejects the malformed selection before any test/GPU execution. Preserve checks/combined-native-tail-01 failure. Retry must escape names according to actual Catch parser and verify exact197 selected names; no false coverage or product defect claim.
+
+- 2026-11-18 Escaped-comma supported Catch selection passes exact197name guard at09 before execution, including automatic-animation466. Actual tail then advances10passed before independent455; selection repair is qualified, full correctness remains partial.
+
 ## PPD-451 — New source applicability fixture rejects its authored batch before sealing
 
 - Status: investigating
@@ -10395,3 +10403,182 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before correction. Prior451fixture policy case now passes; broader547 remains partial with423unreached.
 
 - 2026-11-18 Source confirms old fixture dispatch1 versus required64-thread cooperative kernel; actual productionworld dispatch already64. Canonical6b5de test-only fix explicitly dispatches one64-thread group for both current and unsafe-control history kernels, retains all finite/NaN/parity criteria, checks pipeline capacity. Source receipt52c1235d4a8f0682e8ae7f51645fb830c2475c6feb82a832bb01244b2755971b. Build08 succeeds; targeted native retest pending. No production/MSL change.
+
+- 2026-11-18 exact08 targeted native HDR case passes1285assertions/1case with0failures/0skips under API/GPUvalidation. Source, executable91c98 and libraryb8d8 unchanged before/after; qualification0c4534f661ab22c0fe95e52e0846220a7908f51d07baffa84d0bbf98c6109ca4. Broad547 rerun in progress; no full-suite or owner closure inferred.
+
+## PPD-453 — Enabled resource tracking rejects shadow packet fixture readback
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native shadow lifetime qualification
+- Discovered: 2026-11-18
+- Original reference: Preserve shadow packet lease/completion and foreign-command rejection semantics. A readback must not silently submit or bypass another uncommitted producer; distinguish caller/test lifetime errors from engine defects.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); broad547 run05 at08exe91c98/b8d8 exits42 after350passed/1failed,3435526successful/2failed assertions;196cases unreached. almetal_shadow_indirect_test.mm139 readback returnsfalse inside case646 finaltarget_a comparison. API/GPUvalidation enabled, no validation warning/error. Receipt d92f27974d2286709ed96d607049b8633f068ca706e5f23cb30d8d5f267d5707 retains full source/binary/logs. Source hypothesis: deliberately foreign command clears target_a in a render encoder, ends but remains uncommitted/alive through final readback; resource planner may correctly retain its outstanding writer.
+- Next action: Audit exact command/encoder lifetimes and readback diagnostic before repair; preserve negative foreign-packet rejection, actual completed command output and ownership controls. Repair only confirmed cause, then targeted case and remaining selected coverage. Continue independently qualified cost work where this fixture does not participate.
+- Verification: Reproduced readback refusal, not a wrong pixel or Metal GPU error. Engine versus fixture attribution pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before corrective edits. Earlier451/452 failures and targeted passes retained. Broad gate remains partial; no new default activation or FPS claim.
+
+- 2026-11-18 Source-confirmed unused foreign command owns an unqueued target_a clear. Test-only four-line explicit encoder/command abandonment after negative execute check is486afaf→canonical8b1d8a17, source3f6d7d376d43adbaf8d98a05345f1fcad667bd3fb4743355190ef47aacf030f6. Original foreign rejection and every output/lease/commit assertion unchanged; existing417native tests supply outstanding-writer refusal proof. Release O3/Werror TU compile0, no diagnostics; build09 target succeeds, exe9dd5f9d/libb8d8/indra15485725. Native repaired case and remaining196 qualification pending; backend unchanged.
+
+- 2026-11-18 Actual09 repaired case executes and PASSES first in tail197; ten selected cases pass before independent455. Receipt850d713e09fc9d562282a4599768fc53b3fe71c0e7153999b0903fe157942f3b; retain original08readback refusal and source-only history. No engine guard relaxation, owner pending.
+
+## PPD-454 — Private E6 runner reads the wrong output stream under the Catch XML reporter
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex lighting cost harness qualification
+- Discovered: 2026-11-18
+- Original reference: Strict validation-OFF correctness prechecks must finish and qualify all required output planes before any warmup or timing. PRECHECK_ONLY emits a CSV header and three first-use rows, then exits before warmup/measured rows; parser expectations must match that native contract.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); runner03 actual-precheck-08-01 first rep0/cell0/disabled native process exits0 and Catch case passes, but Python qualification fails `Missing exact cost CSV header`. Remaining17prechecks and all36cost processes unrun. Full stdout/XML/receipt retained under lighting/combined-gate-runner-03 and precheck-launch08-01.
+- Next action: Trace exact native precheck output and runner parser, repair demonstrated qualification-path defect without relaxing exact case/cell/plane/input/PSO/mode checks, add meaningful negative CPU controls, then repeat first failed precheck and all required strict controls.
+- Verification: Observed private parser failure after native pass; no renderer output/performance failure demonstrated.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before corrective edits. Preserve initial output and failure; no cost result or path activation inferred.
+
+- 2026-11-18 source/evidence establishes exact cause: Catch XML reporter captures std::cout in the exact TestCase StdOut element while stdout.log is empty. Preserved XML has header/three first-use rows, actualconsumer2 and2360000assertions/1case pass0; native15.942s includes15.176s cold renderer construction. Initial missing-header symptom did not establish native omission. Private parser repair must consume one unambiguous exact-case XML payload, preserve header/three first-use/zero warm-measured/cell/PSO/plane/input requirements and reject missing/duplicate controls. No renderer change.
+
+- 2026-11-18 first454 private parser repair draft fails its actual-positive CPU test in63ms because actual Catch3.16.1 nests captured output at TestCase/OverallResult/StdOut, not direct TestCase/StdOut. No native retry/cost occurred. Draft f35187b9 and failed receipt/manifestd0da7baa retained. Exact observed schema now governs repair; preserve missing/duplicate/ambiguous stream rejection.
+
+- 2026-11-18 Private runner04 repair passes18 captured-output CPU checks (one retained-actual positive,17 rejection controls) plus full synthetic16200row/order/adverse/cross-mode oracle. Explicit TestCase/OverallResult/StdOut, one exact successful planned case and one authoritative payload required; missing/duplicate/empty/ambiguous/wrong-case inputs rejected. Full first-use3rows/PSO2/plane/input/zero warm-measured criteria preserved. Initial wrong-schema draft and first08native pass remain distinct; all18fresh final-binary native prechecks still required before cost.
+
+- 2026-11-18 Final frozen private runner04 qualification a280a132c22d2aa6d28da7dbcda366efff3c906af39d1c231b22c9b9d4b59eca retains18outputcontrols, full16200roworacle and4ASTchecks. Build10handoff8ad8a745a9cf81a04e2aa7953a6a5ebcb03139dfaadb5cf246198fa927729a78 qualifies source-equivalent native06E6results without claiming10execution. All18fresh native prechecks/36cost processes stillunrun.
+
+## PPD-455 — Stage timing fixture reads a target with an intentional unqueued writer
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex stage timing/native lifetime qualification
+- Discovered: 2026-11-18
+- Original reference: Stage timing must preserve a later unsubmitted command and its native counter owner, while resource readback must not bypass foreign uncommitted target writers. Verify intermediate output through the actual producing command.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md);09tail197 exits42 after10passed/1failed,31213successful/1failed assertions. almetal_stage_timing_test.mm294 sync target readback returnsfalse with API/GPUvalidation enabled; receipt850d713e09fc9d562282a4599768fc53b3fe71c0e7153999b0903fe157942f3b. Source case260 deliberately retains later native red draw uncommitted while other command writes blue and completes on the same target. Global selected case361 failed;186remain unreached.453 repaired shadow case passed.
+- Next action: Confirm exact pending-writer readback condition and preserve deferred commit/counter lifetime checks. Capture blue output into its own snapshot/readback buffer within the completed other command, using existing fixture snapshot owner, if confirmed. Do not abandon later command or relax backend safety. Continue independently qualified backend costs.
+- Verification: Reproduced readback refusal; source points to test lifetime/observation contract rather than wrong output or Metal validation error. Native retest required.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before corrective edits. Actual coverage is350at08 +10at09, not a full547run;186unreached include automatic animated routing. All earlier failures/source/pins retained.
+
+- 2026-11-18 Fixture-only snapshot repair0298023→canonical4d5ee148 preserves all deferred-red/counter/seal assertions; sourcea1953e80f182e345d8c6f970a31dd2c60e8029daeb02278501756e4081bf51b1. Release TU compile0/1.422s. Build10 actual native exact455+466 cases pass16720assertions/2cases,0errors/failures/skips under enabledGraph/API+GPUvalidation. Source/exe1652cb11/libb8d8 pins unchanged; receipt09faae46e0d603fbea5af074b7266653740694bbc9e5deb2b4d809a95e2435e9. Automatic animated routing466 now actuallyqualified. Full547split coverage remains partial pendingother185cases; owner pending.
+
+## PPD-456 — E3 cost fixture expects native routing below the qualified-work threshold
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual source-owner cost qualification
+- Discovered: 2026-11-18
+- Original reference: Native visibility selection uses qualified work, preserving unknown/conservative rows. Authored benchmarks must satisfy documented applicability without lowering the production threshold or forcing an unsupported route.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); strict ALL13 sweep10 passes all6producer cells and E3cells0–2, then cell3 nativeexit42 throws `actual route:` before parity/timing; E3cells4–6 unrun, no costs. Receipt168edc70e7e7f10c8010cb9f0ee83d7d6acd1a907a4e4f378a05e6fe41965f97. PBR64/grid32 yields two32row cohorts each196608total indices, but authored index%7==2 unknown rows leave only165888/172032qualified indices, below minimum196608. Actual CPU/direct alternative is correct; fixedexpectednative2 is an invalid workload premise.
+- Next action: Preserve failed under-threshold control/history. Qualify a genuinely heavy PBR mixed-unknown workload (grid64, same64rows/order/policy) and update exact authored index census/label accordingly, preserving actualroute/PSO/parity/nooverlap checks. Keep production threshold unchanged and its existing boundary correctness controls; do not claim the revised cost cell is the old threshold workload. Rerun affected strict precheck before any timing.
+- Verification: Source-confirmed authored workload/expected-route mismatch, not demonstrated renderer misrouting or output defect. Producer ALL6strict prechecks passed; actualE3animation466 previously passed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before fixture correction. All originals retained; no new timed samples or default selection.
+
+- 2026-11-18 Fixture-only5441d617→canonical366969a201 changes cell3 to64sources/grid64/4225uniquevertices/24576indices,55qualifiedsources/1351680indices. Explicit heavy-PBR-mixed-unknown scope label/census distinguishes old thresholdcontrol. Actual percohort qualification/outsidecount assertions added before clocks; productionthreshold unchanged. Release TU compile0/3.021s; private parser accepts new640row workload and rejects old label/grid/census. Readiness53be12528b8ead9bbc6e58f5ae5a4fc4c18b8b85c906e47816d5835358258134 proves render/clock/parity/warmloops unchanged, non3cellinputs unchanged. Native affected3+unrun4–6 pending11; priorproducer6/E3first3actualpasses retained explicitly, no falsecostpass.
+
+## PPD-457 — E6 artifact schema mistakes empty generic placeholders for missing impostor MRTs
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex lighting artifact/cost qualification
+- Discovered: 2026-11-18
+- Original reference: Native impostor output consists of four format-specific MRT planes plus depth/stencil. Require all actual outputs, distinguish an intentionally unused generic container, and retain exact cell-aware cross-mode pixel comparisons.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); runner04 actual-precheck-10-01 first8processes(cells0–3,bothmodes) fullypass; ninth/cell4disabled native passes800assertions/threefirst-use rows/actualPSO2, but raw-manifest gate rejects empty files. Source confirms ImpostorPlanes.planes.color intentionallyempty, actualfourMRTs live in colors[]. Fixture writes threearmN-color.raw zero-byte placeholders plus completeMRT/depth/stencil artifacts. At256², MRT0/1/3 each262144bytes, MRT2 524288bytes. Remaining9prechecks and allcosts unrun.
+- Next action: Use narrow cell4-specific schema requiring all nonempty fourMRT/depth/stencil/inputpack planes, permitting only the three exact intentionallyempty generic-color placeholders with retained hashes. Every other missing/empty/symlink/wrongcell remains fatal. Add actualpositive and missing/emptyMRT/depth/stencil/wrongcell negative CPU controls before native continuation.
+- Verification: Source-confirmed private artifact-schema defect after nativepass, not a demonstrated empty rendered attachment or viewer regression.454XML parser works for first8nativeprocesses.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private schema repair. Preserve every original file, nativepass and failedqualification; no cost/default selection inferred.
+
+- 2026-11-18 Frozen exact10 app preserves7nodes/55768101bytes/modes/links, exe1652cb/libb8d8; receiptdd03e3cb1426b2c35c5e68ec3bfaa8e14a07572e3efe40d8ade388f60b8b8f3b. Bare Mach-O strict signature0 and identicalCDHash; unsealedwrapper strict1 preserved under446scope, no resign. Allows E6native continuation/costs without mutation by unrelatedE3fixturebuild11; no final viewer staging inferred.
+
+## PPD-458 — Blanket shader-validation mode invalidates disk archive test preconditions
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native correctness runner qualification
+- Discovered: 2026-11-18
+- Original reference: Instrumented Metal executables deliberately bypass binary archive persistence. Test actual disk hits/misses under noninstrumented pipelines and verify instrumented bypass separately; retain GPU output and resource ownership checks.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); remaining185 firstcase exits42 at almetal_pipeline_cache_test.mm180 because expected archive file is absent. Native coldreceipt reports instrumented1/1, misses2/hits0 under blanketAPI/GPUvalidation1; pipelinecache.mm239 deliberately counts shader-validation bypasses. Receipt60da724c2d56f39a0c927801c6c70d0f7f81ec410a261ea4d58c2bbb1f49b614;302assertions pass/1fail,184unreached. No incorrect rendered pixels or Metal error demonstrated.
+- Next action: Audit exact cache test mode contracts; execute persistence/hit tests with shader validationOFF and qualify actual noninstrumented render/compute state, retain explicit instrumented bypass controls under validationON. Keep other native correctness tests under validationON. Correct private runner partition, not cache safety or output criteria.
+- Verification: Source-confirmed runner-mode mismatch, not demonstrated disk-cache production defect. Original failed instrumentation run is retained.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before qualification-mode correction. No production/test source change or cost result.
+
+- 2026-11-18 Mode-partition native cache controls pass:6diskcases5905assertions withAPI1/GPU0;1explicitinstrumentedcase882assertions API/GPU1;1selectivecase98assertions withGPU1/DEFAULT_STATE none/ENABLE_PIPELINES cache_selective_compute.0skips. Exact185union qualified;177othercases remain running underAPI/GPU1. No source/output/hit/miss criteria change.
+
+## PPD-459 — Source-page bind rejects valid same-native-device wrapper replacement
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shared native resource registry integration
+- Discovered: 2026-11-18
+- Original reference: Existing native source publication explicitly permits another ALMetalDevice wrapper for the identical native Metal device. Resource ownership/dependency tracking must preserve that contract and unique backing identity while rejecting genuinely foreign devices/registries and unsafe mixed qualification modes.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); mode-correct cache8casespass then remaining177 passes131cases before source_pages_test family1 fails view.bind at fixture101. Exact10exe1652cb11/b8d8, enabledGraph/API+GPU1; partd0c0c312c5735a9a10fe80ab7351ef6e43c0e1827180e358029ea0d49a4e201c, aggregateea0f040ce69f89374a1045ae17773cbf1fb45d22604812de59684edce015477b. Fixture creates second real ALMetalDevice with same nativeHandle, republishes geometry/numeric buffers, and expects original source-page renderer to bind valid replacement. Distinct per-wrapper tracking registries may reject it despite native compatibility; exact error must be traced.45cases remain unreached.
+- Next action: Audit exact binding failure and resource registry factory/lifetimes before repair. Preserve valid same-native-wrapper publication, actual native pixels, immutable old generations and generic foreign-plan rejection. Qualify any registry sharing/import solution against unique accounting, old commands after wrapper retirement and mixed disabled/accounting/enabled controls; do not weaken cross-registry guards blindly.
+- Verification: Reproduced binding refusal in an existing native compatibility contract, not yet isolated to a precise emitting branch. No fix or performance attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before investigation/repair. Separate native coverage now501passed,1failed,45unreached; no single547pass. Two intentional settlement-observer exception diagnostics are retained and require explicit emitter/trigger attribution, not dismissal. No Metal validation error observed.
+
+- 2026-11-18 exact source chain established: SourceFrameView.bind432–455 passes native-device identity but encoder.declareResourceUse→pipeline.mm graphUse39–46→RP.Command.use164 rejects different Allocation.State versus command.State. Expected emitter is `Metal encoder could not retain the declared resource generation`; original INFO captured before call so this is source attribution, not a newly captured message. Each Device wrapper creates separate queue/Plan/submission order. Repair attempt authorized: private native execution owner keyed actual built-in GPU registryID and resolved mode, holding canonical nativeDevice/queue/Plan/submission order together. Bounded process lifetime preserves old wrapper/resource/command identity without retaining allocations through PlanState. Modes remain isolated, independent generic Plan foreign guards retained; publish fully constructed owner atomically and preserve retry after creation failure. Automatic-production mode coherence must be selected separately at activation.
+
+- 2026-11-18 two retained observer diagnostics traced exactly: world.cpp notifyCommandSettlement205–220 catches standard/nonstandard observer exceptions. shadow_extended_test458–482 deliberately throws runtime_error("intentional observer failure") on commit and integer7 on cancel, then checks counters and later observers still run. They are expected explicit negative-control outputs, with emitter/trigger recorded; not viewer-runtime evidence.
+
+## PPD-460 — E3 small-cell parser assumes two triangles for the authored one-triangle mesh
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex source-owner cost parser qualification
+- Discovered: 2026-11-18
+- Original reference: Small-work scalar routing uses a real three-vertex triangle when grid1 is selected; cost metadata must describe actual geometry without inventing workload or discarding valid observations.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); producer six cost processes allpass, then E3cell0 native passes756assertions with640rawrows but privateparser rejects authoredindices. Actualsixsources×3indices=18, fourqualified×3=12; parser erroneously applies grid formula6indices/source and expects36/24. Receipt6df5553f1b4b63b5146e53e349fae25fb05e437a30615a9feb9e847f89e278cd retains native/raw/source. No laterE3cells run.
+- Next action: Correct private small-mesh census to the actual3index triangle, preserve all route/PSO/output/clock/order/sample guards, CPU-qualify actualpositive and malformedcensus negative controls, reparse retained cell0 without native repetition, then run six unrun cells in a new quiet window.
+- Verification: Source-confirmed private expected-count error after nativepass, not renderer or clock failure. Independent six producer cost outcomes remain qualified.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before parser repair. No native source/policy changes required; retain original wrong-census failure.
+
+## PPD-461 — Prepared and generic lighting variants show mixed controlled GPU costs
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrated lighting applicability/performance
+- Discovered: 2026-11-18
+- Original reference: Preserve all accepted lighting contributions and choose actual-workload implementations by complete-owner cost. Shared preparation is not a universal speedup; retain valid generic alternatives and qualify any consumer/workload selector.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E6 all18strictprechecks and36quietcost processes pass exactquality/PSO2/nonoverlap guards.16200measuredrows with allorders/adverse retained. Current generic→prepared enabled-mode wallpercent cells0–8: +.67,-4.52,-11.29,+5.60,+4.78,+1.41,+6.35,+.55,-.91; GPU +.13,-5.44,-13.42,+6.80,+6.18,+.27,+6.16,+.42,-.60. Families:0material47probes,1skinnedcustomPBR54,2body/cloth47,3forwardshiny54,4mixedmaterial/shinyimpostor47,5churnPBR54,6capstressPBR128,7fullmanualPBR54,8genericwater4. Some oldfae7generic→currentgeneric controls also slower beforepreparation; exactsource cause unisolated. Graph same-current-arm D/E wall within~.84%, CPU generally+1–6.65%; never attribute shader differences to Graph.
+- Next action: Freeze exact per-order/absolute results, audit actual receiver/family/churn/coverage gates, distinguish systematic measured negatives from drift, and implement justified quality-preserving applicability/alternative selection or isolate demonstrated shader/source regressions before enabling indiscriminately. Preserve shared publication/support and allold/current/restored controls; no open-ended viewer profiling or FPS claim.
+- Verification: Controlled authoredworkload mixed performance, not a whole-viewer FPS comparison or captured SL scene. Current source cause and final policy selection remain partial.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before selection or shader changes. All native output/retirement controls pass; raw adverse results are retained.

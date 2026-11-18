@@ -289,7 +289,8 @@ deep strict app signature pass. Build03 app retained by exact hash copy. Final
 MSL library b8d8baa62c16ef0a9e23f10c1eee533b19bd8d15db44abeca434b7f46d5d3e83.
 Build04 viewer c0df12cc17726a448aab5188b674a6cd8b13d2cc188ba262275d1a8343c63147
 is intermediate, NOT the final staged candidate. All28 duplicate archive link
-warnings retained under445, same warning multiset asbuild01. Prior398 source
+warnings retained under445, same duplicate-archive subset asbuild01; overall diagnostics29→28 because
+priorbuild also reports unused SKY_MAX_METEORS. Prior398 source
 attribution remains applicable; no runtime/FPS inference. Source strictGL0,
 compiler actualCPU O3/NDEBUG with no -ffast-math; Metal3.1/fastmath retained.
 
@@ -327,3 +328,134 @@ apple-first-engine-completion-20261118/build-03 through08 and checks. Test-only
 generation is a same-queue GPU target-pool operation, with submitted native uses
 retained to completion; CPU mutation authority is separate. No defect inferred
 merely from the absence of a submitted-use prohibition. No new runtime or gain.
+
+
+Target452 at08 passes1285assertions/1case,0failures/skips, actualAPI/GPU
+validation1 and unchangedsource/exe/library pins. Qualification0c4534f661ab22c0fe95e52e0846220a7908f51d07baffa84d0bbf98c6109ca4.
+Broad547 at08 is running; no full-pass inference from targeted success.
+Generation reuse audit ef92d4dc7c8bab5db1a2b10fd081a602a71334187874354ee738da69755f5629
+confirms selected samequeue/privatepool reuse, not CPU-write permission; no453
+defect established. Opaque multi-queue diagnostics are not selectedproduction.
+445 source link audit maps all28targets to exact duplicated archive paths in
+generated Release rules:26font/compression rows, oneWebRTC91Abseil row, oneviewer
+96archive row. Duplicate-only multiset matches01; originalunusedSKYconstant
+accounts for overall29vs28. Private PPD445-link-warning-review-01 receipt
+dc13d3cc08f8e17cb97c0ca098559ec5665cc42b62c654d91b0ff32556b1bfeb. No
+warning suppression or inference about runtime/FPS/object choice.
+
+
+Broad08 run05 stops42 after350pass/1fail,3435526successful/2failed assertions;
+196selected cases unreached, including automatic animated routing. Shadow
+fixture453 leaves a real clear encoder's foreign command uncommitted/alive while
+reading the same target after another completed command. Source agrees with
+readback safety refusal; do not relax uncommitted-writer protection. Retained
+receipt d92f27974d2286709ed96d607049b8633f068ca706e5f23cb30d8d5f267d5707.
+Fixture-only repair and failed+remaining197case qualification are next, avoiding
+needless repetition of350unchanged passed cases; any cross-build coverage bridge
+must preserve exact execution pins and source-equivalence limits. Independent
+E6prechecks can progress using already passed19case/source-equivalent controls.
+
+
+Build09 mirrors canonical8b1d8a17 to07bab392 /indra15485725; only453shadow
+fixture changes. Exe9dd5f9d22d1b564a961289fdc07b565c461393cac8644a434b2911be3dca58f8,
+metallibb8d8unchanged. Exact197remaining+failed inventory qualifies after450
+escapedcomma input repair. Tail passes10 including453, then455stage fixture
+reads a target while a deliberately unqueued raw red command remains alive.
+Backend's globalopaque-uncommitted refusal is preserved. Blue-output snapshot
+within actual completed other command is under source-qualified test-onlyrepair.
+350actual08+10actual09 passes are distinct from186unreached; no single547pass.
+Independentbackend currentcorrectness alreadyqualified can progress to native
+strictprechecks and quietprimarycosts without waiting on this testfixture.
+
+E6precheck first08process passes2360000assertions/1case; Pythonrunner fails454
+because CatchXML captures std::cout at TestCase/OverallResult/StdOut, leaving
+stdout.log empty. Native output has CSVheader/3first-use rows and zero warm or
+measured rows, actualconsumer2. First native15.942s includes cold setup15.176s;
+not a rendering-cost result. Runner04 narrow schema fix passes18actual/synthetic
+positive/negative output checks +16200row reduceroracle; failed direct-StdOut
+draft retained. All18fresh prechecks and36cost processes still required. No
+production change. Exact current E6source equivalence retains06native19cases.
+
+
+## Cost qualification and remaining mode contracts
+
+Backend36strict prechecks pass all6cells×3modepairs×2matchedversions, actual
+render/computePSO2. Quiet12primarycost processes then pass,7200rawobservations,
+300/arm/cell with alladverse/orders retained. Receipt2526d4ea3e7d3e6101c09e83e8b767de18d46bfb683d09710d28c1bdc66b477d.
+Cache CPU enabled/disabled ratios0..5:1.03645,1.03437,1.03018,1.03670,1.08875,
+1.20683; wall1.00402,1.00520,1.00840,1.00977,1.01410,1.04703. Repeated256
+CPUtax9.19→3.02% improves; alternating/unique remain adverse. Unique+21.502us
+CPU/256draw,19.349us encoding; alternating+6.295us/5.799us encoding. No
+whole-viewer/FPS or universalgain claim. ActualWorldD/E costs/default selection
+stillrequired. Source lazyUse initialization hypothesis remains unimplemented;
+no PMR/header/ABI expansion. Exact report receipt959ac1eaa646c58f4a738db538fed5a0fdf91d79b3c74ebf31f225c934bae125.
+
+Build10 only455stagefixture snapshot correction; canonical4d5ee148/builder
+4ddd446/indrae57672bd, exe1652cb111a30cbebc423bb9e9c0ede7d691e1572fda3d55964384538d157732a.
+Actual455+466 pass16720/2 with API/GPUvalidation; currentautoanimation now
+qualified. Rootproducer ALL6 strictprechecks pass; E3cells0–2 strictpass, cell3
+fails456 authoredqualified-work threshold premise. PBR64/grid32 has165888/
+172032qualifiedindices percohort below196608 despite196608total; production
+CPU/direct choice correct. Test-only genuinelyheavyPBR grid64 fixture is under
+repair with explicitlabel/census; previous boundary failure retained, production
+threshold and existing boundary correctness unchanged. Cells4–6 unrun, no costs.
+
+E6 runner04 XML repair qualifies first8actual10prechecks(cells0–3,bothmodes).
+Cell4 nativepass800assertions fails457 private schema: three intentionallyempty
+genericcolor containers coexist with complete4nativeformatMRT/depth/stencil
+planes. Cell-aware exactschema repair must require allactual nonempty outputs,
+permit onlythree exact placeholder names/hashes, rejecteveryotherempty/symlink.
+No renderedemptyattachment demonstrated. Remaining9nativeprechecks and36costs
+unrun. Frozenexact10bundle will allow continuation while unrelatedE3fixture
+rebuilt11; do not relabel actual06E6correctness or10prechecks as11execution.
+
+Remaining185 broadselection firstcase fails458 modeprecondition: diskarchive
+test runs instrumented1/1 while native cache intentionallybypasses instrumented
+PSOs. Private qualification now partitions6diskcasesAPI1/GPU0,1explicitbypass
+API1/GPU1,1selectiveinstrumentation with its exact documentedenv,177othercases
+API/GPU1. Exactdisjointinventories/union must qualify actualcoverage; no cache
+safety change or suppression. Current350at08+10at09+2at10 actualpasses remain
+distinct,184remaining after first failedcase not claimedpass.
+
+
+Actual broad source coverage now501pass across separate mode-qualified runs,
+1failure459/45unreached. SourcePages correctly permits replacement buffers from
+another wrapper for identicalnativeGPU; its declared RPViews failStateidentity
+because eachwrapper has its ownqueue/Plan/serial. Foreign-state guard stays.
+Authorized repair is private native execution owner keyed validated actualGPU
+registryID+resolvedmode, sharing canonicaldevice/queue/Plan/submissionorder
+together. Process-lifetime boundedowner doesn'tretainAllocation/Command through
+PlanState; modecontrols isolated. .mm-only/noheaderABI, completepublish/retry/
+concurrency/lifetime tests required. No defaultactivationyet; Device.create
+automatic +SDL/headless fallback mustlaterresolvecoherently.
+Two retained expectedobservermessages map world.cpp205–220 catches to intentional
+standard/nonstandard throws in shadow_extended_test458–482, checkedlaterobservers.
+
+Build11 test-only456cell3 maps366969a201->2f057f3c/indra9f8966c.
+Exe25886f5cdd5ceba49becc9bd472e5c0cb9c0d842b4870292fb2370c111e614b9,
+libraryb8d8unchanged. FreshALL7E3strictprechecks pass withactualPSO2 and exact
+outputs, CPUoutside explicitlynoshader(UINTMAX). Togetherunchangedproducer6
+qualifyall13cells viaexplicitseparatecomponentreceipts. E3receipt
+efb6a0b7b6c16070f8f511de3bc8628c2762ed3667ade186deded08fc31a1a7f.
+
+Producer6quietcosts pass300/arm/cell. PairedwallB/A cells0..5:
+1.01595,.99916,.96303,.59573,.95441,.94825; adverse82,74,9,0,15,36/150.
+ThreadCPU1.00541,1.00414,.76786,.30222,.76498,.80573; GPU1.00949,1.00922,
+1.00153,.28588,1.00148,.99923. Wallmediansheavy .64008→.61525ms, outside
+.46667→.27796ms,threeviews1.60198→1.53256ms,churn.70225→.65915ms. Full
+producer-to-completion boundary/exclusions retained; no FPSclaim. Next E3cell0
+nativepasses756assertions/640rows but460parserassumesgrid1has6indices instead
+ofauthored3triangle, expects36/24 versusactual18/12. ReparsevalidrawafterCPU
+parserqualification; no native rerun. E3remaining6costs unrun.
+
+E6runner05 narrow457schema passes68actual/negativecontrols and requalifies
+retained9rawjobs; unusedfrozenoverride/prefixexpansion discardedbeforeexecution.
+FreshALL18onoriginalstable10pass exactallplanes/inputpacks/actualPSO2. Then
+quiet36costprocesses pass16200measuredrows/16856total,20250pairedrecords,
+0unknownCPU/0GPUoverlap. PPD461retains mixedpreparedandold/currentgeneric
+results. Enabledgeneric→prepared wallpercent0..8:+.67,-4.52,-11.29,+5.60,
++4.78,+1.41,+6.35,+.55,-.91; notuniversalgain. Currentgeneric-vs-oldgeneric
+GPUcostalsohigherinsomeauthoredcells, causeunisolated. Graphsame-currentarm
+D/Ewallwithin~.84%,CPUgenerally+1–6.65%; donotattributeshaderchanges toGraph.
+Nativegeneric alternatives/consumer-workload applicability decisionand459repair
+remainbeforeactivation/staging. No viewerrecording/profile/push.
