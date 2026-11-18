@@ -1,6 +1,19 @@
 # Apple-first architecture implementation status
 
-Updated2026-11-17. [69236 Home/club checkpoint](../../research/probe-transparency-checkpoint-69236-20261117.md) is analysed. Home late16.103FPS/42.999mswait remains essentially unchanged; Club combines CPU scene/shadow/decode work with GPU waits. Shared mask reuse is active but prepared-alpha snapshots remain0/0. PPD363 source gate excludes valid post-water-only simple callers, missed by pre-water-only fixtures; intended transparency activation/performance is unaccepted. Repair/test that boundary before further GPU conclusions. Current Overview/native data are not replayable shader captures; current spill allocation remains unknown. Broader architecture/performance acceptance stays partial; viewer closed/no new sourcefix/profile/push.
+Updated2026-11-17. The [fresh69241 Home/club checkpoint](../../research/home-club-replay-checkpoint-69241-20261117.md)
+retains four replayed/profiled device intervals plus CPU/native/resource/logs.
+Current Home prepared transparency is active; its per-fragment main shading
+still grows. Club has a larger CPU scene/shadow workload and legitimate different
+region lighting. Both normal GPU-gap gates remain failed/capture-aware partial;
+no matched FPS gain or whole-product acceptance is established. The owner now
+prioritizes [shared shadow publication and main completion admission](shared-shadow-and-main-gpu-admission-20261117.md)
+with contained checks, followed by a separately verified combined candidate and
+new recordings. Shared per-record ownership exists across views; group-level
+shadow membership/resource reuse and earlier useful preparation remain missing.
+Optional admission still needs logical required-main completion feedback; the
+window presentation census is a different authority. Several visibility/command
+paths exist but remain deliberately unselected after adverse or incomplete cost
+checks. Architecture completion is not enabling every experimental flag.
 
 The dated69122–69172 account below is retained history, superseded by that current checkpoint.
 The owner has now supplied quiet-house and teleport/club runtime samples; see

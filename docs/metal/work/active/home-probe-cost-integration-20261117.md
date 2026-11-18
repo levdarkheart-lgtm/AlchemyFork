@@ -3,7 +3,10 @@
 The active owner goal begins with the measured Home BASE/transparent probe-lighting
 growth and retains the broader Apple-first architecture objective. Its acceptance
 is partial. The prior [69238 replay findings](../../research/home-replay-checkpoint-69238-20261117.md)
-remain the runtime baseline; no new live viewer run has occurred in this group.
+remain retained. The owner has now completed the [fresh69241 Home/club checkpoint](../../research/home-club-replay-checkpoint-69241-20261117.md):
+four frame archives stopped, CPU/native/log audits are complete and unchanged
+GPU replay profiles are in progress. This is diagnostic evidence, not a matched
+performance gain; the staged app and production shader math are unchanged.
 
 ## Ownership and demonstrated boundary
 

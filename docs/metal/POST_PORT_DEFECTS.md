@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-368 -->
+<!-- next-defect-id: PPD-384 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7198,7 +7198,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original viewer display/probe ordering and GPU fences retain required presentation before ordinary probe work. Native scheduling must distinguish required-main completion from optional-group credits, CPU time, display/scan-out and summed GPU command durations.
 - Evidence: [Integrated69122 engine evidence](research/integrated-build-69122-quiet-club-20261115.md). Current846f2781 source: ALNativeFramePlan fills main-thread CPU/interval and memory inputs only; ALNativeFrameBudget optional probe checks these, streaming and own outstanding credits. Window-owned ALMetalFrameScheduler has actual completed-handler retirement, pending/max and ordered submission serials, but these do not enter frame-plan diagnostics or optional admission. Quiet ordinary probes account for27.078CPU-s/31.7%main with high reported GPU-use; this does not prove harmful backlog or a scheduler cause of low FPS.
-- Next action: Observe the integrated69151 census across owner whole-engine quiet/busy/loading evaluation, distinguishing normal pending presentation from harmful optional queue competition. Select any GPU-priority/deadline change only from actual queue/pass evidence; global GPU duration sums and ALU/utilization claims are not main-frame latency.
+- Next action: Implement bounded current-frame feedback from the logical required-main older-group admission wait into optional-work admission. Feed observed wall/threadCPU operands, subtract CPU already counted by the outer owner, reject stale/off-thread/outside-frame observations and preserve existing caps/bootstrap/continuations/aged progress. Window presentation census and GPU command envelopes are not this authority. Qualify source/common/native guards and combined Home outcomes before accepting a benefit. [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md).
 - Verification: Frozen81/source2038c60c36/build69151 required build/static/strict PASS. New real native census60assertions/1case verifies reserved-unsubmitted,3pending/full,retired,unknown and unchanged budget/timing/commit facts; existing outer-frame56/2,probe136/3,budget6112/52 PASS. App phase/logger wiring is source-reviewed. This repairs observation only; no harmful runtime backlog, GPU-priority policy or whole-viewer benefit is proved.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7211,6 +7211,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 frozen81 source2038c60c365b63d6b55e705cb0660efb781106b2/app69151 doctor/configure/build0 (32.297s), real native census60/1 and current owner/probe/budget checks PASS with API/GPU validation; native bundle/strict3597zero blockers/errors PASS. Exact scope whitelist proves observer/app hooks/periodiclogger/test-only changes and byte-identical existing FramePlan methods; all three native renderer/common test binaries match80 exactly. Prior80 full34renderer and worker costs are retained as explicit reused evidence, not new81 executions. New combined69151 stage is VERIFIED8273 identical inventory nodes; all19 SHA256SUMS rows pass, executablee7b29adc9214f0851a2089960edb1c422a6b6791e42f656f9a23f224967537c8. Existing69149 and earlier apps preserved. New sampling has no live-viewer performance measurement and no admission/policy/quality change. Owner runtime remains pending; no viewer launch/login/profile/push.
 
+- 2026-11-17 fresh69241 native/CPU evidence distinguishes logical older-main waits38.770ms/Home versus4.027ms/club; source before-probe accounting remains CPU-only. Owner redirects emphasis to missing architecture, authorizes later unattended Home login after combined qualification. Implement current-frame required-main wait feedback with explicit frame/owner/lifetime guards and CPU subtraction, preserving all bootstrap/continuation/fairness/credit semantics. Renderer hook and outer lifetime are integrator-owned; common budget changes isolated. No queue-depth change, GPUbusy estimate or runtime benefit is claimed. [Integration ledger](work/active/shared-shadow-and-main-gpu-admission-20261117.md).
 
 ## PPD-301 — Early static GPU visibility lacks resident publication and later-consumer ownership
 
@@ -7646,7 +7647,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.
-- Next action: Focus on current main BASE/simple probe-sensitive shading. Explain the actual hot draw38566 generic/no-mask selection through scene-wide candidate availability/capability before assuming another routing bug; then controlled saved-frame traversal/accepted-SH/shadow/data-access isolation with unchanged/restored controls. Complete only a demonstrated quality-preserving improvement; fresh optional-probe GPU feedback remains secondary. [69238 Home replay findings](research/home-replay-checkpoint-69238-20261117.md).
+- Next action: Complete the fresh69241 four-frame replay profiles and current bound-input audit. Home1472 is CPU-prepared16/16 and actual GPU draw30764 confirms the candidate shader/buffers8/9, yet completion waits still grow. Club5617 is all_full before admission and has a different CPU/effective-lighting workload. Measure mask usefulness and accepted lighting/shadow/data-access costs with unchanged/restored controls before selecting a general quality-preserving change; old69238draw38566reason remains unknown. [Fresh checkpoint](research/home-club-replay-checkpoint-69241-20261117.md).
 - Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7700,6 +7701,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 owner-authorized fresh69238Home GPU capture covers login and world0–152.51s with successful early214→215/late1428→1429stopped traces. Normalcollector gate remainsFAILED at5.1109sGPU gap aligned with8.447s capture stop; realrecorder/all3exports0, raws retained, no thresholdchange/rerun. Capture-censored28.58→15.20FPS/wait7.38→39.83ms reproduces decline; no clean69236gain comparison. CurrentMedium/Overlappingreplay74.36→119.32ms localizes growth: fixedmain fragmentcount/ALUperfragment1.77×, fewerlargealpha fragments/ALUperfragment4.93×. Exactmainprobes1→26/lightrects/targetfixed. Actualhot38566 genericHigh2pair/no8/9mask whilepreparedpostencodingactiveelsewhere; fallback/SHcostsplitunrecorded. Original23,521nodes/10.693GBhashes unchanged; viewerclosed/Goodbye/replaysstopped. No sourceedit/recompile/newoptimization/push. [69238 Home replay findings](research/home-replay-checkpoint-69238-20261117.md).
 
 - 2026-11-17 current69238saved-framehelpercontrols qualify substantial global retained probe and shadow work: SHoff122.19→100.26→124.91ms; sharedprobe-bypass124.91→64.43→122.32; shadow-bypass122.32→100.89→129.84; syntheticacceptedtap129.84→89.14→120.81. These are deliberately altered lighting, global dependent views and nonadditive replay diagnostics, not shipped fixes/liveFPS. SoloSHinline120.81→116.65→123.64 remains inconclusive and unpromoted. General decision/capture build69241is separately verified for owner Home+club reason collection; exact hot fallback, exclusive data-access cost and whole-engine improvement remain unresolved. [Current group](work/active/home-probe-cost-integration-20261117.md).
+
+- 2026-11-17 fresh69241 owner Home→club checkpoint closes normally with all four frame archives stopped. Owner Home29–31→16FPS/club31→18–20. Home80–120 main wait38.770ms/period63.946 with35.38%mainCPU versus club4.027/55.869 with79.63%mainCPU and continued decoding; capture-armed diagnostics, no matched gain. Exact Home1472 CPU16/16prepared and actual draw30764 candidateHigh2pair/buffers8/9 confirm current activation. Both normal5sGPU-gap qualifications stayfailed; capture-stop overlap and partial native600s/300contention losses retained. All238warnings/44sites+3PNG mapped/0ERROR-FATAL;49storedcontrols match69238 but effective region lighting differs. Four unchanged GPU profiles and bound-input assessment are in progress. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -8199,6 +8202,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 fresh69238recompiled/restored controls and coarse helper variants retain blank spill fields for expensive simple/BASE/PBR/material rows; restored simple/BASE214GPR is observed, not zero spill. No per-line stall or complete shader-table coverage is credited. Expected source hashes and critical transcribed AX excerpts are explicitly qualified; they are not actual exported editor buffers/full trees. All variants were restored and stopped; source-MSL/library hashes unchanged. The solo inline trial is inconclusive, so no compiler repair or spill elimination is claimed. [Current group](work/active/home-probe-cost-integration-20261117.md).
 
+- 2026-11-17 fresh69241 unchanged Home late working-copy profile reports prepared simple222GPR and prepared BASE226GPR with blank Spilled Bytes; early generic rows214/214 also remain distinct. Medium/Overlapping66.93→129.43ms is different-workload replay growth, not proof of spill traffic or a preparation regression. Actual current main draw30764 confirms prepared entry/buffers8/9; retain exact Cost heading and aggregated PSO scope. Club controls and final evidence receipt are pending. [Fresh checkpoint](research/home-club-replay-checkpoint-69241-20261117.md).
+
+- 2026-11-17 subsequent fresh69241Home comment-only Reload/profile control128.10ms explicitly reports0SpilledBytes for preparedsimple222GPR/BASE226GPR/inspectedprojector188GPR. Full rawAX and completed Reload/profile evidence are retained. This qualifies those recompiled control rows; original captured blank cells stayunknown and no precise metadata-absence explanation, originalbinaryzero or whole-run allshaderzero claim follows. Initial profile controls and earlier comment-reload214GPRstillblank history remain separate. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
+
 ## PPD-344 — Bounded native additive lights lack original volume-depth rejection
 
 - Status: investigating
@@ -8588,7 +8595,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Simple-alpha forward lighting serves the existing ordered pre/post-water rendering owners. Preparation should be selected only for supported standard simple consumers and preserve generic fallbacks; no broad activation claim follows from mask production alone.
 - Evidence: [Group1](work/active/probe-transparency-preparation-20261117.md); private goodrun /Users/dekstroza/Alchemy-home-e2onni_5 analysis/log-audit and actual Native prepared probe alpha log rows. [Post-water repair and qualification](work/active/probe-transparency-post-water-repair-20261117.md).
-- Next action: Runtime successful prepared post-water encoding is observed in69238. Explain why inspected costly draw38566 uses genericHigh2pair/no8/9mask; candidate selection already shares standard/simple/nonavatar/nondepth predicates, so inspect scene-wide mask availability/certification/all-full/admission/residency/capability. Preserve legitimate fail-open behavior. Owner visual/FPS acceptance remains pending; no push. [69238 Home replay findings](research/home-replay-checkpoint-69238-20261117.md).
+- Next action: Current69241 Home1472 actual GPU draw30764 uses candidateHigh2pair with buffers8/9, matching16/16CPUprepared; both club main captures report all_full before admission. Complete four-frame cost/input qualification and general usefulness analysis. This establishes current activation, not the old69238draw38566fallback reason, saved GPU time or visual/FPS acceptance. Preserve legitimate fail-open behavior; no push. [Fresh checkpoint](research/home-club-replay-checkpoint-69241-20261117.md).
 - Verification: Old-gate post-only native test reproduces0versus2actual prepared draws. Minimal pre/post eligibility OR then passes1,777,824assertions/36native cases plus50,837/18existing renderer cases with API/GPU validation. New post-only8cell/50arm matrix preserves strict color/depth/stencil and rigid readonly-depth; cumulative activity survives same-frame generic/custom calls and shared reload, rejects invalid preflight publication. Full Release build and69238separate stage pass8272exact nonrootnodes/346ARM64/strict signature/owned directimports; indra3d4a2d9b/root035/builderf0c match. Actual in-world activation and FPS benefit remain pending; historical69236zero snapshots alone were not exhaustive coverage.
 - Owner verification: pending
 - Push approval: not_granted
@@ -8615,6 +8622,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 finalbuildercb3e148ec9/rootimplementationd5e93bbed2 passes combined build, current core1,805,166/47 and existing renderer50,843/18, plus strict3610files0blockers/errors. Separately staged69241matches8272nonrootnodes/346ARM64/signature/ownedimports. Typed per-call reasons and successful CPU binding observations are ready for owner Home+club qualification. No rendering math or lighting quality change is selected; the actual69238hot fallback remains unknown until current decision evidence is collected. [Current group](work/active/home-probe-cost-integration-20261117.md).
 
+- 2026-11-17 fresh69241 successful encoding reasons distinguish current Home1472 ready25probes/full20/bounded4/16prepared from club5617 all_full10probes/full9/93eligible0prepared before admission. Actual Home draw30764 selects almetal_world_pre_water_simple_shadow_candidates_fragment/High2pair and binds arena projection8 plus immutable tile masks9. Current routing repair is active; no new100%all-view selection, mask savings, old69238reason, visual or FPS acceptance is inferred. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
+
 ## PPD-364 — Initial multi-scene capture draft retains teleport permission across terminal invalidation
 
 - Status: ready_for_owner
@@ -8635,6 +8644,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 corrected caller guards revoke pending permission on non-teleport invalidation and suppress simultaneous disconnect/logout/exit. Independent source review passes; policy native-failure/expiry nonrevival and two-generation budget pass1483CPUassertions/10cases. Viewer orchestration execution remains untested; combined build pending.
 
 - 2026-11-17 actual controller selectors rearm/revoke/conflict/native/cutoff/off/budget pass265assertions/seven fresh processes. Rearm produces two distinct stopped tiny-blit captures, original metadata/sentinel stay unchanged, third generation is refused; source-guarded terminal invalidation revokes permission without hiding behind a failure flag. No viewer or four-phase SL coverage is inferred. Initial unsupported validation configuration failures remain separately registeredPPD366.
+
+- 2026-11-17 actual69241 Home then club teleport produces two distinct generations and four stopped device captures223→224/1472→1473/4505→4506/5617→5618. Original Home and separate scene-2 archives are preserved; normal logout does not produce a third generation. Source revocation tests remain the direct terminal-rearm controls. Replay qualification is in progress; no owner visual/performance acceptance or closure follows solely from stopped metadata. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
 
 ## PPD-365 — Private capture-aware receipt fails on a missing GPU export family
 
@@ -8690,3 +8701,311 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 registered before correcting private launcher read ownership. This is launcher startup hygiene, not a demonstrated renderer or FPS defect; warning relevance is investigated rather than dismissed.
 
 - 2026-11-17 explicit context-manager correction leaves hash comparisons unchanged. Five launcher checks and both actual69241identity dry runs pass warning-free without launching anything. The launcher defaults to replay capture; --normal-control explicitly disables the capture layer. No viewer or shader source change follows from this private fix.
+
+## PPD-368 — Private saved-frame shader Undo does not restore a multi-line edit atomically
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex private GPU replay experiment tooling
+- Discovered: 2026-11-17
+- Original reference: Diagnostic editor restoration has no original-viewer rendering equivalent. Restored controls require the exact original functional source before Reload; one Undo operation is not evidence of restoration.
+- Evidence: [69241 checkpoint](research/home-club-replay-checkpoint-69241-20261117.md); private run /Users/dekstroza/Alchemy-home-4slyg4mv/analysis/gpu/mask-home-restored-source.ax.txt retains the failed restoration attempt. After a multi-line typeText edit, one Undo removes the selected_masks=nullptr declaration but leaves diagnostic comment/indentation and an undefined selected_masks reference in the source editor. Verification catches this before Reload; valid compiledB remains active. Production source and original frame archive are unchanged.
+- Next action: Restore the exact original lookup through a bounded source-context replacement, verify both candidate entrypoint contexts and declaration/use before Reload, then require a completed restored-A profile. Retain the bad editor state and failed Undo assumption; never count it as a restored control or compile failure.
+- Verification: Failure observed in source-editor AX before any Reload or GPU action on that bad text. Correction and restored-A profiling pending. No engine rendering defect, compiler failure, Xcode crash or accepted mask-cost result is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correcting the private source editor. First valid maskB profile124.60ms versus adjacent unchanged-mathA128.10ms remains preliminary; a missing restored control prevents selection. All original archives, current production shader and staged69241 remain unchanged.
+
+## PPD-369 — Private probe-return fixture omits actual compute shader-validation proof
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex private no-output probe qualification
+- Discovered: 2026-11-17
+- Original reference: Private GPU qualification has no original-viewer equivalent. Requested validation and a nonnull PSO do not prove the actual pipeline validation enum; claims must match each executed graphics and compute pipeline.
+- Evidence: [69241 checkpoint](research/home-club-replay-checkpoint-69241-20261117.md); private analysis/no-output-qualification source review edb95068 finds graphics PSOs check actual shaderValidation while mask_pso only checks nonnull. The fixture and planned1,233 comparisons are unexecuted. No disabled pipeline, false passing result or viewer defect has been observed.
+- Next action: Preserve the reviewed source and add the actual mask compute shaderValidation Enabled assertion, or explicitly narrow the qualification claim. Freeze current source/library/header pins and run only after replay profiling releases the GPU quiet window.
+- Verification: Independent source-only review finds this evidence gap and no concrete ABI/binding/comparator blocker. Correction and execution pending; compile/run/cost acceptance remain false.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 source review registered before qualification execution. This is a private evidence-assertion gap, not demonstrated invalid rendering or an actual failed validation configuration. Preserve all prior shader-validation configuration failures underPPD366 separately.
+
+## PPD-370 — Private relation-failure evidence treats an artifact directory as a regular file
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex private no-output probe qualification
+- Discovered: 2026-11-17
+- Original reference: Private correctness evidence must retain both compared planes on failure. A directory environment value must be validated as a directory, independently from source/library regular-file guards.
+- Evidence: [69241 checkpoint](research/home-club-replay-checkpoint-69241-20261117.md); private analysis/no-output-qualification frozen fixture34ea7f1e91d3b5e615c1d516ca20506dc6a96821008fb59699a88d4ec07ae403 source review identifies two new relation-failure paths calling requiredEnvironment(ALCHEMY_PROBE_TEST_ARTIFACT_DIR). The inherited helper requires a regular file, so it would abort before saving the additional generic-before or previous-SH planes. Existing current-plane save runs first. The source is unexecuted and no failure planes have actually been lost.
+- Next action: Use a narrow validated directory retrieval for those two paths, preserve the reviewed source and independently review the corrected failure-evidence path before any qualification execution.
+- Verification: Source-only reviewer and author confirm the guard mismatch. No compile/link/native execution or false passing result; comparator and renderer math are unchanged. Correction pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correction on the author's explicit hold. Preserve this private evidence-path defect separately fromPPD369actual compute-validation proof and all renderer performance findings. Planned1,233 comparisons remain unrun.
+
+## PPD-371 — New GPU-feedback fixture assumes the wrong existing optional in-flight cap
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex main GPU admission qualification
+- Discovered: 2026-11-17
+- Original reference: Existing shared budget permits optional in-flight credits up to optional_views_per_frame times two. The test must preserve that actual policy and held-continuation ownership rather than invent a cap of two.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); isolated main-gpu-admission cpu-green-01 source/binary/argv/stdout/stderr receipt. Compile/link exit0, focused run exits42: six cases/101assertions with two failures. A third temporary credit correctly admits under existing cap4, invalidating the test's cap2 denial and retirement-count premises. The other five new feedback cases pass.
+- Next action: Preserve the failed fixture and fill all four actual slots with retained owners before expecting hard-cap denial. Correct the retirement expectation using the same real ownership sequence; do not change production limits or fairness to satisfy the test.
+- Verification: Actual implementation and source review establish cap4; fixture correction/retest pending. No production feedback, renderer or runtime regression is inferred from these two premise failures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered on the author's explicit hold before test correction. Earlier expected CPU-only red is retained separately as evidence forPPD300. Existing production hard caps are unchanged.
+
+## PPD-372 — Shadow membership invalidation qualification does not observe its expected rejection
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shared shadow publication qualification
+- Discovered: 2026-11-17
+- Original reference: Reentrant invalidation tests must prove the callback actually ran under the real working-set eviction policy before expecting stale-publication rejection. Source correctness and a bad trigger premise must remain distinct.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); isolated shadow publication correctness-01/run-receipt.json retains compile/link0 and run42 with12assertions/one case reached under abort/randomized order. The retain-callback case expected stale rejection but received a valid result. API/GPU validation is enabled; this fixture issues no native GPU commands. No renderer or viewer failure was observed.
+- Next action: Check the exact ledger same-frame victim protection and prove callback invocation. Preserve the failed source/binary/raw receipt, then correct the trigger if the test premise is wrong; repair production only if a stale result is demonstrated after real invalidation.
+- Verification: Failure registered before any correction. Same-frame eviction protection is a hypothesis, not a confirmed cause. Remaining cases are unexecuted under this first abort run.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 author stopped on the first contained native-resource/CPU qualification failure and requested registration before investigation/repair. Preserve all failure/retest history and distinguish actual callback state from expected behavior.
+
+## PPD-373 — Shadow native completion owner outlives its resource-vector metadata charge
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared shadow publication integration
+- Discovered: 2026-11-17
+- Original reference: Completion-retained native leases may release membership/Record CPU rows after encoding joins, but CPU storage in the native lease container must remain accounted until its actual last reader releases. PreservePPD299lifetime ownership rather than treating cache removal as deallocation.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); new almetalshadowpublication.cpp charges sizeof(vector<Resource>) and mResources.capacity() inside Membership's single mCPUReservation, while nativeOwner() returns the same shared resource vector independently. The source test explicitly expects accounting0 while nativeReader remains alive. That vector/control-block allocation still exists, so its charged metadata is retired too early. Native resource generations remain retained; no use-after-free or viewer execution is observed.
+- Next action: Split membership-row/Record debt from the native resource-owner metadata reservation, or otherwise retain exactly the native-container charge through its last completion owner. Keep large CPU membership/Record storage releasable after join. Add independent destruction/eviction tests for both lifetime domains; do not preserve a false zero-debt test premise.
+- Verification: Integrator source review confirms charge/container lifetime mismatch after seven helper cases pass their earlier assertions. Correction and retest pending; those earlier passes do not qualify this boundary.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before repair. The new source is isolated and not integrated into a viewer. Preserve the pre-correction source and seven-case receipt, then verify native-only owners retain their own metadata charge while avoiding membership/Record/pose retention.
+
+## PPD-374 — Default Python lacks declared tool-test dependencies
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex local tool qualification environment
+- Discovered: 2026-11-17
+- Original reference: Tool tests must run in an interpreter containing tools/metal/requirements.txt dependencies. A test-module import failure must not be reported as a passed suite or a rendering defect.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); shared-shadow-and-main-gpu-admission-20261117/checks/tools-01.log retains default HomebrewPython3.14.6 run exit1:178tests, one opt-in skip, one loader error because import yaml fails. tools/metal/requirements.txt declares PyYAML6.0.3. Earlier69241tool-tests01/02 missing dependencies and corrected03 receipts are also retained in prior qualification; no source/tool assertion failed in this new run.
+- Next action: Reuse the previously qualified isolated interpreter or install declared dependencies into a task-local virtual environment, then rerun the exact suite and retain both outcomes. Do not alter global Python or weaken imports/tests.
+- Verification: Doctor exits0 and harness33required-files exits0 independently. Full tool suite remains failed until the dependency-complete interpreter retest; no renderer failure is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before environment repair/retest. This is a repeated local dependency selection incident, not a source regression or successful qualification. Preserve prior missingPyYAML/numpy/Pillow attempts rather than deleting them.
+
+## PPD-375 — Stale outer shadow-cache seal can discard a newer reentrant publication
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared shadow publication integration
+- Discovered: 2026-11-17
+- Original reference: A stale outer transaction must reject its own attempt without invalidating a newer successfully published transaction. Reentrant source/working-set callbacks and exact immutable reader ownership must preserve progress.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); independent source review of new almetalshadowpublication.cpp Cache::seal owner-revision mismatch branch. Outer seal captures ownerR; a retain callback invalidates owner toR+1, reenters the same cache key/publisher and publishes validN. Outer Publisher rejects its stale revision, but outer Cache unconditionally publisher.invalidate() discardsN. Author confirms the counterexample. No wrong pixels, viewer execution or GPU failure is demonstrated.
+- Next action: Preserve the reviewed source and add a deterministic nested owner-invalidation/reseal reproducer. Guard outer cleanup against publication identity/revision so it only withdraws its own stale attempt; preserve a newer nested publication and its accounting/native leases.
+- Verification: Source-confirmed before repair. Existing invalidation tests cover callback mutation but not successful nested owner reseal. Reproducer/repair/retest pending; earlier helper passes do not qualify this transaction boundary.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 independent reviewer and author stop before integration/repair and request registration. Keep the issue separate fromPPD372fixture trigger andPPD373native metadata lifetime repair; no production viewer has used this helper.
+
+- 2026-11-17 same reentrant cache transaction also exposes a statistics subcase: Cache uses a shared Publisher before/after resource_unions delta across callbacks. An inner successful seal increments once and its Cache accounts1; the stale outer sees the same shared delta and accounts it again. Assign this exact-count invariant withinPPD375 before correction, preserve reproducer/counters and do not infer native work or runtime benefit from the overcount.
+
+## PPD-376 — Main GPU feedback renderer includes a common header outside its include path
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shared admission integration
+- Discovered: 2026-11-17
+- Original reference: Native backend translation units use explicit sibling-module headers when the backend target does not export llcommon's include directory. Application/test include paths do not prove the backend library's include path.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); checks/main-gpu-native-build-01.log on builderf12879fdcc fails almetalworld.cpp21 with alnativeframebudget.h not found. The almetal target lacks that short include path; its existing sibling includes use ../llcommon. Native test execution did not start.
+- Next action: Use the explicit sibling-module include in the renderer and corresponding explicit path in the new test, preserving the same shared budget API and logic. Retain the failed compile log and rebuild the exact target.
+- Verification: First component build fails before linking/running. Source include correction and retest pending; no runtime, renderer output or policy regression is demonstrated.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 registered before correction. Common component CPU tests remain independently passing; that scope did not compile this native translation unit. Root owns the repair and exact builder retest.
+
+## PPD-377 — Draft shadow frontier fixture has invalid timing and arm-equivalence setup
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared shadow complete-frontier qualification
+- Discovered: 2026-11-17
+- Original reference: A paired frontier comparison must time each intended interval once, use equivalent published inputs and account CPU ownership at the same handoff. A draft fixture cannot establish performance before these premises hold.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); author preflight of the new private factory-frontier inl finds a timer started outside a seven-view loop whose cumulative elapsed time is repeatedly added; separate arms allocate different native buffers while the strict oracle compares exact buffer identity; pending SourceInput scratch retains extra owners at handoff. The source is uncompiled/unrun and no performance result is claimed.
+- Next action: Preserve the draft. Time each view once, share equivalent exact published geometry while keeping arm cache state independent, clear temporary owners at the defined handoff and account retirement separately. Review the corrected oracle/frontier before execution; retain cold/change/small/denied paths.
+- Verification: Source-only setup defects registered before correction. No renderer effect, measured cost result or accepted optimization is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-17 author stopped at private preflight and requested registration. Preserve all three original premises and the corrected source/test protocol under this stable fixture record.
+
+- 2026-11-18 frontier compile02 exits1 before link/run: LLMatrix4.mMatrix is float[4][4], so draft copy_n of16elements tofloat* is ill-typed. Preserve raw source/compile log; change that UV copy to the production memcpy64 operation with no arithmetic change. Actual relay/fast-path alias reached compilation; no measured result exists. Earlier same-revision mock bias also requires the real relay fast path rather than three synthetic observations per baseline hit.
+
+- 2026-11-18 integrator catches another unrun refinement asymmetry: baseline already used LLPointer strong admitted rows (old pipeline.cpp912/13446), while draft bookkeeping fixture modeled baseline raw admission. Preserve that draft/compile attempt; both arms must pay identical strong positive-row admission before any cost run. No timing or production-source defect is demonstrated. Broader owner bookkeeping/cell refinement remains within PPD377 and source component qualification is unchanged.
+
+- 2026-11-18 frontier-cost-01 measured process exits0 with125348assertions/1hidden case and2880raw position rows. First reducer postcondition wrongly equates factory calls with dependency observations, but real cold Scene::shadow observes again through extend. Preserve reducer-attempt-01 failure; use source-valid observation>=factory relation and retain both event denominators. Raw timing and comparator/source bytes remain unchanged.
+
+- 2026-11-18 source-sensitive component draft preflight catches uncompiled test premises: Fixture already began frame1, so beginFrame0 cannot establish a valid frame0 case; beginDrain is permanent and cannot serve denied-then-recovery. Preserve draft/receipt PPD382-test-draft-before-frame-premise. Use a fresh local budget for frame0 and reversible required-main pressure for denial/recovery; no execution/performance result is affected.
+
+## PPD-378 — Shadow publisher keeps obsolete child dependency edges across membership changes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared shadow publication integration
+- Discovered: 2026-11-18
+- Original reference: A derived publication depends on its current immutable membership, not every historical source. Obsolete callbacks must not invalidate a newer publication; current dependencies must still withdraw idle leases before COW, while real readers retain exact native generations.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); new Publisher constructs mDependencies once and reuses it for every source and group owner. After sealingA, changing membership toB and sealingB, removed sourceA still holds a weak subscription to that live observer; invalidatingA therefore discardsB even though A is no longer a member. No forget/replacement/epoch guard is present. This is a source-confirmed false invalidation/progress risk, not observed wrong pixels or a viewer run.
+- Next action: Preserve the source and add removed-child/current-child controls plus a nested newer-publication case. Separate persistent group-owner invalidation from current-generation child dependencies, retire obsolete edges and ensure an older in-progress callback cannot clear a newer publication or overwrite its observer ownership.
+- Verification: Integrator source review finds this after earlier mechanics/reentrancy cases pass. Reproducer/repair/retest pending; active reader native-resource protection must remain unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before repair/integration. Preserve old source and all prior receipts; do not infer complete dependency qualification from earlier callback cases that keep the same source set.
+
+- 2026-11-18 isolated component green11 passes325assertions/11cases on frozen exact old-ABI libraries. Removed-child/current-child controls and old-in-progress observer after nested newer publication pass. Follow-up sizeof-derived entry accounting is included in final green12 (348/12). No viewer/whole-engine gain claim.
+
+## PPD-379 — Temporary builder checkout loses tracked files and Git pointer at midnight
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integration/build integrity
+- Discovered: 2026-11-18
+- Original reference: Build and native test receipts must name a complete, identifiable source checkout. A surviving executable is insufficient evidence after its source checkout changes externally.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); checks/builder-integrity-01/receipt-before.json and tracked-status-before.txt under the shared-shadow-and-main-gpu-admission-20261117 artifact group. At00:16UTC, builder /private/tmp/alchemy-apple-first-architecture-g2-g5 has no .git pointer and exactly11249 tracked deletions, no other tracked differences. External worktree metadata remains intact at HEADae2222777ab7731546690b571979b0ba35a62d6c. Directory change times cluster00:00:35–55; recently updated renderer sources and build outputs survive. Canonical source remains intact. Cause is unknown; timing alone does not establish system cleanup or an actor.
+- Next action: Preserve before-state and independently inspect cleanup evidence. Restore only missing tracked files and the exact pointer from intact metadata, verify complete source identity, then repeat affected build/test qualification. Do not use git init, reset surviving changes, or alter global cleanup settings.
+- Verification: CPU-owner target build returned0, but its native tests were stopped before execution when source integrity failed. Earlier main-admission native test receipt predates the deletion. No viewer has been launched from this affected state.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before repair. Builder integrity work delegated exclusively to evidence agent; canonical source and feature integration remain root-owned. Architecture agent reports only read operations on this builder.
+
+- PPD379 repair01 pre-mutation guard stopped when the ordinary-file missing count excluded the deleted vcpkg gitlink:11248ordinary files plus1gitlink. No files/pointer were written in that attempt; exact submodule metadata/pinned commit restoration is now included. Preserve failed script/log under builder-integrity-01/repair-01.
+
+- 2026-11-18 repair03 restores exact source/index identity atae222:11248ordinary missing files and empty uninitialized vcpkg gitlink,1344surviving files preserve hashes/mode/mtime; exact.git pointer restored, clean. Two repair guards/failures are preserved: gitlink excluded from ordinary count, and byte-identical index guard rejected legitimate status stat-cache refresh before switching to exact stage/OID/mode equality. Existing external vcpkg toolchain/installed paths exist. Root then integrates7c0d43ccad; first native build fails before compilation because generated CMakeFiles/VerifyGlobs.cmake is also missing. Preserve checks/shadow-combined-native-build-01. Regenerate from existing cached configuration before rebuilding; source restoration alone did not qualify generated build integrity. Cause remains unknown.
+
+- 2026-11-18 cached reconfigure01 exits1: indra/dullahan lacks CMakeLists.txt, then required dullahan_host install target is absent. That gitlink directory has only3surviving source files and no pointer (uninitialized status), so top-level clean status did not cover its source. Before-manifest dullahan-survivors-before.json retained. Restore missing files as an exact pinned ba893db7aa6fc3257d5ee37379d04962c1ead164 source export from the existing local submodule object database; verify every surviving file before touching it and do not overwrite differences. This preserves CEF/media behavior rather than excluding the target. Reconfigure/rebuild still unqualified.
+
+- 2026-11-18 harness02 rejects this draft register's unsupported Confirmation observed, missing evidence citation and stale next-ID marker (380 also lacks its citation). Preserve raw log; use allowed reproduced for the observed file-loss symptom, link the integration note and advance nextID381. This repairs record schema, not the unknown deletion cause. Cached configure02 now succeeds after exact50-file Dullahan export restoration.
+
+## PPD-380 — Shadow group caching does not preserve pending age across admission denials
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shared shadow publication integration
+- Discovered: 2026-11-18
+- Original reference: Existing native frame admission includes bounded deferral/progress eligibility. A derived owner must preserve its first unserved frame rather than reset that age on every view.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); new shadow cache passes the caller's oldest_dirty_frame to seal, but stores no pending age. The root draft bridge passes current budget frame each call. Sustained busy pressure therefore keeps the optional publication permanently young and can prevent the existing maximum-deferral progress path. Required old per-row rendering remains available; no viewer regression has been observed.
+- Next action: Store optional first-unserved frame per existing bounded cache entry (including valid frame0), preserve it through denials/revision churn, and clear only on exact retained/reused publication. Test existing busy/progress admission without changing policy thresholds or fairness credits.
+- Verification: Source review before integrated build. Reproducer/repair/retest pending; do not infer scheduling progress from component happy paths.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correction. Architecture agent owns isolated helper/cache repair and qualification; root owns bridge and combined build.
+
+- 2026-11-18 isolated green12 compiles/links0 and passes348assertions/12cases on frozen exact libraries. Pending age starts at valid frame0, survives denials0/1/2 and revision churn, permits existing-policy progress at3, then exact retained success clears age and new revision4 is denied again. Entry accounting is sizeof-derived616B; no policy threshold changes. Combined integration/native qualification still pending.
+
+- 2026-11-18 harness02 also flags the draft380 evidence citation and stale next-ID marker; correct those documented fields and retain the failed validation log. No source/runtime change follows from this schema repair.
+
+## PPD-381 — Automatic replay policy cannot explicitly sample the later settled Home workload
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex replay checkpoint coverage
+- Discovered: 2026-11-18
+- Original reference: The active goal requires representative early/loading and settled GPU frames, with exact retained coverage qualified. A decline-triggered frame is not proof of the later fully populated workload.
+- Evidence: [69241 report](research/home-club-replay-checkpoint-69241-20261117.md); lateHome GPU frame1472 occurs around62s with25probes, while subsequent native logs reach41. ALMetalQuietCapturePolicy defaults late_min60s/fallback90s, exactly2attempts per scene; alquietdiagnostics.cpp exposes no timing override. Extending the CPU recorder to360s alone cannot move that second GPU sample into the later settled interval.
+- Next action: Preserve default decline behavior. Add one explicit bounded diagnostic-only late-age override,60–240integer seconds under existing300s maximum/two-attempt limits, with exact config telemetry and invalid-input tests. Use it for an additional later checkpoint, preserving default-timed and capture-disabled controls rather than relabeling62s as final settled.
+- Verification: Source/retained-coverage audit before correction. No new viewer run or performance conclusion; current late frame remains valid decline-phase evidence.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correction. Diagnostic coverage work must remain independent of rendering settings, admission thresholds, shader source and capture attempt limits.
+
+- 2026-11-18 native timing override2085db7c6d (canonical40630ecd8e) passes actualRelease syntax0/0, empty stderr, diffcheck and independent root/architecture source reviews. Actual fresh-process16-input controller matrix is still pending combined target rebuild. Private launcher adds explicit --late-seconds, clears inherited overrides, rejects normal-control conflicts before process access;18offline tests/3synthetic dryruns pass, UNPINNED/no launch. Preserve before-PPD381 and native/private qualification receipts.
+
+- 2026-11-18 actual controller native01 executes cases0..5 successfully (24assertions each), but external warning-verification wrapper exits1 on rejected-empty case5 because passing test logs are suppressed on stderr by default altestmain.cpp67–84. Preserve all six logs/receipt+verification-outcome. This is a verifier logging premise, not a parser failure: actual automatic0/header/footer assertions pass. Set explicit LOGTEST=WARN and rerun the16fresh-process matrix to observe the named warnings.
+
+- 2026-11-18 controller native02 passes all16fresh processes/384assertions atbuildere3a6ad0f95, actual config/header/footer/marker checks and all11env-named rejection warnings observed with explicit LOGTEST=WARN. Binary/source stable; no Metal device/capture/GPU/sleep in selector. MainScope native target separately passes125assertions/3cases with API/GPUvalidation on, capture off. Full viewer build02 passes145nodes/version69255; source-only performance guard is still pending, so no launch/stage acceptance follows.
+
+## PPD-382 — Unguarded shadow group caching regresses tiny, changing and denied owner workloads
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shared shadow performance selection
+- Discovered: 2026-11-18
+- Original reference: Optional derived publication must amortize repeated owner work while preserving required serial output. Selective admission/stability guards must retain the shared architecture rather than promote demonstrated regressions or remove valid draws.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); exact frontier-cost-01 report626652ac under /Users/dekstroza/Alchemy-home-4slyg4mv/analysis/shadow-publication-implementation. ABBA/BAAB20blocks retain2880rows/36cells, correctness125348assertions passes, validation/capture off. Warm opaque1row handoff+35.04% (all20blocks adverse), covered1+44.78%; opaque2 is marginal-3.14%, opaque4-34.96%,8-46.85%,16-55.17%,64-61.00%,256-59.97%. Every-view cold+131..570%, revision/order/subset churn+15..165%, denied+13..101%. These are scoped owner-frontier CPU costs, not viewer FPS or GPU speedups.
+- Next action: Preserve raw controls and reject blanket/tiny-group selection. Apply demonstrated minimum/cold-stability/denied guards using existing owner and admission boundaries, then repeat exact corrected controls plus correctness on current integrated ABI. Required old rendering remains the fallback; no lower8192worker threshold, cull/quality change or architecture abandonment.
+- Verification: Root combined native978662/39 and full viewer build01 pass, but no new viewer run or performance acceptance. Unguarded source is retained in local commits; cost report excludes full cull/query/merge/encoding/completion and actual byte-pressure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before guard implementation. Both old/new source factory paths use equal strong admission, real relay fast guard and current scalar pose/UV; earlier PPD377 fixture failures/reducer correction remain retained.
+
+- 2026-11-18 guard8780 correctness07 passes348637assertions/2cases. Guard cost02 passes525436assertions/1case and4320positions: stable warm4+ handoff-33.4..-62.7%, first-cold+7stable frames-9.72..-33.13%, included teardown remainspositive. Tiny fallback adds~0.06microseconds/7views; group churn/cold/drain penalties collapse to few-percent/near-neutral. Child-only source generation churn leaves the bare group stamp stable and still regresses49.04/29.53/24.20/14.76/13.80% at4/8/16/64/256 (all20blocks adverse; covered64+14.66%). Thus this first guard is insufficient and unselected; retain report1f39fc39 andmanifest907677d1. Next add source-sensitive preparation eligibility over the existing derived dependency boundary, preserving obsolete-edge/reentrancy repairs and CPU metadata accounting.
+
+- 2026-11-18 source-sensitive core0d067 (canonicalee990) passes478assertions/17cases; actual integrated afc9278 native run passes978792/44 and current-ABI frontier427323/3, validation1/capture0. Per-entry last-attempt bounds first-denied retries, required old outputs remain exact. Final cost04 retains5040positions/7regimes: warm4+ handoff~-31..63%, eight-frame cold-to-stable medians~-6..33%, but source-only residual~+4..15% and fresh busy-denial~+5..27% (4row3.311→4.204microseconds/7views,64row43.173→46.639; all20adverse). Four-row startup median improves while some upper-tail ratios regress. All adverses remain OPEN/UNACCEPTED; source stress deliberately shares inputs across3group keys, not exact independent SL-group incidence. Report04d23a0d/manifestdf22a906. No further architecture machinery this group: stage only a correctness/static-verified provisional combined viewer for authorized whole-engine Home comparison, no FPS/performance acceptance.
+
+## PPD-383 — Shadow dependency subscriptions can outlive row debt without proportional accounting
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex shadow dependency metadata lifetime
+- Discovered: 2026-11-18
+- Original reference: Retained dependency preparation metadata needs bounded logical CPU debt through its own lifetime, including when cached rows have retired. This is not a physical UMA allocation-total claim.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); ALMetalShadowMembershipPublisher retains mChildDependencies in the cache publisher after working-set eviction can release the Member publication. Each input.producer.observe(child_dependencies) adds weak observation storage to Source State's Signal. Current payload charge covers rows/ranges/resources/Records and fixed entry observer objects, but no input-proportional dependency observation storage surviving independently. Signal.observe/notify prune expired subscriptions; persistent live watchers are distinct from expired weak slots. Entry and member-count bounds still exist; actual process-memory impact is unmeasured.
+- Next action: Charge conservative active subscription capacity and any added source-mutation witness/owner metadata under the existing global debt domain, with an independent RAII lifetime that can survive cached rows. Preserve owner-only observer operation, current/removed-child semantics and independent native completion leases. Do not call the resulting logical debt a physical whole-process total.
+- Verification: Source accounting audit before source-sensitive guard implementation; add eviction/no-row active-observer debt and final-retirement controls. No viewer memory or FPS regression has been measured for this omission.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before repair. Source-sensitive PPD382 gating must not introduce an uncharged long-lived watcher; retain previous scalar/metadata/native-only completion qualifications.
+
+- 2026-11-18 repaired core0d067/canonicalee990 accounts SourceWatch+observer/subscription capacity through an independent RAII ticket under the existing global32MiB logical domain. Native eviction/no-row active watcher debt, denied retries, removed-child and nested newer-witness controls pass478/17 isolated and978792/44 integrated native. Source-only peer receipts4f314167 andbd4653ee retained. This verifies the bounded logical metadata mechanism; no physical whole-process/UMA total, viewer memory improvement or owner closure is claimed.
