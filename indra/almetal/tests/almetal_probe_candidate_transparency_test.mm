@@ -116,6 +116,7 @@ struct Inputs
     Cell cell;
     std::unique_ptr<ALMetalBuffer> vertices,indices;
     std::array<std::unique_ptr<ALMetalTexture>,3> diffuse;
+    std::array<std::uint8_t,3> diffuse_alpha{};
     std::array<std::unique_ptr<ALMetalTexture>,4> material_maps;
     std::unique_ptr<ALMetalTexture> radiance,irradiance,shadow;
     std::array<ALMetalWorldSimpleBatch,2> batches;
@@ -195,6 +196,7 @@ struct Inputs
         {
             diffuse[i]=ALMetalTexture::create(*f.device,descriptor,&f.error); REQUIRE(diffuse[i]);
             REQUIRE(diffuse[i]->upload(*upload,0,0,{},diffuse_colors[i].data(),4,&f.error));
+            diffuse_alpha[i]=diffuse_colors[i][3];
             for(auto& batch:batches)batch.diffuse_textures[i]=diffuse[i].get();
         }
         descriptor={};descriptor.type=ALMetalTextureType::texture_cube_array;descriptor.array_length=40;
@@ -456,8 +458,8 @@ void retainImpostorControl(const Inputs& input,const char* label,const ImpostorR
     parameters<<"width="<<input.cell.width<<" height="<<input.cell.height
         <<" shadow="<<input.cell.shadow<<" hdr="<<input.cell.hdr
         <<" material="<<material<<" skinned="<<input.cell.skinned<<" reverse="<<input.cell.reverse
-        <<" diffuse_alpha_slot0_byte="<<(material?16:224)
-        <<" diffuse_alpha_slot1_byte="<<(material?16:208)<<" specular_texture_alpha_byte=192\n";
+        <<" diffuse_alpha_slot0_byte="<<unsigned(input.diffuse_alpha[0])
+        <<" diffuse_alpha_slot1_byte="<<unsigned(input.diffuse_alpha[1])<<" specular_texture_alpha_byte=192\n";
     if(material)for(unsigned i=0;i<2;++i)
         parameters<<"slot="<<i<<" env_intensity="<<input.batches.front().materialSlots()[i].env_intensity
             <<" glossiness="<<input.batches.front().materialSlots()[i].specular_color[3]<<'\n';
@@ -510,12 +512,19 @@ TEST_CASE("Prepared legacy walks preserve main shiny and impostor material owner
             {
                 input.family(1);
                 for(auto& batch:input.batches)batch.pre_water_alpha=false;
+                auto original_alpha=renderImpostor(f,input,false,"original-alpha-generic");
+                auto original_alpha_prepared=renderImpostor(f,input,true,"original-alpha-prepared");
+                CHECK(original_alpha_prepared.after==original_alpha.after);
                 // Standalone legacy alpha keeps flat diffuse RGB. Probe glare
                 // changes only max(diffuse alpha, glare), so author a low
                 // diffuse-alpha floor to make the valid glare observable.
                 auto upload=f.device->makeCommandBuffer("Legacy material glare coverage control",&f.error);REQUIRE(upload);
                 const std::array<std::array<std::uint8_t,4>,2> colors{{{{224,128,64,16}},{{80,184,240,16}}}};
-                for(unsigned i=0;i<2;++i)REQUIRE(input.diffuse[i]->upload(*upload,0,0,{},colors[i].data(),4,&f.error));
+                for(unsigned i=0;i<2;++i)
+                {
+                    REQUIRE(input.diffuse[i]->upload(*upload,0,0,{},colors[i].data(),4,&f.error));
+                    input.diffuse_alpha[i]=colors[i][3];
+                }
                 REQUIRE(upload->commitAndWait(&f.error));
             }
             else input.shiny();
