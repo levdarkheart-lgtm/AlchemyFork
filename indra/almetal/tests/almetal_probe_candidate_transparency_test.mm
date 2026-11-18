@@ -1441,7 +1441,7 @@ Observation measure(Fixture& f,Inputs& input,ALMetalRenderTarget& gbuffer,ALMeta
             completion=f.renderer->commandBatchCompletion();check(bool(completion),"completion receipt");
             check(f.renderer->commitCommandBatch(&f.error),"batch commit");
         }
-        check(bool(completion),"actual completion receipt");check(f.device->waitUntilIdle(&f.error),"completion wait");
+        check(bool(completion),"actual completion receipt");check(completion->waitUntilCompleted(&f.error),"actual completion wait");
         check(completion->status()==ALMetalCommandStatus::completed,"native completion status");
         check(completion->gpuTime(result.gpu)==ALMetalCommandTimingStatus::ready,"native GPU timestamps");
         if(!retain)result.output.reset();
@@ -1620,7 +1620,7 @@ TEST_CASE("E6 complete prepared-lighting owner costs retain construction and fal
         };
         for(unsigned warm=0;warm<5;++warm)for(unsigned arm=0;arm<3;++arm)observe("warm",warm,arm,arm);
         constexpr unsigned orders[3][6]={{0,1,2,2,1,0},{1,2,0,0,2,1},{2,0,1,1,0,2}};
-        for(unsigned block=0;block<60;++block)
+        for(unsigned block=0;block<75;++block)
         {
             if(selected==5)input.probes.constants.ref_sphere[1][0]=initial.ref_sphere[1][0]+.05f*(block+1);
             else input.probes.constants.ref_params[1][0]=.5f+.01f*(block%7);
@@ -1632,7 +1632,7 @@ TEST_CASE("E6 complete prepared-lighting owner costs retain construction and fal
             for(unsigned slot=0;slot<6;++slot)observe("measure",block,slot,orders[block%3][slot]);
             std::cout.flush();
         }
-        std::cout<<"e6_terminal cell="<<selected<<" blocks=60 measured=360 warm=15 first_use=3 thermal_end="
+        std::cout<<"e6_terminal cell="<<selected<<" blocks=75 measured=450 warm=15 first_use=3 thermal_end="
             <<[[NSProcessInfo processInfo] thermalState]<<" source_scene_match_claim=0\n";
     }
 }

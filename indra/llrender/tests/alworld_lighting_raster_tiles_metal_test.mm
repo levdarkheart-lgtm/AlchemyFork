@@ -1586,7 +1586,7 @@ TEST_CASE("E6 generic water complete owner cost retains its manual-only alternat
                 check(owners[arm]->beginCommandBatch("E6 complete generic water owner",&f.error),"batch begin");
                 output=owners[arm]->renderOpaquePostDeferred(scene,&f.error);check(bool(output),"post encode");
                 auto completion=owners[arm]->commandBatchCompletion();check(bool(completion),"completion receipt");
-                check(owners[arm]->commitCommandBatch(&f.error),"batch commit");check(f.device->waitUntilIdle(&f.error),"completion wait");
+                check(owners[arm]->commitCommandBatch(&f.error),"batch commit");check(completion->waitUntilCompleted(&f.error),"actual completion wait");
                 check(completion->status()==ALMetalCommandStatus::completed,"native completion status");
                 check(completion->gpuTime(gpu)==ALMetalCommandTimingStatus::ready,"native GPU timestamps");
                 if(!retain)output.reset();
@@ -1634,12 +1634,12 @@ TEST_CASE("E6 generic water complete owner cost retains its manual-only alternat
         }
         for(unsigned warm=0;warm<5;++warm)for(unsigned arm=0;arm<3;++arm)(void)measure("warm",warm,arm,arm,false);
         constexpr unsigned orders[3][6]={{0,1,2,2,1,0},{1,2,0,0,2,1},{2,0,1,1,0,2}};
-        for(unsigned block=0;block<60;++block)
+        for(unsigned block=0;block<75;++block)
         {
             for(unsigned slot=0;slot<6;++slot)(void)measure("measure",block,slot,orders[block%3][slot],false);
             std::cout.flush();
         }
-        std::cout<<"e6_terminal cell=8 blocks=60 measured=360 warm=15 first_use=3 positive_controls=2 thermal_end="
+        std::cout<<"e6_terminal cell=8 blocks=75 measured=450 warm=15 first_use=3 positive_controls=2 thermal_end="
             <<[[NSProcessInfo processInfo] thermalState]<<'\n';
     }
 }
