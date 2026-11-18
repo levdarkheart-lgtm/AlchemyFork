@@ -276,6 +276,9 @@ TEST_CASE("shadow publication: nested newer membership survives stale outer seal
             auto reenter=std::make_shared<Reenter>();reenter->action=[&]{
                 if(replace_entry)cache.clear();else owner->invalidate();
                 inner=cache.seal(owner,0,inner_rows,ranges,one,f.budget,f.serial,2,1);
+                // An old in-progress child observer can still be alive in
+                // the outer transaction after inner membership has changed.
+                outer_rows[0].producer->invalidate();
             };victim->observe(reenter);
             auto outer=cache.seal(owner,0,outer_rows,ranges,one,f.budget,f.serial,2,1);
             auto current=cache.current(owner,0,one,2);const auto debt=cache.accounting()->bytes();
@@ -286,6 +289,25 @@ TEST_CASE("shadow publication: nested newer membership survives stale outer seal
             CHECK(debt>=inner.membership->metadataBytes());CHECK(debt<=cache.accounting()->maximumBytes());
             CHECK(cache.stats().resource_unions==1);
         }
+    }
+}
+
+TEST_CASE("shadow publication: removed child cannot invalidate replacement membership", "[almetal][shadow-publication][shadow-publication-dependencies]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALMetalShadowMembershipCache cache;auto owner=group();
+        std::array a{f.source(1)},b{f.source(2)};const std::array ranges{Range{3,Coverage::opaque,0,1}};
+        auto old=cache.seal(owner,3,a,ranges,f.residency,f.budget,f.serial,1,1);REQUIRE(old);
+        owner->invalidate();auto replacement=cache.seal(owner,3,b,ranges,f.residency,f.budget,f.serial,1,1);REQUIRE(replacement);
+        REQUIRE(cache.current(owner,3,f.residency,1));a[0].producer->invalidate();
+        auto after_removed=cache.current(owner,3,f.residency,1);
+        std::printf("shadow_dependency_diagnostic removed_child_current=%u current_record_generation=%llu debt=%llu\n",unsigned(bool(after_removed)),static_cast<unsigned long long>(after_removed?after_removed.membership->members()[0].record->generation():0),static_cast<unsigned long long>(cache.accounting()->bytes()));std::fflush(stdout);
+        REQUIRE(after_removed);CHECK(after_removed.membership==replacement.membership);
+        CHECK(after_removed.membership->members()[0].record==b[0].record);
+        b[0].producer->invalidate();CHECK_FALSE(cache.current(owner,3,f.residency,1));
+        // Already captured immutable readers still own both exact generations.
+        CHECK(old.membership->members()[0].record==a[0].record);CHECK(replacement.membership->members()[0].record==b[0].record);
     }
 }
 
@@ -306,5 +328,31 @@ TEST_CASE("shadow publication: group gather preserves one ordered family join an
         REQUIRE(alMetalPrepareShadowBatches(inputs,context,output,f.budget,7,nullptr,false));
         for(unsigned i=0;i<3;++i){CHECK(output[i].vertices==f.vertices.get());CHECK(std::memcmp(output[i].modelview_projection,facts[i].model.data(),64)==0);if(i)CHECK(std::memcmp(output[i].texture_matrix,facts[i].texture_matrix.data(),64)==0);}
         CHECK_FALSE(alMetalGatherShadowMembershipRange(*second.membership,0,std::span(facts).subspan(1,1),std::span(inputs).subspan(1,1),std::span(textures).first(1),std::numeric_limits<std::uint32_t>::max(),7,written,&f.error));CHECK_FALSE(inputs[1].source);CHECK(written==0);
+    }
+}
+
+TEST_CASE("shadow publication: pending age survives busy denial and revision churn then resets", "[almetal][shadow-publication]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALNativeFrameBudget::Limits limits;limits.maximum_deferral_frames=3;
+        ALNativeFrameBudget busy(limits);ALMetalShadowMembershipCache cache;auto owner=group();
+        const std::array rows{f.source(1)};const std::array ranges{Range{1,Coverage::opaque,0,1}};
+        Publisher::Result completed;
+        for(std::uint64_t frame=0;frame<=3;++frame)
+        {
+            ALNativeFrameBudget::FrameInputs input;input.frame=frame;input.frame_interval_ns=100;input.required_main_cpu_ns=90;busy.beginFrame(input);
+            if(frame)owner->invalidate(); // New revisions must not restart pending age.
+            auto result=cache.seal(owner,1,rows,ranges,f.residency,busy,f.serial,std::uint32_t(frame),frame);
+            if(frame<3){CHECK_FALSE(result);CHECK(result.failure==Publisher::Failure::admission);}
+            else{REQUIRE(result);CHECK(result.outcome==Publisher::Outcome::retained);completed=std::move(result);}
+        }
+        CHECK(busy.snapshot().progress_admissions==1);
+        // A successful exact retained publication retires its pending age.
+        // A later dirty revision starts fresh, even under unchanged pressure.
+        owner->invalidate();ALNativeFrameBudget::FrameInputs next;next.frame=4;next.frame_interval_ns=100;next.required_main_cpu_ns=90;busy.beginFrame(next);
+        auto fresh=cache.seal(owner,1,rows,ranges,f.residency,busy,f.serial,4,4);
+        CHECK_FALSE(fresh);CHECK(fresh.failure==Publisher::Failure::admission);CHECK(busy.snapshot().progress_admissions==1);
+        REQUIRE(completed.membership);CHECK(completed.membership->members()[0].record==rows[0].record);
     }
 }

@@ -6,6 +6,7 @@
 #include <limits>
 #include <map>
 #include <new>
+#include <optional>
 
 struct ALMetalShadowMembershipReservation
 {
@@ -143,27 +144,32 @@ bool matches(const ALMetalShadowMembership& publication, std::span<const Source>
 class ALMetalShadowMembershipPublisher::Dependencies final : public ALNativePublication::Observer
 {
 public:
-    explicit Dependencies(const std::shared_ptr<ALNativePublication::State>& state) : mState(state) {}
+    explicit Dependencies(const std::shared_ptr<ALNativePublication::State>& state,
+                          std::uint64_t expected_revision=0)
+        : mState(state),mExpectedRevision(expected_revision) {}
     void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
     {
         // Individual cache eviction is not backing mutation; this publication
         // has its own ledger credit and immutable readers. Real writes still
         // synchronously drop it BEFORE the source tests native backing COW.
         if (phase != ALNativePublication::Phase::withdrawn)
-            if (auto state = mState.lock()) state->invalidate();
+            if (auto state = mState.lock();state &&
+                (!mExpectedRevision || state->revision()==mExpectedRevision)) state->invalidate();
     }
 private:
     std::weak_ptr<ALNativePublication::State> mState;
+    const std::uint64_t mExpectedRevision;
 };
 
 ALMetalShadowMembershipPublisher::ALMetalShadowMembershipPublisher()
     : ALMetalShadowMembershipPublisher(Limits{}) {}
 ALMetalShadowMembershipPublisher::ALMetalShadowMembershipPublisher(Limits limits)
     : mState(std::make_shared<ALNativePublication::State>()),
-      mDependencies(std::make_shared<Dependencies>(mState)),
+      mOwnerDependencies(std::make_shared<Dependencies>(mState)),
       mAccounting(std::make_shared<ALMetalShadowMembershipAccounting>(limits.maximum_metadata_bytes)), mLimits(limits) {}
 ALMetalShadowMembershipPublisher::~ALMetalShadowMembershipPublisher() = default;
-void ALMetalShadowMembershipPublisher::invalidate() noexcept { mState->invalidate(); }
+void ALMetalShadowMembershipPublisher::invalidate() noexcept
+{ mState->invalidate();mChildDependencies.reset(); }
 
 ALMetalShadowMembershipPublisher::Result ALMetalShadowMembershipPublisher::seal(
     std::span<const Source> inputs, std::span<const ALMetalShadowMembershipRange> ranges,
@@ -188,10 +194,12 @@ ALMetalShadowMembershipPublisher::Result ALMetalShadowMembershipPublisher::seal(
             {
                 ++mStats.reused; return {std::move(old), Outcome::reused, Failure::none};
             }
-            // Membership/order has changed, or its idle ledger entry expired.
-            // Old native readers retain their own payload; no stale idle lease.
-            mState->invalidate();
         }
+        // Every miss receives a distinct derived revision, including a miss
+        // after cache withdrawal (which itself deliberately preserves source
+        // revisions). An older in-progress child observer can never invalidate
+        // a nested newer publication even while the old callback stays alive.
+        invalidate();
         const auto expected = mState->revision();
         // Bound peak copied metadata before allocating. Duplicate resources
         // may make the actual union smaller; do not undercharge dirty work.
@@ -229,6 +237,7 @@ ALMetalShadowMembershipPublisher::Result ALMetalShadowMembershipPublisher::seal(
         // never enter the immutable payload handed to worker/native owners.
         const std::vector<Source> snapshot(inputs.begin(), inputs.end());
         if (!current(snapshot) || mState->revision() != expected) return decline(Failure::changed_source);
+        auto child_dependencies=std::make_shared<Dependencies>(mState,expected);
         auto value = std::make_shared<ALMetalShadowMembership>();
         value->mCPUReservation=reservation;
         value->mMembers.reserve(snapshot.size());
@@ -244,7 +253,7 @@ ALMetalShadowMembershipPublisher::Result ALMetalShadowMembershipPublisher::seal(
         };
         for (const auto& input : snapshot)
         {
-            input.producer->observe(mDependencies);
+            input.producer->observe(child_dependencies);
             const auto& source = input.record;
             if (!source->vertexLease() || !source->indexLease() ||
                 !append(source->vertexLease(), source->vertexLease()->length()) ||
@@ -294,6 +303,9 @@ ALMetalShadowMembershipPublisher::Result ALMetalShadowMembershipPublisher::seal(
         attempted_publication = publication;
         const bool retained = working_set.retain(mState, value->mSerial, publication, value->resources(), frame);
         if (!current(snapshot) || mState->revision() != expected) return decline(Failure::changed_source);
+        // Publish only this exact generation's dependency lease. A stale outer
+        // attempt must not replace an observer installed by a nested newer seal.
+        if(sameOwner(mState->publication(),publication))mChildDependencies=std::move(child_dependencies);
         ++mStats.sealed; ++mStats.resource_unions;
         if (!retained) ++mStats.transient;
         compact.retained_bytes=value->mMetadataBytes-value->mNativeMetadataBytes;compact.successful=true;
@@ -318,6 +330,7 @@ struct ALMetalShadowMembershipCache::Impl
         std::weak_ptr<ALNativePublication::State> owner;
         std::uint64_t owner_revision = 0, last_used = 0;
         std::shared_ptr<ALMetalShadowMembershipPublisher> publisher;
+        std::optional<ALNativeFrameBudget::Frame> first_unserved;
     };
     Limits limits;
     std::map<Key,Entry> entries;
@@ -326,7 +339,14 @@ struct ALMetalShadowMembershipCache::Impl
     std::shared_ptr<ALMetalShadowMembershipAccounting> accounting;
     // Logical conservative charge for the entry/key/tree node and its small
     // State/observer owner objects, separately from copied membership storage.
-    static constexpr std::uint64_t entry_charge = 512;
+    static constexpr std::uint64_t entry_charge = sizeof(Entry)+sizeof(Key)+
+        sizeof(ALMetalShadowMembershipPublisher)+sizeof(ALNativePublication::State)+
+        2u*sizeof(ALMetalShadowMembershipPublisher::Dependencies)+
+        sizeof(ALMetalShadowMembershipReservation)+sizeof(ALMetalShadowMembershipAccounting)+
+        // Six conservative shared-control blocks, plus red-black tree links,
+        // colour/alignment storage. Exact vector/Record capacities are charged
+        // by the payload reservations, not hidden inside this entry estimate.
+        (6u*4u+4u)*sizeof(void*);
     std::uint64_t bytes() const noexcept
     {
         return accounting->bytes();
@@ -380,6 +400,7 @@ ALMetalShadowMembershipCache::Result ALMetalShadowMembershipCache::current(
                 if (working_set.touch(publisher->mState->identity(), value->serial(), frame))
                 {
                     at->second.last_used = ++mImpl->clock; ++mImpl->counts.hits;
+                    at->second.first_unserved.reset();
                     return {std::move(value), ALMetalShadowMembershipPublisher::Outcome::reused, Failure::none};
                 }
             }
@@ -418,7 +439,7 @@ ALMetalShadowMembershipCache::Result ALMetalShadowMembershipCache::seal(
             if (!reservation->acquired) return {{}, {}, Failure::cpu_residency};
             publisher = std::make_shared<ALMetalShadowMembershipPublisher>(mImpl->limits.publication);
             publisher->mAccounting=mImpl->accounting;
-            mImpl->entries.emplace(key, Impl::Entry{std::move(reservation),owner,revision,++mImpl->clock,publisher});
+            mImpl->entries.emplace(key, Impl::Entry{std::move(reservation),owner,revision,++mImpl->clock,publisher,oldest});
             if (!mImpl->trim(&key)) { mImpl->entries.erase(key); return {{}, {}, Failure::bounds}; }
         }
         else
@@ -429,10 +450,14 @@ ALMetalShadowMembershipCache::Result ALMetalShadowMembershipCache::seal(
             at->second.owner = owner; at->second.owner_revision = revision;
             at->second.last_used = ++mImpl->clock;
         }
+        at=mImpl->entries.find(key);
+        if(!at->second.first_unserved)at->second.first_unserved=oldest;
+        else at->second.first_unserved=std::min(*at->second.first_unserved,oldest);
+        const auto pending_age=*at->second.first_unserved;
         // Existing group draw-map invalidation is the authoritative membership
         // edge. It is separate from every source backing-generation edge.
-        owner->observe(publisher->mDependencies);
-        auto result = publisher->seal(sources,ranges,working_set,budget,serial,frame,oldest);
+        owner->observe(publisher->mOwnerDependencies);
+        auto result = publisher->seal(sources,ranges,working_set,budget,serial,frame,pending_age);
         mImpl->counts.resource_unions += result.sealed_resource_union ? 1u : 0u;
         if (owner->revision() != revision)
         {
@@ -460,6 +485,16 @@ ALMetalShadowMembershipCache::Result ALMetalShadowMembershipCache::seal(
             if (at != mImpl->entries.end() && at->second.publisher == publisher &&
                 at->second.owner_revision == revision && !publisher->mState->publication()) mImpl->entries.erase(at);
             if (result) result.outcome = ALMetalShadowMembershipPublisher::Outcome::transient;
+        }
+        else if(result && (result.outcome==ALMetalShadowMembershipPublisher::Outcome::retained ||
+                result.outcome==ALMetalShadowMembershipPublisher::Outcome::reused) &&
+                sameOwner(publisher->mState->publication(),result.membership))
+        {
+            // Only this exact successful current publication retires pending
+            // work. A stale outer attempt cannot reset a nested new request.
+            at=mImpl->entries.find(key);
+            if(at!=mImpl->entries.end() && at->second.publisher==publisher &&
+                at->second.owner_revision==revision)at->second.first_unserved.reset();
         }
         return result;
     }

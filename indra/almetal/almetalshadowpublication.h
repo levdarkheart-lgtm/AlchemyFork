@@ -129,7 +129,9 @@ private:
     friend class ALMetalShadowMembershipCache;
     class Dependencies;
     std::shared_ptr<ALNativePublication::State> mState;
-    std::shared_ptr<ALNativePublication::Observer> mDependencies;
+    // Owner membership edge persists across publications. Child backing edges
+    // belong to one exact derived-State revision and are replaced on a miss.
+    std::shared_ptr<ALNativePublication::Observer> mOwnerDependencies, mChildDependencies;
     std::shared_ptr<ALMetalShadowMembershipAccounting> mAccounting;
     Limits mLimits;
     Stats mStats;
