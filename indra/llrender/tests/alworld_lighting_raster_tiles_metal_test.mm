@@ -913,8 +913,30 @@ Observation measure(Fixture& f, unsigned frame, Tile tile, Encode&& encode)
     return result;
 }
 
+void heavyOverlap(ALMetalWorldReflectionProbeConstants& probes)
+{
+    REQUIRE(probes.config[0] == 47.f);
+    for (unsigned i = 0; i < 47; ++i)
+    {
+        REQUIRE(probes.ref_params[i][0] == 1.f);
+        REQUIRE(probes.ref_index[i][1] == -1);
+        REQUIRE(probes.ref_index[i][3] == 0);
+    }
+    // Authored stress, not a captured Home distribution. These31 volumes
+    // contain all authored BASE and seven-layer alpha receivers. Either one
+    // of the remaining15 bounded locals fills the unchanged32 cap, or the
+    // original automatic default fallback adds the32nd semantic SH entry.
+    // Retain every other pack field, layer, binding, mask and local32..46.
+    for (unsigned i = 1; i <= 31; ++i)
+    {
+        probes.ref_sphere[i][0] = probes.ref_sphere[i][1] = 0.f;
+        probes.ref_sphere[i][2] = -4.f;
+        probes.ref_sphere[i][3] = 6.f;
+    }
+}
+
 template<class Fixture, class Encode>
-void run(Fixture& f, unsigned cell, bool base, bool prepared, unsigned configured_probes, Encode&& encode)
+void run(Fixture& f, unsigned cell, bool base, bool prepared, unsigned configured_probes, bool heavy_overlap, Encode&& encode)
 {
     constexpr unsigned warmups = 10, blocks = 150;
     unsigned frame = 1;
@@ -929,7 +951,7 @@ void run(Fixture& f, unsigned cell, bool base, bool prepared, unsigned configure
     }
     double last_end = 0;
     std::cout << "world_raster_tiles_csv,cell,block,slot,arm,order,gpu_start_s,gpu_end_s,gpu_ns,owner_wall_ns,"
-        "base_passes,forward_passes,requested16,effective16,actual16,actual32,actual_other,last_width,last_height,prepared,configured_probes,candidate_preparations,candidate_reuses\n";
+        "base_passes,forward_passes,requested16,effective16,actual16,actual32,actual_other,last_width,last_height,prepared,configured_probes,authored_heavy_overlap,candidate_preparations,candidate_reuses\n";
     std::cout << std::setprecision(17);
     for (unsigned block = 0; block < blocks; ++block)
     {
@@ -956,7 +978,7 @@ void run(Fixture& f, unsigned cell, bool base, bool prepared, unsigned configure
                 << b.effective_tile16_passes-a.effective_tile16_passes << ','
                 << b.tile16_passes-a.tile16_passes << ',' << b.tile32_passes-a.tile32_passes << ','
                 << b.other_passes-a.other_passes << ',' << (base ? b.last_base_width : b.last_forward_width) << ','
-                << (base ? b.last_base_height : b.last_forward_height) << ',' << prepared << ',' << configured_probes << ','
+                << (base ? b.last_base_height : b.last_forward_height) << ',' << prepared << ',' << configured_probes << ',' << heavy_overlap << ','
                 << result.candidate_preparations << ',' << result.candidate_reuses << '\n';
         }
     }
@@ -978,18 +1000,22 @@ TEST_CASE("Actual BASE and ordered-alpha raster tile complete owner cost",
     REQUIRE_FALSE(lighting_tiles_check::enabled("MTL_HUD_ENABLED"));
     REQUIRE_FALSE(ALMetalDevice::commandTimingEnabled());
     // One explicitly selected cell per process.6/7 are optional one-probe
-    // early-state negatives; they never run as an automatic matrix.
+    // early-state negatives;8..10 are authored heavy overlap. None run as
+    // an automatic matrix.
     unsigned cell = 0;
     if (const char* text = std::getenv("ALCHEMY_WORLD_LIGHTING_RASTER_TILES_COST_CELL"))
     {
         std::size_t used = 0;
         const auto parsed = std::stoul(text, &used);
-        REQUIRE(used == std::strlen(text)); REQUIRE(parsed < 8);
+        REQUIRE(used == std::strlen(text)); REQUIRE(parsed < 11);
         cell = unsigned(parsed);
     }
     std::cout << "world_raster_tiles_scope cell=" << cell
-        << " prepared=" << (cell < 4)
-        << " configured_probes=" << (cell >= 6 ? 1 : 47)
+        << " prepared=" << (cell < 4 || cell >= 8)
+        << " configured_probes=" << (cell == 6 || cell == 7 ? 1 : 47)
+        << " authored_heavy_overlap=" << (cell >= 8)
+        << " authored_stress_semantic_SH_entries_per_covered_fragment=" << (cell >= 8 ? "32" : "not_applicable")
+        << " actual_Home_distribution_claim=0"
         << " dimensions=1024x576 actual_production_fragments=1 shared_current_library=1"
         << " includes=frame_arena_target_acquisition_current_constant_resource_preparation_actual_world_passes_encode_commit_GPU_completion_output_receipt_retirement"
         << " excludes=device_renderer_PSO_creation_fixed_authored_Gbuffer_textures_input_seeding_LL_scene_collection_culling_sorting"
@@ -998,15 +1024,16 @@ TEST_CASE("Actual BASE and ordered-alpha raster tile complete owner cost",
     @autoreleasepool
     {
         using lighting_tiles_check::Tile;
-        if (cell < 2 || (cell >= 4 && cell <= 6))
+        if (cell < 2 || (cell >= 4 && cell <= 6) || cell == 8 || cell == 9)
         {
             using namespace lighting_tiles_base;
             Fixture f; REQUIRE(lighting_tiles_check::supported(*f.device));
             lighting_tiles_check::validationSentinel(f, true);
-            const bool prepared = cell < 2;
-            const bool pbr = cell == 1 || cell == 5;
+            const bool prepared = cell < 2 || cell >= 8;
+            const bool pbr = cell == 1 || cell == 5 || cell == 9;
             Inputs input(f, {pbr,false,false,true,false,1024,576}, 0);
             if (cell == 6) input.probes.constants.config[0] = 1.f;
+            if (cell >= 8) lighting_tiles_cost::heavyOverlap(input.probes.constants);
             auto automatic = input.render(prepared, Tile::automatic);
             auto explicit16 = input.render(prepared, Tile::tile16);
             INFO(f.error); REQUIRE(automatic); REQUIRE(explicit16);
@@ -1021,7 +1048,7 @@ TEST_CASE("Actual BASE and ordered-alpha raster tile complete owner cost",
                 return f.renderer->renderBaseLighting(request, &f.error);
             };
             automatic.reset(); explicit16.reset();
-            lighting_tiles_cost::run(f, cell, true, prepared, unsigned(input.probes.constants.config[0]), encode);
+            lighting_tiles_cost::run(f, cell, true, prepared, unsigned(input.probes.constants.config[0]), cell >= 8, encode);
         }
         else
         {
@@ -1029,8 +1056,9 @@ TEST_CASE("Actual BASE and ordered-alpha raster tile complete owner cost",
             Fixture f; REQUIRE(lighting_tiles_check::supported(*f.device));
             lighting_tiles_check::validationSentinel(f, true);
             Inputs input(f, {false,true,false,false,true,1024,576});
-            const bool prepared = cell < 4;
+            const bool prepared = cell < 4 || cell == 10;
             if (cell == 7) input.probes.constants.config[0] = 1.f;
+            if (cell == 10) lighting_tiles_cost::heavyOverlap(input.probes.constants);
             input.postWaterOnly();
             // Fullscreen eye-space quads; preserve the packed integer texture
             // indices in position.w and every remaining authored stream.
@@ -1083,7 +1111,7 @@ TEST_CASE("Actual BASE and ordered-alpha raster tile complete owner cost",
             REQUIRE(diagnostics.probe_candidate_simple_shadow_batches==(prepared?draws:0));
             REQUIRE(diagnostics.probe_candidate_simple_batches==0);
             automatic.reset(); explicit16.reset();
-            lighting_tiles_cost::run(f,cell,false,prepared,unsigned(input.probes.constants.config[0]),encode);
+            lighting_tiles_cost::run(f,cell,false,prepared,unsigned(input.probes.constants.config[0]),cell == 10,encode);
         }
     }
 }
