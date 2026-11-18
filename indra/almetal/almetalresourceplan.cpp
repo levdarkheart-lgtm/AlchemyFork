@@ -150,13 +150,14 @@ std::uint64_t Command::beginPass(Pass kind)
     if (!mStats.valid || mStats.retired || mSubmitting || mStats.submitted || mActivePass ||
         mStats.passes == std::numeric_limits<std::uint64_t>::max()) return 0;
     mPassKind = static_cast<unsigned>(kind); mActivePass = ++mStats.passes;
+    advanceReadEpoch();
     return mActivePass;
 }
 bool Command::endPass(std::uint64_t pass) noexcept
 {
     std::lock_guard lock(mState->mutex);
     if (!pass || mActivePass != pass) return false;
-    mActivePass = 0; mPassKind = 0; return true;
+    mActivePass = 0; mPassKind = 0; advanceReadEpoch(); return true;
 }
 bool Command::use(const View& view, Access access)
 {
@@ -164,6 +165,10 @@ bool Command::use(const View& view, Access access)
     const auto bits = static_cast<unsigned>(access);
     if (!bits || (bits & ~3u)) return false;
     std::lock_guard lock(mState->mutex);
+    return useLocked(view, bits);
+}
+bool Command::useLocked(const View& view, unsigned bits)
+{
     if (!mStats.valid || mStats.retired || mSubmitting || mStats.submitted || !mActivePass ||
         view.mGeneration != view.mAllocation->mGeneration) return false;
     auto [at, inserted] = mUses.try_emplace({view.identity(), view.mGeneration},
@@ -182,23 +187,52 @@ bool Command::use(const View& view, Access access)
     use.access |= bits; use.pass_kinds |= mPassKind; use.last_pass = mActivePass;
     return true;
 }
+void Command::advanceReadEpoch() noexcept
+{
+    // Called only with the registry lock held. Do not wrap into a previously
+    // valid cache epoch; ordinary recorded uses remain available at zero.
+    const auto epoch = mReadEpoch.load(std::memory_order_relaxed);
+    mReadEpoch.store(epoch && epoch != std::numeric_limits<std::uint64_t>::max() ? epoch + 1 : 0,
+                     std::memory_order_release);
+}
+Command::ReadUseResult Command::useCachedRead(const View& view, ReadUseCache& cache)
+{
+    if (!view.mAllocation || view.mAllocation->mState != mState)
+    { cache = {}; return ReadUseResult::failed; }
+    const auto epoch = mReadEpoch.load(std::memory_order_acquire);
+    if (epoch && cache.epoch == epoch &&
+        cache.command == mIdentity && cache.generation == view.mGeneration &&
+        cache.allocation == view.mAllocation.get() &&
+        !cache.registry.owner_before(mState) && !mState.owner_before(cache.registry))
+        return ReadUseResult::cached;
+    std::lock_guard lock(mState->mutex);
+    if (!useLocked(view, static_cast<unsigned>(Access::read)))
+    { cache = {}; return ReadUseResult::failed; }
+    if (cache.command != mIdentity || cache.registry.owner_before(mState) || mState.owner_before(cache.registry))
+        cache.registry = mState;
+    cache.allocation = view.mAllocation.get(); cache.command = mIdentity;
+    cache.generation = view.mGeneration;
+    cache.epoch = mReadEpoch.load(std::memory_order_relaxed);
+    return ReadUseResult::recorded;
+}
 void Command::markOpaque() noexcept
 {
     std::lock_guard lock(mState->mutex);
     if (mStats.opaque || mStats.retired || mStats.submitted) return;
-    mStats.opaque = true; ++mState->stats.opaque_uncommitted_commands;
+    mStats.opaque = true; ++mState->stats.opaque_uncommitted_commands; advanceReadEpoch();
 }
 bool Command::prepareSubmit() noexcept
 {
     std::lock_guard lock(mState->mutex);
     if (!mStats.valid || mStats.retired || mSubmitting || mStats.submitted || mActivePass) return false;
-    mSubmitting = true; return true;
+    mSubmitting = true; advanceReadEpoch(); return true;
 }
 bool Command::submitted(std::uint64_t serial) noexcept
 {
     std::lock_guard lock(mState->mutex);
     if (!serial || !mSubmitting || mStats.submitted) return false;
     mStats.submitted = true; mStats.submission_serial = serial;
+    advanceReadEpoch();
     // A very short native command may complete before commit() returns. Its
     // callback has already retired these uses; do not resurrect or subtract twice.
     if (mStats.retired) return true;
@@ -222,6 +256,7 @@ void Command::retire(Outcome outcome) noexcept
         std::lock_guard lock(mState->mutex);
         if (mStats.retired) return;
         mStats.retired = true;
+        advanceReadEpoch();
         --mState->stats.active_commands;
         if (mStats.opaque && !mStats.submitted) --mState->stats.opaque_uncommitted_commands;
         for (auto& [key, use] : mUses)
@@ -246,7 +281,8 @@ void Command::retire(Outcome outcome) noexcept
 }
 CommandStats Command::stats() const noexcept
 { std::lock_guard lock(mState->mutex); auto result = mStats; result.active_pass = mActivePass; return result; }
-void Command::invalidate() noexcept { std::lock_guard lock(mState->mutex); mStats.valid = false; }
+void Command::invalidate() noexcept
+{ std::lock_guard lock(mState->mutex); mStats.valid = false; advanceReadEpoch(); }
 Plan::Plan() : mState(std::make_shared<State>()) {}
 View Plan::allocate(Description d, std::shared_ptr<const void> owner, const void* native_identity)
 {

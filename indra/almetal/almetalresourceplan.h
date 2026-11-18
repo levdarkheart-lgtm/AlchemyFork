@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -116,10 +117,26 @@ private:
 class Command final
 {
 public:
+    enum class ReadUseResult { failed, recorded, cached };
+    // One encoder-owner-thread cache. Weak registry identity prevents address
+    // ABA; a matching command epoch proves its recorded-use map still pins the
+    // exact allocation ticket. No native/View lease or weak ref changes on an
+    // ordinary index change. Not shared between concurrent encoders.
+    class ReadUseCache final
+    {
+    public:
+        ReadUseCache() = default;
+    private:
+        std::weak_ptr<State> registry;
+        const Allocation* allocation = nullptr;
+        std::uint64_t command = 0, generation = 0, epoch = 0;
+        friend class Command;
+    };
     ~Command();
     std::uint64_t beginPass(Pass);
     bool endPass(std::uint64_t) noexcept;
     bool use(const View&, Access);
+    ReadUseResult useCachedRead(const View&, ReadUseCache&);
     void markOpaque() noexcept;
     void invalidate() noexcept;
     bool prepareSubmit() noexcept;
@@ -128,6 +145,8 @@ public:
     CommandStats stats() const noexcept;
 private:
     explicit Command(std::shared_ptr<State>);
+    bool useLocked(const View&, unsigned access);
+    void advanceReadEpoch() noexcept;
     struct Key
     {
         std::uint64_t identity, generation;
@@ -147,6 +166,9 @@ private:
     unsigned mPassKind = 0;
     bool mSubmitting = false;
     std::uint64_t mIdentity = 0;
+    // Release stores publish every transition that can end the cached read's
+    // active-pass/retention proof. Zero permanently disables hits on overflow.
+    std::atomic<std::uint64_t> mReadEpoch{1};
     friend class Plan;
     friend class View;
 };

@@ -979,6 +979,7 @@ struct ALMetalRenderEncoder::Impl
 {
     std::shared_ptr<RP::Command> resources;
     std::uint64_t resource_pass = 0;
+    RP::Command::ReadUseCache index_read;
     struct BufferBinding
     {
         void* handle = nullptr;
@@ -1028,6 +1029,20 @@ struct ALMetalRenderEncoder::Impl
     ALMetalIndexType pending_index_type = ALMetalIndexType::uint16;
     std::size_t pending_index_offset = 0;
     std::uint32_t pending_index_count = 0;
+
+    bool useIndexRead(const RP::View& view, std::string* error)
+    {
+        if (!resources) return true;
+        try
+        {
+            if (resources->useCachedRead(view, index_read) != RP::Command::ReadUseResult::failed)
+                return true;
+        }
+        catch (...) {}
+        resources->invalidate();
+        setError(error, "Metal index read could not retain its exact current backing");
+        return false;
+    }
 
     static void addCount(std::uint64_t& destination, std::uint64_t value,
                          bool& known) noexcept
@@ -1757,7 +1772,7 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
         setError(error, "Metal indexed draw has invalid state or index range");
         return false;
     }
-    if (!graphUse(mImpl->resources, index_buffer.resourceView(), RP::Access::read, error)) return false;
+    if (!mImpl->useIndexRead(index_buffer.resourceView(), error)) return false;
     id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
     if (!native_buffer || native_buffer.device != mImpl->device)
     {
@@ -1817,7 +1832,7 @@ bool ALMetalRenderEncoder::drawIndexedWithBaseInstance(ALMetalPrimitiveType prim
         setError(error, "Metal source-row draw has invalid state or index range");
         return false;
     }
-    if (!graphUse(mImpl->resources, index_buffer.resourceView(), RP::Access::read, error)) return false;
+    if (!mImpl->useIndexRead(index_buffer.resourceView(), error)) return false;
     id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
     if (!native_buffer || native_buffer.device != mImpl->device)
     {
@@ -1857,7 +1872,7 @@ bool ALMetalRenderEncoder::drawIndexedIndirect(ALMetalPrimitiveType primitive,
         setError(error, "Metal indexed indirect draw has invalid state or admitted range");
         return false;
     }
-    if (!graphUse(mImpl->resources, index_buffer.resourceView(), RP::Access::read, error) ||
+    if (!mImpl->useIndexRead(index_buffer.resourceView(), error) ||
         !graphUse(mImpl->resources, arguments.resourceView(), RP::Access::read, error)) return false;
     id<MTLBuffer> native_indices = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
     id<MTLBuffer> native_arguments = (__bridge id<MTLBuffer>)arguments.nativeHandle();

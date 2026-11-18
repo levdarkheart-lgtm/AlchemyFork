@@ -8,6 +8,7 @@
 #include <limits>
 #include <new>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -255,4 +256,97 @@ TEST_CASE("Readback readiness separates uncommitted writes opaque scopes and pro
     CHECK_FALSE(view.canReadAfterQueueBarrier());
     raw->retire(RP::Outcome::abandoned);
     CHECK(view.canReadAfterQueueBarrier());
+}
+
+TEST_CASE("Cached reads require an exact registry ticket and current active command pass",
+          "[metal-resource-plan][PPD-435]")
+{
+    using Result=RP::Command::ReadUseResult;
+    RP::Plan plan, foreign_plan;
+    int native_identity=0;
+    auto view=plan.allocate(owned(),{},&native_identity);
+    auto foreign=foreign_plan.allocate(owned(),{},&native_identity);
+    REQUIRE(view.identity()==foreign.identity()); REQUIRE(view.generation()==foreign.generation());
+    REQUIRE(view.nativeIdentity()==foreign.nativeIdentity()); // Numeric/native IDs alone are insufficient.
+    auto command=plan.command(); RP::Command::ReadUseCache cache;
+    CHECK(command->useCachedRead(view,cache)==Result::failed);
+    const auto pass=command->beginPass(RP::Pass::render); REQUIRE(pass);
+    CHECK(command->useCachedRead(view,cache)==Result::recorded);
+    CHECK(command->useCachedRead(view,cache)==Result::cached);
+    CHECK(plan.stats().logical_aliases==1); // No extra View/native lease in the cache.
+    CHECK(command->useCachedRead(foreign,cache)==Result::failed);
+    CHECK(command->useCachedRead(view,cache)==Result::recorded);
+    CHECK(command->useCachedRead({},cache)==Result::failed);
+    CHECK(command->useCachedRead(view,cache)==Result::recorded);
+    command->markOpaque();
+    CHECK(command->useCachedRead(view,cache)==Result::recorded);
+    CHECK(command->useCachedRead(view,cache)==Result::cached);
+    REQUIRE(command->endPass(pass));
+    CHECK(command->useCachedRead(view,cache)==Result::failed);
+    const auto next=command->beginPass(RP::Pass::render); REQUIRE(next);
+    CHECK(command->useCachedRead(view,cache)==Result::recorded);
+    CHECK(command->useCachedRead(view,cache)==Result::cached);
+    REQUIRE(command->endPass(next)); REQUIRE(command->prepareSubmit());
+    CHECK(command->useCachedRead(view,cache)==Result::failed);
+    REQUIRE(command->submitted(1)); CHECK(command->useCachedRead(view,cache)==Result::failed);
+    command->retire(RP::Outcome::completed);
+    CHECK(command->useCachedRead(view,cache)==Result::failed);
+    CHECK(command->stats().resources==1); CHECK(command->stats().passes==2);
+}
+
+TEST_CASE("Cached reads invalidate on cancellation generation and command replacement without retaining backing",
+          "[metal-resource-plan][PPD-435]")
+{
+    using Result=RP::Command::ReadUseResult;
+    RP::Plan plan; auto view=plan.allocate(owned());
+    RP::Command::ReadUseCache cache;
+    auto command=plan.command(); REQUIRE(command->beginPass(RP::Pass::render));
+    REQUIRE(command->useCachedRead(view,cache)==Result::recorded);
+    REQUIRE(command->useCachedRead(view,cache)==Result::cached);
+    std::thread invalidator([&]{command->invalidate();}); invalidator.join();
+    CHECK(command->useCachedRead(view,cache)==Result::failed);
+    command.reset(); CHECK(plan.stats().uncommitted_uses==0);
+    auto second=plan.command(); const auto pass=second->beginPass(RP::Pass::render); REQUIRE(pass);
+    REQUIRE(second->useCachedRead(view,cache)==Result::recorded);
+    REQUIRE(second->useCachedRead(view,cache)==Result::cached);
+    REQUIRE(second->endPass(pass));
+    const auto generation=view.generation(); REQUIRE(view.issueGeneration(second));
+    REQUIRE(view.generation()==generation+1);
+    REQUIRE(second->beginPass(RP::Pass::render));
+    CHECK(second->useCachedRead(view,cache)==Result::recorded);
+    CHECK(second->useCachedRead(view,cache)==Result::cached);
+    CHECK(second->stats().resources==2); // Both generations stay pinned until retirement.
+    std::thread canceller([&]{second->retire(RP::Outcome::abandoned);}); canceller.join();
+    CHECK(second->useCachedRead(view,cache)==Result::failed);
+    view={}; second.reset();
+    CHECK(plan.stats().owned_backings==0); CHECK(plan.stats().active_commands==0);
+    // A retained cache/expired registry cannot certify a new command/registry.
+    { RP::Plan temporary; auto value=temporary.allocate(owned()); auto c=temporary.command();
+      REQUIRE(c->beginPass(RP::Pass::render)); REQUIRE(c->useCachedRead(value,cache)==Result::recorded); }
+    { RP::Plan replacement; auto value=replacement.allocate(owned()); auto c=replacement.command();
+      REQUIRE(c->beginPass(RP::Pass::render)); CHECK(c->useCachedRead(value,cache)==Result::recorded); }
+}
+
+TEST_CASE("Changing and unique cached reads preserve every use and release their exact last readers",
+          "[metal-resource-plan][PPD-435]")
+{
+    using Result=RP::Command::ReadUseResult;
+    RP::Plan plan; std::vector<RP::View> views;
+    for(unsigned i=0;i!=64;++i) views.push_back(plan.allocate(owned()));
+    REQUIRE(plan.stats().logical_aliases==64);
+    auto command=plan.command(); REQUIRE(command->beginPass(RP::Pass::render));
+    RP::Command::ReadUseCache cache;
+    for(const auto& view:views)
+    {
+        CHECK(command->useCachedRead(view,cache)==Result::recorded);
+        CHECK(command->useCachedRead(view,cache)==Result::cached);
+    }
+    for(unsigned i=0;i!=128;++i)
+        CHECK(command->useCachedRead(views[i%2],cache)==Result::recorded);
+    CHECK(command->stats().resources==64); CHECK(command->stats().read_resources==64);
+    CHECK(plan.stats().uncommitted_uses==64); CHECK(plan.stats().logical_aliases==64);
+    views.clear(); CHECK(plan.stats().owned_backings==64);
+    command->retire(RP::Outcome::abandoned);
+    CHECK(plan.stats().owned_backings==0); CHECK(plan.stats().logical_aliases==0);
+    CHECK(plan.stats().backing_creations==plan.stats().backing_retirements);
 }
