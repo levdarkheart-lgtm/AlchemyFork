@@ -68,11 +68,13 @@ ALNativeFramePlan::MainScope::MainScope(ALNativeFrameBudget::FrameInputs inputs)
     begin(inputs);
 }
 
-ALNativeFramePlan::MainScope::MainScope(double interval_seconds, std::uint64_t minimum_headroom)
+ALNativeFramePlan::MainScope::MainScope(double interval_seconds, std::uint64_t minimum_headroom,
+                                      bool main_pressure_continuity)
 {
     if (current_main) return;
     mCpuStart = threadCpuTime();
     ALNativeFrameBudget::FrameInputs inputs;
+    inputs.main_pressure_continuity = main_pressure_continuity;
     if (std::isfinite(interval_seconds) && interval_seconds > 0.0 &&
         interval_seconds < static_cast<double>(std::numeric_limits<std::uint64_t>::max()) / 1.e9)
         inputs.frame_interval_ns = static_cast<std::uint64_t>(interval_seconds * 1.e9);

@@ -50,6 +50,10 @@ public:
     struct FrameInputs
     {
         Frame frame = 0;
+        // The outer viewer owner certifies uninterrupted normal-world
+        // lifecycle across this frame. Startup, teleport, disconnect/logout
+        // and reset callers leave this false; unknown contexts fail closed.
+        bool main_pressure_continuity = false;
         std::uint64_t frame_interval_ns = 0;
         std::uint64_t required_main_cpu_ns = 0;
         std::uint64_t native_allocated_bytes = 0;
@@ -82,6 +86,15 @@ public:
         std::uint64_t required_main_gpu_wait_non_cpu_ns = 0;
         std::uint64_t required_main_gpu_wait_observations = 0; // Includes unknown CPU clocks.
         std::uint64_t required_main_gpu_wait_unknown_observations = 0;
+        // A one-predecessor admission hint, NOT another measured wait in this
+        // frame. Only a closed, consecutive frame on the same owner may seed
+        // it, with continuity certified at both frame boundaries. Unknown
+        // CPU clocks contribute no inferred non-CPU duration to this hint.
+        Frame previous_main_gpu_wait_frame = 0;
+        std::uint64_t previous_main_gpu_wait_non_cpu_ns = 0;
+        bool previous_main_gpu_wait_valid = false;
+        // max(previous hint, current proven non-CPU waits), never their sum.
+        std::uint64_t required_main_gpu_pressure_ns = 0;
         std::uint64_t required_main_pressure_ns = 0;
         bool required_main_gpu_wait_saturated = false;
         bool required_main_pressure_saturated = false;

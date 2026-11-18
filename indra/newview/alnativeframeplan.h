@@ -40,7 +40,8 @@ class MainScope final
 {
 public:
     explicit MainScope(ALNativeFrameBudget::FrameInputs inputs);
-    MainScope(double observed_frame_interval_seconds, std::uint64_t minimum_headroom_bytes);
+    MainScope(double observed_frame_interval_seconds, std::uint64_t minimum_headroom_bytes,
+              bool main_pressure_continuity = false);
     ~MainScope();
     MainScope(const MainScope&) = delete;
     MainScope& operator=(const MainScope&) = delete;

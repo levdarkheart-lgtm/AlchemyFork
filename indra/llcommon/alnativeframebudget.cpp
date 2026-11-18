@@ -57,9 +57,12 @@ struct ALNativeFrameBudget::State
     void updateMainPressure() noexcept
     {
         stats.required_main_cpu_ns = inputs.required_main_cpu_ns;
+        stats.required_main_gpu_pressure_ns = std::max(
+            stats.required_main_gpu_wait_non_cpu_ns,
+            stats.previous_main_gpu_wait_non_cpu_ns);
         stats.required_main_pressure_saturated = false;
         stats.required_main_pressure_ns = saturatedSum(
-            inputs.required_main_cpu_ns, stats.required_main_gpu_wait_non_cpu_ns,
+            inputs.required_main_cpu_ns, stats.required_main_gpu_pressure_ns,
             stats.required_main_pressure_saturated);
         const auto interval = inputs.frame_interval_ns;
         // The original threshold is retained; division avoids overflow.
@@ -227,6 +230,14 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     auto& state = *mState;
     if (state.stats.initialized && inputs.frame <= state.stats.frame) return;
     const bool consecutive = state.stats.initialized && inputs.frame - state.stats.frame == 1;
+    const bool carry_pressure = consecutive && !state.stats.draining &&
+        !state.stats.main_observations_open &&
+        state.main_observation_owner == std::this_thread::get_id() &&
+        state.inputs.main_pressure_continuity && inputs.main_pressure_continuity;
+    const Frame previous_frame = state.stats.frame;
+    // Copy only this predecessor's own observations. Never re-export its
+    // inherited hint: a closed quiet/unknown-only frame expires the pressure.
+    const auto previous_non_cpu = state.stats.required_main_gpu_wait_non_cpu_ns;
     for (auto& history : state.scene_history)
     {
         history.previous_denial = consecutive ? history.current_denial : std::nullopt;
@@ -237,6 +248,9 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     state.stats.frame = inputs.frame;
     state.main_observation_owner = std::this_thread::get_id();
     state.stats.main_observations_open = !state.stats.draining;
+    state.stats.previous_main_gpu_wait_frame = carry_pressure ? previous_frame : 0;
+    state.stats.previous_main_gpu_wait_non_cpu_ns = carry_pressure ? previous_non_cpu : 0;
+    state.stats.previous_main_gpu_wait_valid = carry_pressure;
     state.stats.required_main_gpu_wait_wall_ns = 0;
     state.stats.required_main_gpu_wait_thread_cpu_ns = 0;
     state.stats.required_main_gpu_wait_non_cpu_ns = 0;
@@ -587,4 +601,8 @@ void ALNativeFrameBudget::beginDrain()
     std::lock_guard lock(mState->mutex);
     mState->stats.draining = true;
     mState->stats.main_observations_open = false;
+    mState->stats.previous_main_gpu_wait_frame = 0;
+    mState->stats.previous_main_gpu_wait_non_cpu_ns = 0;
+    mState->stats.previous_main_gpu_wait_valid = false;
+    mState->updateMainPressure();
 }

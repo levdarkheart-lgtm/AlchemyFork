@@ -145,3 +145,40 @@ TEST_CASE("Native optional groups restore submission TLS and retire only their o
     }
     CHECK(ALMetalSubmissionScope::current() == previous_owner);
 }
+
+TEST_CASE("Outer frame lifecycle continuity carries only the closed predecessor GPU hint",
+          "[native-frame-plan][main-gpu-history][PPD-409]")
+{
+    auto& budget = Budget::instance();
+    auto input = frameInputs();
+    { MainScope reset(input); } // Isolate the singleton from prior test history.
+    input.main_pressure_continuity = true;
+    Budget::Frame previous = 0;
+    {
+        MainScope first(input);
+        previous = budget.snapshot().frame;
+        REQUIRE(budget.recordRequiredMainGpuWait(previous, 800, 100));
+    }
+    {
+        MainScope early(input);
+        CHECK(budget.snapshot().previous_main_gpu_wait_valid);
+        CHECK(budget.snapshot().previous_main_gpu_wait_frame == previous);
+        CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 700);
+        CHECK(budget.snapshot().required_main_gpu_wait_observations == 0);
+        CHECK(budget.snapshot().required_main_gpu_pressure_ns == 700);
+        auto reset_nested = input;
+        reset_nested.main_pressure_continuity = false;
+        { MainScope nested(reset_nested); }
+        CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 700);
+    }
+    {
+        MainScope quiet(input);
+        CHECK(budget.snapshot().previous_main_gpu_wait_valid);
+        CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 0);
+        REQUIRE(budget.recordRequiredMainGpuWait(budget.snapshot().frame, 900, 0));
+    }
+    input.main_pressure_continuity = false; // Startup/teleport/disconnect owner boundary.
+    { MainScope reset(input); CHECK_FALSE(budget.snapshot().previous_main_gpu_wait_valid); }
+    input.main_pressure_continuity = true;
+    { MainScope resumed(input); CHECK_FALSE(budget.snapshot().previous_main_gpu_wait_valid); }
+}

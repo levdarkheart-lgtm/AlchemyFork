@@ -1272,3 +1272,169 @@ TEST_CASE("Preparation byte admission rejects unknown oversize and overflowing c
     auto full = defaults.tryAcquire(Budget::Work::preparation, 32ULL * 1024 * 1024); REQUIRE(full);
     CHECK_FALSE(defaults.tryAcquire(Budget::Work::preparation, 1));
 }
+
+TEST_CASE("Closed main GPU pressure coordinates the next early admission without replaying measurements",
+          "[native-frame-budget][main-gpu-history][PPD-409]")
+{
+    Budget budget(smallScene());
+    auto input = frame(10);
+    input.main_pressure_continuity = true;
+    input.frame_interval_ns = 64'000'000;
+    input.required_main_cpu_ns = 14'000'000;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(10, 39'000'000, 1'000'000));
+    REQUIRE(budget.closeMainObservations(10));
+    input.frame = 11;
+    budget.beginFrame(input); // Before this display has reached main admission.
+    auto early = budget.snapshot();
+    CHECK(early.previous_main_gpu_wait_valid);
+    CHECK(early.previous_main_gpu_wait_frame == 10);
+    CHECK(early.previous_main_gpu_wait_non_cpu_ns == 38'000'000);
+    CHECK(early.required_main_gpu_wait_observations == 0);
+    CHECK(early.required_main_gpu_wait_wall_ns == 0);
+    CHECK(early.required_main_gpu_wait_non_cpu_ns == 0);
+    CHECK(early.required_main_gpu_pressure_ns == 38'000'000);
+    CHECK(early.required_main_pressure_ns == 52'000'000);
+    REQUIRE(early.main_busy);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 11));
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::hero_probe, 0, 11));
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 11));
+    auto upload = budget.tryAcquire(Budget::Work::upload, 4, 11);
+    REQUIRE(upload);
+    CHECK(upload.reason == Budget::Reason::progress);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 4, 11));
+    auto aged_scene = budget.tryAcquire(Budget::Work::scene_publication, 1, 8);
+    auto aged_probe = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 8);
+    auto aged_hero = budget.tryAcquire(Budget::Work::hero_probe, 0, 8);
+    REQUIRE(aged_scene); REQUIRE(aged_probe); REQUIRE(aged_hero);
+    CHECK(aged_scene.reason == Budget::Reason::progress);
+    CHECK(aged_probe.reason == Budget::Reason::progress);
+    CHECK(aged_hero.reason == Budget::Reason::progress);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 8));
+    auto completion = aged_probe.credit;
+    aged_probe.credit.reset();
+    upload.credit.reset(); aged_scene.credit.reset(); aged_hero.credit.reset();
+    REQUIRE(budget.closeMainObservations(11)); // No measured wait this frame.
+    input.frame = 12;
+    budget.beginFrame(input);
+    CHECK(budget.snapshot().previous_main_gpu_wait_valid);
+    CHECK(budget.snapshot().previous_main_gpu_wait_frame == 11);
+    CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 0);
+    CHECK_FALSE(budget.snapshot().main_busy); // Never re-export the inherited hint.
+    CHECK(budget.snapshot().optional_views_in_flight == 1);
+    completion.reset();
+    CHECK(budget.snapshot().optional_views_in_flight == 0);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
+    CHECK(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 12));
+}
+
+TEST_CASE("Prior and current main waits share one pressure operand while unknown clocks stay unknown",
+          "[native-frame-budget][main-gpu-history][PPD-409]")
+{
+    Budget budget;
+    auto input = frame(0);
+    input.main_pressure_continuity = true;
+    input.required_main_cpu_ns = 10;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(0, 50, 10));
+    REQUIRE(budget.closeMainObservations(0));
+    input.frame = 1;
+    budget.beginFrame(input);
+    REQUIRE(budget.snapshot().previous_main_gpu_wait_valid);
+    CHECK(budget.snapshot().previous_main_gpu_wait_frame == 0); // Frame zero is valid.
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 15, 5));
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == 10);
+    CHECK(budget.snapshot().required_main_gpu_pressure_ns == 40);
+    CHECK(budget.snapshot().required_main_pressure_ns == 50); // Not 10+40+10.
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 60, 5));
+    CHECK(budget.snapshot().required_main_gpu_wait_non_cpu_ns == 65);
+    CHECK(budget.snapshot().required_main_gpu_pressure_ns == 65);
+    CHECK(budget.snapshot().required_main_pressure_ns == 75);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 900, std::nullopt));
+    CHECK(budget.snapshot().required_main_gpu_wait_unknown_observations == 1);
+    CHECK(budget.snapshot().required_main_gpu_wait_wall_ns == 975);
+    CHECK(budget.snapshot().required_main_gpu_wait_thread_cpu_ns == 10);
+    CHECK(budget.snapshot().required_main_pressure_ns == 75);
+    REQUIRE(budget.closeMainObservations(1));
+    input.frame = 2;
+    budget.beginFrame(input);
+    CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 65);
+    REQUIRE(budget.recordRequiredMainGpuWait(2, 1'000, std::nullopt));
+    REQUIRE(budget.closeMainObservations(2));
+    input.frame = 3;
+    budget.beginFrame(input);
+    CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 0);
+    CHECK(budget.snapshot().required_main_pressure_ns == 10);
+}
+
+TEST_CASE("Main pressure history requires both lifecycle boundaries and an exact closed owner",
+          "[native-frame-budget][main-gpu-history][PPD-409]")
+{
+    for (int condition = 0; condition < 5; ++condition)
+    {
+        CAPTURE(condition);
+        Budget budget;
+        auto input = frame(1);
+        input.main_pressure_continuity = condition != 0;
+        budget.beginFrame(input);
+        REQUIRE(budget.recordRequiredMainGpuWait(1, 40'000'000, 0));
+        if (condition != 2) REQUIRE(budget.closeMainObservations(1));
+        input.frame = condition == 3 ? 3 : 2;
+        input.main_pressure_continuity = condition != 1;
+        if (condition == 4)
+        {
+            std::thread new_owner([&] { budget.beginFrame(input); });
+            new_owner.join();
+        }
+        else budget.beginFrame(input);
+        CHECK_FALSE(budget.snapshot().previous_main_gpu_wait_valid);
+        CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 0);
+        CHECK(budget.snapshot().required_main_gpu_pressure_ns == 0);
+        CHECK_FALSE(budget.snapshot().main_busy);
+    }
+    // One explicit reset frame also bars exporting that frame's wait into a
+    // newly normal scene; only the next continuous normal pair can share it.
+    Budget budget;
+    auto input = frame(1);
+    input.main_pressure_continuity = false;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, 40'000'000, 0));
+    REQUIRE(budget.closeMainObservations(1));
+    input.frame = 2; input.main_pressure_continuity = true;
+    budget.beginFrame(input);
+    CHECK_FALSE(budget.snapshot().previous_main_gpu_wait_valid);
+    REQUIRE(budget.closeMainObservations(2));
+    input.frame = 3; budget.beginFrame(input);
+    CHECK(budget.snapshot().previous_main_gpu_wait_valid);
+    CHECK(budget.snapshot().previous_main_gpu_wait_non_cpu_ns == 0);
+}
+
+TEST_CASE("Main pressure hints preserve saturation and drain retirement without extending history",
+          "[native-frame-budget][main-gpu-history][PPD-409]")
+{
+    Budget budget;
+    auto input = frame(1); input.main_pressure_continuity = true;
+    budget.beginFrame(input);
+    REQUIRE(budget.recordRequiredMainGpuWait(1, Budget::unknown_bytes, 0));
+    REQUIRE(budget.closeMainObservations(1));
+    input.frame = 2; budget.beginFrame(input);
+    CHECK(budget.snapshot().required_main_gpu_pressure_ns == Budget::unknown_bytes);
+    CHECK(budget.snapshot().required_main_pressure_saturated);
+    CHECK_FALSE(budget.snapshot().required_main_gpu_wait_saturated);
+    CHECK(budget.snapshot().required_main_gpu_wait_observations == 0);
+    const auto before_duplicate = budget.snapshot();
+    auto stale = input; stale.main_pressure_continuity = false;
+    budget.beginFrame(stale); stale.frame = 1; budget.beginFrame(stale);
+    CHECK(budget.snapshot().previous_main_gpu_wait_valid);
+    CHECK(budget.snapshot().required_main_pressure_ns == before_duplicate.required_main_pressure_ns);
+    auto owner = budget.tryAcquire(Budget::Work::upload, 1).credit;
+    REQUIRE(owner);
+    budget.beginDrain();
+    CHECK_FALSE(budget.snapshot().previous_main_gpu_wait_valid);
+    CHECK(budget.snapshot().required_main_gpu_pressure_ns == 0);
+    CHECK_FALSE(budget.recordRequiredMainGpuWait(2, 1, 0));
+    CHECK(budget.snapshot().uploads_in_flight == 1);
+    owner.reset();
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+}
