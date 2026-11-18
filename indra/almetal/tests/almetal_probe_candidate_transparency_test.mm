@@ -5,17 +5,27 @@
  */
 #include "../almetalworld.h"
 #include "../almetalprobecandidates.h"
+#include "../almetalpipelinecache.h"
 #include <catch2/catch_test_macros.hpp>
 #import <Metal/Metal.h>
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -37,15 +47,24 @@ struct Cell { bool skinned,shadow,reverse,infinite,hdr; unsigned width,height; }
 struct Fixture
 {
     std::string error;
-    std::unique_ptr<ALMetalDevice> device=ALMetalDevice::create(&error);
+    std::shared_ptr<ALMetalDevice> device;
     std::shared_ptr<ALMetalWorldFrameData> data;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
-    Fixture()
+    Fixture(std::shared_ptr<ALMetalDevice> selected_device = {},
+            std::shared_ptr<const ALMetalShaderLibrary> library = {},
+            bool make_renderer = true)
+        : device(std::move(selected_device))
     {
+        if (!device) device=ALMetalDevice::create(&error);
         INFO(error); REQUIRE(device);
         data=ALMetalWorldFrameData::create(*device,&error); REQUIRE(data);
-        renderer=ALMetalWorldGBufferRenderer::create(*device,&error); INFO(error); REQUIRE(renderer);
-        renderer->setFrameData(data);
+        if(make_renderer)
+        {
+            renderer=library?ALMetalWorldGBufferRenderer::create(*device,1,std::move(library),&error)
+                            :ALMetalWorldGBufferRenderer::create(*device,&error);
+            INFO(error); REQUIRE(renderer);
+            renderer->setFrameData(data);
+        }
         data->beginFrame(1);
     }
     ~Fixture() { if(device) device->waitUntilIdle(); }
@@ -1213,5 +1232,400 @@ TEST_CASE("Forward probe decisions retain distinct conservative and admission fa
         auto restored=input.render(true); CHECK(restored.planes==denied_generic.planes);
         inspect(restored,Reason::none,true);
         CHECK(f.data->stats().candidate_failures==0);
+    }
+}
+
+namespace e6_cost
+{
+using Clock = std::chrono::steady_clock;
+using Library = std::shared_ptr<const ALMetalShaderLibrary>;
+bool enabled(const char* name)
+{
+    const char* value=std::getenv(name);
+    return value && *value && std::strcmp(value,"0")!=0;
+}
+unsigned cell()
+{
+    const char* value=std::getenv("ALCHEMY_E6_COST_CELL");
+    REQUIRE(value);REQUIRE(std::strlen(value)==1);
+    REQUIRE(value[0]>='0');REQUIRE(value[0]<='8');
+    return unsigned(value[0]-'0');
+}
+std::optional<std::uint64_t> cpuNow()
+{
+    timespec value{};
+    if(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)!=0 || value.tv_sec<0 ||
+       std::uint64_t(value.tv_sec)>std::numeric_limits<std::uint64_t>::max()/1000000000ull)
+        return {};
+    return std::uint64_t(value.tv_sec)*1000000000ull+std::uint64_t(value.tv_nsec);
+}
+std::uint64_t elapsed(Clock::time_point started)
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count();
+}
+std::shared_ptr<ALMetalDevice> device(std::string& error)
+{
+    const char* value=std::getenv("ALCHEMY_E6_RESOURCE_PLAN_MODE");
+    const std::string_view mode=value?value:"disabled";
+#if __has_include("../almetalresourceplan.h")
+    auto policy=ALMetalResourcePlanMode::disabled;
+    if(mode=="accounting_only")policy=ALMetalResourcePlanMode::accounting_only;
+    else if(mode=="enabled")policy=ALMetalResourcePlanMode::enabled;
+    else REQUIRE(mode=="disabled");
+    return ALMetalDevice::create(&error,policy);
+#else
+    REQUIRE(mode=="disabled");
+    return ALMetalDevice::create(&error);
+#endif
+}
+void raw(const std::filesystem::path& path,const void* bytes,std::size_t count)
+{
+    std::ofstream file(path,std::ios::binary);
+    REQUIRE(file.good());
+    file.write(static_cast<const char*>(bytes),std::streamsize(count));
+    REQUIRE(file.good());
+}
+void raw(const std::filesystem::path& prefix,const Planes& value)
+{
+    raw(prefix.string()+"-color.raw",value.color.data(),value.color.size()*sizeof(Pixel));
+    raw(prefix.string()+"-depth.raw",value.depth.data(),value.depth.size()*sizeof(std::uint32_t));
+    raw(prefix.string()+"-stencil.raw",value.stencil.data(),value.stencil.size());
+}
+void factorySentinel(const ALMetalDevice& device,const Library& library,unsigned arm)
+{
+    std::string error;
+    ALMetalRenderPipelineDescriptor descriptor;descriptor.library=library.get();
+    descriptor.vertex_function="almetal_world_shiny_vertex";
+    descriptor.fragment_function="almetal_world_shiny_fragment";
+    descriptor.colors[0].format=ALMetalPixelFormat::rgba16_float;
+    descriptor.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
+    auto graphics=ALMetalRenderPipeline::create(device,descriptor,&error);INFO(error);REQUIRE(graphics);
+    auto native=(__bridge id<MTLRenderPipelineState>)graphics->nativeHandle();
+    REQUIRE(native.shaderValidation==MTLShaderValidationDisabled);
+    ALMetalComputePipelineDescriptor compute;compute.library=library.get();
+    compute.function="almetal_world_probe_candidate_tiles";
+    auto kernel=ALMetalComputePipeline::create(device,compute,&error);INFO(error);REQUIRE(kernel);
+    auto native_compute=(__bridge id<MTLComputePipelineState>)kernel->nativeHandle();
+    REQUIRE(native_compute.shaderValidation==MTLShaderValidationDisabled);
+    std::cout<<"e6_factory_sentinel arm="<<arm<<" graphics_validation="<<native.shaderValidation
+        <<" compute_validation="<<native_compute.shaderValidation<<" selected_PSO_census=0\n";
+}
+void atlas(Inputs& input,unsigned count,unsigned selected_cell)
+{
+    REQUIRE(count<=128);
+    auto& f=input.f;
+    ALMetalTextureDescriptor descriptor;descriptor.type=ALMetalTextureType::texture_cube_array;
+    descriptor.array_length=count;descriptor.format=ALMetalPixelFormat::rgba8_unorm;
+    auto radiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(radiance);
+    descriptor={};descriptor.width=4;descriptor.height=count;descriptor.format=ALMetalPixelFormat::rgba32_uint;
+    auto irradiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(irradiance);
+    std::vector<std::uint32_t> coefficients(count*16);
+    auto command=f.device->makeCommandBuffer("E6 fixed authored packed4 atlas",&f.error);REQUIRE(command);
+    for(unsigned row=0;row<count;++row)
+    {
+        const std::array<std::uint8_t,4> color{{
+            std::uint8_t(32+(row*17)%192),std::uint8_t(32+(row*29)%192),
+            std::uint8_t(32+(row*41)%192),255}};
+        for(unsigned face=0;face<6;++face)
+            REQUIRE(radiance->upload(*command,0,row*6+face,{},color.data(),4,&f.error));
+        std::copy_n(input.packedSH.data()+(row%40)*16,16,coefficients.data()+row*16);
+    }
+    REQUIRE(irradiance->upload(*command,0,0,{},coefficients.data(),64,&f.error));
+    REQUIRE(command->commitAndWait(&f.error));
+    input.radiance=std::move(radiance);input.irradiance=std::move(irradiance);
+    input.probes.radiance_texture=input.radiance.get();input.probes.irradiance_texture=input.irradiance.get();
+    auto& p=input.probes.constants;p={};p.config[0]=float(count);
+    for(unsigned row=0;row<count;++row)
+    {
+        p.ref_sphere[row][0]=row?(-2.8f+.7f*((row-1)%9)):0.f;
+        p.ref_sphere[row][1]=row?(-1.9f+.6f*(((row-1)/9)%7)):0.f;
+        p.ref_sphere[row][2]=-4.f;p.ref_sphere[row][3]=row?.8f:128.f;
+        p.ref_index[row][0]=row;p.ref_index[row][1]=-1;
+        p.ref_params[row][0]=p.ref_params[row][1]=p.ref_params[row][2]=1.f;
+        if(selected_cell==6 && row>0 && row<=31)
+        {
+            p.ref_sphere[row][0]=p.ref_sphere[row][1]=0.f;p.ref_sphere[row][3]=6.f;
+            p.ref_index[row][3]=row<=3?1:0;
+        }
+        if(selected_cell==7 && row)
+        {
+            p.ref_sphere[row][0]=p.ref_sphere[row][1]=0.f;p.ref_sphere[row][3]=128.f;
+            p.ref_index[row][3]=1;
+        }
+    }
+    for(auto& bucket:p.ref_bucket)bucket[0]=1;
+}
+std::unique_ptr<ALMetalRenderTarget> impostorTarget(Inputs& input)
+{
+    ALMetalRenderTargetDescriptor d;d.width=input.cell.width;d.height=input.cell.height;
+    d.color_attachment_count=4;d.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
+    d.colors[0].format=ALMetalPixelFormat::rgba8_unorm_srgb;
+    d.colors[1].format=ALMetalPixelFormat::rgba8_unorm;
+    d.colors[2].format=ALMetalPixelFormat::rgba16_unorm;
+    d.colors[3].format=ALMetalPixelFormat::rg11b10_float;
+    auto value=ALMetalRenderTarget::create(*input.f.device,d,&input.f.error);REQUIRE(value);return value;
+}
+void seedImpostor(Fixture& f,ALMetalRenderTarget& target)
+{
+    ALMetalRenderPassConfig config;config.clear_depth=1.;config.clear_stencil=0x5a;
+    config.depth_store=config.stencil_store=ALMetalStoreAction::store;
+    for(auto& color:config.colors)color.clear={.03125,.0625,.125,.5};
+    auto pass=target.makeRenderPass(config,&f.error);REQUIRE(pass);
+    auto command=f.device->makeCommandBuffer("E6 fixed impostor destination seeding",&f.error);REQUIRE(command);
+    auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"E6 seed",&f.error);REQUIRE(encoder);
+    REQUIRE(encoder->end(&f.error));REQUIRE(command->commitAndWait(&f.error));
+}
+template<class Renderer>
+bool composite(Renderer& renderer,ALMetalRenderTarget& target,const ALMetalWorldGBufferScene& scene,
+               std::string* error,std::shared_ptr<const ALMetalCommandCompletion>* completion)
+{
+    if constexpr(requires { renderer.compositeImpostorPostDeferred(target,scene,error,completion); })
+        return renderer.compositeImpostorPostDeferred(target,scene,error,completion);
+    else
+    {
+        throw std::runtime_error("E6 compositor cost requires the matching actual-command completion_out API");
+    }
+}
+template<class Renderer>
+int validationMode(Renderer& renderer,bool impostor)
+{
+    if constexpr(requires { renderer.opaquePostDiagnostics().last_probe_consumer_shader_validation;
+                            renderer.opaquePostDiagnostics().last_impostor_consumer_shader_validation; })
+    {
+        const auto state=renderer.opaquePostDiagnostics();
+        return impostor?state.last_impostor_consumer_shader_validation:state.last_probe_consumer_shader_validation;
+    }
+    else return -1;
+}
+struct Observation
+{
+    ALMetalCommandGPUTime gpu;
+    std::uint64_t wall=0,cpu=0,preparations=0,reuses=0,declines=0,selected=0;
+    bool cpu_known=false,reason_known=true;
+    int validation=-1;
+    ALMetalProbeCandidateReason reason=ALMetalProbeCandidateReason::not_eligible;
+    std::unique_ptr<ALMetalRenderTarget> output;
+};
+Observation measure(Fixture& f,Inputs& input,ALMetalRenderTarget& gbuffer,ALMetalRenderTarget& composed,
+                    ALMetalRenderTarget* impostor,unsigned frame,bool prepared,bool retain)
+{
+    // Fixed input reset and its native transient objects are outside timing.
+    @autoreleasepool { if(impostor)seedImpostor(f,*impostor); }
+    const auto stats=f.data->stats();const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+    const auto check=[&](bool okay,const char* stage)
+    {
+        if(!okay)throw std::runtime_error(std::string("E6 cost ")+stage+": "+f.error);
+    };
+    const auto cpu=cpuNow();const auto started=Clock::now();
+    Observation result;
+    @autoreleasepool
+    {
+        f.data->beginFrame(frame);
+        std::shared_ptr<const ALMetalCommandCompletion> completion;
+        if(impostor)
+        {
+            ALMetalWorldGBufferScene scene;scene.batches=input.batches.data();scene.batch_count=input.batches.size();
+            scene.width=input.cell.width;scene.height=input.cell.height;scene.hdr=true;scene.normal_hdr=true;
+            scene.reflection_probes=&input.probes;scene.legacy_alpha_lighting=&input.lighting;
+            scene.directional_shadows=&input.shadows;
+            std::copy_n(input.scene.forward_probe_projection,16,scene.forward_probe_projection);
+            scene.forward_probe_projection_valid=prepared;
+            check(composite(*f.renderer,*impostor,scene,&f.error,&completion),"impostor encode/commit");
+        }
+        else
+        {
+            check(f.renderer->beginCommandBatch("E6 complete prepared-lighting owner",&f.error),"batch begin");
+            auto scene=input.scene;scene.gbuffer=&gbuffer;scene.composed_lighting=&composed;
+            scene.forward_probe_projection_valid=prepared;
+            result.output=f.renderer->renderOpaquePostDeferred(scene,&f.error);check(bool(result.output),"post encode");
+            completion=f.renderer->commandBatchCompletion();check(bool(completion),"completion receipt");
+            check(f.renderer->commitCommandBatch(&f.error),"batch commit");
+        }
+        check(bool(completion),"actual completion receipt");check(f.device->waitUntilIdle(&f.error),"completion wait");
+        check(completion->status()==ALMetalCommandStatus::completed,"native completion status");
+        check(completion->gpuTime(result.gpu)==ALMetalCommandTimingStatus::ready,"native GPU timestamps");
+        if(!retain)result.output.reset();
+        completion.reset();
+    }
+    result.wall=elapsed(started);
+    const auto end_cpu=cpuNow();
+    if(cpu && end_cpu && *end_cpu>=*cpu){result.cpu_known=true;result.cpu=*end_cpu-*cpu;}
+    const auto current=f.data->stats();const auto diagnostics=f.renderer->opaquePostDiagnostics();
+    result.preparations=current.candidate_preparations-stats.candidate_preparations;
+    result.reuses=current.candidate_reuses-stats.candidate_reuses;
+    result.declines=current.candidate_declines-stats.candidate_declines;
+    result.reason=diagnostics.probe_candidate_decision.reason;
+    result.reason_known=impostor==nullptr;
+    result.validation=validationMode(*f.renderer,impostor!=nullptr);
+    result.selected=impostor
+        ? diagnostics.probe_candidate_activity.impostor_prepared_batches[0]+diagnostics.probe_candidate_activity.impostor_prepared_batches[1]
+            -before.impostor_prepared_batches[0]-before.impostor_prepared_batches[1]
+        : diagnostics.probe_candidate_material_batches+diagnostics.probe_candidate_pbr_batches+
+            diagnostics.probe_candidate_avatar_batches+diagnostics.probe_candidate_shiny_batches;
+    return result;
+}
+void emit(unsigned cell,const char* kind,unsigned block,unsigned slot,unsigned arm,const Observation& value,double& last_end)
+{
+    REQUIRE(value.gpu.start_seconds>=last_end);REQUIRE(value.gpu.end_seconds>value.gpu.start_seconds);
+    last_end=value.gpu.end_seconds;
+    std::cout<<std::setprecision(17)<<"e6_cost_csv,"<<cell<<','<<kind<<','<<block<<','<<slot<<','<<arm<<','
+        <<value.gpu.start_seconds<<','<<value.gpu.end_seconds<<','<<value.gpu.elapsed_nanoseconds<<','
+        <<value.wall<<','<<value.cpu_known<<','<<value.cpu<<','<<value.preparations<<','<<value.reuses<<','
+        <<value.declines<<','<<value.selected<<','<<value.reason_known<<','<<unsigned(value.reason)<<','<<value.validation<<'\n';
+}
+} // namespace e6_cost
+
+TEST_CASE("E6 complete prepared-lighting owner costs retain construction and fallback negatives",
+          "[.][almetal][probe-candidate-cost]")
+{
+    if(!e6_cost::enabled("ALCHEMY_E6_COST"))SKIP("Explicit E6 cost opt-in required");
+#ifndef NDEBUG
+    SKIP("E6 cost requires an optimized matched build");
+#endif
+    const auto selected=e6_cost::cell();if(selected==8)SKIP("Cell8 is the actual water fixture");
+    for(const auto* name:{"MTL_DEBUG_LAYER","MTL_SHADER_VALIDATION","MTL_CAPTURE_ENABLED","MTL_HUD_ENABLED"})
+        REQUIRE_FALSE(e6_cost::enabled(name));
+    REQUIRE_FALSE(ALMetalDevice::commandTimingEnabled());
+    const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
+    const char* directory=std::getenv("ALCHEMY_E6_COST_ARTIFACT_DIR");
+    REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
+    REQUIRE(directory);REQUIRE(std::filesystem::is_directory(directory));
+    const auto out=std::filesystem::path(directory)/("cell-"+std::to_string(selected));
+    REQUIRE_FALSE(std::filesystem::exists(out));REQUIRE(std::filesystem::create_directory(out));
+    std::filesystem::permissions(out,std::filesystem::perms::owner_all);
+    @autoreleasepool
+    {
+        std::string error;auto device=e6_cost::device(error);INFO(error);REQUIRE(device);
+        REQUIRE_FALSE(device->pipelineCache().stats().enabled);
+        std::cout<<"e6_pipeline_archive enabled=0 driver_cache_cold_claim=0\n";
+        std::array<e6_cost::Library,3> libraries;
+        auto started=e6_cost::Clock::now();
+        @autoreleasepool { libraries[0]=ALMetalShaderLibrary::loadFile(*device,baseline,&error); }
+        const auto old_load_wall=e6_cost::elapsed(started);INFO(error);REQUIRE(libraries[0]);
+        std::cout<<"e6_library_load arm=0 wall_ns="<<old_load_wall<<'\n';
+        started=e6_cost::Clock::now();@autoreleasepool { libraries[1]=ALMetalShaderLibrary::loadBuiltin(*device,&error); }
+        const auto current_load_wall=e6_cost::elapsed(started);REQUIRE(libraries[1]);
+        libraries[2]=libraries[1];std::cout<<"e6_library_load arm=1 wall_ns="<<current_load_wall<<" shared_with=2\n";
+        REQUIRE_FALSE(libraries[0]->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
+        REQUIRE(libraries[1]->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
+        for(unsigned arm=0;arm<2;++arm)e6_cost::factorySentinel(*device,libraries[arm],arm);
+        std::array<std::unique_ptr<Fixture>,3> owners;
+        for(unsigned round=0;round<2;++round)for(unsigned slot=0;slot<3;++slot)
+        {
+            const unsigned arm=round?2-slot:slot;
+            owners[arm].reset();
+            owners[arm]=std::make_unique<Fixture>(device,libraries[arm],false);
+            const auto cpu=e6_cost::cpuNow();started=e6_cost::Clock::now();
+            @autoreleasepool
+            {
+                owners[arm]->renderer=ALMetalWorldGBufferRenderer::create(*device,1,libraries[arm],&owners[arm]->error);
+                if(owners[arm]->renderer)owners[arm]->renderer->setFrameData(owners[arm]->data);
+            }
+            const auto wall=e6_cost::elapsed(started);const auto end=e6_cost::cpuNow();
+            INFO(owners[arm]->error);REQUIRE(owners[arm]->renderer);
+            std::cout<<"e6_construction round="<<round<<" slot="<<slot<<" arm="<<arm<<" wall_ns="<<wall
+                <<" cpu_known="<<bool(cpu&&end&&*end>=*cpu)<<" cpu_ns="<<(cpu&&end&&*end>=*cpu?*end-*cpu:0)
+                <<" driver_cache_cold_claim=0 includes_FrameData=0 transient_autorelease_drain=1\n";
+        }
+        const bool impostor=selected==4;
+        Inputs input(*owners[0],{selected!=0&&selected!=3,true,false,false,true,impostor?256u:1024u,impostor?256u:576u});
+        const unsigned probes=selected==6?128u:((selected==0||selected==2||impostor)?47u:54u);
+        if(selected==2)input.avatar(2);
+        else if(selected==3)input.shiny();
+        else input.family(selected==0||impostor?1:2);
+        if(selected==1)for(auto& batch:input.batches)
+        {batch.pre_water_source_rgb=ALMetalBlendFactor::one;batch.pre_water_destination_rgb=ALMetalBlendFactor::one;}
+        if(selected!=2&&selected!=3&&!impostor)input.postWaterOnly();
+        if(impostor)
+        {
+            for(auto& batch:input.batches)batch.pre_water_alpha=false;
+            auto& shiny=input.batches[1];shiny.material_slot_count=0;shiny.material_alpha_mode=0;
+            shiny.pre_water_material=shiny.pre_water_shadows=false;shiny.impostor_shiny=true;
+        }
+        e6_cost::atlas(input,probes,selected);
+        const auto initial=input.probes.constants;
+        std::array<std::unique_ptr<ALMetalRenderTarget>,3> gbuffer,composed,targets;
+        for(unsigned arm=0;arm<3;++arm)
+        {
+            gbuffer[arm]=input.seeded(true);composed[arm]=input.seeded(false);
+            if(impostor)targets[arm]=e6_cost::impostorTarget(input);
+        }
+        e6_cost::raw(out/"probe-pack.raw",&initial,sizeof(initial));
+        const char* resource_mode=std::getenv("ALCHEMY_E6_RESOURCE_PLAN_MODE");
+        std::cout<<"e6_scope cell="<<selected<<" configured_probes="<<probes<<" width="<<input.cell.width<<" height="<<input.cell.height
+            <<" resource_plan_mode="<<(resource_mode?resource_mode:"disabled")
+            <<" current_generic_arm=1 prepared_arm=2 old_generic_arm=0 authored_distribution=1 captured_scene_claim=0 FPS_claim=0"
+            <<" includes_current_frame_preparation_commit_completion_dynamic_output_retirement=1 input_seed_in_wall=0"
+            <<" transient_autorelease_drain_in_wall=1 persistent_renderer_caches_follow_existing_retirement=1"
+            <<" first_use_retains_output_for_outside_wall_parity=1 sentinel_not_selected_PSO_census=1 thermal_start="
+            <<[[NSProcessInfo processInfo] thermalState]<<'\n';
+        std::cout<<"e6_cost_csv,cell,kind,block,slot,arm,gpu_start_s,gpu_end_s,gpu_ns,owner_wall_ns,cpu_known,owner_cpu_ns,preparations,reuses,declines,prepared_draws,decision_known,decision,actual_consumer_validation\n";
+        unsigned frame=1;double last_end=0;
+        std::array<Planes,3> first;std::array<ImpostorPlanes,3> first_impostor;
+        std::array<std::uint64_t,3> first_selected{};
+        ImpostorPlanes clear_impostor;
+        if(impostor)
+        {
+            e6_cost::seedImpostor(*owners[0],*targets[0]);
+            clear_impostor=readImpostor(*owners[0],*targets[0]);
+        }
+        for(unsigned arm=0;arm<3;++arm)
+        {
+            auto value=e6_cost::measure(*owners[arm],input,*gbuffer[arm],*composed[arm],targets[arm].get(),frame++,arm==2,true);
+            e6_cost::emit(selected,"first_use",0,arm,arm,value,last_end);
+            first_selected[arm]=value.selected;
+            if(impostor)
+            {
+                first_impostor[arm]=readImpostor(*owners[arm],*targets[arm]);
+                for(unsigned attachment=0;attachment<4;++attachment)e6_cost::raw(out/("arm"+std::to_string(arm)+"-mrt"+std::to_string(attachment)+".raw"),
+                    first_impostor[arm].colors[attachment].data(),first_impostor[arm].colors[attachment].size());
+                e6_cost::raw(out/("arm"+std::to_string(arm)),first_impostor[arm].planes);
+            }
+            else
+            {
+                first[arm]=owners[arm]->read(*value.output);e6_cost::raw(out/("arm"+std::to_string(arm)),first[arm]);
+            }
+            REQUIRE(value.validation==2);
+        }
+        REQUIRE(first_selected[0]==0);REQUIRE(first_selected[1]==0);
+        REQUIRE(first_selected[2]==(selected==7?0u:2u));
+        if(impostor)
+        {
+            REQUIRE(first_impostor[0]==first_impostor[1]);REQUIRE(first_impostor[0]==first_impostor[2]);
+            REQUIRE(first_impostor[0].colors[0]!=clear_impostor.colors[0]);
+            for(unsigned attachment=1;attachment<4;++attachment)
+                REQUIRE(first_impostor[0].colors[attachment]==clear_impostor.colors[attachment]);
+            REQUIRE(first_impostor[0].planes.stencil==clear_impostor.planes.stencil);
+        }
+        else
+        {
+            positive(first[0],selected!=0,false);
+            REQUIRE(first[0]==first[1]);REQUIRE(first[0]==first[2]);
+        }
+        const auto observe=[&](const char* kind,unsigned block,unsigned slot,unsigned arm)
+        {
+            auto value=e6_cost::measure(*owners[arm],input,*gbuffer[arm],*composed[arm],targets[arm].get(),frame++,arm==2,false);
+            REQUIRE(value.validation==2);
+            if(arm==2&&selected!=7){REQUIRE(value.selected==2);REQUIRE(value.preparations+value.reuses>0);}
+            else REQUIRE(value.selected==0);
+            if(arm==2&&selected==7){REQUIRE(value.reason==ALMetalProbeCandidateReason::all_full);REQUIRE(value.preparations+value.reuses==0);}
+            e6_cost::emit(selected,kind,block,slot,arm,value,last_end);
+        };
+        for(unsigned warm=0;warm<5;++warm)for(unsigned arm=0;arm<3;++arm)observe("warm",warm,arm,arm);
+        constexpr unsigned orders[3][6]={{0,1,2,2,1,0},{1,2,0,0,2,1},{2,0,1,1,0,2}};
+        for(unsigned block=0;block<60;++block)
+        {
+            if(selected==5)input.probes.constants.ref_sphere[1][0]=initial.ref_sphere[1][0]+.05f*(block+1);
+            else input.probes.constants.ref_params[1][0]=.5f+.01f*(block%7);
+            if(selected==2)
+            {
+                for(unsigned joint=0;joint<15;++joint)input.avatar_palette[joint*4+3]=.01f*(block%11);
+                for(auto& batch:input.batches)batch.avatar_wind[3]=.1f+.005f*(block%5);
+            }
+            for(unsigned slot=0;slot<6;++slot)observe("measure",block,slot,orders[block%3][slot]);
+            std::cout.flush();
+        }
+        std::cout<<"e6_terminal cell="<<selected<<" blocks=60 measured=360 warm=15 first_use=3 thermal_end="
+            <<[[NSProcessInfo processInfo] thermalState]<<" source_scene_match_claim=0\n";
     }
 }

@@ -11,6 +11,7 @@
 #include "../../almetal/almetalworld.h"
 #include "../../almetal/almetalprobecandidates.h"
 #include "../../almetal/almetalresource.h"
+#include "../../almetal/almetalpipelinecache.h"
 #include <catch2/catch_test_macros.hpp>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -21,12 +22,17 @@
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
+#include <ctime>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <limits>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1149,32 +1155,36 @@ struct Fixture
     std::unique_ptr<ALMetalTexture> cells;
     std::unique_ptr<ALMetalRenderTarget> lighting;
     Image background;
-    Fixture()
+    unsigned width=SIDE,height=SIDE;
+    Fixture(bool make_renderer=true,unsigned selected_width=SIDE,unsigned selected_height=SIDE,
+            std::unique_ptr<ALMetalDevice> selected_device={})
+        : device(std::move(selected_device)),width(selected_width),height(selected_height)
     {
+        REQUIRE(width>1);REQUIRE(height>1);
         REQUIRE([[NSBundle mainBundle] pathForResource:@"almetal_builtin" ofType:@"metallib"] != nil);
-        device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
-        renderer = ALMetalWorldGBufferRenderer::create(*device, 1, &error); INFO(error); REQUIRE(renderer);
+        if(!device)device=ALMetalDevice::create(&error);INFO(error);REQUIRE(device);
+        if(make_renderer){renderer = ALMetalWorldGBufferRenderer::create(*device, 1, &error); INFO(error); REQUIRE(renderer);}
         frames = ALMetalWorldFrameData::create(*device, &error); REQUIRE(frames);
-        frames->beginFrame(1); renderer->setFrameData(frames);
+        frames->beginFrame(1); if(renderer)renderer->setFrameData(frames);
         ALMetalTextureDescriptor cell;
         cell.width = cell.height = 1; cell.format = ALMetalPixelFormat::rg32_float;
         cells = ALMetalTexture::create(*device, cell, &error); REQUIRE(cells);
-        const std::array<float, 2> height{0.f, 1.f};
+        const std::array<float, 2> height_sample{0.f, 1.f};
         auto command = device->makeCommandBuffer("Water authored height", &error); REQUIRE(command);
-        REQUIRE(cells->upload(*command, 0, 0, {}, height.data(), sizeof(height), &error));
+        REQUIRE(cells->upload(*command, 0, 0, {}, height_sample.data(), sizeof(height_sample), &error));
         REQUIRE(command->commitAndWait(&error));
         ALMetalRenderTargetDescriptor target;
-        target.width = target.height = SIDE;
+        target.width=width;target.height=height;
         target.colors[0].format = ALMetalPixelFormat::rgba16_float;
         lighting = ALMetalRenderTarget::create(*device, target, &error); REQUIRE(lighting);
-        background.resize(SIDE * SIDE);
-        for (unsigned y = 0; y < SIDE; ++y) for (unsigned x = 0; x < SIDE; ++x)
-            background[y * SIDE + x] = half({float(x) / (SIDE - 1), float(y) / (SIDE - 1), .25f, .75f});
+        background.resize(std::size_t(width)*height);
+        for (unsigned y=0;y<height;++y)for(unsigned x=0;x<width;++x)
+            background[std::size_t(y)*width+x]=half({float(x)/(width-1),float(y)/(height-1),.25f,.75f});
         ALMetalTextureDescriptor texture;
-        texture.width = texture.height = SIDE; texture.format = ALMetalPixelFormat::rgba16_float;
+        texture.width=width;texture.height=height;texture.format=ALMetalPixelFormat::rgba16_float;
         auto upload = ALMetalTexture::create(*device, texture, &error); REQUIRE(upload);
         command = device->makeCommandBuffer("Water authored refraction gradient", &error); REQUIRE(command);
-        REQUIRE(upload->upload(*command, 0, 0, {}, background.data(), SIDE * sizeof(Pixel), &error));
+        REQUIRE(upload->upload(*command, 0, 0, {}, background.data(), width*sizeof(Pixel), &error));
         REQUIRE(lighting->copyColorFrom(*command, 0, *upload, {}, &error));
         REQUIRE(command->commitAndWait(&error));
     }
@@ -1182,7 +1192,7 @@ struct Fixture
     std::unique_ptr<ALMetalRenderTarget> gbuffer(bool hdr, bool reverse)
     {
         ALMetalRenderTargetDescriptor target;
-        target.width = target.height = SIDE; target.color_attachment_count = 4;
+        target.width=width;target.height=height;target.color_attachment_count=4;
         target.colors[0].format = ALMetalPixelFormat::rgba8_unorm_srgb;
         target.colors[1].format = ALMetalPixelFormat::rgba8_unorm;
         target.colors[2].format = ALMetalPixelFormat::rgba16_unorm;
@@ -1218,10 +1228,10 @@ struct Fixture
     }
     Image read(const ALMetalRenderTarget& value)
     {
-        REQUIRE(value.descriptor().width == SIDE); REQUIRE(value.descriptor().height == SIDE);
+        REQUIRE(value.descriptor().width==width);REQUIRE(value.descriptor().height==height);
         REQUIRE(value.descriptor().colors[0].format == ALMetalPixelFormat::rgba16_float);
-        Image pixels(SIDE * SIDE);
-        REQUIRE(value.colorTexture(0)->readback(*device, 0, 0, {}, pixels.data(), SIDE * sizeof(Pixel), &error));
+        Image pixels(std::size_t(width)*height);
+        REQUIRE(value.colorTexture(0)->readback(*device,0,0,{},pixels.data(),width*sizeof(Pixel),&error));
         return pixels;
     }
     std::vector<Image> readNormals(const ALMetalTexture& value)
@@ -1298,7 +1308,7 @@ struct Fixture
         haze.fog[0] = 1.f; // Defined zero-density underwater pre-surface haze.
         ALMetalWorldOpaquePostDeferredScene scene;
         scene.gbuffer = &input; scene.composed_lighting = lighting.get(); scene.batches = markers.data(); scene.batch_count = markers.size();
-        scene.width = scene.height = SIDE; scene.hdr = hdr; scene.reverse_z = reverse; scene.water_haze = &haze; scene.water_surface = &water;
+        scene.width=width;scene.height=height;scene.hdr=hdr;scene.reverse_z=reverse;scene.water_haze=&haze;scene.water_surface=&water;
         scene.lighting_raster_tile_size = tile;
         auto result = renderer->renderOpaquePostDeferred(scene, &error); INFO(error); REQUIRE(result);
         return result;
@@ -1427,5 +1437,203 @@ TEST_CASE("Generic water retains exact frozen-library manual and default probe l
         }
         // This is real generic water/radiance, not an SH test. The declared SH
         // texture is valid but unused by the water helper. No mask is prepared.
+    }
+}
+
+TEST_CASE("E6 generic water complete owner cost retains its manual-only alternative",
+          "[.][almetal][probe-candidate-cost]")
+{
+    if(!lighting_tiles_check::enabled("ALCHEMY_E6_COST"))SKIP("Explicit E6 cost opt-in required");
+#ifndef NDEBUG
+    SKIP("E6 cost requires an optimized matched build");
+#endif
+    const char* selected=std::getenv("ALCHEMY_E6_COST_CELL");
+    REQUIRE(selected);REQUIRE(std::strlen(selected)==1);REQUIRE(selected[0]>='0');REQUIRE(selected[0]<='8');
+    if(selected[0]!='8')SKIP("Cells0..7 are in the forward-consumer cost fixture");
+    for(const auto* name:{"MTL_DEBUG_LAYER","MTL_SHADER_VALIDATION","MTL_CAPTURE_ENABLED","MTL_HUD_ENABLED"})
+        REQUIRE_FALSE(lighting_tiles_check::enabled(name));
+    REQUIRE_FALSE(ALMetalDevice::commandTimingEnabled());
+    const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
+    const char* directory=std::getenv("ALCHEMY_E6_COST_ARTIFACT_DIR");
+    REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
+    REQUIRE(directory);REQUIRE(std::filesystem::is_directory(directory));
+    const auto out=std::filesystem::path(directory)/"cell-8";
+    REQUIRE_FALSE(std::filesystem::exists(out));REQUIRE(std::filesystem::create_directory(out));
+    std::filesystem::permissions(out,std::filesystem::perms::owner_all);
+    @autoreleasepool
+    {
+        using namespace lighting_tiles_water;
+        using Clock=std::chrono::steady_clock;
+        const auto ns=[](Clock::time_point start){return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-start).count();};
+        const auto cpu=[]()->std::optional<std::uint64_t>
+        {
+            timespec t{};
+            if(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t)!=0||t.tv_sec<0||
+               std::uint64_t(t.tv_sec)>std::numeric_limits<std::uint64_t>::max()/1000000000ull)return {};
+            return std::uint64_t(t.tv_sec)*1000000000ull+std::uint64_t(t.tv_nsec);
+        };
+        const auto save=[&](const std::string& name,const void* bytes,std::size_t size)
+        {
+            std::ofstream file(out/name,std::ios::binary);REQUIRE(file.good());
+            file.write(static_cast<const char*>(bytes),std::streamsize(size));REQUIRE(file.good());
+        };
+        std::string error;
+        const char* requested=std::getenv("ALCHEMY_E6_RESOURCE_PLAN_MODE");
+        const std::string mode=requested?requested:"disabled";
+        std::unique_ptr<ALMetalDevice> device;
+#if __has_include("../../almetal/almetalresourceplan.h")
+        auto policy=ALMetalResourcePlanMode::disabled;
+        if(mode=="accounting_only")policy=ALMetalResourcePlanMode::accounting_only;
+        else if(mode=="enabled")policy=ALMetalResourcePlanMode::enabled;
+        else REQUIRE(mode=="disabled");
+        device=ALMetalDevice::create(&error,policy);
+#else
+        REQUIRE(mode=="disabled");device=ALMetalDevice::create(&error);
+#endif
+        INFO(error);REQUIRE(device);
+        Fixture f(false,1024,576,std::move(device));
+        REQUIRE_FALSE(f.device->pipelineCache().stats().enabled);
+        std::cout<<"e6_pipeline_archive enabled=0 driver_cache_cold_claim=0\n";
+        std::array<std::shared_ptr<const ALMetalShaderLibrary>,3> libraries;
+        auto start=Clock::now();@autoreleasepool { libraries[0]=ALMetalShaderLibrary::loadFile(*f.device,baseline,&f.error); }
+        const auto old_load_wall=ns(start);REQUIRE(libraries[0]);
+        std::cout<<"e6_library_load arm=0 wall_ns="<<old_load_wall<<'\n';
+        start=Clock::now();@autoreleasepool { libraries[1]=ALMetalShaderLibrary::loadBuiltin(*f.device,&f.error); }
+        const auto current_load_wall=ns(start);REQUIRE(libraries[1]);
+        libraries[2]=libraries[1];std::cout<<"e6_library_load arm=1 wall_ns="<<current_load_wall<<" shared_with=2\n";
+        REQUIRE_FALSE(libraries[0]->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
+        REQUIRE(libraries[1]->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
+        std::array<std::unique_ptr<ALMetalWorldGBufferRenderer>,3> owners;
+        std::array<std::shared_ptr<ALMetalWorldFrameData>,3> frames;
+        for(unsigned round=0;round<2;++round)for(unsigned slot=0;slot<3;++slot)
+        {
+            const unsigned arm=round?2-slot:slot;owners[arm].reset();frames[arm].reset();
+            frames[arm]=ALMetalWorldFrameData::create(*f.device,&f.error);REQUIRE(frames[arm]);
+            const auto c=cpu();start=Clock::now();
+            @autoreleasepool
+            {
+                owners[arm]=ALMetalWorldGBufferRenderer::create(*f.device,1,libraries[arm],&f.error);
+                if(owners[arm])owners[arm]->setFrameData(frames[arm]);
+            }
+            const auto wall=ns(start);const auto end=cpu();INFO(f.error);REQUIRE(owners[arm]);
+            std::cout<<"e6_construction round="<<round<<" slot="<<slot<<" arm="<<arm<<" wall_ns="<<wall
+                <<" cpu_known="<<bool(c&&end&&*end>=*c)<<" cpu_ns="<<(c&&end&&*end>=*c?*end-*c:0)
+                <<" driver_cache_cold_claim=0 includes_FrameData=0 transient_autorelease_drain=1\n";
+        }
+        for(unsigned arm=0;arm<2;++arm)
+        {
+            f.renderer=std::move(owners[arm]);lighting_tiles_check::validationSentinel(f,true);
+            owners[arm]=std::move(f.renderer);
+        }
+        auto normal=f.normals(4,false);auto input=f.gbuffer(true,false);
+        auto surface=f.water(*normal,false,4.f);surface.underwater=false;surface.refracts=false;
+        surface.field.default_height[0]=-.5f;surface.eye_position[2]=1.f;
+        surface.normal_matrix[0][0]=surface.normal_matrix[1][1]=surface.normal_matrix[2][2]=1.f;
+        surface.normal_scale_glint[0]=surface.normal_scale_glint[1]=surface.normal_scale_glint[2]=2.f;
+        surface.normal_scale_glint[3]=1.f;surface.optics[1]=1.f;surface.optics[2]=.7f;surface.light_direction[2]=1.f;
+        ALMetalTextureDescriptor d;d.type=ALMetalTextureType::texture_cube_array;d.array_length=4;d.format=ALMetalPixelFormat::rgba8_unorm;
+        auto radiance=ALMetalTexture::create(*f.device,d,&f.error);REQUIRE(radiance);
+        d={};d.width=4;d.height=4;d.format=ALMetalPixelFormat::rgba32_uint;
+        auto irradiance=ALMetalTexture::create(*f.device,d,&f.error);REQUIRE(irradiance);
+        auto upload=f.device->makeCommandBuffer("E6 fixed water radiance inputs",&f.error);REQUIRE(upload);
+        const std::array<std::array<std::uint8_t,4>,4> colors{{{{224,32,16,255}},{{16,224,32,255}},{{32,16,224,255}},{{224,224,16,255}}}};
+        for(unsigned row=0;row<4;++row)for(unsigned face=0;face<6;++face)
+            REQUIRE(radiance->upload(*upload,0,row*6+face,{},colors[row].data(),4,&f.error));
+        const std::array<std::uint32_t,64> unused_sh{};
+        REQUIRE(irradiance->upload(*upload,0,0,{},unused_sh.data(),64,&f.error));REQUIRE(upload->commitAndWait(&f.error));
+        ALMetalWorldReflectionProbes probes;probes.radiance_texture=radiance.get();probes.irradiance_texture=irradiance.get();probes.constants.config[0]=4;
+        for(unsigned row=0;row<4;++row)
+        {
+            probes.constants.ref_index[row][0]=row;probes.constants.ref_index[row][1]=-1;
+            probes.constants.ref_index[row][3]=row==1||row==2?1:0;probes.constants.ref_sphere[row][3]=2000.f;
+            probes.constants.ref_params[row][0]=probes.constants.ref_params[row][1]=probes.constants.ref_params[row][2]=1.f;
+        }
+        for(auto& bucket:probes.constants.ref_bucket)bucket[0]=1;
+        save("probe-pack.raw",&probes.constants,sizeof(probes.constants));
+        ALMetalWorldAlphaEnvironment environment;environment.water_plane[2]=1.f;environment.water_plane[3]=-1.f;
+        environment.water_fog[0]=1.f;environment.water_fog[2]=-1.f;environment.light_direction[2]=1.f;
+        environment.atmospheric[1]=environment.atmospheric[2]=environment.atmospheric[3]=1.f;
+        environment.atmos_sunlit[3]=environment.atmos_sunlit_linear[3]=1.f;
+        ALMetalWorldLegacyAlphaLighting lighting;lighting.sun_direction[2]=1.f;
+        lighting.parameters[0]=128.f;lighting.parameters[1]=.004f;lighting.parameters[2]=1.f;
+        ALMetalWorldSimpleBatch marker;marker.water_surface=true;
+        ALMetalWorldOpaquePostDeferredScene scene;scene.gbuffer=input.get();scene.composed_lighting=f.lighting.get();
+        scene.batches=&marker;scene.batch_count=1;scene.width=f.width;scene.height=f.height;scene.hdr=true;
+        scene.reflection_probes=&probes;scene.alpha_environment=&environment;scene.alpha_lighting=&lighting;scene.water_surface=&surface;
+        identity(scene.forward_probe_projection);
+        std::cout<<"e6_scope cell=8 width=1024 height=576 configured_probes=4 water_generic=1 masks=0 SH_reads=0"
+            <<" resource_plan_mode="<<mode<<" authored_distribution=1 FPS_claim=0 first_use_retains_output_for_outside_wall_parity=1 thermal_start="
+            <<[[NSProcessInfo processInfo] thermalState]<<'\n';
+        std::cout<<"e6_cost_csv,cell,kind,block,slot,arm,gpu_start_s,gpu_end_s,gpu_ns,owner_wall_ns,cpu_known,owner_cpu_ns,preparations,reuses,declines,prepared_draws,decision_known,decision,actual_consumer_validation\n";
+        unsigned frame=1;double last_end=0;
+        const auto actual_mode=[]<class Renderer>(Renderer& renderer)
+        {
+            if constexpr(requires { renderer.opaquePostDiagnostics().last_water_consumer_shader_validation; })
+                return renderer.opaquePostDiagnostics().last_water_consumer_shader_validation;
+            else return -1;
+        };
+        const auto check=[&](bool okay,const char* stage)
+        {
+            if(!okay)throw std::runtime_error(std::string("E6 water cost ")+stage+": "+f.error);
+        };
+        const auto measure=[&](const char* kind,unsigned block,unsigned slot,unsigned arm,bool retain)
+        {
+            const auto before=frames[arm]->stats();const auto c=cpu();const auto began=Clock::now();
+            std::unique_ptr<ALMetalRenderTarget> output;ALMetalCommandGPUTime gpu;
+            @autoreleasepool
+            {
+                frames[arm]->beginFrame(frame++);scene.forward_probe_projection_valid=arm==2;
+                check(owners[arm]->beginCommandBatch("E6 complete generic water owner",&f.error),"batch begin");
+                output=owners[arm]->renderOpaquePostDeferred(scene,&f.error);check(bool(output),"post encode");
+                auto completion=owners[arm]->commandBatchCompletion();check(bool(completion),"completion receipt");
+                check(owners[arm]->commitCommandBatch(&f.error),"batch commit");check(f.device->waitUntilIdle(&f.error),"completion wait");
+                check(completion->status()==ALMetalCommandStatus::completed,"native completion status");
+                check(completion->gpuTime(gpu)==ALMetalCommandTimingStatus::ready,"native GPU timestamps");
+                if(!retain)output.reset();
+                completion.reset();
+            }
+            const auto wall=ns(began);const auto end=cpu();
+            const auto after=frames[arm]->stats();
+            const auto validation=actual_mode(*owners[arm]);
+            REQUIRE(validation==2);
+            REQUIRE(after.candidate_preparations==before.candidate_preparations);REQUIRE(after.candidate_reuses==before.candidate_reuses);
+            REQUIRE(gpu.start_seconds>=last_end);REQUIRE(gpu.end_seconds>gpu.start_seconds);last_end=gpu.end_seconds;
+            const auto reason=owners[arm]->opaquePostDiagnostics().probe_candidate_decision.reason;
+            std::cout<<std::setprecision(17)<<"e6_cost_csv,8,"<<kind<<','<<block<<','<<slot<<','<<arm<<','
+                <<gpu.start_seconds<<','<<gpu.end_seconds<<','<<gpu.elapsed_nanoseconds<<','<<wall<<','
+                <<bool(c&&end&&*end>=*c)<<','<<(c&&end&&*end>=*c?*end-*c:0)<<",0,0,"
+                <<after.candidate_declines-before.candidate_declines<<",0,1,"<<unsigned(reason)<<','<<validation<<'\n';
+            return output;
+        };
+        std::array<Image,3> first;std::array<DepthStencil,3> depths;
+        for(unsigned arm=0;arm<3;++arm)
+        {
+            auto output=measure("first_use",0,arm,arm,true);
+            first[arm]=f.read(*output);depths[arm]=f.depthStencil(*output->depthStencilTexture());
+            const auto prefix="arm"+std::to_string(arm);
+            save(prefix+"-color.raw",first[arm].data(),first[arm].size()*sizeof(Pixel));
+            save(prefix+"-depth.raw",depths[arm].depth.data(),depths[arm].depth.size()*sizeof(std::uint32_t));
+            save(prefix+"-stencil.raw",depths[arm].stencil.data(),depths[arm].stencil.size());
+        }
+        REQUIRE(first[0]!=f.background);
+        for(const auto& pixel:first[0])for(auto word:pixel)REQUIRE((word&0x7c00u)!=0x7c00u);
+        for(unsigned arm=1;arm<3;++arm)
+        {
+            REQUIRE(first[arm]==first[0]);REQUIRE(depths[arm].depth==depths[0].depth);REQUIRE(depths[arm].stencil==depths[0].stencil);
+        }
+        probes.constants.ref_sphere[1][0]=1000000.f;
+        auto removed=measure("positive_control",0,0,0,true);const auto removed_pixels=f.read(*removed);REQUIRE(removed_pixels!=first[0]);
+        probes.constants.ref_sphere[2][0]=1000000.f;
+        auto fallback=measure("positive_control",0,1,0,true);REQUIRE(f.read(*fallback)!=removed_pixels);
+        removed.reset();fallback.reset();probes.constants.ref_sphere[1][0]=probes.constants.ref_sphere[2][0]=0.f;
+        for(unsigned warm=0;warm<5;++warm)for(unsigned arm=0;arm<3;++arm)(void)measure("warm",warm,arm,arm,false);
+        constexpr unsigned orders[3][6]={{0,1,2,2,1,0},{1,2,0,0,2,1},{2,0,1,1,0,2}};
+        for(unsigned block=0;block<60;++block)
+        {
+            for(unsigned slot=0;slot<6;++slot)(void)measure("measure",block,slot,orders[block%3][slot],false);
+            std::cout.flush();
+        }
+        std::cout<<"e6_terminal cell=8 blocks=60 measured=360 warm=15 first_use=3 positive_controls=2 thermal_end="
+            <<[[NSProcessInfo processInfo] thermalState]<<'\n';
     }
 }
