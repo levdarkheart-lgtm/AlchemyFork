@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-462 -->
+<!-- next-defect-id: PPD-463 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10265,6 +10265,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Read-only audit maps all28warning targets/rules to exact repeated installed paths in Release LINK_LIBRARIES:26font/compression rows, one91Abseil WebRTC row, one96archive viewer row. Duplicate-warning subset exactly matchesbuild01; overall29vs28 differs because old01 also reports unused SKY_MAX_METEORS. Receipt dc13d3cc08f8e17cb97c0ca098559ec5665cc42b62c654d91b0ff32556b1bfeb retains fullgraph/pathcounts and prior398 attribution. No suppression, changedobject selection or runtime/FPS inference.
 
+- 2026-11-18 Final13 retains28diagnostic rows:27duplicatearchive rows(26five-font/compressionpaths,1viewer96paths) plusunchangedSKY_MAX_METEORS unusedconstant at21949. Allrawrows and diagnostic-review.json retained. Same-source transitive duplicate causes and unused declaration mapped; no runtime/FPS attribution or warning suppression.
+
 ## PPD-446 — Exact CLI test bytes fail an inapplicable app-envelope staging gate
 
 - Status: investigating
@@ -10365,6 +10367,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 Tail197 selection preflight catches four invalid filters for comma-containing exact names in a quoted Catch input file. Inventory-only command exits0 but exact-name guard rejects the malformed selection before any test/GPU execution. Preserve checks/combined-native-tail-01 failure. Retry must escape names according to actual Catch parser and verify exact197 selected names; no false coverage or product defect claim.
 
 - 2026-11-18 Escaped-comma supported Catch selection passes exact197name guard at09 before execution, including automatic-animation466. Actual tail then advances10passed before independent455; selection repair is qualified, full correctness remains partial.
+
+- 2026-11-18 final13 native16 succeeds3272assertions; subsequent completion preflight stops before execution because combined binary [completion] selects8cases, while the earlier standalone fixture hadone. The intended real-completion case is present. Preserve d20a75fbe9cf2e08e32b76fea717ed0d7781f876a1c8edc4eda2b37770ea6569 and actual inventory. Correct only the selector to the exact intended name, qualifyexactone with supportedinventory, then execute freshunsetenv control; no product/testsource failure or loss of valid native16results inferred.
 
 ## PPD-451 — New source applicability fixture rejects its authored batch before sealing
 
@@ -10530,7 +10534,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-459 — Source-page bind rejects valid same-native-device wrapper replacement
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex shared native resource registry integration
 - Discovered: 2026-11-18
@@ -10549,6 +10553,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 two retained observer diagnostics traced exactly: world.cpp notifyCommandSettlement205–220 catches standard/nonstandard observer exceptions. shadow_extended_test458–482 deliberately throws runtime_error("intentional observer failure") on commit and integer7 on cancel, then checks counters and later observers still run. They are expected explicit negative-control outputs, with emitter/trigger recorded; not viewer-runtime evidence.
 
+- 2026-11-18 Source repair220b9c82→canonical8847e0b46a changes onlyDevice.mm/private backendtests, no headerABI/default changes. ExacttwoReleaseTUcompiles0/0 emptydiagnostics; handoff22fff79711994446b1d2b4fb3ff3c3784bf474aa1a50213166ccd71b63bc8919. Three meaningful nativecases coverconcurrentfactory owner, sharedpixels/uniqueaccounting, pendingbacking afterfacaderetirement/recreation. Previous native foreignregistry case now usesexplicitaccounting-vs-enabled; purePlanforeign negatives unchanged. Unrun manualevent testdraft replaced by existingGateRAII beforeexecution to release waits on assertion unwinds, originaldraft retained. Native15/actualfailedSourcePages retests stillpending; queuefailure sourceaudited/uninjected.
+
+- 2026-11-18 actualbuild12 native15 passes3217assertions and originalfailedSourcePages+remaining45 passes17032assertions/46cases,0fail/skips/validationerrors. Receipts5bbf881aa8da5dd879f331e71b7a0dbfdac6353cc08b641c20868c1062bce6a1 andd10be739522ef61fbfa42d4ea39c5b2010f200d0a14dbeb5f29fdc0d45541000. Coverageaudit4538739f09e2332a76fa00d00510374e5b5aba6ad513587e10bf11dfe5734428 reconciles550currentcase identities acrosshistorical/current runs, notone550pass. Root2102e034 coherentlyselects enabledfallback atDeviceautomatic+SDL+headless, adds11rowactualFactoryenv/explicitmode test compiledbyA1 (nativependingfinal13), retainsallprivate modes. Activationperformance trade is documented bycontrolledsame-current-arm Graphwallnearflat andboundedCPUoverhead, notuniversalzero-cost/FPSclaim.
+
+- 2026-11-18 Final13 actualnative16 passes3272assertions including11actualFactoryenv/precedencerows; freshunset exactcompletion33/1 coversall3sections. Aggregate78243fbc110301b9a5c47bc50db4bd0c8b0262dd7f93870cadaf8520f3427766 preservesd20afailedselectorqualification while linkingvalidnativecomponent andcompletion6c5. Coherentenableddefaults andsharednativeowner readyforowner runtime; no whole-frame performance closure.
+
 ## PPD-460 — E3 small-cell parser assumes two triangles for the authored one-triangle mesh
 
 - Status: investigating
@@ -10566,9 +10576,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before parser repair. No native source/policy changes required; retain original wrong-census failure.
 
+- 2026-11-18 Privateparser now appliesactual3indices forsmallgrid1. CPUretained640rowpositive18total/12qualified passes; wrong36/24negative rejected, AST0, raw unchanged. Qualification930d32fb04f3c2bf018ecd02de65511b97e2de7900bb884b0900c2d12024db95. Correctedreparsec48b16ab8034058168dbc5d83a701ec35cb18887b2b070e35f09a0d6072d998d preservesinitialfailedreceipt. Cell0 wall1.00414/GPU.999990, adverse78/75 of150, medians.27925→.28010ms/.033125unchanged. Remaining6E3timings then allpass; fullALL13 report94e0c9b368090b8b3b69187fdb644e4dad733a08ff177e81def320d76b26b41d retainsallraw/orders/adverse. NativeheavyGPUcosts adverse andchurnwall+20.296%; do notenableGPUnativevisibility indiscriminately.
+
 ## PPD-461 — Prepared and generic lighting variants show mixed controlled GPU costs
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrated lighting applicability/performance
 - Discovered: 2026-11-18
@@ -10582,3 +10594,32 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before selection or shader changes. All native output/retirement controls pass; raw adverse results are retained.
+
+- 2026-11-18 source audit ac1d0a37 identifies only097c380575 and399157d474 shader commits between verifiedold239144bbd96d source (848084B) andcurrentdbcb51e09ef0 (862245B). Four generic entries retain signatures but bodies became sharedImpl calls carrying two new null pointer arguments. Removing candidate prelude/appended probe args restores each Impl body byte-identical to old direct generic body. SH/holds/weight/radiance/sample_base_probes helpers unchanged; legacy walk adds two optional args plus mask rejection. Source proves concrete call-shape changes, not GPR/spill/calloutlining cause. Authorized bounded repair attempt: restore original direct generic bodies and exact legacy-walk overload, retain separate prepared Impl/mandatory-argument overload, without changing prepared math, consumer support or quality. New native correctness/old controls and controlled cost retests required before selection.
+
+- 2026-11-18 Fullcontrolledreportff6cdc56d7b64cdd4d97ed53d166b8af50285694c954b8f26d51baa36f9fbd74/finalqualification6d2f24d720a0aa08c8131bbd75841f2a1ca57737ab8c7b5cd3e5ab891c273962 frozen:162absolute groups,270order subgroups,216construction/108firstuse records. Approvedrestoration attempt sourceprepared: fourgeneric complete definitions byte-identicalold239144; fourpreparedImpls byte-identicalcurrentdbcb51; original5arglegacywalk exact plus7argprepared overloadmandatoryargs/unchangedmath. OfflineMetalcompilepending; no measuredfix or finalselector claim.
+
+- 2026-11-18 build12 fresh16native(3272586assertions)+old3(240705)+all18strictprechecks pass, actualPSO2/exactallplanes/inputpacks. Then36quietcosts pass16200measurements,0overlap/unknownCPU. Restoredgeneric B now matches in-batch oldA across9cells: GPU−.66..−.01%,wall−.64..+.50%; prior material/PBR/impostor/churn generic penalties disappear. This supports the direct-generic source repair; no unsupported spill/register attribution. Body2 prepared retains−12.79%GPU/−10.43%wall (adverse2/3 of150), while preparedPBR1+4.96/+4.73%,material0+3.65/+3.53,shiny3+7.40/+6.05,impostor4+10.18/+7.48,churn5+4.88/+5.34,cap6+6.90/+6.70 regress; fullmanual7/water8 nearflat. Next authorized boundedpolicy attempt: retain original BASE/simple coverage, select new body/cloth prepared consumer bydefault, use generic alternatives for demonstratednegative new families before optionalpreparation; preserve fullprepared support as explicitprivate diagnostic override forvariantvalidation. No scene-specific probe-count threshold, quality/math or Metalshader downgrade. Finalnativepolicy/default/overhead checks required.
+
+- 2026-11-18 Final13 defaultnativepolicy179933/1 +forcedvariant3272586/16 +old240705/3 ALLPASS3693224assertions/20cases,0fail/skips underAPI/GPUvalidation. Exact4817/b144; defaultsForceAll/resourceenvabsent, diagnosticForceAll1explicit. Aggregate2ccaa8bdeff73054dc3c0b0e783f4ebbb2f0248c73bfa414450e16732f79cce0. Sourcee426/buildd2c9/69277 separatelystagedexact8273nodes/signature0. Genericregressionrepair andmeasuredconsumerpolicy readyforowner; FPS/visual/stabilityacceptancepending.
+
+## PPD-462 — Private source qualification adapter fails Python syntax before execution
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex backend source qualification
+- Discovered: 2026-11-18
+- Original reference: Actual source/compiler qualification requires a valid orchestration adapter and retained commands/exits; a wrapper parse failure supplies no C++ or native evidence.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md);459 compile-adapter Python stdin ends with invalid conditional token else1. Python raises SyntaxError before any wrapper body executes, before source-compile-01 directory/compilers/native jobs exist. Exact unexecuted wrapper/failure retained by architecture agent; production/twofile test draft unchanged.
+- Next action: Preserve failed adapter, replace it with readable persisted Python, syntax-check before executing exact two Release TU commands, retain commands/logs/exits. Do not infer any source/compiler failure or native result.
+- Verification: Reproduced private Python parsing error; zero C++/GPU work executed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before adapter correction. Existing459 implementation/native gates remain incomplete.
+
+- 2026-11-18 Readablepersistedadapter passespy_compile then actualtwoReleaseTUcommands pass0/0 with emptydiagnostics; no native claimed. Priorpreparsefailure transcriptionreceipt78b4fe160ebb18bdad6e88503b7fc5498f533e95ec01f150bae6db8feba0aef3 retained. Sourcehandoff22fff79711994446b1d2b4fb3ff3c3784bf474aa1a50213166ccd71b63bc8919 containsactualcommands/sourcepins and explicitnative-unrun scope.
+
+- 2026-11-18 standalone native adapter py_compile passes, but preflight computes GROUP ancestor one level too high and fails old-receipt lookup with FileNotFoundError before linker/native/test execution. No source/object changes; preliminary58/60snapshot files match, onlyapprovedDevice/nativefixture differ. Failed script/traceback retained. Root supersedes this optional standalone route: actual matched combined build12 will execute the already registered15native cases directly, avoiding more bespoke adapter work. No C++/GPU failure or nativepass inferred.

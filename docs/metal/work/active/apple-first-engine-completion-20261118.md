@@ -14,12 +14,12 @@ Private evidence root: artifacts/metal/apple-first-engine-completion-20261118.
 
 |Boundary|State|Implementation owner and completion evidence required|
 |---|---|---|
-|E1 producer-owned persistent scene/work publication|doing|publicationworktree: stable producer recipes/current native generations before first required capture; exact view membership/order/pose/query preserved; original mapping+actual caller tests+churn costs|
-|E2 dependency-safe bounded small-work preparation|doing|reuse E1 owned inputs; actual small/large/changing work without dispatch/joins/resources regressing; retain required scalar recovery|
-|E3 useful native visibility/command preparation|doing|existing OFF prototypes are evidence, not completion; qualify direct/indirect alternatives through production owners and small/cold/warm/changing/query costs|
-|E4 explicit pass/queue/resource lifetime planning|doing|admissionworktree backend: real resource generations/dependencies/last readers through render/compute/blit/presentation/readback; safe storage/reuse/retirement, not observation alone|
-|E5 coordinated admission and unique allocation accounting|doing|admissionworktree earlier pressure coverage409 + E4 unique owned allocation/lifetime budget; current CPU/native/decode/upload/probe progress retained|
-|E6 shared lighting preparation and complete consumers|doing|lightingworktree material/PBR first then applicable water/rigged/custom; original accepted sequence/math/binding/clip/blend/stencil/SSR/probe semantics; current-caller parity and total cost|
+|E1 producer-owned persistent scene/work publication|complete|publicationworktree: stable producer recipes/current native generations before first required capture; exact view membership/order/pose/query preserved; original mapping+actual caller tests+churn costs|
+|E2 dependency-safe bounded small-work preparation|complete|reuse E1 owned inputs; actual small/large/changing work without dispatch/joins/resources regressing; retain required scalar recovery|
+|E3 useful native visibility/command preparation|complete|existing OFF prototypes are evidence, not completion; qualify direct/indirect alternatives through production owners and small/cold/warm/changing/query costs|
+|E4 explicit pass/queue/resource lifetime planning|complete|admissionworktree backend: real resource generations/dependencies/last readers through render/compute/blit/presentation/readback; safe storage/reuse/retirement, not observation alone|
+|E5 coordinated admission and unique allocation accounting|complete|admissionworktree earlier pressure coverage409 + E4 unique owned allocation/lifetime budget; current CPU/native/decode/upload/probe progress retained|
+|E6 shared lighting preparation and complete consumers|complete|lightingworktree material/PBR first then applicable water/rigged/custom; original accepted sequence/math/binding/clip/blend/stencil/SSR/probe semantics; current-caller parity and total cost|
 
 Exclusive worktrees ateda333:
 - admission: llcommon/alnativeframebudget.*, newview/alnativeframeplan.*, associated tests; after31ec4ca9, exclusive almetal device/resource/pipeline backend and new resource-plan tests. Root supplies caller hooks and CMake.
@@ -459,3 +459,123 @@ GPUcostalsohigherinsomeauthoredcells, causeunisolated. Graphsame-currentarm
 D/Ewallwithin~.84%,CPUgenerally+1–6.65%; donotattributeshaderchanges toGraph.
 Nativegeneric alternatives/consumer-workload applicability decisionand459repair
 remainbeforeactivation/staging. No viewerrecording/profile/push.
+
+
+## Combined12: repair qualification
+
+Root459220b→8847e0 +4612e9b→ae324fcf9d mirroredto9bb76aa1, identical
+indra69d64efa9f3bbac2ec6fd7fd662e243a3d2fda28. Beforeoverwrite viewer8273nodes
+andtest11app7nodes copiedwithfullbytes/modes/links comparison under build12/
+preserved-pre-build12. Doctor0, toolsbuildRelease4jobs41.847s exit0, app69276
+static346ARM64/deepstrictsignature0. Actualtestexe
+8684f4c0c1b5e2700838b99e3636ad9c271f50768a9c5edb668743b16bcc8f60,
+metallib b14478bea751dc27e099c2b575c23e7bb6066614eb1fd68997b496c741286cf6.
+Offline461library8503 differs debugsourcepath; use actualbundledb144fornative.
+No finalstaging/defaultactivation/ownerlaunch.
+
+Optional459standalone adapter route superseded after462preparse andbasepath
+preflight failures, nolink/native. Existing matched12Catchselector directly
+executes15cases3217assertions PASS0/0skips, selectedPSOsactual1, API/GPU1.
+Sharedsame-modequeue/registry/nativepixels/uniqueStats, concurrentfactory,
+oldGPUleases afterfacaderetirement andexplicitmodeisolation nowactuallytested.
+Receipt5bbf881aa8da5dd879f331e71b7a0dbfdac6353cc08b641c20868c1062bce6a1.
+FailedSourcePages +remaining45(46exactnames) running on same12pins; actual
+fullnormalinventory550 nowincludes3newnativecases/onecorrectrenamednegative.
+No fictionalone550pass fromsplitcoverage.
+
+All13producer/E3costdatasets qualified; report94e0c9b368090b8b3b69187fdb644e4dad733a08ff177e81def320d76b26b41d.
+E3wallcells0..6:1.00414,.99337,1.00330,.96239,.99151,1.20296,.59699;
+GPU:.999990,1.11727,.999389,1.02208,1.08109,1.10725,.073146. HeavyGPU
+adverse145/141/144/144 of150 for1/3/4/5; churnwalladverse149. PBR3wallimproves
+1.41931→1.36588ms butGPU1.05856→1.08281ms worsens; noblanketwin. CPUoutside
+robustwall.46727→.28213ms/GPU.12548→.00898ms,0adverse. E3threadCPUunrecorded,
+donotinferit. Producer5orderdependenceABBA.89992/BAAB.99769 retained.
+Qualifiedalternative foractivation: sharedproducerpublication+CPUcoarse/scalar
+routing, GPUnativevisibilityOFF, alloldprototypeflagsOFF. Sourceguardreview
+d883f787af92352fc63f1739a65d7d6c316ded72f97ce23aedac0e8483d0652f
+confirms no smallscalarPages/banks/extraheap; outsideboundedindexlist and
+admittedheavypublication storage remainexplicit. Helpersstilloptinuntilroot
+activatesdefaults; no alreadyONclaim.
+
+461shaderrestoration offlinecompile/link0/0 andindependentpeerb27f91fb clear:
+fourgenericentrycompletebodiesexact239144, fourpreparedImpls+fourcandidate
+entriesexactdbcb, legacyoriginal5argbodyexact andprepared7argbodyunchanged/no
+defaults/no6argcall. Fresh12native19+strict18+cost36 arerequired; old10costs
+arenotnewshaderperformanceproof. Nativeexecution/defaultpolicyremainseparate.
+
+
+Build12native459/sourcePagesALLPASS0:15cases3217assertions +46cases17032.
+Sourceaudit4538739f09e2332a76fa00d00510374e5b5aba6ad513587e10bf11dfe5734428
+reconciles550currentidentities: old501→500currentnames(old435nameobsolete),
+current15overlaps11 andcurrent46disjoint. ExplicitNOTone550/currentallpass.
+Native46originaltwo-wrappersameGPUcase passeswithoutfixtureweakening.
+
+E6build12qualitydca5d0991897ca117e0ecd52ae9afdbdf86a2eb1bc318de89364cc9e8c0f3aa5:
+current16/3272586 +old3/240705 +strict18/37761821 assertions pass; exactcurrent
+PSO2 andcrossmodeallplanes/inputpacks. New36costs16200measured qualified,
+reportcc6a33a3a8979f983773df590515017e4b8d5de03ac3662e641770fd9739a779,
+finalc83f700051d37b671a0802c32374306ac98e20a62b49cf7aba92b62144a2643b.
+RestoredgenericBnownearoldA GPU−.66..−.01%,wall−.64..+.50% across9cells,
+removingpreviousgenericpenalties. Body/clothpreparedretains−12.79%GPU/−10.43%
+wall(adverse2/3of150); PBR/material/shiny/impostor/churn/cap preparedvariants
+remainadverse. Rootauthorizes measuredconsumerpolicy: preexistingBASE/simple/
+bodyprepared preserved, newnegativefamiliesgenericBEFOREpreparation; allvariants
+retainedbehindoneprivateforce diagnostic. No scene/probecountmagic orlighting
+contribution loss. A2World/testonlypolicycompile/nativeverificationpending.
+
+Root2102e034coherentlyenablesResourcePlan fallback atautomaticDevicefactory,
+SDL andheadless (explicitmodes/envstillvalid), plusdefaultONCPUsourceRouting;
+GPUnativevisibility/oldprototypeflagsstayOFF. Existingnativefixturegetsactual
+11rowenv/explicitmodeprecedencetable, A1b65compiled0, appendedafterconcurrency
+case. Finalmatched13mustexecuteit +unsetcompletioncontrol, notrelabeledold
+disableddefault33assertions. GraphtrackinghasmeasuredCPUtax; actualWorld
+samearmwallnearflat andcorrectness/retirementbenefitjustifiescandidateactivation
+forownerwhole-engineassessment, notperformanceclosure.
+
+E1–E3boundedacceptanceaudit47d4f716aa4770083271807025e1fe4efeb16b92245169e6cb37eb1589f5e5af
+findsnonewrequirededge in selectedcontract. Baseproducer coversordinarysmall/
+simple/Legacy/PBR/rigged beyondheavyadoption, sharedmain/probeworldFactory.
+Coldshadowfirst(type,coverage) miss rereadsstableauthoredLLDrawInfofacts then
+publishes sharedState/Payload/record; retainedsameepochviewsavoiddeepwalk, live
+matrices/UV/palette overlaid. No universalproactiveallshadowrecipe orseparate
+optionalCPUticketbeforeREQUIREDfirstbuilder claimed. Pressure/special/custom
+fallbacks retained. Scalarimmutablepacket/8192+ownedshadowkernel areselected
+E2alternatives, notforcedgenericworkers. Release/ownerruntimeacceptancepartial.
+
+
+## Verified implementation checkpoint — pause for owner
+
+Selected E1–E6 required implementation boundaries are operational/integrated
+and contained-qualified; this table marks IMPLEMENTATION only. Ownerwhole-engine
+FPS/visual/loading/stability and fullreleaseacceptance remainPARTIAL. Optional
+adverseGPUvisibility andnewlightingvariants retain implementedqualifiedCPU/
+genericalternatives; allsupport/evidence remainslocal. First-use shadow/special/
+pressurefallback limits remainexplicit, no universalprepublicationclaim.
+
+Finalsourcee426d7956f48268833513cae78894e92ce30a61e mirrorsbuilder
+d2c9bd1533cf7d7ca5044d476bf02c8e2540eb35, identicalindra
+7c5eaa088e1e2cb325fa6934e0d1dab8b9d856ad. Fulltoolsbuild13Release4jobs
+52.865s exit0; app26.4.0.69277. Actualexe b2bd311fdd4bca654d8e1c2f059d51d0ea8fe580f6a3780d156136e9ebb59aaf,
+metallibb14478bea751dc27e099c2b575c23e7bb6066614eb1fd68997b496c741286cf6.
+Doctor12, finalstrictsource13/build/staticpass0; stage8273nodes exactlymatch
+bytes/modes/links,346ARM64/deepstrictsignature0/noLSEnvironment.
+
+Actualfinalnative resource16/3272(11factorymode rows) +freshunsetexactcompletion
+1/33 pass; aggregate78243fbc110301b9a5c47bc50db4bd0c8b0262dd7f93870cadaf8520f3427766
+retains450failedtag8preflight. Lightingdefault1/179933 +forcedvariants16/3272586
++old3/240705 passes3693224assertions/20cases,0fail/skips; aggregate
+2ccaa8bdeff73054dc3c0b0e783f4ebbb2f0248c73bfa414450e16732f79cce0.
+Actualdefaultsabsenceanddiagnosticflagseparationtested; no final36costmatrix
+repetition afterhostdispatchpolicy, prior12variantmatrixstillqualifiedchoice.
+
+Currentbuild28warnings mapped:27duplicatearchive rows(26font/compression,
+1viewer96paths) +oldunusedSKY_MAX_METEORS; rawdiagnostic-lines/reviewretained.
+No finalnativevalidationwarning/error observed. All earlierprivateCLI/parser/
+fixture/sourcefailures remain, ownerverificationpending. PPD459/461 ready_for_owner;
+435 residualbookkeepingCPUcost isopenmeasurement/opportunity, nothidden.
+
+Exactapp/source/provenance/results/limits andnextownerprotocol:
+/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/apple-first-engine-completion-20261118/final-combined-26.4.0.69277/README.md
+
+No viewerlaunch/login/profile/push occurred. PausehereforownerHome/clubfeedback,
+thenqualifiedreplayableGPU+CPU/native/resource/full-log/captureOFFassessment.
