@@ -18,6 +18,7 @@
 #include <limits>
 #include <new>
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 #include "../almetal/almetalworldcohort.h"
@@ -1040,6 +1041,215 @@ ShadowLease shadow(const LLDrawInfo& info, U32 type,
     catch (const std::bad_alloc&)
     {
         return {{}, nullptr, "Native shadow publication allocation failed"};
+    }
+}
+
+// Producer-only preparation. Requests contain semantic source recipes, never
+// the current view's matrices, pose, UV override, order, query or visibility.
+// The caller owns/pins every LLDrawInfo for this synchronous call and supplies
+// a pure owner-epoch predicate. Discovery's weak/raw rows must be checked and
+// converted to those owner-local pins BEFORE any admission/factory callback.
+struct ProducerSource
+{
+    const LLDrawInfo* info = nullptr;
+    std::weak_ptr<ALNativePublication::State> producer;
+    U64 identity = 0, revision = 0, layout_revision = 0;
+};
+inline ProducerSource producerSource(const LLDrawInfo& info)
+{
+    const auto& state = info.metalSourcePublication();
+    return {&info, state, state->identity(), state->revision(), info.metalSourceLayoutRevision()};
+}
+struct ProducerWorldRequest { ProducerSource source; WorldFlavor flavor; };
+struct ProducerShadowRequest
+{
+    ProducerSource source;
+    U32 type = 0;
+    ALMetalWorldSpotShadowCoverage coverage = ALMetalWorldSpotShadowCoverage::opaque;
+};
+enum class ProducerPreparationStatus : U8 { ready, prepared, deferred, stale, unsupported, incomplete };
+struct ProducerPreparationResult
+{
+    ProducerPreparationStatus status = ProducerPreparationStatus::unsupported;
+    std::size_t warm = 0, prepared = 0;
+    const char* failure = nullptr;
+    explicit operator bool() const noexcept
+    { return status == ProducerPreparationStatus::ready || status == ProducerPreparationStatus::prepared; }
+};
+inline WorldFlavor producerFlavor(const LLDrawInfo& info, WorldFlavor flavor) noexcept
+{
+    // Same semantic normalization as world(), without discovering any data.
+    if (flavor.family == WorldFamily::simple)
+        flavor.indexed_textures = flavor.indexed_textures && info.mTextureList.size() > 1;
+    flavor.animated_source = (flavor.animated_source || flavor.animated_gpu_source) && flavor.hasAnimatedConsumer();
+    flavor.animated_gpu_source = flavor.animated_gpu_source && flavor.animated_source;
+    flavor.stabilize_animated_direct = flavor.stabilize_animated_direct && flavor.animated_source && !flavor.animated_gpu_source;
+    flavor.native_resources = (flavor.native_resources || flavor.animated_gpu_source) && flavor.hasResourceConsumer();
+    return flavor;
+}
+inline bool producerSourceCurrent(const ProducerSource& source)
+{
+    auto producer = source.producer.lock();
+    if (!source.info || !producer || producer->identity() != source.identity || producer->revision() != source.revision)
+        return false;
+    // Only call after the caller's group/owner epoch proof; a surviving State
+    // alone cannot prove that a raw scene address is still alive.
+    const auto& actual = source.info->metalSourcePublication();
+    return actual.get() == producer.get() && !actual.owner_before(producer) && !producer.owner_before(actual) &&
+        source.info->metalSourceLayoutRevision() == source.layout_revision;
+}
+inline bool producerWorldReady(const ProducerWorldRequest& request)
+{
+    const auto flavor = producerFlavor(*request.source.info, request.flavor);
+    auto value = current(*request.source.info);
+    if (!value) return false;
+    const auto& state = request.source.info->metalSourcePublication();
+    if (state->dirty() || state->publication().get() != value.get()) return false;
+    const auto* found = findWorldVariant(*value, flavor.key());
+    return found &&
+        (!flavor.native_resources || (found->prototype.native_resource_source &&
+            found->prototype.native_resource_source->matches(found->prototype))) &&
+        (!flavor.cohort_bounds || value->bounds_attempted) &&
+        (!flavor.cohort_source || (found->cohort_source &&
+            (!flavor.cohort_bounds || found->cohort_source->hasBoundsPublication()))) &&
+        (!flavor.animated_source || animatedSourceReady(*value,*found,flavor.animated_gpu_source)) &&
+        (flavor.native_materials || !(found->prototype.material_slot_count || found->prototype.pbr_slot_count) || found->cpu_slots_frozen);
+}
+inline ALMetalWorldSpotShadowCoverage producerCoverage(const ProducerShadowRequest& request) noexcept
+{
+    if (request.coverage == ALMetalWorldSpotShadowCoverage::legacy_blend &&
+        (request.source.info->mGLTFMaterial.get() || !request.source.info->mGLTFMaterialList.empty()))
+        return ALMetalWorldSpotShadowCoverage::pbr_blend;
+    return request.coverage;
+}
+inline bool producerShadowReady(const ProducerShadowRequest& request)
+{
+    auto value = current(*request.source.info);
+    const auto& state = request.source.info->metalSourcePublication();
+    return value && !state->dirty() && state->publication().get() == value.get() &&
+        findShadow(*value, request.type, producerCoverage(request));
+}
+
+// One bounded synchronous chunk. Root's owner drain selects explicit recipes
+// from actual pass semantics, preserves pending age and revisits a larger
+// discovery in later chunks. A warm chunk never consumes admission. New work
+// uses the existing resource COW/dependency/residency factories; credits end
+// here, never inside idle publications or on later required native commands.
+template<typename OwnerCurrent, typename BuildShadow>
+ProducerPreparationResult prepareProducerSources(
+    std::span<const ProducerWorldRequest> worlds, std::span<const ProducerShadowRequest> shadows,
+    ALNativeSourceWorkingSet& working_set, U64& serial, U32 frame,
+    ALNativeCohortCompilationAdmission& admission, ALNativeFrameBudget& budget, U64 logical_work_bytes,
+    OwnerCurrent&& owner_current, BuildShadow&& build_shadow)
+{
+    constexpr std::size_t maximum_chunk_requests = 256;
+    ProducerPreparationResult result;
+    if (worlds.size() > maximum_chunk_requests || shadows.size() > maximum_chunk_requests - worlds.size() ||
+        logical_work_bytes == ALNativeFrameBudget::unknown_bytes) return result;
+    const auto valid = [&](const ProducerSource& source)
+    { return owner_current() && producerSourceCurrent(source); };
+    const auto retained_world = [&](const ProducerWorldRequest& request)
+    {
+        if (!producerWorldReady(request)) return false;
+        const auto& state = request.source.info->metalSourcePublication();
+        auto value = std::static_pointer_cast<const Payload>(state->publication());
+        return working_set.touch(state->identity(), value->serial, frame);
+    };
+    const auto retained_shadow = [&](const ProducerShadowRequest& request)
+    {
+        if (!producerShadowReady(request)) return false;
+        const auto& state = request.source.info->metalSourcePublication();
+        auto value = std::static_pointer_cast<const Payload>(state->publication());
+        return working_set.touch(state->identity(), value->serial, frame);
+    };
+    const auto stale = [&]()
+    {
+        result.status = ProducerPreparationStatus::stale;
+        result.failure = "Native producer discovery or source changed";
+        return result;
+    };
+    // Validate all sources before inspecting their flavor-dependent fields.
+    // Recheck after each factory/working-set callback before touching another.
+    if (!owner_current()) return stale();
+    for (const auto& request : worlds) if (!valid(request.source)) return stale();
+    for (const auto& request : shadows) if (!valid(request.source)) return stale();
+    try
+    {
+        for (const auto& request : worlds)
+        {
+            if (!valid(request.source)) return stale();
+            if (retained_world(request)) ++result.warm;
+        }
+        for (const auto& request : shadows)
+        {
+            if (!valid(request.source)) return stale();
+            if (retained_shadow(request)) ++result.warm;
+        }
+        const auto requests = worlds.size() + shadows.size();
+        if (result.warm == requests)
+        {
+            if (!owner_current()) return stale();
+            result.status = ProducerPreparationStatus::ready;
+            return result;
+        }
+        admission.notePending(budget.snapshot().frame);
+        auto decision = admission.tryAcquire(budget, logical_work_bytes);
+        if (!decision) { result.status = ProducerPreparationStatus::deferred; return result; }
+        if (!owner_current()) return stale();
+        for (const auto& request : worlds)
+        {
+            if (!valid(request.source)) return stale();
+            if (retained_world(request)) continue;
+            auto prepared = world(*request.source.info, request.flavor, working_set, serial, frame, &budget);
+            if (!valid(request.source)) return stale();
+            if (!prepared || !retained_world(request))
+            {
+                result.status = ProducerPreparationStatus::incomplete;
+                result.failure = prepared.failure ? prepared.failure : "Native producer optional world capability unavailable";
+                return result;
+            }
+            ++result.prepared;
+        }
+        for (const auto& request : shadows)
+        {
+            if (!valid(request.source)) return stale();
+            if (retained_shadow(request)) continue;
+            auto prepared = shadow(*request.source.info, request.type, request.coverage, working_set, serial, frame,
+                [&](ALMetalWorldSpotShadowBatch& prototype)
+                {
+                    if (!valid(request.source)) return false;
+                    const bool built = build_shadow(request, prototype);
+                    return built && valid(request.source);
+                });
+            if (!valid(request.source)) return stale();
+            if (!prepared || !retained_shadow(request))
+            {
+                result.status = ProducerPreparationStatus::incomplete;
+                result.failure = prepared.failure ? prepared.failure : "Native producer shadow unavailable";
+                return result;
+            }
+            ++result.prepared;
+        }
+        // A residency callback may have withdrawn an earlier chunk member.
+        // It remains a valid required reader, but is not a retained warm hit.
+        for (const auto& request : worlds)
+            if (!valid(request.source)) return stale();
+            else if (!retained_world(request))
+            { result.status = ProducerPreparationStatus::incomplete; return result; }
+        for (const auto& request : shadows)
+            if (!valid(request.source)) return stale();
+            else if (!retained_shadow(request))
+            { result.status = ProducerPreparationStatus::incomplete; return result; }
+        if (!owner_current()) return stale();
+        admission.publicationCompleted();
+        result.status = ProducerPreparationStatus::prepared;
+        return result;
+    }
+    catch (const std::bad_alloc&)
+    {
+        result.status = ProducerPreparationStatus::incomplete;
+        result.failure = "Native producer preparation allocation failed";
+        return result;
     }
 }
 }

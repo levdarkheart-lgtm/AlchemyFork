@@ -161,6 +161,8 @@ struct LLDrawInfo
     mutable std::shared_ptr<ALViewerMetalShadowSourceCache> mMetalShadowSource;
     std::shared_ptr<ALNativePublication::State> state=std::make_shared<ALNativePublication::State>();
     mutable U64 publication_reads=0,dependency_walks=0;
+    U64 layout_revision=1;
+    U64 metalSourceLayoutRevision() const noexcept{return layout_revision;}
     ~LLDrawInfo(){state->invalidate();}
     const std::shared_ptr<ALNativePublication::State>& metalSourcePublication() const{++publication_reads;return state;}
     void observeMetalSourceDependencies() const
@@ -4397,3 +4399,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 
 #include "alpipeline_local_light_values_native.inl"
 #include "alpipeline_main_light_encoding_native.inl"
+
+#include "alpipeline_producer_preparation_native.inl"

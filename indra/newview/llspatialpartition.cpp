@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 #include <limits>
 #include <new>
+#include <atomic>
 
 #include "llspatialpartition.h"
 
@@ -69,6 +70,138 @@ bool LLSpatialGroup::sNoDelete = false;
 
 static F32 sLastMaxTexPriority = 1.f;
 static F32 sCurMaxTexPriority = 1.f;
+
+namespace
+{
+// This is a bounded CPU discovery cache. It owns no scene/native resources.
+// Atomics permit the last immutable discovery reader to release accounting
+// without mutating the scene owner, although its rows remain owner-only.
+std::atomic<std::size_t> sMetalSourceWorkRows{0}, sMetalSourceWorkBytes{0};
+std::atomic<U64> sMetalSourceWorkPublications{0}, sMetalSourceWorkDeclines{0};
+bool reserveSourceWork(std::atomic<std::size_t>& counter, std::size_t count, std::size_t limit) noexcept
+{
+    auto used = counter.load(std::memory_order_relaxed);
+    do
+    {
+        if (count > limit - std::min(used, limit)) return false;
+    } while (!counter.compare_exchange_weak(used, used + count, std::memory_order_relaxed));
+    return true;
+}
+class MetalSourceWorkDependencies final : public ALNativePublication::Observer
+{
+public:
+    explicit MetalSourceWorkDependencies(const std::shared_ptr<ALNativePublication::State>& state) : mState(state) {}
+    void nativePublicationChanged(ALNativePublication::Phase phase) noexcept override
+    {
+        // Cache-only withdrawal does not change any source facts. Treating it
+        // as a producer edit would cause discovery/preparation to chase its
+        // own working-set evictions indefinitely.
+        if (phase != ALNativePublication::Phase::withdrawn)
+            if (auto state = mState.lock()) state->invalidate();
+    }
+private:
+    std::weak_ptr<ALNativePublication::State> mState;
+};
+}
+
+LLSpatialGroup::MetalSourceWork::~MetalSourceWork()
+{
+    if (mAccountedBytes)
+    {
+        mRows.reset();
+        mDependencies.reset();
+        sMetalSourceWorkRows.fetch_sub(mCount, std::memory_order_relaxed);
+        sMetalSourceWorkBytes.fetch_sub(mAccountedBytes, std::memory_order_relaxed);
+    }
+}
+
+LLSpatialGroup::MetalSourceWorkStats LLSpatialGroup::metalSourceWorkStats() noexcept
+{
+    return {sMetalSourceWorkRows.load(std::memory_order_relaxed), sMetalSourceWorkBytes.load(std::memory_order_relaxed),
+        sMetalSourceWorkPublications.load(std::memory_order_relaxed), sMetalSourceWorkDeclines.load(std::memory_order_relaxed)};
+}
+
+const std::shared_ptr<ALNativePublication::State>& LLSpatialGroup::metalSourceWorkState() const
+{
+    if (!mMetalSourceWorkState) mMetalSourceWorkState = std::make_shared<ALNativePublication::State>();
+    return mMetalSourceWorkState;
+}
+
+bool LLSpatialGroup::sourceWorkCurrent(const MetalSourceWork& work) const noexcept
+{
+    return !hasState(DEAD) && !hasState(GEOM_DIRTY) && !hasState(MESH_DIRTY) && mMetalSourceWork.get() == &work &&
+        mMetalSourceWorkState && work.identity() == mMetalSourceWorkState->identity() &&
+        work.membershipRevision() == mMetalSourceWorkMembershipRevision;
+}
+
+bool LLSpatialGroup::publishMetalSourceWork(bool refresh) noexcept
+try
+{
+    if (!refresh && mMetalSourceWork && sourceWorkCurrent(*mMetalSourceWork)) return true;
+    if (isDead() || hasState(GEOM_DIRTY) || hasState(MESH_DIRTY)) return false;
+    std::size_t count = 0;
+    for (const auto& [pass, draws] : mDrawMap)
+    {
+        if (draws.size() > metal_source_work_group_rows - count)
+        { ++sMetalSourceWorkDeclines; return false; }
+        count += draws.size();
+    }
+    // Fixed arrays have no vector-capacity ambiguity. The extra allowance
+    // charges the two shared control blocks and the small dependency relay;
+    // it is CPU metadata accounting, not a physical allocator/RAM metric.
+    const auto bytes = sizeof(MetalSourceWork) + count * sizeof(MetalSourceWorkRow) + 256;
+    auto work = std::make_shared<MetalSourceWork>();
+    if (!reserveSourceWork(sMetalSourceWorkRows, count, metal_source_work_resident_rows))
+    { ++sMetalSourceWorkDeclines; return false; }
+    if (!reserveSourceWork(sMetalSourceWorkBytes, bytes, metal_source_work_resident_bytes))
+    {
+        sMetalSourceWorkRows.fetch_sub(count, std::memory_order_relaxed);
+        ++sMetalSourceWorkDeclines; return false;
+    }
+    work->mCount = count;
+    work->mAccountedBytes = bytes;
+    work->mRows = std::make_unique<MetalSourceWorkRow[]>(count);
+    const auto state = metalSourceWorkState();
+    const auto membership_revision = mMetalSourceWorkMembershipRevision;
+    auto dependencies = std::make_shared<MetalSourceWorkDependencies>(state);
+    std::size_t at = 0;
+    // Finish copying the producer's membership before calling any dependency
+    // subscription. Such a callback may replace/clear the live map.
+    for (const auto& [pass, draws] : mDrawMap)
+        for (const auto& draw : draws)
+        {
+            auto& row = work->mRows[at++];
+            row.pass = pass; row.source = draw.get();
+        }
+    const auto current = [&]
+    {
+        return !isDead() && !hasState(GEOM_DIRTY) && !hasState(MESH_DIRTY) &&
+            membership_revision == mMetalSourceWorkMembershipRevision && mMetalSourceWorkState == state;
+    };
+    for (auto& row : std::span(work->mRows.get(), count))
+    {
+            // The group is held by the owner caller. Pin only this active row
+            // across the callback; stale next rows are never dereferenced.
+            if (!current()) { ++sMetalSourceWorkDeclines; return false; }
+            LLPointer<LLDrawInfo> draw(row.source);
+            if (!draw) continue;
+            // Establish producer notifications before any view has needed a
+            // source factory. This does not prepare native storage or poses.
+            draw->observeMetalSourceDependencies();
+            const auto producer = draw->metalSourcePublication();
+            row.producer = producer; row.identity = producer->identity();
+            row.layout_revision = draw->metalSourceLayoutRevision();
+            producer->observe(dependencies);
+    }
+    if (!current())
+    { ++sMetalSourceWorkDeclines; return false; }
+    work->mIdentity = state->identity(); work->mMembershipRevision = membership_revision;
+    work->mDependencies = std::move(dependencies);
+    mMetalSourceWork = std::move(work);
+    ++sMetalSourceWorkPublications;
+    return true;
+}
+catch (const std::bad_alloc&) { ++sMetalSourceWorkDeclines; return false; }
 
 // enable expensive sanity checks around redundant drawable and group insertion to LLCullResult
 #define LL_DEBUG_CULL_RESULT 0
@@ -164,6 +297,14 @@ const std::shared_ptr<ALNativePublication::State>& LLSpatialGroup::metalGroupPub
 
 void LLSpatialGroup::invalidateMetalGroupPublication() noexcept
 {
+    ++mMetalSourceWorkMembershipRevision;
+    if (mMetalSourceWorkState) mMetalSourceWorkState->invalidate();
+    // Old discovery readers may outlive this synchronous mutation. Their
+    // dependency relay targets the old stamp, never the new membership.
+    mMetalSourceWorkState.reset();
+    mMetalSourceWork.reset();
+    mMetalSourcePreparationCursor = 0;
+    mMetalSourcePreparationIdentity = mMetalSourcePreparationRevision = 0;
     if (mMetalGroupPublication) mMetalGroupPublication->invalidate();
     mMetalGroupLayout.reset();
     for (auto& [type, cohort] : mMetalMaterialCohorts)
@@ -373,6 +514,9 @@ void LLSpatialGroup::rebuildGeom()
         {
             gPipeline.markMeshDirty(this);
         }
+        // The complete producer map is now known. Mesh-dirty/failed producers
+        // decline here and retry after their real completion, never as a view.
+        publishMetalSourceWork();
     }
 }
 
@@ -381,6 +525,7 @@ void LLSpatialGroup::rebuildMesh()
     if (!isDead())
     {
         getSpatialPartition()->rebuildMesh(this);
+        publishMetalSourceWork();
     }
 }
 

@@ -326,6 +326,45 @@ public:
     // publication independently of this group's mutable draw map/lifetime.
     const std::shared_ptr<ALNativePublication::State>& metalGroupPublication() const;
     void invalidateMetalGroupPublication() noexcept;
+    // Producer-owned discovery, not a view packet. These raw scene addresses
+    // may only be read on the scene owner while sourceWorkCurrent() succeeds
+    // and the caller keeps this group alive. No worker/native command owns it.
+    struct MetalSourceWorkRow
+    {
+        U32 pass = 0;
+        LLDrawInfo* source = nullptr;
+        std::weak_ptr<ALNativePublication::State> producer;
+        U64 identity = 0, layout_revision = 0;
+    };
+    class MetalSourceWork final
+    {
+    public:
+        ~MetalSourceWork();
+        std::span<const MetalSourceWorkRow> rows() const noexcept { return {mRows.get(), mCount}; }
+        U64 identity() const noexcept { return mIdentity; }
+        U64 membershipRevision() const noexcept { return mMembershipRevision; }
+    private:
+        friend class LLSpatialGroup;
+        std::unique_ptr<MetalSourceWorkRow[]> mRows;
+        std::size_t mCount = 0, mAccountedBytes = 0;
+        U64 mIdentity = 0, mMembershipRevision = 0;
+        std::shared_ptr<ALNativePublication::Observer> mDependencies;
+    };
+    struct MetalSourceWorkStats
+    {
+        std::size_t resident_rows = 0, resident_bytes = 0;
+        U64 publications = 0, declines = 0;
+    };
+    static constexpr std::size_t metal_source_work_group_rows = 8192;
+    static constexpr std::size_t metal_source_work_resident_rows = 131072;
+    static constexpr std::size_t metal_source_work_resident_bytes = 16ULL * 1024 * 1024;
+    // Called only after the complete geometry/mesh tuple is visible. Failure
+    // leaves the original required per-view publication path available.
+    bool publishMetalSourceWork(bool refresh = false) noexcept;
+    const std::shared_ptr<const MetalSourceWork>& metalSourceWork() const noexcept { return mMetalSourceWork; }
+    bool sourceWorkCurrent(const MetalSourceWork&) const noexcept;
+    const std::shared_ptr<ALNativePublication::State>& metalSourceWorkState() const;
+    static MetalSourceWorkStats metalSourceWorkStats() noexcept;
     void validate();
     void validateDrawMap();
 
@@ -407,6 +446,16 @@ public:
     // Dirty geometry/membership withdraws every cohort; child resource signals
     // invalidate only affected publishers while CPU descriptions stay weak.
     std::map<U32, MetalMaterialCohort> mMetalMaterialCohorts;
+    // This separate stamp is invalidated by genuine child mutations, never by
+    // native cache eviction. The ordered discovery survives resource churn.
+    mutable std::shared_ptr<ALNativePublication::State> mMetalSourceWorkState;
+    std::shared_ptr<const MetalSourceWork> mMetalSourceWork;
+    U64 mMetalSourceWorkMembershipRevision = 1;
+    ALNativeCohortCompilationAdmission mMetalSourcePreparation;
+    // Owner drain progress only. Reset on an exact preparation stamp change;
+    // do not clear the admission owner's pending age/service history.
+    std::size_t mMetalSourcePreparationCursor = 0;
+    U64 mMetalSourcePreparationIdentity = 0, mMetalSourcePreparationRevision = 0;
 
     bridge_list_t mBridgeList;
     buffer_map_t mBufferMap; //used by volume buffers to attempt to reuse vertex buffers
