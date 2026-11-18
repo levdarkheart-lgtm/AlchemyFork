@@ -189,15 +189,18 @@ struct Fixture
         INFO((command.error ? command.error.localizedDescription.UTF8String : ""));
         REQUIRE(command.status == MTLCommandBufferStatusCompleted);
     }
-    void compute(id<MTLLibrary> library, const char* name, Encode encode, unsigned width=1, unsigned height=1)
+    void compute(id<MTLLibrary> library, const char* name, Encode encode,
+        unsigned width=1, unsigned height=1, unsigned threadgroup_width=1)
     {
         auto function = [library newFunctionWithName:[NSString stringWithUTF8String:name]];
         REQUIRE(function); NSError* failure = nil;
         auto pipeline = [device newComputePipelineStateWithFunction:function error:&failure];
         INFO((failure ? failure.localizedDescription.UTF8String : "")); REQUIRE(pipeline);
+        REQUIRE(threadgroup_width <= pipeline.maxTotalThreadsPerThreadgroup);
         auto command = [queue commandBuffer]; auto encoder = [command computeCommandEncoder];
         [encoder setComputePipelineState:pipeline]; encode(encoder);
-        [encoder dispatchThreads:MTLSizeMake(width,height,1) threadsPerThreadgroup:MTLSizeMake(1,1,1)];
+        [encoder dispatchThreads:MTLSizeMake(width,height,1)
+            threadsPerThreadgroup:MTLSizeMake(threadgroup_width,1,1)];
         [encoder endEncoding]; wait(command);
     }
     Pixel read(id<MTLTexture> source)
@@ -415,6 +418,9 @@ TEST_CASE("Native HDR boundaries contain nonfinite inputs and preserve ordinary 
             else same(now,old);
         }
         // Production exposure history: each nonfinite EV resets to this target.
+        // Both libraries contain the current cooperative histogram kernel:
+        // like renderExposureMeter, dispatch all 64 bin owners in one group.
+        constexpr unsigned exposure_histogram_bins = 64;
         const std::array<float,12> exposure_constants{0,-16,16,.1f, 0,1,1,1, 1,0,0,0};
         auto meter=f.pixel({4,0,0,1},MTLPixelFormatRGBA16Float);
         for (float ev : {nan,inf,-inf,0.f})
@@ -424,7 +430,8 @@ TEST_CASE("Native HDR boundaries contain nonfinite inputs and preserve ordinary 
                 auto target=f.texture(MTLPixelFormatRGBA32Float);
                 f.compute(library,"almetal_world_exposure_history",[&](id<MTLComputeCommandEncoder> e) {
                     [e setTexture:meter atIndex:0]; [e setTexture:history atIndex:1]; [e setTexture:target atIndex:2];
-                    [e setBytes:exposure_constants.data() length:sizeof(exposure_constants) atIndex:0]; });
+                    [e setBytes:exposure_constants.data() length:sizeof(exposure_constants) atIndex:0];
+                }, exposure_histogram_bins, 1, exposure_histogram_bins);
                 return f.read(target); };
             const auto now=resolve(f.builtin),old=resolve(f.old); CAPTURE(ev,now,old);
             CHECK(finite(now));
