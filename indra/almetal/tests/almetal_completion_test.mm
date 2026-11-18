@@ -30,9 +30,13 @@ TEST_CASE("almetal: completion tokens survive wrappers and distinguish abandonme
         CHECK(token == command->completionToken());
         CHECK_FALSE(token->isComplete());
         CHECK(token->status() == ALMetalCommandStatus::not_enqueued);
+        CHECK_FALSE(token->waitUntilCompleted(&error));
+        CHECK_FALSE(command->isCommitted());
+        error.clear();
         command.reset();
         CHECK(token->isComplete());
         CHECK(token->status() == ALMetalCommandStatus::unknown);
+        CHECK_FALSE(token->waitUntilCompleted(&error));
     }
 
     SECTION("submitted GPU work remains pending after wrapper destruction")
@@ -72,9 +76,25 @@ TEST_CASE("almetal: completion tokens survive wrappers and distinguish abandonme
         CHECK(token->status() != ALMetalCommandStatus::error);
         native_command = nil;
         gate.signaledValue = 1;
-        REQUIRE(device->waitUntilIdle(&error));
+        const auto committed = ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(token->waitUntilCompleted(&error));
+        CHECK(ALMetalDevice::committedCommandBufferCount() == committed);
         CHECK(token->isComplete());
         CHECK(token->status() == ALMetalCommandStatus::completed);
         CHECK(static_cast<const unsigned char*>(buffer->mappedBytes())[0] == 0x73);
+    }
+
+    SECTION("a token first obtained after submission waits on that same command")
+    {
+        auto command = device->makeCommandBuffer("Late completion observer", &error);
+        REQUIRE(command);
+        REQUIRE(command->commit(&error));
+        auto token = command->completionToken();
+        REQUIRE(token);
+        command.reset();
+        const auto committed = ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(token->waitUntilCompleted(&error));
+        CHECK(token->status() == ALMetalCommandStatus::completed);
+        CHECK(ALMetalDevice::committedCommandBufferCount() == committed);
     }
 }

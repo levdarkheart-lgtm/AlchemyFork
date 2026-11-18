@@ -141,6 +141,7 @@ struct ALMetalCommandCompletion::Impl
 {
     id<MTLCommandBuffer> command_buffer = nil;
     std::atomic<bool> abandoned{false};
+    std::atomic<bool> committed{false};
 };
 
 ALMetalCommandCompletion::ALMetalCommandCompletion(std::unique_ptr<Impl> impl)
@@ -173,6 +174,23 @@ ALMetalCommandStatus ALMetalCommandCompletion::status() const noexcept
         return ALMetalCommandStatus::unknown;
     }
     return commandStatus(mImpl->command_buffer.status);
+}
+
+bool ALMetalCommandCompletion::waitUntilCompleted(std::string* error) const
+{
+    if (!mImpl || !mImpl->command_buffer ||
+        mImpl->abandoned.load(std::memory_order_acquire))
+    { setError(error, "Metal completion has no submitted live command"); return false; }
+    if (!mImpl->committed.load(std::memory_order_acquire))
+    { setError(error, "Metal completion command must be committed before waiting"); return false; }
+    [mImpl->command_buffer waitUntilCompleted];
+    if (mImpl->command_buffer.status != MTLCommandBufferStatusCompleted)
+    {
+        const auto description=describeNSError(mImpl->command_buffer.error);
+        setError(error, description.empty()?"Metal completion command did not complete":description);
+        return false;
+    }
+    return true;
 }
 
 ALMetalCommandTimingStatus ALMetalCommandCompletion::gpuTime(
@@ -311,6 +329,7 @@ ALMetalCommandBuffer::completionToken() const
     {
         auto impl = std::make_unique<ALMetalCommandCompletion::Impl>();
         impl->command_buffer = mImpl->command_buffer;
+        impl->committed.store(mImpl->committed, std::memory_order_relaxed);
         mImpl->completion = std::shared_ptr<const ALMetalCommandCompletion>(
             new ALMetalCommandCompletion(std::move(impl)));
     }
@@ -507,6 +526,7 @@ bool ALMetalCommandBuffer::commit(std::string* error)
     // another owner cannot reuse backing while its producer is unqueued.
     [mImpl->command_buffer commit];
     mImpl->committed = true;
+    if (mImpl->completion) mImpl->completion->mImpl->committed.store(true, std::memory_order_release);
     if (mImpl->resource_plan)
         mImpl->resource_plan->submitted(mImpl->submission_order->next_serial++);
     committed_command_buffers.fetch_add(1, std::memory_order_relaxed);

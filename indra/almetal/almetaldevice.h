@@ -130,6 +130,11 @@ public:
     // Native execution state without timestamp collection. Abandoned/missing
     // commands are unknown, never successful producers of reusable output.
     ALMetalCommandStatus status() const noexcept;
+    // Explicit synchronous observation of THIS submitted native command.
+    // Never submits another command or changes ordinary async rendering.
+    // Missing, uncommitted and abandoned tokens fail without waiting.
+    bool waitUntilCompleted(std::string* error = nullptr) const;
+
 
     // Poll this command's native GPU execution interval after completion.
     // Queue delay and CPU encoding/commit time are excluded. The interval is

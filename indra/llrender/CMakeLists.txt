@@ -234,6 +234,8 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN)
     target_link_libraries(llrender_tests PRIVATE almetal)
+    target_sources(llrender_tests PRIVATE tests/alnative_cost_autorelease.mm)
+    set_source_files_properties(tests/alnative_cost_autorelease.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
     set_source_files_properties(tests/alvertex_label_metal_test.mm
                                 tests/alnative_maintenance_admission_metal_test.mm
                                 tests/altexture_mip_parity_native_test.mm

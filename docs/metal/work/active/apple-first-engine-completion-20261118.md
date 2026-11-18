@@ -233,3 +233,17 @@ receipt; no partial ABI archive reuse. Then allaffected actual caller/native
 correctness, all E6oldfae7continuation controls and strict validationOFFprechecks
 before contained cost windows. New architecture gates remain incomplete; no
 owner FPS/visual/runtime acceptance or push is inferred from these source gates.
+
+
+Build02 mirrors canonicaldfd11 to41b5a04c/indra276b24, but is deliberately
+interrupted after328.303s/~437of1579steps for PPD440 actual-command wait API.
+All raw output/source/interruption receipts remain preserved; this is NOT a
+completed build. Build01 app69265 and four matched test executable bytes were
+copied/hash-verified before overwrite under build-01/preserved-intermediate-69265.
+Completion explicit native wait rejects precommit/abandoned receipts, supports
+late observers, retains exact same command and never submits a queue barrier.
+Existing completion fixture now tests these facts and actual buffer output.
+No normal renderer wait is added. Narrow native syntax passes, actual run pending.
+Test-only C++ callback autorelease pool bridge enables accurate producer-owner
+wall scopes without product API or per-observation autorelease retention.
+Full updated matching build03 follows this new ABI/source freeze.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-440 -->
+<!-- next-defect-id: PPD-441 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10149,3 +10149,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before relocating the two assignments.
+
+
+## PPD-440 — Draft renderer cost completion adds an unrelated queue submission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex complete-owner cost qualification
+- Discovered: 2026-11-18
+- Original reference: Native completion belongs to the actual render command. A separate queue settlement command adds scheduling/submission CPU and wall cost and must not be treated as actual renderer work.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E3 actual-owner draft initially proposes an equal explicit settlement command because Completion exposes status/timestamps but no supported native wait. No new cost observations were taken. Existing backend9a actual-command cost controls are unaffected.
+- Next action: Add a narrow explicit wait on the retained actual completion command, rejecting missing/uncommitted/abandoned tokens without submission; keep all normal rendering asynchronous. Use actual token in renderer cost and preserve source-failure history.
+- Verification: Source measurement-scope gap; no viewer FPS/engine regression attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before API addition. Build02 was intentionally interrupted before final viewer compilation; raw logs/receipt/source and interruption cause retained separately, never relabeled a completed build.
+
+- 2026-11-18 PPD440 additional source scope: E6 forward/water cost drafts likewise call device.waitUntilIdle at observation end, adding the same unrelated queue command. Actual owner GPU timestamps are already token-derived; no new cost rows executed. Both test-only callers will use explicit actual-token native wait. Missing/precommit/abandoned/late-token and no-extra-commit cases are authored in existing completion fixture. Production normal render remains asynchronous.
