@@ -437,11 +437,31 @@ struct ALViewerMetalShadowSourceCache
 };
 #include "pipeline_scene_publication_native.inl"
 #include "pipeline_group_publication_native.inl"
+#include "pipeline_shadow_membership_native.inl"
 #include "pipeline_early_visibility_native.inl"
 #include "pipeline_cohort_compilation_native.inl"
 namespace
 {
 ALNativeSourceWorkingSet sNativeSceneSources;
+bool shadowMembershipEnabled() noexcept
+{
+    static const bool enabled = []
+    {
+        const char* value = std::getenv("ALCHEMY_METAL_SHADOW_GROUP_PUBLICATION");
+        return !value || value[0] != '0';
+    }();
+    return enabled;
+}
+std::unique_ptr<ALMetalShadowMembershipCache> sNativeShadowMembership;
+ALMetalShadowMembershipCache* shadowMembershipCache() noexcept
+{
+    if (!sNativeShadowMembership)
+    {
+        try { sNativeShadowMembership = std::make_unique<ALMetalShadowMembershipCache>(); }
+        catch (const std::bad_alloc&) { return nullptr; }
+    }
+    return sNativeShadowMembership.get();
+}
 std::optional<U64> sNativeSceneSourceConfiguredBudget;
 U64 sNativeSceneSerial = 0;
 std::shared_ptr<ALMetalWorldVisibility> sNativeSceneVisibility;
@@ -480,6 +500,7 @@ struct LLPipeline::MetalWorldSimpleCapture
         U64 detached_dispatched = 0, detached_serial = 0;
         U64 source_pins = 0, palette_pins = 0, failed_views = 0;
         U64 capture_wall_ns = 0, max_view_wall_ns = 0;
+        U64 group_hits = 0, group_rows = 0, group_sealed = 0, group_unions = 0, group_declined = 0;
         // PPD241: CPU capture exit stages only, before reconciliation/GPU.
         enum class FailureStage : U8
         { admission, source_lease, publication, palette, matrices, output_admission, detached_prepare, pool_hook, count };
@@ -490,6 +511,9 @@ struct LLPipeline::MetalWorldSimpleCapture
 
         void accumulate(const ShadowSourceDiagnostics& value) noexcept
         {
+            group_hits += value.group_hits; group_rows += value.group_rows;
+            group_sealed += value.group_sealed; group_unions += value.group_unions;
+            group_declined += value.group_declined;
             views += value.views; admitted_inputs += value.admitted_inputs;
             visited_inputs += value.visited_inputs; key_builds += value.key_builds;
             retained_hits += value.retained_hits; transient_hits += value.transient_hits;
@@ -571,6 +595,17 @@ struct LLPipeline::MetalWorldSimpleCapture
             return record;
         }
     };
+    // CPU-only immutable rows live through synchronous encoding or the detached
+    // encoder join. Metal completion receives only each membership's nativeOwner.
+    struct ShadowCPUOwners
+    {
+        std::vector<std::shared_ptr<const ALMetalShadowMembership>> memberships;
+        U64 ownedBytes() const noexcept
+        {
+            return sizeof(*this) + 4 * sizeof(void*) + memberships.capacity() * sizeof(memberships[0]);
+        }
+    };
+    std::shared_ptr<ShadowCPUOwners> shadow_cpu_owners;
     struct ShadowInvocation { bool complete = false; };
     struct ShadowPublication
     {
@@ -910,6 +945,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     // The live scene map is read once per view on its owner. These references
     // never enter a worker; detached native records are the job boundary.
     std::vector<LLPointer<LLDrawInfo>> spot_shadow_admitted_sources;
+    using ShadowSpans = std::array<std::vector<ALSceneShadowMembershipNative::AdmittedSpan>,
+        LLRenderPass::NUM_RENDER_TYPES>;
+    // Transient cull-vector offsets, never persistent publication identity.
+    ShadowSpans shadow_raw_spans, shadow_admitted_spans;
+    const LLCullResult* shadow_span_cull = nullptr;
     std::array<std::pair<std::size_t, std::size_t>,
                LLRenderPass::NUM_RENDER_TYPES> spot_shadow_source_ranges{};
     std::vector<std::shared_ptr<const ALMetalBodyPaletteRecord>>
@@ -3295,6 +3335,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", build_attempts=" << d.build_attempts << ", records_created=" << d.records_created
                     << ", key_changes=" << d.key_changes << ", cache_admitted=" << d.cache_admitted
                     << ", cache_declined=" << d.cache_declined
+                    << ", group_hits/rows/sealed/unions/declined=" << d.group_hits << '/' << d.group_rows
+                    << '/' << d.group_sealed << '/' << d.group_unions << '/' << d.group_declined
                     << ", families=" << d.families << ", max_family_inputs=" << d.max_family_inputs
                     << ", detached_eligible/calls/completed=" << d.detached_eligible << '/'
                     << d.detached_calls << '/' << d.detached_completed
@@ -3312,6 +3354,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", max_view_wall_ms=" << static_cast<F64>(d.max_view_wall_ns) / 1000000.0
                     << LL_ENDL;
             };
+            if (sNativeShadowMembership)
+            {
+                const auto membership = sNativeShadowMembership->stats();
+                LL_INFOS("MetalShadowSources") << "Native shadow group residency: entries=" << membership.entries
+                    << ", live_cpu_metadata_bytes=" << membership.metadata_bytes
+                    << ", hits/misses/unions/evictions=" << membership.hits << '/' << membership.misses
+                    << '/' << membership.resource_unions << '/' << membership.evictions << LL_ENDL;
+            }
             log_sources("main", &capture);
             log_sources("probe", mMetalProbeWorldSimpleCapture.get());
             const auto log_shadow_encoding = [](const char* owner,
@@ -13432,18 +13482,36 @@ void LLPipeline::admitMetalShadowSources(
     auto& capture = *mMetalWorldSimpleCapture;
     capture.spot_shadow_admitted_sources.clear();
     capture.spot_shadow_source_ranges.fill({0, 0});
+    for (auto& spans : capture.shadow_admitted_spans) spans.clear();
     const auto counted_batches = [&](U32 type)
     {
         const std::size_t first = capture.spot_shadow_admitted_sources.size();
         auto* begin = beginRenderMap(type);
         auto* end = endRenderMap(type);
+        const auto& spans = capture.shadow_raw_spans[type];
+        std::size_t raw_index = 0, span_index = 0, positive_first = 0;
+        bool optional_spans = capture.shadow_span_cull == sCull;
         for (auto* at = begin; at != end; )
         {
+            if (optional_spans && span_index < spans.size() && spans[span_index].first == raw_index)
+                positive_first = capture.spot_shadow_admitted_sources.size();
             LLDrawInfo* info = *at;
             LLCullResult::increment_iterator(at, end);
             if (info && info->mCount)
-            {
                 capture.spot_shadow_admitted_sources.emplace_back(info);
+            ++raw_index;
+            if (optional_spans && span_index < spans.size() &&
+                raw_index == spans[span_index].first + spans[span_index].count)
+            {
+                auto span = spans[span_index++];
+                span.first = positive_first;
+                span.count = capture.spot_shadow_admitted_sources.size() - positive_first;
+                if (span.count)
+                {
+                    try { capture.shadow_admitted_spans[type].push_back(std::move(span)); }
+                    catch (const std::bad_alloc&)
+                    { capture.shadow_admitted_spans[type].clear(); optional_spans = false; }
+                }
             }
         }
         const std::size_t count =
@@ -13586,6 +13654,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
     } source_scope{transaction, source_diagnostics};
     trimShadowSourceWorkingSet();
     transaction.spot_shadow_inputs.clear();
+    transaction.shadow_cpu_owners.reset();
     source_scope.entering(SourceDiagnostics::FailureStage::source_lease);
     if (!transaction.acquireShadowSourceLease())
     {
@@ -13674,41 +13743,106 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
             }
             return true;
         };
+        const auto& spans = owner.shadow_admitted_spans[type];
+        auto* membership_cache = spans.empty() ? nullptr : shadowMembershipCache();
+        std::size_t span_index = 0;
+        const ALSceneShadowMembershipNative::AdmittedSpan* active_span = nullptr;
+        std::shared_ptr<const ALMetalShadowMembership> membership;
+        std::vector<ALMetalShadowMembershipSource> pending_members;
         for (std::size_t index = first; index < first + count; ++index)
         {
+            if (active_span && index == active_span->first + active_span->count)
+            { active_span = nullptr; membership.reset(); pending_members.clear(); }
+            if (span_index < spans.size() && index == spans[span_index].first)
+            {
+                active_span = &spans[span_index++];
+                auto stamped = *active_span;
+                stamped.coverage = owner.spot_shadow_coverage;
+                if (membership_cache)
+                {
+                    try
+                    {
+                        auto current = ALSceneShadowMembershipNative::current(
+                            *membership_cache, stamped, sNativeSceneSources, gFrameCount);
+                        if (current)
+                        {
+                            if (!owner.shadow_cpu_owners)
+                                owner.shadow_cpu_owners = std::make_shared<MetalWorldSimpleCapture::ShadowCPUOwners>();
+                            owner.shadow_cpu_owners->memberships.push_back(current.membership);
+                            owner.shadow_source_lease->retainResource(current.membership->nativeOwner());
+                            membership = std::move(current.membership);
+                            ++source_diagnostics.group_hits;
+                            source_diagnostics.group_rows += stamped.count;
+                        }
+                        else if (stamped.count <= 131072)
+                            pending_members.reserve(stamped.count);
+                    }
+                    catch (const std::bad_alloc&) { ++source_diagnostics.group_declined; }
+                }
+            }
             ++source_diagnostics.visited_inputs;
             const auto& info = *owner.spot_shadow_admitted_sources[index];
             source_scope.entering(SourceDiagnostics::FailureStage::publication, type);
-            auto publication = ALScenePublicationNative::shadow(info, type,
-                owner.spot_shadow_coverage, sNativeSceneSources, sNativeSceneSerial, gFrameCount,
-                [&](ALMetalWorldSpotShadowBatch& prototype)
-                {
-                    ++source_diagnostics.build_attempts;
-                    struct SourceBuild
-                    {
-                        MetalWorldSimpleCapture& capture;
-                        bool merge;
-                        ~SourceBuild()
-                        {
-                            capture.spot_shadow_source_build = nullptr;
-                            capture.spot_shadow_source_merge_active = merge;
-                        }
-                    } building{owner, owner.spot_shadow_source_merge_active};
-                    owner.spot_shadow_source_build = &prototype;
-                    owner.spot_shadow_source_merge_active = false;
-                    build_source(info);
-                    return owner.spot_shadow_capture_complete;
-                });
-            if (!publication)
+            const ALMetalShadowSourceRecord* source = nullptr;
+            if (membership)
+                source = membership->members()[index - active_span->first].record.get();
+            else
             {
-                ++owner.scene_source_failures;
-                owner.last_scene_source_failure = publication.failure;
-                fail(); return;
+                auto publication = ALScenePublicationNative::shadow(info, type,
+                    owner.spot_shadow_coverage, sNativeSceneSources, sNativeSceneSerial, gFrameCount,
+                    [&](ALMetalWorldSpotShadowBatch& prototype)
+                    {
+                        ++source_diagnostics.build_attempts;
+                        struct SourceBuild
+                        {
+                            MetalWorldSimpleCapture& capture;
+                            bool merge;
+                            ~SourceBuild()
+                            {
+                                capture.spot_shadow_source_build = nullptr;
+                                capture.spot_shadow_source_merge_active = merge;
+                            }
+                        } building{owner, owner.spot_shadow_source_merge_active};
+                        owner.spot_shadow_source_build = &prototype;
+                        owner.spot_shadow_source_merge_active = false;
+                        build_source(info);
+                        return owner.spot_shadow_capture_complete;
+                    });
+                if (!publication)
+                {
+                    ++owner.scene_source_failures;
+                    owner.last_scene_source_failure = publication.failure;
+                    fail(); return;
+                }
+                if (publication.reused) ++source_diagnostics.retained_hits;
+                else ++source_diagnostics.records_created;
+                owner.shadow_source_lease->publications.push_back(publication.owner);
+                source = owner.shadow_source_lease->retain(*publication.record);
+                if (active_span && pending_members.capacity() >= active_span->count)
+                {
+                    const auto producer = info.metalSourcePublication();
+                    pending_members.push_back({producer, producer->identity(),
+                        publication.owner->producer_revision, *publication.record});
+                }
             }
-            if (publication.reused) ++source_diagnostics.retained_hits;
-            else ++source_diagnostics.records_created;
-            owner.shadow_source_lease->publications.push_back(publication.owner);
-            const auto* source = owner.shadow_source_lease->retain(*publication.record);
+            if (!membership && active_span && membership_cache &&
+                index + 1 == active_span->first + active_span->count &&
+                pending_members.size() == active_span->count)
+            {
+                auto stamped = *active_span;
+                stamped.coverage = owner.spot_shadow_coverage;
+                try
+                {
+                    auto sealed = ALSceneShadowMembershipNative::seal(*membership_cache, stamped, pending_members,
+                        sNativeSceneSources, ALNativeFrameBudget::instance(), sNativeSceneSerial, gFrameCount,
+                        ALNativeFrameBudget::instance().snapshot().frame);
+                    source_diagnostics.group_sealed += bool(sealed);
+                    source_diagnostics.group_unions += sealed.sealed_resource_union;
+                    source_diagnostics.group_declined += !sealed;
+                }
+                catch (const std::bad_alloc&) { ++source_diagnostics.group_declined; }
+                pending_members.clear();
+            }
             const ALMetalAttachmentPaletteRecord* palette = nullptr;
             source_scope.entering(SourceDiagnostics::FailureStage::palette, type);
             if (source->requiresPalette())
@@ -15090,6 +15224,8 @@ void LLPipeline::endMetalSpotShadowCapture()
             // Native commands have retained the immutable packet. Stale CPU
             // scratch must not keep old stores pinned into next frame's writes.
             capture.spot_shadow_admitted_sources.clear();
+            capture.shadow_cpu_owners.reset();
+            for (auto& spans : capture.shadow_admitted_spans) spans.clear();
             capture.spot_shadow_inputs.clear();
             capture.spot_shadow_prepared.clear();
             capture.spot_shadow_batches.clear();
@@ -15295,6 +15431,9 @@ void LLPipeline::endMetalSpotShadowCapture()
             pending->query_camera = capture.shadow_visibility_camera;
             snapshot = ALMetalCapturedShadowView::take(scene, capture.spot_shadow_batches,
                 capture.spot_shadow_avatar_palettes, capture.shadow_visibility_queries, &error);
+            if (snapshot && capture.shadow_cpu_owners && !snapshot->retainCPUOwner(
+                    capture.shadow_cpu_owners, capture.shadow_cpu_owners->ownedBytes()))
+                throw std::bad_alloc();
             const auto command = capture.renderer->commandBatchCompletion();
             if (capture.shadow_view_task && snapshot && capture.shadow_view_task->start(
                     *capture.renderer, gFrameCount, snapshot, retained_texture, map,
@@ -15305,6 +15444,7 @@ void LLPipeline::endMetalSpotShadowCapture()
                 publication.completion = command; publication.invocation = invocation;
                 capture.spot_shadow_owns_batch = false; // Exact command now belongs to private encoder.
                 capture.pending_shadow_encoding = std::move(pending);
+                capture.shadow_cpu_owners.reset(); // packet owns rows until CPU join
                 capture.spot_shadow_batches.swap(capture.recycled_shadow_batches);
                 capture.shadow_visibility_queries.swap(capture.recycled_shadow_queries);
                 settle_visibility.deferred = true;
@@ -18553,6 +18693,7 @@ LLPipeline::~LLPipeline()
 
 void LLPipeline::cleanup()
 {
+    sNativeShadowMembership.reset();
     sNativeSceneSources.clear();
     ALScenePublicationNative::clearMaterialDataCache();
     sNativeSceneVisibility.reset();
@@ -22432,6 +22573,17 @@ void LLPipeline::postSort(LLCamera &camera)
     // replace only this exact admitted span after deferred mesh publication.
     std::unordered_map<LLSpatialGroup*, std::vector<PendingGroupRange>> pending_group_ranges;
 
+    const bool shadow_group_view = sShadowRender && bool(mMetalWorldSimpleCapture);
+    MetalWorldSimpleCapture::ShadowSpans pending_shadow_spans;
+    if (shadow_group_view)
+    {
+        pending_shadow_spans.swap(mMetalWorldSimpleCapture->shadow_raw_spans);
+        for (auto& spans : pending_shadow_spans) spans.clear();
+        mMetalWorldSimpleCapture->shadow_span_cull = nullptr;
+    }
+    bool shadow_spans_available = shadow_group_view && shadowMembershipEnabled();
+    std::size_t shadow_span_count = 0;
+
     // build render map
     for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
     {
@@ -22536,6 +22688,18 @@ void LLPipeline::postSort(LLCamera &camera)
                     }
                 }
             }
+            std::optional<ALSceneShadowMembershipNative::AdmittedSpan> shadow_span;
+            if (shadow_spans_available && !src_vec.empty() && src_vec.size() <= 131072 && shadow_span_count < 8192)
+            {
+                try
+                {
+                    const auto raw_first = static_cast<std::size_t>(
+                        sCull->endRenderMap(j->first) - sCull->beginRenderMap(j->first));
+                    shadow_span = ALSceneShadowMembershipNative::admit(group->metalGroupPublication(),
+                        j->first, ALMetalWorldSpotShadowCoverage::opaque, raw_first, src_vec.size(), true);
+                }
+                catch (const std::bad_alloc&) { shadow_spans_available = false; }
+            }
             ALScenePublicationNative::WorldFlavor pending_flavor;
             const bool pending_group = native_group_view && !src_vec.empty() &&
                 src_vec.size() <= std::numeric_limits<U32>::max() &&
@@ -22551,6 +22715,11 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     addTrianglesDrawn(info->mCount);
                 }
+            }
+            if (shadow_span && shadow_spans_available)
+            {
+                try { pending_shadow_spans[j->first].push_back(*shadow_span); ++shadow_span_count; }
+                catch (const std::bad_alloc&) { shadow_spans_available = false; }
             }
             if (pending_group)
             {
@@ -22858,6 +23027,13 @@ void LLPipeline::postSort(LLCamera &camera)
             }
             catch(const std::bad_alloc&){ALSceneGroupPublicationNative::recordFailure(ALSceneGroupPublicationNative::FailureStage::host_allocation);}
         }
+    }
+    if (shadow_group_view)
+    {
+        if (!shadow_spans_available)
+            for (auto& spans : pending_shadow_spans) spans.clear();
+        mMetalWorldSimpleCapture->shadow_raw_spans.swap(pending_shadow_spans);
+        mMetalWorldSimpleCapture->shadow_span_cull = sCull;
     }
     // LLSpatialGroup::sNoDelete = false;
 }

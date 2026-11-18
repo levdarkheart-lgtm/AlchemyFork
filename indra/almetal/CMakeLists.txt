@@ -122,6 +122,7 @@ target_sources(
     almetaluirenderer.cpp
     almetalworld.cpp
     almetalshadowtask.cpp
+    almetalshadowpublication.cpp
     almetalworlddraws.cpp
     almetalworldanimated.mm
     almetalworldcohort.mm
@@ -292,6 +293,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_shadow_cache_test.mm
             tests/almetal_shadow_capture_test.mm
             tests/almetal_shadow_prepare_test.mm
+            tests/almetal_shadow_publication_test.mm
             tests/almetal_shadow_encoding_context_test.cpp
             tests/almetal_shadow_task_test.mm
             tests/almetal_shadow_extended_test.mm
@@ -354,6 +356,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_world_prepare_test.mm tests/almetal_world_draws_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_cache_test.mm
                               tests/almetal_shadow_prepare_test.mm
+                              tests/almetal_shadow_publication_test.mm
                               tests/almetal_shadow_encoding_context_test.cpp
                               tests/almetal_shadow_task_test.mm
                               tests/almetal_shadow_extended_test.mm
