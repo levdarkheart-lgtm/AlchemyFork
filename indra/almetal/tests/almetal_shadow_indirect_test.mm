@@ -626,6 +626,10 @@ TEST_CASE("almetal: native direct shadow packets isolate pending views and valid
         auto foreign_encoder = fixture.encoder(*foreign_command, *target_a, false);
         CHECK_FALSE(fixture.indirect->executeDirect(*foreign_encoder, *batch, 0, 1, &fixture.error));
         REQUIRE(foreign_encoder->end(&fixture.error));
+        // This negative pass still owns an unqueued clear of target_a. Abandon
+        // it before reading output produced by the independent valid command.
+        foreign_encoder.reset();
+        foreign_command.reset();
         auto encoder = fixture.encoder(*next_command, *target_a, false);
         CHECK_FALSE(fixture.indirect->executeDirect(*encoder, *indirect, 0, 1, &fixture.error));
         CHECK_FALSE(fixture.indirect->executeDirect(*encoder, *batch, 1, 1, &fixture.error));
