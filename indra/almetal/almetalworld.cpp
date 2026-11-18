@@ -13220,6 +13220,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         if (encoded && animated_reference) ++animated_stats.direct_draws;
         if (encoded && (material || pbr))
         {
+            source_bank_stats.last_pipeline_validation =
+                static_cast<std::uint32_t>(pipeline->shaderValidationMode());
             if (stable_tables) ++constant_stats.material_source_draws;
             else ++constant_stats.material_source_fallback_draws;
             if (!current_cohort && !animated_reference && scene.material_argument_buffers)
