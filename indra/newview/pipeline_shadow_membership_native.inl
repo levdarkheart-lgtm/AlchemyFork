@@ -7,6 +7,19 @@
 
 namespace ALSceneShadowMembershipNative
 {
+inline constexpr std::size_t minimum_members = 4;
+// The measured tiny/changing cases retain their existing raw path. This is
+// solely optional preparation profitability; immutable cache validity still
+// uses the exact group/source revisions and dependencies below.
+inline bool candidateReady(ALNativeCohortCompilationAdmission& stability,
+    const std::shared_ptr<ALNativePublication::State>& owner,
+    ALNativeFrameBudget::Frame frame, std::size_t count) noexcept
+{
+    return count >= minimum_members && owner &&
+        !stability.deferUnstableRevision(frame,
+            ALNativeCohortCompilationAdmission::ProducerStamp{owner->identity(),owner->revision()});
+}
+
 struct AdmittedSpan
 {
     std::weak_ptr<ALNativePublication::State> owner;

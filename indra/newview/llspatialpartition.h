@@ -393,6 +393,9 @@ public:
     // discard them. The layout owns only weak native generation identities.
     std::shared_ptr<ALSceneGroupPublicationNative::Layout> mMetalGroupLayout;
     ALNativeCohortCompilationAdmission mMetalGroupCompilation;
+    // Profitability observation only: a separate existing revision heuristic,
+    // never main-cohort service history, credits, native resources or views.
+    ALNativeCohortCompilationAdmission mMetalShadowSourceStability;
     struct MetalMaterialCohort
     {
         std::shared_ptr<ALNativePublication::State> state;

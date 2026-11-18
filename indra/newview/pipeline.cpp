@@ -13506,7 +13506,7 @@ void LLPipeline::admitMetalShadowSources(
         auto* end = endRenderMap(type);
         const auto& spans = capture.shadow_raw_spans[type];
         std::size_t raw_index = 0, span_index = 0, positive_first = 0;
-        bool optional_spans = capture.shadow_span_cull == sCull;
+        bool optional_spans = capture.shadow_span_cull == sCull && !spans.empty();
         for (auto* at = begin; at != end; )
         {
             if (optional_spans && span_index < spans.size() && spans[span_index].first == raw_index)
@@ -13522,7 +13522,7 @@ void LLPipeline::admitMetalShadowSources(
                 auto span = spans[span_index++];
                 span.first = positive_first;
                 span.count = capture.spot_shadow_admitted_sources.size() - positive_first;
-                if (span.count)
+                if (span.count >= ALSceneShadowMembershipNative::minimum_members)
                 {
                     try { capture.shadow_admitted_spans[type].push_back(std::move(span)); }
                     catch (const std::bad_alloc&)
@@ -13765,10 +13765,11 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         const ALSceneShadowMembershipNative::AdmittedSpan* active_span = nullptr;
         std::shared_ptr<const ALMetalShadowMembership> membership;
         std::vector<ALMetalShadowMembershipSource> pending_members;
+        bool collect_members = false;
         for (std::size_t index = first; index < first + count; ++index)
         {
             if (active_span && index == active_span->first + active_span->count)
-            { active_span = nullptr; membership.reset(); pending_members.clear(); }
+            { active_span = nullptr; membership.reset(); pending_members.clear(); collect_members = false; }
             if (span_index < spans.size() && index == spans[span_index].first)
             {
                 active_span = &spans[span_index++];
@@ -13790,8 +13791,11 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                             ++source_diagnostics.group_hits;
                             source_diagnostics.group_rows += stamped.count;
                         }
-                        else if (stamped.count <= 131072)
+                        else if (stamped.count <= 131072 && ALSceneShadowMembershipNative::currentOwner(stamped))
+                        {
                             pending_members.reserve(stamped.count);
+                            collect_members = true;
+                        }
                     }
                     catch (const std::bad_alloc&) { source_diagnostics.groupFailure(ALMetalShadowMembershipPublisher::Failure::allocation); }
                 }
@@ -13834,7 +13838,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                 else ++source_diagnostics.records_created;
                 owner.shadow_source_lease->publications.push_back(publication.owner);
                 source = owner.shadow_source_lease->retain(*publication.record);
-                if (active_span && pending_members.capacity() >= active_span->count)
+                if (collect_members && active_span)
                 {
                     const auto producer = info.metalSourcePublication();
                     pending_members.push_back({producer, producer->identity(),
@@ -22600,7 +22604,9 @@ void LLPipeline::postSort(LLCamera &camera)
         for (auto& spans : pending_shadow_spans) spans.clear();
         mMetalWorldSimpleCapture->shadow_span_cull = nullptr;
     }
-    bool shadow_spans_available = shadow_group_view && shadowMembershipEnabled();
+    const auto shadow_budget = shadow_group_view
+        ? ALNativeFrameBudget::instance().snapshot() : ALNativeFrameBudget::Snapshot{};
+    bool shadow_spans_available = shadow_group_view && shadowMembershipEnabled() && !shadow_budget.draining;
     std::size_t shadow_span_count = 0;
 
     // build render map
@@ -22708,14 +22714,20 @@ void LLPipeline::postSort(LLCamera &camera)
                 }
             }
             std::optional<ALSceneShadowMembershipNative::AdmittedSpan> shadow_span;
-            if (shadow_spans_available && !src_vec.empty() && src_vec.size() <= 131072 && shadow_span_count < 8192)
+            if (shadow_spans_available && src_vec.size() >= ALSceneShadowMembershipNative::minimum_members &&
+                src_vec.size() <= 131072 && shadow_span_count < 8192)
             {
                 try
                 {
-                    const auto raw_first = static_cast<std::size_t>(
-                        sCull->endRenderMap(j->first) - sCull->beginRenderMap(j->first));
-                    shadow_span = ALSceneShadowMembershipNative::admit(group->metalGroupPublication(),
-                        j->first, ALMetalWorldSpotShadowCoverage::opaque, raw_first, src_vec.size(), true);
+                    const auto& publisher = group->metalGroupPublication();
+                    if (ALSceneShadowMembershipNative::candidateReady(group->mMetalShadowSourceStability,
+                            publisher, shadow_budget.frame, src_vec.size()))
+                    {
+                        const auto raw_first = static_cast<std::size_t>(
+                            sCull->endRenderMap(j->first) - sCull->beginRenderMap(j->first));
+                        shadow_span = ALSceneShadowMembershipNative::admit(publisher,
+                            j->first, ALMetalWorldSpotShadowCoverage::opaque, raw_first, src_vec.size(), true);
+                    }
                 }
                 catch (const std::bad_alloc&) { shadow_spans_available = false; }
             }
