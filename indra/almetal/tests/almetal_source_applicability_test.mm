@@ -565,3 +565,107 @@ TEST_CASE("almetal: source commands complete-path component costs retain direct 
         REQUIRE(csv.good());
     }
 }
+
+TEST_CASE("almetal: actual routed world cohorts preserve scalar gaps queries and all output planes",
+          "[almetal][source-routing-owner]")
+{
+    @autoreleasepool
+    {
+        struct Cell{unsigned family,rows,grid,layout;};
+        const Cell cells[]{{1,6,1,0},{1,32,64,0},{2,32,64,0},{2,32,64,1},{1,32,64,2},{2,6,1,3}};
+        for(const auto cell:cells)
+        {
+            CAPTURE(cell.family,cell.rows,cell.grid,cell.layout);
+            E3Fixture f;f.make(cell.family,false,false,cell.rows,cell.grid,cell.layout);
+            // One actual scalar draw between the two native candidate ranges.
+            auto raw=f.cpu->rows.front();f.views[1].base_before=1;++f.views[1].logical_begin;
+            std::array<ALMetalWorldVisibilityQuery,3> queries{};
+            for(unsigned i=0;i<queries.size();++i)
+            {
+                auto& q=queries[i];identity(q.modelview_projection);q.center[2]=.75f;
+                q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.1f;q.fan=7;q.count_samples=1;
+                q.batch_offset=i==0?0:(i==1?cell.rows/2:cell.rows+1);
+            }
+            E3Fixture::Output expected;
+            for(bool routed:{false,true})
+            {
+                auto scene=f.scene();scene.hdr=true;scene.normal_hdr=true;
+                scene.cohorts=f.views.data();scene.cohort_count=f.views.size();scene.batches=&raw;scene.batch_count=1;
+                scene.source_owner=f.native;scene.cpu_source_owner=f.cpu;
+                scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
+                scene.source_routing=routed;scene.source_native_visibility=routed;
+                const auto before=f.renderer->worldSourceCommandStats();const auto pages=f.renderer->worldSourceStats().pages;
+                const auto cpu=f.renderer->worldCpuVisibilityStats();
+                REQUIRE(f.renderer->beginCommandBatch("E3 actual scalar/routed ordered owner",&f.error));
+                std::shared_ptr<ALMetalVisibilityResultBatch> results;
+                auto target=f.renderer->render(scene,&f.error,&results);INFO(f.error);REQUIRE(target);REQUIRE(results);
+                auto completion=f.renderer->commandBatchCompletion();REQUIRE(completion);
+                REQUIRE(f.renderer->commitCommandBatch(&f.error));REQUIRE(f.device->waitUntilIdle(&f.error));
+                CHECK(completion->status()==ALMetalCommandStatus::completed);
+                E3Fixture::Output actual{f.read(*target),std::vector<std::uint64_t>(queries.size())};
+                for(unsigned i=0;i<queries.size();++i)REQUIRE(results->wait(i,actual.queries[i],&f.error));
+                REQUIRE(actual.queries[0]>0); // Original query before any draw remains observable.
+                const auto covered=std::count_if(actual.pixels.depth.begin(),actual.pixels.depth.end(),
+                    [](auto value){return value!=0x3f800000u;});
+                if(cell.layout==2)CHECK(covered==0);else REQUIRE(covered>0);
+                if(!routed)expected=actual;else CHECK(actual==expected);
+                const auto after=f.renderer->worldSourceCommandStats();
+                const bool native=routed&&cell.grid==64&&cell.layout==0;
+                CHECK(after.bank_draws-before.bank_draws==(native?cell.rows:0));
+                CHECK(after.cache.static_visibility_dispatches-before.cache.static_visibility_dispatches==(native?1:0));
+                if(native)
+                {
+                    CHECK(after.last_pipeline_validation!=UINT32_MAX);CHECK(after.cache.last_static_validation!=UINT32_MAX);
+                    CHECK(after.routing_native-before.routing_native==2);
+                }
+                else
+                {
+                    CHECK(after.cache.requests==before.cache.requests);
+                    CHECK(f.renderer->worldSourceStats().pages.cohort_requests==pages.cohort_requests);
+                }
+                if(routed&&cell.layout==2)
+                {
+                    const auto after_cpu=f.renderer->worldCpuVisibilityStats();
+                    CHECK(after_cpu.culled_draws-cpu.culled_draws==cell.rows);
+                    CHECK(after_cpu.visible_draws-cpu.visible_draws==1); // Original raw gap stays direct.
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("almetal: actual routed world failures preserve direct fallback before prefix and cancel after prefix",
+          "[almetal][source-routing-owner]")
+{
+    @autoreleasepool
+    {
+        E3Fixture f;f.make(1,false,false,32,64);
+        auto scene=f.scene();scene.hdr=true;scene.normal_hdr=true;scene.cohorts=f.views.data();scene.cohort_count=f.views.size();
+        scene.source_owner=f.native;scene.cpu_source_owner=f.cpu;scene.source_routing=true;scene.source_native_visibility=true;
+        REQUIRE(f.renderer->beginCommandBatch("E3 actual routed initial consumer",&f.error));
+        auto first=f.renderer->render(scene,&f.error);INFO(f.error);REQUIRE(first);
+        REQUIRE(f.renderer->commitCommandBatch(&f.error));REQUIRE(f.device->waitUntilIdle(&f.error));
+        const auto expected=f.read(*first);const auto initial=f.renderer->worldSourceCommandStats();REQUIRE(initial.bank_draws==32);
+        auto commands=f.data->worldSourceCommands(&f.error);REQUIRE(commands);
+        SECTION("admission before native prefix retains scalar output")
+        {
+            commands->clear();commands->setPublicationAdmission([](const auto&)->std::shared_ptr<const void>{return {};});
+            REQUIRE(f.renderer->beginCommandBatch("E3 actual denied optional bank",&f.error));
+            auto fallback=f.renderer->render(scene,&f.error);INFO(f.error);REQUIRE(fallback);
+            REQUIRE(f.renderer->commitCommandBatch(&f.error));REQUIRE(f.device->waitUntilIdle(&f.error));
+            CHECK(f.read(*fallback)==expected);CHECK(f.renderer->worldSourceCommandStats().bank_draws==initial.bank_draws);
+        }
+        SECTION("compute-begin failure invalidates the enclosing borrowed owner")
+        {
+            const auto commits=ALMetalDevice::committedCommandBufferCount();
+            commands->failVisibilityAfterBeginForTesting();
+            REQUIRE(f.renderer->beginCommandBatch("E3 actual failed compute prefix",&f.error));
+            auto completion=f.renderer->commandBatchCompletion();REQUIRE(completion);
+            auto failed=f.renderer->render(scene,&f.error);CHECK_FALSE(failed);CHECK_FALSE(f.error.empty());
+            CHECK_FALSE(f.renderer->commitCommandBatch(&f.error));CHECK_FALSE(f.renderer->commandBatchActive());
+            CHECK(ALMetalDevice::committedCommandBufferCount()==commits);
+            CHECK(completion->status()==ALMetalCommandStatus::unknown);
+            CHECK(f.renderer->worldSourceCommandStats().bank_draws==initial.bank_draws);
+        }
+    }
+}
