@@ -456,6 +456,7 @@ public:
     // do not clear the admission owner's pending age/service history.
     std::size_t mMetalSourcePreparationCursor = 0;
     U64 mMetalSourcePreparationIdentity = 0, mMetalSourcePreparationRevision = 0;
+    U64 mMetalSourcePreparationPolicy = 0;
 
     bridge_list_t mBridgeList;
     buffer_map_t mBufferMap; //used by volume buffers to attempt to reuse vertex buffers

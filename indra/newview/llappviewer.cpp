@@ -1523,7 +1523,10 @@ bool LLAppViewer::doFrame()
     static LLCachedControl<U32> minimum_headroom_mib(
         gSavedSettings, "RenderMinFreeMainMemoryThreshold", 512);
     ALNativeFramePlan::MainScope native_frame_plan(gFrameIntervalSeconds.value(),
-        static_cast<U64>(minimum_headroom_mib) * 1024 * 1024);
+        static_cast<U64>(minimum_headroom_mib) * 1024 * 1024,
+        LLStartUp::getStartupState() == STATE_STARTED && !gDisconnected &&
+        !gTeleportDisplay && gAgent.getTeleportState() == LLAgent::TELEPORT_NONE &&
+        !logoutRequestSent() && !LLApp::isExiting());
     ALNativeFramePlan::observeMainCompletion(
         gViewerWindow && gViewerWindow->getWindow()
             ? gViewerWindow->getWindow()->getMetalFrameScheduler() : nullptr,

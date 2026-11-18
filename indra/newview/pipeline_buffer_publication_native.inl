@@ -27,6 +27,8 @@
  * $/LicenseInfo$
  */
 
+#include "pipeline_source_policy_native.inl"
+
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                                bool batch_textures, bool editable)
 {
@@ -98,36 +100,10 @@ try
     static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
     static LLCachedControl<bool> native_resources(gSavedSettings, "RenderMetalWorldResourceTables", false);
     static LLCachedControl<bool> native_groups(gSavedSettings, "RenderMetalGroupSources", false);
-    ALScenePublicationNative::WorldFlavor flavor;
-    // Retained cohorts qualify bounds inside admitted compilation. A denied
-    // or unsupported raw fallback does no new optional bounds scan. The
-    // standalone legacy flag retains its existing per-source qualification.
-    flavor.cohort_bounds = native_visibility() && !native_groups() && !capture.visibility_metadata_failed;
-    // Forward/alpha passes have their own lighting ABI. Publish stable tables
-    // for the ordinary G-buffer consumer, including opaque impostor bakes.
-    flavor.native_materials = !capture.impostor_alpha_active &&
-        !capture.world_post_deferred_active && !capture.pbr_glow;
-    flavor.native_resources = (native_resources() || capture.source_rows_active) && flavor.native_materials;
-    flavor.family = static_cast<ALScenePublicationNative::WorldFamily>(family);
-    flavor.indexed_textures = family == 0 && indexed;
-    flavor.indexed_materials = family != 0 && indexed;
-    flavor.normal_map = capture.material_normal_map;
-    flavor.specular_map = capture.material_specular_map;
-    flavor.material_alpha_mode = capture.material_alpha_mode;
-    flavor.alpha_mask = capture.alpha_mask;
-    flavor.rigged = capture.rigged;
-    flavor.pbr_glow = capture.pbr_glow;
-    flavor.post_water_pbr_glow = family == 2 && capture.pbr_glow && capture.post_water_pbr_glow;
-    flavor.impostor_fullbright = capture.impostor_fullbright;
-    flavor.impostor_shiny = capture.impostor_shiny;
-    flavor.impostor_emboss = capture.impostor_emboss;
-    const bool ordinary_animated = !editable && capture.rigged &&
-        !capture.impostor_bake && !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
-        !capture.pbr_glow && !capture.impostor_fullbright && !capture.impostor_shiny && !capture.impostor_emboss &&
-        !params.mTextureMatrix && flavor.hasAnimatedConsumer();
-    flavor.animated_source = capture.animated_sources_active && ordinary_animated;
-    flavor.animated_gpu_source = capture.animated_gpu_records_active && ordinary_animated;
-    flavor.stabilize_animated_direct = capture.animated_direct_stability && ordinary_animated;
+    const auto selected = ALSceneSourcePolicyNative::select(params, family, indexed, editable,
+        capture, native_visibility(), native_resources(), native_groups());
+    const auto& flavor = selected.flavor;
+    const bool ordinary_animated = selected.ordinary_animated;
     auto source = ALScenePublicationNative::world(params, flavor,
         sNativeSceneSources, sNativeSceneSerial, gFrameCount,capture.animated_compilation_budget);
     if (!source)

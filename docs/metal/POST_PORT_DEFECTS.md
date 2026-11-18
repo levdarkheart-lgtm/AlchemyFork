@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-409 -->
+<!-- next-defect-id: PPD-419 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -9573,3 +9573,189 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before offline export/recovery or any recorder repair. Owner reports Home~31→16FPS, club~28–29→23–24→20–21→stable19. All selected main encoders request/effectively use16x16; ordinary probe/hero remainautomatic32x32 in live logs. No whole-viewer improvement or regression attribution claimed.
 
 - 2026-11-18 afterownerclose, threeboundedofflineexports ofpreservedtrace exit0 withoutmodifyingfailedsession: TOC519.580843s,targetPID55666;CPU723953rows/519.318s/max85msgap;GPU16096rows/519.696s/max9.028589sgap. Expected518.452286sready→stopcovered. Originalcollector remainsFAILED; separate unchangednormal5sGPUgapgate alsoFAILSaroundcaptureAPIs, nointerpolation/relaxation. Fourindependentworkingcopiesprofiledwithallcounterrowgatespass andsources/evidence preserved. Qualifyfuturelongercontrollerraw-finalizationpeak beforeownercontrols, no rererecordrequiredtorecoverthistrace.
+
+
+## PPD-409 — Early frame admission loses the preceding required-main GPU pressure
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex Apple-first engine completion
+- Discovered: 2026-11-18
+- Original reference: New native frame-wide coordination must preserve required-main priority and eventual texture/probe progress. Original1eb44 textureFIFO/probe update behavior is the functional reference; a Metal GPU-completion pressure policy has no direct OpenGL equivalent.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); alnativeframeplan.cpp100 seeds only previous_required_cpu, while alnativeframebudget.cpp240–253 clears measured GPU wait operands at beginFrame. Earlier texture/update/upload work precedes later required-main wait observation. The source gap prevents earlier decisions from using the preceding closed-frame measured GPU remainder; attribution to owner FPS/texture regressions is unproved.
+- Next action: Implement a separately identified bounded preceding-frame pressure hint with consecutive-frame, owner, lifecycle/reset/drain validity. Preserve exact current measured counters, unknownCPU, fairness/progress and required serial work; qualify red/green policy/caller tests before integration.
+- Verification: Source audit only before correction; no performance or whole-viewer correctness claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before implementation in isolated admission worktree. Owner explicitly defers new viewer recordings until architecture implementation checkpoint; contained CPU/GPU checks remain authorized.
+
+
+## PPD-410 — Producer-preparation draft lacks complete generation and retained-publication proof
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex producer publication completion
+- Discovered: 2026-11-18
+- Original reference: Producer callback/invalidation must preserve the original LLSpatialGroup/LLDrawInfo lifetime and membership semantics. A newer membership cannot be dirtied or consumed through an obsolete discovery generation; warm reuse needs retained current publication, not a transient weak reader.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); isolated publication draft source review finds dependency subscription callbacks can invalidate/replace group membership. Initial row copying must finish before subscriptions, each callback row needs an owner-local LLPointer pin, and membership epoch must be rechecked before subsequent raw-row access. Review also requires a new preparation identity per membership generation and retained-publication proof before reporting warm. Caught before compilation/integration/runtime.
+- Next action: Preserve the unexecuted draft, implement callback pins and generation/warm-proof guards, and add reentrant replacement/eviction tests with unchanged required factories and native lifetime behavior.
+- Verification: Source finding only; no viewer incident or executed test failure is attributed. No source completion/performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before guard repair in the isolated producer-publication worktree. Root owns canonical integration and pipeline.cpp caller hooks.
+
+- 2026-11-18 root drain fixture source review catches self-clearing std::function callback storage during invocation. Before executing that new fixture, copy the optional callback locally before invoking it, so replacement cannot destroy the active closure. This is an unexecuted test-boundary reentrancy defect, not a production or viewer incident. The production owner/current-row pin proof remains a separate gate.
+
+
+## PPD-411 — Prepared-light consumer draft forms an end pointer for an empty null batch span
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex prepared lighting completion
+- Discovered: 2026-11-18
+- Original reference: Original alpha/material traversal permits an empty scene and performs no draw or probe work. Native optional consumer discovery must preserve that contract without pointer arithmetic on a null batch pointer.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); source review of isolated lighting draft `has_candidate_family` finds unconditional `scene.batches + scene.batch_count` when zero batches may legitimately use null storage. Before-guard source and finding receipt are retained privately under artifacts/metal/engine-completion-20261118/lighting/source-review-01. Caught before compilation/integration/runtime.
+- Next action: Return false for zero batches before forming an end pointer; qualify empty-scene and normal consumer selection in production-caller tests.
+- Verification: Source finding only. No runtime crash or performance regression is attributed; no consumer-completion claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the isolated two-line guard repair. Root retains exclusive pipeline.cpp/CMake/canonical integration ownership.
+
+
+## PPD-412 — Producer current-generation predicate calls a non-const lifetime query
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex producer publication completion
+- Discovered: 2026-11-18
+- Original reference: LLSpatialGroup DEAD state is the original lifetime predicate; checking current publication from a const owner must use the existing const state query.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); private engine-completion-publication-20261118/compile-01/receipt.json preserves failed exit1 and compiler command. New const sourceWorkCurrent calls inherited non-const isDead. The independently reused compile command also imports the builder PCH across worktree headers and produces duplicate pragma-once classes; neither failure is a runtime incident.
+- Next action: Use hasState(DEAD), remove foreign PCH from the isolated compile command, and rerun the actual fixture compilation with this worktree headers. Preserve failed argv/logs.
+- Verification: Failed compilation retained; no fixture execution or GPU work ran.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before source or private compile-command repair. Production build identity and previous candidates remain unchanged.
+
+- 2026-11-18 root isolated syntax-01 passes pipeline.cpp0 but llappviewer.cpp exits1 on missing ../dullahan/src/dullahan_version.h: canonical worktree lacks that initialized dependency while the builder owns it. Failed argv/logs retained under apple-first-engine-completion-20261118/checks/root-syntax-01. This is another isolated compile-environment boundary, not a production source diagnostic. Before retry, add the exact existing builder newview include search path for the relative dependency; final full build still uses its initialized builder checkout and matched source/headers.
+
+
+## PPD-413 — New lighting fixture uses the wrong reference-box array shape
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex prepared lighting completion
+- Discovered: 2026-11-18
+- Original reference: Existing native world uniform ABI stores each probe ref_box as flat float[16]; fixture setup must use the production ABI.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); uncompiled draft fixture addresses ref_box[2] as a three-dimensional matrix. Before-source a0e52193 and finding retained privately in engine-completion-20261118/lighting/source-review-01/before-flat-box-fixture.mm. Production shader compilation separately passed0; no fixture result is claimed.
+- Next action: Initialize the flat matrix with the existing identity helper and element14, then compile and execute actual consumer comparisons.
+- Verification: Source-only fixture error caught before its compilation; no production or runtime failure attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correcting the fixture array shape. Preserve the draft and all later execution results.
+
+- 2026-11-18 actual fixture syntax-01 failed1 on a second instance of the same draft ABI-shape error: ref_neighbor is flat int32[4096] on CPU, not the MSL int4[1024] shape. Failed fixture cae70f7d, argv/stdout/stderr retained. Registered here before replacing the nested index with ref_neighbor[i]; all remaining new array fields must be checked against the CPU header before recompiling. World source syntax separately passed0; no GPU/test execution claimed.
+
+
+## PPD-414 — Producer helper block is placed inside the preceding shadow factory
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex producer publication completion
+- Discovered: 2026-11-18
+- Original reference: Native publication helpers are namespace-level functions; the existing shadow factory must keep its original scope and behavior.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); isolated compile-02 receipt/logs preserve fixture exit1 because the helper block precedes shadow()'s closing brace. Real llspatialpartition.cpp Release compilation separately passed0 without a foreign PCH. No native execution occurred.
+- Next action: Preserve the pre-fix source, move the closing brace to restore the original factory scope, and rerun actual publication fixture compilation/tests.
+- Verification: Failed fixture compilation retained; no factory, GPU or viewer outcome inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the brace-placement repair. PPD412's separate const/PCH failures remain retained.
+
+
+## PPD-415 — New allocation-plan draft constructs a throwing owner under its registry lock
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native resource lifetime completion
+- Discovered: 2026-11-18
+- Original reference: Existing native backing owners retire without reentering an allocation-registry lock. New unique-backing accounting must preserve exception-safe retirement and cannot create a self-deadlock on allocation failure.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); isolated resourceplan.cpp source review finds shared_ptr control-block allocation while the registry mutex is held. On bad_alloc, deletion runs an allocation destructor taking that mutex. Draft also needs an explicit registration-committed bit before decrementing counters. Before-source retained privately by backend owner; no compilation/integration/execution yet.
+- Next action: Construct owning objects/control blocks outside the lock, commit registration transactionally, and test allocation-failure/overflow/lifetime conservation before native integration.
+- Verification: Unexecuted draft finding only; no existing viewer hang or allocation fault is attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before exception-safety repair. Preserve the draft and failure controls; actual native resource acceptance remains unproved.
+
+
+## PPD-416 — Producer-drain draft requests an unsupported simple alpha-mask cohort capability
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex producer drain integration
+- Discovered: 2026-11-18
+- Original reference: Ordinary simple alpha-mask and grass retain their original required source captures. ALMetalWorldCohortSource::seal explicitly excludes simple alpha_mask; existing group admission selects PASS_SIMPLE and ordinary static material/PBR maps.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); root uncompiled pipeline_producer_source_drain_native.inl sets cohort_source for all non-rigged non-grass recipes, including PASS_ALPHA_MASK. Source review against almetalworldcohort.mm72–104 shows the optional capability cannot seal, leaving that group's preparation repeatedly incomplete although required rendering remains available.
+- Next action: Request cohort certificates only for the exact existing static group-consumer families, excluding animated UV and unsupported simple-mask maps; retain ordinary source preparation for the other supported recipes. Qualify capability selection.
+- Verification: Unexecuted draft finding, not an owner runtime regression. Required rendering is unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before narrowing optional producer capability selection. No new GPU, viewer or cost outcome claimed.
+
+
+## PPD-417 — Shared texture readback does not establish its own committed GPU completion
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native resource lifetime completion
+- Discovered: 2026-11-18
+- Original reference: Original synchronous readback consumes completed rendering. Native buffer shared readback already submits a queue barrier before CPU reading; texture shared getBytes requires an explicit producer-completion contract.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); ALMetalTexture::readback shared/non-combined-depth path directly calls getBytes, unlike the shared-buffer path's ordered completion wait. Individual callers may already settle their producers; no owner image defect or FPS attribution is established.
+- Next action: Audit original and current readback callers, add typed readback dependency/completion for already committed work, and preserve explicit handling of uncommitted producers. Never infer queue submission from command creation or silently commit somebody else's command.
+- Verification: Source gap only before repair; contained shared readback and error/lifetime tests required.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before native readback correction. Any synchronous wait must remain confined to actual CPU readback APIs, not normal frame rendering.
+
+
+## PPD-418 — Optional native visibility preparation cannot report failure after a compute prefix
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native visibility and command completion
+- Discovered: 2026-11-18
+- Original reference: Original query/order admission must not recover by appending draws to a damaged native transaction. Optional preparation can use direct recovery only before native side effects or with a proven valid command.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); prepareCohortForCommandImpl and prepareAnimatedForCommand return null after possible compute begin/bind/dispatch/end failure. Current optional caller receives no prefix distinction and may select direct rendering. No actual runtime failure is attributed; old visibility experiments remain unselected controls.
+- Next action: Add explicit applicability outcomes including native_prefix; preserve direct recovery before prefix and require owner command cancellation for a post-prefix failure. Test pipeline/binding/dispatch/end failure, queries/order and completion retirement.
+- Verification: Source-confirmed failure-contract gap, not a demonstrated FPS or visual regression. No selection/completion claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before guarded preparation API changes. Existing rejected bank/worker cost history and diagnostic controls remain intact.

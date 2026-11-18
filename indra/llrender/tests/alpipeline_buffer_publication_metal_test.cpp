@@ -4401,3 +4401,4 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_main_light_encoding_native.inl"
 
 #include "alpipeline_producer_preparation_native.inl"
+#include "alpipeline_producer_drain_native.inl"

@@ -170,6 +170,7 @@
 #include "llviewerdisplay.h"
 #include "llversioninfovars.h"
 #include "llspatialpartition.h"
+#include "lldrawpoolmaterials.h"
 #include "llmutelist.h"
 #include "lltoolpie.h"
 #include "llnotifications.h"
@@ -436,6 +437,9 @@ struct ALViewerMetalShadowSourceCache
     }
 };
 #include "pipeline_scene_publication_native.inl"
+#include "pipeline_source_policy_native.inl"
+#include "pipeline_producer_recipe_native.inl"
+#include "pipeline_producer_source_drain_native.inl"
 #include "pipeline_group_publication_native.inl"
 #include "pipeline_shadow_membership_native.inl"
 #include "pipeline_early_visibility_native.inl"
@@ -3564,6 +3568,19 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             log_lighting_tiles("probe_or_hero", mMetalProbeWorldSimpleCapture
                 ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
             const auto frame_plan = ALNativeFrameBudget::instance().snapshot();
+            const auto producer_work = LLSpatialGroup::metalSourceWorkStats();
+            const auto& producer_drain = ALSceneProducerDrainNative::statistics;
+            LL_INFOS("MetalFramePlan") << "Native producer source preparation: metadata_rows/bytes="
+                << producer_work.resident_rows << '/' << producer_work.resident_bytes
+                << ", discovery_publications/declines=" << producer_work.publications << '/' << producer_work.declines
+                << ", frames/candidates/rows/requests=" << producer_drain.frames << '/' << producer_drain.candidates
+                << '/' << producer_drain.rows << '/' << producer_drain.requests
+                << ", warm/prepared/completed/deferred=" << producer_drain.warm << '/' << producer_drain.prepared
+                << '/' << producer_drain.completed << '/' << producer_drain.deferred
+                << ", stale/incomplete/refreshed/allocation_failures=" << producer_drain.stale << '/'
+                << producer_drain.incomplete << '/' << producer_drain.refreshed << '/' << producer_drain.allocation_failures
+                << ", owner_wall_ns=" << producer_drain.wall_ns
+                << ", scope=bounded_cpu_metadata_and_source_factories_not_gpu_execution_or_ram" << LL_ENDL;
             LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
                 << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
                 << ", required_main_cpu/wait_wall/wait_cpu/non_cpu/pressure_ns="
@@ -3581,6 +3598,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", preparation_cpu_bytes_inflight=" << frame_plan.preparation_bytes_in_flight
                 << ", streaming_queued/pending/oldest=" << frame_plan.streaming.queued_requests << '/' << frame_plan.streaming.pending_publications << '/' << frame_plan.streaming.oldest_request_frame
                 << LL_ENDL;
+            LL_INFOS("MetalFramePlan") << "Native early admission GPU pressure hint: frame="
+                << frame_plan.frame
+                << ", preceding_valid/frame/non_cpu_ns="
+                << frame_plan.previous_main_gpu_wait_valid << '/'
+                << frame_plan.previous_main_gpu_wait_frame << '/'
+                << frame_plan.previous_main_gpu_wait_non_cpu_ns
+                << ", effective_gpu_pressure_ns=" << frame_plan.required_main_gpu_pressure_ns
+                << ", scope=admission_hint_not_current_measured_wait" << LL_ENDL;
 
             const auto main_completion = ALNativeFramePlan::mainCompletionCensus();
             for (std::size_t phase = 0; phase < main_completion.size(); ++phase)
@@ -22983,6 +23008,37 @@ void LLPipeline::postSort(LLCamera &camera)
     }
 
     LLVertexBuffer::flushBuffers();
+    if (!sShadowRender && !sImpostorRender && !sRenderingHUDs && !gCubeSnapshot &&
+        isMainWorldPass() && mRT == &mMainRT)
+    {
+        static const bool producer_preparation = []
+        {
+            const char* control = std::getenv("ALCHEMY_METAL_PRODUCER_PREPARATION");
+            return !control || std::strcmp(control, "0") != 0;
+        }();
+        if (producer_preparation)
+        {
+            static LLCachedControl<bool> resource_tables(gSavedSettings, "RenderMetalWorldResourceTables", false);
+            static LLCachedControl<bool> source_rows(gSavedSettings, "RenderMetalSourceRows", false);
+            static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
+            static LLCachedControl<bool> animated_sources(gSavedSettings, "RenderMetalAnimatedSources", false);
+            static LLCachedControl<bool> animated_gpu(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
+            ALSceneProducerDrainNative::Policy policy;
+            policy.native_visibility = native_visibility();
+            policy.native_resources = resource_tables();
+            policy.native_groups = native_group_sources();
+            policy.cohort_bounds = cohort_bounds;
+            policy.pass.source_rows_active = source_rows() || (source_banks() && !native_group_sources());
+            policy.pass.animated_sources_active = animated_sources() || animated_gpu();
+            policy.pass.animated_gpu_records_active = animated_gpu();
+            policy.pass.animated_direct_stability = true;
+            ALSceneProducerDrainNative::drain(sCull->beginVisibleGroups(), sCull->endVisibleGroups(),
+                policy, sNativeSceneSources, sNativeSceneSerial, gFrameCount, ALNativeFrameBudget::instance(),
+                [](LLSpatialGroup* group) { return LLPointer<LLSpatialGroup>(group); },
+                [](LLDrawInfo* info) { return LLPointer<LLDrawInfo>(info); },
+                ALSceneProducerDrainNative::ordinaryFlavor);
+        }
+    }
     if (native_group_view)
     {
         static LLCachedControl<bool> group_stability(gSavedSettings, "RenderMetalGroupSourceStability", false);
