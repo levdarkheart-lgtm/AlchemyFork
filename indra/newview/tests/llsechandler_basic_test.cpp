@@ -37,6 +37,8 @@
 #include "llxorcipher.h"
 #include <vector>
 #include <ios>
+#include <filesystem>
+#include <memory>
 #include <llsdserialize.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
@@ -68,6 +70,138 @@ REQUIRE(valueCompareLLSD(except.getCertData(), cert_data)); \
 }
 
 extern bool _cert_hostname_wildcard_match(const std::string& hostname, const std::string& wildcard_string);
+extern LLDate cert_date_from_asn1_time(ASN1_TIME* asn1_time);
+extern void _validateCert(int validation_policy, LLPointer<LLCertificate> cert,
+                         const LLSD& validation_params, int depth);
+
+TEST_CASE("LLSecHandler: certificate times preserve ASN1 encodings and UTC", "[LLSecHandler][PPD468]")
+{
+    struct TimeCase
+    {
+        int type;
+        const char* encoded;
+        const char* expected;
+    };
+    const TimeCase cases[] = {
+        {V_ASN1_UTCTIME, "491231235959Z", "2049-12-31T23:59:59Z"},
+        {V_ASN1_UTCTIME, "500101000000Z", "1950-01-01T00:00:00Z"},
+        {V_ASN1_UTCTIME, "691231235959Z", "1969-12-31T23:59:59Z"},
+        {V_ASN1_UTCTIME, "700101000000Z", "1970-01-01T00:00:00Z"},
+        {V_ASN1_UTCTIME, "261118225105+0200", "2026-11-18T20:51:05Z"},
+        {V_ASN1_GENERALIZEDTIME, "20111006083956Z", "2011-10-06T08:39:56Z"},
+        {V_ASN1_GENERALIZEDTIME, "20461006083956Z", "2046-10-06T08:39:56Z"},
+        {V_ASN1_GENERALIZEDTIME, "20500101000000Z", "2050-01-01T00:00:00Z"}
+    };
+    for (const TimeCase& item : cases)
+    {
+        INFO(item.encoded);
+        std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)> value(
+            ASN1_STRING_type_new(item.type), ASN1_TIME_free);
+        REQUIRE(value);
+        REQUIRE(ASN1_STRING_set(value.get(), item.encoded, -1) == 1);
+        CHECK(cert_date_from_asn1_time(value.get()) == LLDate(item.expected));
+    }
+}
+
+TEST_CASE("LLSecHandler: malformed certificate times have no parsed date", "[LLSecHandler][PPD468]")
+{
+    CHECK(cert_date_from_asn1_time(nullptr) == LLDate());
+    for (const char* encoded : {"123", "261332250000Z", "not-a-time-value"})
+    {
+        INFO(encoded);
+        std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)> value(
+            ASN1_STRING_type_new(V_ASN1_UTCTIME), ASN1_TIME_free);
+        REQUIRE(value);
+        REQUIRE(ASN1_STRING_set(value.get(), encoded, -1) == 1);
+        CHECK(cert_date_from_asn1_time(value.get()) == LLDate());
+    }
+}
+
+TEST_CASE("LLSecHandler: shipped CA certificate dates survive time validation", "[LLSecHandler][PPD468]")
+{
+    const auto bundle = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+        / "externals" / "ca-certificates" / "ca-bundle.crt";
+    std::unique_ptr<BIO, decltype(&BIO_free)> input(BIO_new_file(bundle.string().c_str(), "r"), BIO_free);
+    REQUIRE(input);
+    std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)> epoch(ASN1_TIME_new(), ASN1_TIME_free);
+    REQUIRE(epoch);
+    REQUIRE(ASN1_TIME_set_string(epoch.get(), "700101000000Z") == 1);
+    LLSD validation_params;
+    validation_params[CERT_VALIDATION_DATE] = LLDate("2026-11-18T20:51:05Z");
+    size_t count = 0;
+    size_t generalized = 0;
+    for (;;)
+    {
+        std::unique_ptr<X509, decltype(&X509_free)> raw(
+            PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr), X509_free);
+        if (!raw) break;
+        INFO(count);
+        LLPointer<LLCertificate> cert = new LLBasicCertificate(raw.get());
+        LLSD info;
+        cert->getLLSD(info);
+        for (const auto& item : {
+            std::pair<const char*, const ASN1_TIME*>(CERT_VALID_FROM, X509_get0_notBefore(raw.get())),
+            std::pair<const char*, const ASN1_TIME*>(CERT_VALID_TO, X509_get0_notAfter(raw.get()))})
+        {
+            int days = 0;
+            int seconds = 0;
+            REQUIRE(ASN1_TIME_diff(&days, &seconds, epoch.get(), item.second) == 1);
+            CHECK(info[item.first].asDate().secondsSinceEpoch() == F64(days) * 86400.0 + seconds);
+            generalized += ASN1_STRING_type(item.second) == V_ASN1_GENERALIZEDTIME;
+        }
+        CHECK_NOTHROW(_validateCert(VALIDATION_POLICY_TIME, cert, validation_params, 0));
+        ++count;
+    }
+    ERR_clear_error(); // PEM's end-of-file marker is not an individual certificate failure.
+    CHECK(count == 121);
+    CHECK(generalized == 2);
+}
+
+TEST_CASE("LLSecHandler: malformed certificate validity cannot become the Unix epoch", "[LLSecHandler][PPD469]")
+{
+    // Copy a valid real certificate before mutation. OpenSSL's DER decoder
+    // already rejects some malformed strings, so change the owned X509 in
+    // memory to test the viewer's metadata/validation boundary itself.
+    struct MutableCertificate : LLBasicCertificate
+    {
+        using LLBasicCertificate::LLBasicCertificate;
+        int setTime(bool before, const char* encoded)
+        {
+            return ASN1_STRING_set(before ? X509_getm_notBefore(mCert) : X509_getm_notAfter(mCert), encoded, -1);
+        }
+    };
+    const auto bundle = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+        / "externals" / "ca-certificates" / "ca-bundle.crt";
+    std::unique_ptr<BIO, decltype(&BIO_free)> input(BIO_new_file(bundle.string().c_str(), "r"), BIO_free);
+    REQUIRE(input);
+    std::unique_ptr<X509, decltype(&X509_free)> raw(
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr), X509_free);
+    REQUIRE(raw);
+    LLSD validation_params;
+    validation_params[CERT_VALIDATION_DATE] = LLDate("2026-11-18T20:51:05Z");
+    for (bool before : {true, false})
+    {
+        for (const char* encoded : {"123", "261332250000Z"})
+        {
+            INFO(before);
+            INFO(encoded);
+            LLPointer<MutableCertificate> cert = new MutableCertificate(raw.get());
+            REQUIRE(cert->setTime(before, encoded) == 1);
+            LLSD info;
+            cert->getLLSD(info);
+            CHECK_FALSE(info.has(before ? CERT_VALID_FROM : CERT_VALID_TO));
+            CHECK(info.has(before ? CERT_VALID_TO : CERT_VALID_FROM));
+            CHECK_THROWS_AS(_validateCert(VALIDATION_POLICY_TIME, cert, validation_params, 0), LLCertException);
+        }
+    }
+    LLPointer<MutableCertificate> epoch_cert = new MutableCertificate(raw.get());
+    REQUIRE(epoch_cert->setTime(true, "700101000000Z") == 1);
+    LLSD info;
+    epoch_cert->getLLSD(info);
+    CHECK(info.has(CERT_VALID_FROM));
+    CHECK(info[CERT_VALID_FROM].asDate() == LLDate());
+    CHECK_NOTHROW(_validateCert(VALIDATION_POLICY_TIME, epoch_cert, validation_params, 0));
+}
 
 //----------------------------------------------------------------------------
 // Mock objects for the dependencies of the code we're testing

@@ -2230,7 +2230,9 @@ void LLImageGL::afterPublish(std::function<void(bool)> fn)
     llassert(on_main_thread());
     if (mPublishesPending == 0)
     {
-        fn(true);
+        // The batch can settle before its worker's main-queue continuation
+        // registers this callback. Preserve that result in either ordering.
+        fn(mPublishesSucceeded);
         return;
     }
     mOnPublished.push_back(std::move(fn));
@@ -2317,6 +2319,14 @@ void LLImageGL::beginUpload()
     if (mUploadInFlight)
     {
         return;
+    }
+
+    // A new attempt may do no GPU work (for example an unchanged media
+    // image). Do not carry a settled failure into that attempt, or reset an
+    // outstanding batch's aggregate result.
+    if (mPublishesPending == 0)
+    {
+        mPublishesSucceeded = true;
     }
 
     mPublished.mWidth               = mWidth;

@@ -1809,7 +1809,7 @@ bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease 
 #endif
                 // Admission is retained by the native command through GPU completion.
                 LLImageGL::NativeUploadCreditScope admission(credit);
-                createTexture(0, category);
+                const bool created = createTexture(0, category);
 
 #if LL_IMAGEGL_THREAD_CHECK
                 //verify data is unmodified
@@ -1817,10 +1817,11 @@ bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease 
                 llassert(mRawImage->getDataSize() == size);
                 llassert(memcmp(data, data_copy, size) == 0);
 #endif
+                return created;
             },
             // callback to be run on main thread
 #if LL_IMAGEGL_THREAD_CHECK
-                [this, gl_image, data, data_copy, size]()
+                [this, gl_image, data, data_copy, size](bool created)
             {
                 mGLTexturep->mActiveThread = LLThread::currentID();
                 llassert(data == mRawImage->getData());
@@ -1828,21 +1829,40 @@ bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease 
                 llassert(memcmp(data, data_copy, size) == 0);
                 delete[] data_copy;
 #else
-                [this, gl_image]()
+                [this, gl_image](bool created)
                 {
 #endif
                 // The worker is done, but its texture publishes only after the
                 // shared Metal command batch commits. Finish then: ending the
                 // snapshot, or clearing mNeedsCreateTexture and letting the next
                 // upload start, must not run ahead of publication.
-                gl_image->afterPublish([this, gl_image]()
+                auto finish = [this, gl_image](bool succeeded)
                 {
-                    // A no-op when syncTexName published the new texture.
-                    gl_image->endUpload();
-                    //finalize on main thread
-                    postCreateTexture();
+                    if (succeeded)
+                    {
+                        // A no-op when syncTexName published the new texture.
+                        gl_image->endUpload();
+                        postCreateTexture();
+                        mCreateQueuedFrame = 0;
+                    }
+                    else
+                    {
+                        // Keep the decoded pixels and original request age on
+                        // either creation or batch-publication failure. Nothing
+                        // replaces the previously visible native generation.
+                        gl_image->cancelUpload();
+                        gTextureList.queueCreateTexture(this, true);
+                    }
                     unref();
-                });
+                };
+                if (created)
+                {
+                    gl_image->afterPublish(std::move(finish));
+                }
+                else
+                {
+                    finish(false);
+                }
             });
         if (posted)
         {
@@ -1854,9 +1874,9 @@ bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease 
         }
         else
         {
-            // The LLImageGL thread has closed, as the viewer quits: nothing will run
-            // the upload or end it.
-            gl_image->endUpload();
+            // No worker owns this attempt. Restore the published format tuple
+            // before the caller can retry through synchronous creation.
+            gl_image->cancelUpload();
         }
     }
     if (!posted)

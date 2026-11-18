@@ -196,8 +196,18 @@ LLSD& LLBasicCertificate::_initLLSD()
         mLLSDInfo[CERT_SERIAL_NUMBER] = cert_string_from_asn1_integer(sn);
     }
 
-    mLLSDInfo[CERT_VALID_TO] = cert_date_from_asn1_time(X509_getm_notAfter(mCert));
-    mLLSDInfo[CERT_VALID_FROM] = cert_date_from_asn1_time(X509_getm_notBefore(mCert));
+    // PPD-469: keep invalid input absent so validation rejects the missing
+    // validity period. A conversion's epoch sentinel is also a valid date.
+    ASN1_TIME* valid_to = X509_getm_notAfter(mCert);
+    if (valid_to && ASN1_TIME_check(valid_to) == 1)
+    {
+        mLLSDInfo[CERT_VALID_TO] = cert_date_from_asn1_time(valid_to);
+    }
+    ASN1_TIME* valid_from = X509_getm_notBefore(mCert);
+    if (valid_from && ASN1_TIME_check(valid_from) == 1)
+    {
+        mLLSDInfo[CERT_VALID_FROM] = cert_date_from_asn1_time(valid_from);
+    }
     // add the known extensions
     mLLSDInfo[CERT_BASIC_CONSTRAINTS] = _basic_constraints_ext(mCert);
     mLLSDInfo[CERT_KEY_USAGE] = _key_usage_ext(mCert);
@@ -468,27 +478,14 @@ std::string cert_string_from_asn1_string(ASN1_STRING* value)
 // validity checking.
 LLDate cert_date_from_asn1_time(ASN1_TIME* asn1_time)
 {
-
     struct tm timestruct = {0};
-    int i = asn1_time->length;
-
-    if (i < 10)
+    // PPD-468: certificates may use UTCTime or GeneralizedTime. Let OpenSSL
+    // decode the year, validity and UTC offset rather than treating both as
+    // two-digit years (which rejected a valid root in the shipped CA bundle).
+    if (!asn1_time || ASN1_TIME_to_tm(asn1_time, &timestruct) != 1)
     {
         return LLDate();
     }
-    // convert the date from the ASN1 time (which is a string in ZULU time), to
-    // a timeval.
-    timestruct.tm_year = (asn1_time->data[0]-'0') * 10 + (asn1_time->data[1]-'0');
-
-    /* Deal with Year 2000 */
-    if (timestruct.tm_year < 70)
-        timestruct.tm_year += 100;
-
-    timestruct.tm_mon = (asn1_time->data[2]-'0') * 10 + (asn1_time->data[3]-'0') - 1;
-    timestruct.tm_mday = (asn1_time->data[4]-'0') * 10 + (asn1_time->data[5]-'0');
-    timestruct.tm_hour = (asn1_time->data[6]-'0') * 10 + (asn1_time->data[7]-'0');
-    timestruct.tm_min = (asn1_time->data[8]-'0') * 10 + (asn1_time->data[9]-'0');
-    timestruct.tm_sec = (asn1_time->data[10]-'0') * 10 + (asn1_time->data[11]-'0');
 
 #if LL_WINDOWS
     return LLDate((F64)_mkgmtime(&timestruct));

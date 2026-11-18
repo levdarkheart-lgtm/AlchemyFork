@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-467 -->
+<!-- next-defect-id: PPD-470 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7520,6 +7520,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 exact69277 closed-log audit02 reproduces32 throttled palette-stabilization notices reaching at least2900 calls, with16 operand diagnostics:7 nonfinite inverse XYZ and9 finite inverse/world operands producing bad XYZ; all world XYZ/W finite. Root/source audit finds existing shared palette publication and quantized skin-hash identity, so neither a missing architecture boundary nor a specific corruption cause is established. Preserve current GPU-input protection; next useful diagnostic is bounded exact operand bits plus opaque producer/content/pose/lifecycle/frame/thread identity. Owner hair report PPD466 has no proved association; no repair attempted. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
 
+- 2026-11-18 warning port review compares original/captured multiply, inverse numeric decode and world-matrix formula; no changed arithmetic identified. All11bounded appearance/decode/consumer functions compared are identical. Exact live operand values/skin identity remain absent, so malformed input, overflow, ownership/race or another numeric defect are not distinguished. PPD313 bind shape feeds a different bind-pose vector and is not a proved nonfinite-inverse cause. [Full source audit](research/log-warning-port-audit-20261118.md).
+
 ## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
 
 - Status: investigating
@@ -7538,6 +7540,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered all three stderr warnings separately from365structured viewer warnings. No application change or warning suppression attempted.
 
 - 2026-11-16 unchanged fresh69172 again emits2grayICC/RGBPNG and1interlace stderrwarning. No asset/phase/emitter/visualeffect isolation; retain source/API-order concern without attribution to FPS.
+
+- 2026-11-18 source audit confirms original/current PNG wrapper identity; retained libpng1.6.58 exact literals map ICC metadata rejection and an interlace warning path that repairs row count then enables interlace handling. This narrows the caller-order concern without proving observed pixels or exact input/call stacks. Three69277stderr warnings remain separate from317structured rows. [Warning audit](research/log-warning-port-audit-20261118.md).
 
 ## PPD-313 — Skin default and empty-input paths violate initialization/indexing contracts
 
@@ -10715,3 +10719,66 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before any repair or causal attribution. No settings, asset handling, shader or source change was made during this checkpoint analysis. Related PPD311/463/464 remain independent open records.
+
+
+## PPD-467 — Fetched worker upload finalizes failed native texture publication
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex warning port audit integrator
+- Discovered: 2026-11-18
+- Original reference: Original 1eb44bbd1b LLViewerFetchedTexture worker ignores createTexture's return and finalizes the legacy upload. Native upload/commit has explicit fallible publication and no fallback texture; current synchronous create path retains raw data and requeues failure. Both native execution paths must preserve the last published generation and retry decoded data until publication succeeds.
+- Evidence: [Warning port audit](work/active/log-warning-port-audit-20261118.md); current llviewertexture.cpp1812 discards createTexture result, and1838 selects the void afterPublish overload before unconditional postCreateTexture. llimagegl.cpp2191 propagates publication failure, but the void adapter2223 drops it; with no queued publication the bool overload returns true immediately. Synchronous llviewertexturelist.cpp1344 explicitly retries failed native creation.
+- Next action: Owner-test the matching local candidate through texture loading/teleport and retry recovery. Retain old generation/raw/age/lifetime guarantees and controlled failure cases; real driver-failure injection and owner appearance attribution remain unverified. Keep fixes local pending explicit push approval.
+- Verification: Local repair passes original/focused negative controls and32actual-body ASan/UBSan case executions/342checks across both thread-check modes; integrated CTest drivers2/2 pass. Matching Release69328 build0;51native image cases/8790assertions pass with Metal API/GPU validation,346ARM64/signature pass. Controlled scheduling/storage does not prove a real driver failure or owner scene recovery.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered during producer/consumer review of the22 HTTP403/missing-texture chains, before repair. This adjacent native recovery defect is separate from their inherited HTTP failure branches and from PPD311/312/313/466. Original and captured raw logs remain unchanged.
+
+
+- 2026-11-18 integration review also finds rejected worker post ends the snapshot without restoring metadata resolved by beginUpload(components). A subsequent synchronous failure can therefore restore the wrong format tuple. Correct rejected-post cancellation and extend the actual-body fixture to execute real cancel/end/snapshot functions; no runtime occurrence is attributed.
+
+- 2026-11-18 Final source forwards creation/publication results, preserves pending raw/old generation/reference/age on failure, returns stored settled result and cancels rejected-post metadata. Original d87 negative10/16fails; focused pre-rollback negative1/16fails; final16/171 each mode passes. Initial15case receipts and missing-S32 fixture compile failure remain retained. Full app build and integrated/native regressions pass; owner runtime pending. [Audit evidence](work/active/log-warning-port-audit-20261118.md).
+
+
+## PPD-468 — Certificate validity parser misreads GeneralizedTime as UTCTime
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex warning port audit integrator
+- Discovered: 2026-11-18
+- Original reference: Original1eb44bbd1b and captured69277 llsechandler_basic.cpp cert_date_from_asn1_time are identical; both assume a two-digit UTCTime year without checking ASN1_TIME type. X.509 GeneralizedTime must parse its four-digit year and validate calendar fields before deriving validity.
+- Evidence: [Warning port audit](work/active/log-warning-port-audit-20261118.md). Exact69277 log CertExpired warning is followed by shipped trust-bundle scan receipt120 good certificates/rejected1. Staged/source CA bundle bytes match original. Independent OpenSSL dates identify its single GeneralizedTime certificate (Certum Trusted Network CA2) with validity2011-10-06 to2046-10-06; the viewer parses the end string20461006083956Z with month46, normalizing it into2023.
+- Next action: Owner-test the matching candidate startup trust-bundle scan; expect all121bundled roots valid at the recorded timestamp. Contained helper/real-class tests pass; endpoint connectivity is a separate untested claim. Keep certificate expiry/hostname/crypto checks and local-only approval boundary.
+- Verification: Local validated conversion passes8time encoding/pivot/offset rows plus malformed/null and all121shipped roots. Actual integrated certificate suite13cases/828assertions passes, including full metadata/validator comparison at the recorded date. Release69328 build/346ARM64/signature pass; no owner runtime/bundle-load log retest or endpoint acceptance claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before repair after tracing SECAPI warning through LLBasicCertificateVector::load_from_file. One valid bundled trust anchor is rejected. No credential, request, bundle update, trust weakening or source repair performed before this registration.
+
+- 2026-11-18 Exact old-helper projection9fails/252checks and120valid roots; new helper0fails/256checks and121valid. Real class suite13/828 passes after both468/469repairs. Both GeneralizedTime endpoints,1950/2049pivot,UTC offset and null/malformed helpers covered. Trust policy/root bytes/hostname/crypto checks are unchanged. [Audit evidence](work/active/log-warning-port-audit-20261118.md).
+
+
+## PPD-469 — Malformed certificate start date can become a valid epoch sentinel
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex warning port audit integrator
+- Discovered: 2026-11-18
+- Original reference: Original1eb44bbd1b cert_date_from_asn1_time returns LLDate() for a short date, while LLBasicCertificate::_initLLSD always inserts date keys and _validateCert only checks their existence and range. Invalid ASN.1 dates must remain invalid metadata rather than become an apparently valid1970 lower bound.
+- Evidence: [Warning port audit](work/active/log-warning-port-audit-20261118.md); peer review of PPD468 traces invalid helper result through unconditional CERT_VALID_FROM insertion to time policy. A malformed notBefore with valid future notAfter can satisfy the time range using the epoch sentinel. No such certificate or endpoint acceptance was observed in69277.
+- Next action: Owner-test the combined local candidate; retain actual malformed-before/after rejection, valid epoch and121root regressions. No live malformed endpoint was observed or tested. Keep the fix local pending explicit push approval.
+- Verification: Local metadata guard passes projected actual-block15checks after6baseline failures; real class suite13cases/828assertions covers malformed before/after fields, missing-period rejection and valid Unix epoch, plus all121valid shipped roots. Shared suite counted once. Matching Release69328 build/346ARM64/signature pass; no runtime malformed endpoint was observed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before a narrow metadata guard or new malformed-certificate validation tests. PPD468 valid-GeneralizedTime repair does not alone close this separate invalid-input gap.
+
+- 2026-11-18 Source guards date insertion with ASN1_TIME_check; invalid dates stay absent so existing validator rejects missing period, while valid epoch stays present. Actual class test mutates owned valid X509 before first lazy metadata read because OpenSSL already rejects some malformed DER clones. Projection control and integrated full suite pass; independent review confirms no stale date keys or validation bypass. [Audit evidence](work/active/log-warning-port-audit-20261118.md).

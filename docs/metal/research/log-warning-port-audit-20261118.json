@@ -1,0 +1,343 @@
+{
+  "captured_source": "e426d7956f48268833513cae78894e92ce30a61e",
+  "audit_base": "d87f9aced63cb8903f0e9abbdef72f7beff5ba8f",
+  "original": "1eb44bbd1bdc76d0100c75699bad1fb337e8cb45",
+  "log_sha256": "f570cd43804df1b6d1d5e9bde5a8442b6a7376a889d19ec3b0985999745d8bb1",
+  "warning_count": 317,
+  "site_count": 37,
+  "sites": [
+    {
+      "path": "indra/llcorehttp/_httppolicy.cpp",
+      "captured_line": 418,
+      "current_line": 418,
+      "count": 66,
+      "function": "stageAfterCompletion",
+      "port_verdict": "Inherited retry policy; logging category corrected earlier",
+      "explanation": "66 transport timeouts exhaust/disallow internal retries; final failed result goes to caller. Endpoint and caller recovery unknown."
+    },
+    {
+      "path": "indra/llfilesystem/lldir.cpp",
+      "captured_line": 781,
+      "current_line": 781,
+      "count": 1,
+      "function": "findSkinnedFilenames",
+      "port_verdict": "Original function identical",
+      "explanation": "Loading... contains two dots, so skin lookup rejects it. Caller identity unknown; retain traversal guard."
+    },
+    {
+      "path": "indra/llmessage/llexperiencecache.cpp",
+      "captured_line": 339,
+      "current_line": 339,
+      "count": 2,
+      "function": "requestExperiences",
+      "port_verdict": "Original file identical; later progress observed",
+      "explanation": "Empty capability delays request without consuming queue; later experience requests/results occur."
+    },
+    {
+      "path": "indra/llrender/llimagegl.cpp",
+      "captured_line": 3015,
+      "current_line": 3025,
+      "count": 3,
+      "function": "calcAlphaChannelOffsetAndStride",
+      "port_verdict": "Original classifier identical; float callers differ",
+      "explanation": "GL_FLOAT unsupported by byte CPU alpha/pick analysis; conservative defaults. Upload is separate. Exact3images unidentified."
+    },
+    {
+      "path": "indra/llxml/llcontrol.cpp",
+      "captured_line": 793,
+      "current_line": 793,
+      "count": 1,
+      "function": "LLControlVariable::setValueFromNotation",
+      "port_verdict": "Original file identical; fallback observed",
+      "explanation": "LEAP shell command fails notation parsing, then command parser preserves it as a string and processes it."
+    },
+    {
+      "path": "indra/llxml/llcontrol.cpp",
+      "captured_line": 1079,
+      "current_line": 1079,
+      "count": 1,
+      "function": "LLControlGroup::loadFromFile",
+      "port_verdict": "Original file identical",
+      "explanation": "Optional user crash-policy override cannot open; previously loaded defaults remain. Absence versus I/O unknown."
+    },
+    {
+      "path": "indra/newview/alassetblocklist.cpp",
+      "captured_line": 87,
+      "current_line": 87,
+      "count": 1,
+      "function": "load",
+      "port_verdict": "Original file identical",
+      "explanation": "Cannot open optional account asset blocklist; no persisted entries imported. Absence versus I/O unknown."
+    },
+    {
+      "path": "indra/newview/alderenderlist.cpp",
+      "captured_line": 168,
+      "current_line": 168,
+      "count": 1,
+      "function": "load",
+      "port_verdict": "Original file identical",
+      "explanation": "Cannot open optional saved derender list; no persisted entries imported. Absence versus I/O unknown."
+    },
+    {
+      "path": "indra/newview/llagent.cpp",
+      "captured_line": 4666,
+      "current_line": 4666,
+      "count": 1,
+      "function": "LLAgent::doTeleportViaLocation",
+      "port_verdict": "Original teleport function identical",
+      "explanation": "Missing world-map destination selects reliable legacy location request; warning is not server rejection."
+    },
+    {
+      "path": "indra/newview/llappearancemgr.cpp",
+      "captured_line": 4178,
+      "current_line": 4178,
+      "count": 1,
+      "function": "LLAppearanceMgr::serverAppearanceUpdateCoro",
+      "port_verdict": "Original function identical",
+      "explanation": "Skip duplicate/stale COF appearance request; prevents redundant POST. Does not certify loaded appearance."
+    },
+    {
+      "path": "indra/newview/llappviewer.cpp",
+      "captured_line": 1585,
+      "current_line": 1585,
+      "count": 3,
+      "function": "doFrame",
+      "port_verdict": "Original emitter and SDL restore helper preserved",
+      "explanation": "Signal handler changed and was restored; loop continues. Changed handler/owner/crash implication unknown."
+    },
+    {
+      "path": "indra/newview/llappviewer.cpp",
+      "captured_line": 2756,
+      "current_line": 2756,
+      "count": 1,
+      "function": "initLoggingAndGetLastDuration",
+      "port_verdict": "Original branch preserved",
+      "explanation": "Prior log stat unavailable, so previous execution duration becomes unknown. No current-run crash inference."
+    },
+    {
+      "path": "indra/newview/llavatarrendernotifier.cpp",
+      "captured_line": 146,
+      "current_line": 146,
+      "count": 3,
+      "function": "displayNotification",
+      "port_verdict": "Original file identical",
+      "explanation": "Unconditional complexity/visibility notice logged at WARNING; does not measure actual attachment visibility."
+    },
+    {
+      "path": "indra/newview/llgltfmateriallist.cpp",
+      "captured_line": 557,
+      "current_line": 557,
+      "count": 19,
+      "function": "onAssetLoadComplete",
+      "port_verdict": "Original callback/cache contract preserved",
+      "explanation": "19 failures across15materials call materialComplete(false). Referenced failed entry has no immediate blanket retry; cause/objects/recovery unknown."
+    },
+    {
+      "path": "indra/newview/llinventorymodel.cpp",
+      "captured_line": 921,
+      "current_line": 921,
+      "count": 8,
+      "function": "LLInventoryModel::findCategoryUUIDForTypeInRoot",
+      "port_verdict": "Original lookup preserved",
+      "explanation": "8 login category misses return null; later inventory completion for each folder not established."
+    },
+    {
+      "path": "indra/newview/lllandmarklist.cpp",
+      "captured_line": 241,
+      "current_line": 241,
+      "count": 6,
+      "function": "onRegionHandle",
+      "port_verdict": "Original file identical",
+      "explanation": "6 landmarks lack resolvable global position even after handle response; callbacks erased. Real navigation failures; inputs/recovery unknown."
+    },
+    {
+      "path": "indra/newview/llmutelist.cpp",
+      "captured_line": 264,
+      "current_line": 264,
+      "count": 1,
+      "function": "clearCachedMutes",
+      "port_verdict": "Original clear branch; replacement observed",
+      "explanation": "Unconditional cache-clear lifecycle followed immediately by successful server-cached mute load."
+    },
+    {
+      "path": "indra/newview/llmutelist.cpp",
+      "captured_line": 1147,
+      "current_line": 1147,
+      "count": 1,
+      "function": "loadFromFile",
+      "port_verdict": "Original load branch preserved",
+      "explanation": "Optional account visual-mute file cannot open; no saved settings imported. Absence versus I/O unknown."
+    },
+    {
+      "path": "indra/newview/llprogressview.cpp",
+      "captured_line": 444,
+      "current_line": 444,
+      "count": 1,
+      "function": "LLProgressView::initStartTexture",
+      "port_verdict": "Original startup-texture function identical",
+      "explanation": "Saved bitmap load fails before decode/upload; same function selects explicit black image fallback."
+    },
+    {
+      "path": "indra/newview/llsecapi.cpp",
+      "captured_line": 186,
+      "current_line": 186,
+      "count": 1,
+      "function": "LLCertException",
+      "port_verdict": "Inherited defect; local PPD-468 repair",
+      "explanation": "Trust-bundle scan rejects1 valid GeneralizedTime CA because old date parser assumes two-digit year. Not an identified failed endpoint."
+    },
+    {
+      "path": "indra/newview/llskinningutil.cpp",
+      "captured_line": 217,
+      "current_line": 217,
+      "count": 16,
+      "function": "initSkinningMatrixPalette",
+      "port_verdict": "Native diagnostic around unchanged multiply; OPEN PPD-311",
+      "explanation": "16 bounded invalid-XYZ reports:7bad inverse inputs,9finite operands with bad product; all world inputs finite. Producer/numerical cause unknown."
+    },
+    {
+      "path": "indra/newview/llskinningutil.cpp",
+      "captured_line": 235,
+      "current_line": 235,
+      "count": 32,
+      "function": "initSkinningMatrixPalette",
+      "port_verdict": "Native shape-changing safety fallback; OPEN PPD-311",
+      "explanation": "32 throttled notices reach2900palette calls. Invalid matrices replaced by avatar-root translation; intended deformation is not preserved."
+    },
+    {
+      "path": "indra/newview/lltexturefetch.cpp",
+      "captured_line": 1744,
+      "current_line": 1744,
+      "count": 22,
+      "function": "doWork",
+      "port_verdict": "Original file identical",
+      "explanation": "22 fetches have no usable formatted bytes, terminate DONE and release HTTP slot; precede missing texture state."
+    },
+    {
+      "path": "indra/newview/lltexturefetch.cpp",
+      "captured_line": 2167,
+      "current_line": 2167,
+      "count": 22,
+      "function": "onCompleted",
+      "port_verdict": "Original file identical",
+      "explanation": "22 HTTP403 responses mark fetch unsuccessful. Request/capability/content/server cause unresolved; no GPU upload reached."
+    },
+    {
+      "path": "indra/newview/lltexturefetch.cpp",
+      "captured_line": 2388,
+      "current_line": 2388,
+      "count": 5,
+      "function": "callbackHttpGet",
+      "port_verdict": "Original file identical",
+      "explanation": "5 full responses replace obsolete partial data after range mismatch. Recovery branch continues; final pixels unknown."
+    },
+    {
+      "path": "indra/newview/llversioninfo.cpp",
+      "captured_line": 162,
+      "current_line": 162,
+      "count": 2,
+      "function": "getViewerMaturity",
+      "port_verdict": "Original classification preserved",
+      "explanation": "Custom channel misses maturity regex and falls back to TEST_VIEWER; no shader failure."
+    },
+    {
+      "path": "indra/newview/llviewermessage.cpp",
+      "captured_line": 3315,
+      "current_line": 3315,
+      "count": 1,
+      "function": "process_agent_movement_complete",
+      "port_verdict": "Original movement branch preserved",
+      "explanation": "AgentMovementComplete before avatar validity warns then continues; no teleport abort in this branch."
+    },
+    {
+      "path": "indra/newview/llviewerobjectlist.cpp",
+      "captured_line": 1912,
+      "current_line": 1912,
+      "count": 2,
+      "function": "clearAllMapObjectsInRegion",
+      "port_verdict": "Original sweep/removal order preserved",
+      "explanation": "1032/861 residual live map objects swept and marked dead at region removal. Counts may overlap; underlying reason/stale draw unknown."
+    },
+    {
+      "path": "indra/newview/llviewerregion.cpp",
+      "captured_line": 506,
+      "current_line": 506,
+      "count": 1,
+      "function": "requestBaseCapabilitiesCompleteCoro",
+      "port_verdict": "Original duplicate comparison preserved",
+      "explanation": "Duplicate capabilities have107versus106entries; smaller response does not replace original. Differing keys unknown."
+    },
+    {
+      "path": "indra/newview/llviewerregion.cpp",
+      "captured_line": 3588,
+      "current_line": 3588,
+      "count": 1,
+      "function": "setSeedCapability",
+      "port_verdict": "Original seed function preserved",
+      "explanation": "Duplicate seed starts comparison request and retains primary capability state; not itself a failed seed."
+    },
+    {
+      "path": "indra/newview/llviewerregion.cpp",
+      "captured_line": 3734,
+      "current_line": 3734,
+      "count": 2,
+      "function": "getCapability",
+      "port_verdict": "Original capability branch; later progress observed",
+      "explanation": "GetExperienceInfo queried before ready; joins early ExperienceCache delays and later processing."
+    },
+    {
+      "path": "indra/newview/llviewertexture.cpp",
+      "captured_line": 2151,
+      "current_line": 2171,
+      "count": 22,
+      "function": "LLViewerTexture::processFetchResults",
+      "port_verdict": "Original missing contract; native residency and saved-raw guard traced",
+      "explanation": "22 fetches lack GPU/saved CPU data and are marked missing after no-data failure. Native upload recovery is separate PPD-467."
+    },
+    {
+      "path": "indra/newview/llviewertexture.cpp",
+      "captured_line": 2523,
+      "current_line": 2543,
+      "count": 22,
+      "function": "LLViewerTexture::setIsMissingAsset",
+      "port_verdict": "Original missing-state function identical",
+      "explanation": "22 distinct textures enter persistent missing state; outstanding fetch removed. Eventual unflag/recovery not demonstrated."
+    },
+    {
+      "path": "indra/newview/llviewertexturelist.cpp",
+      "captured_line": 452,
+      "current_line": 452,
+      "count": 2,
+      "function": "LLViewerTextureList::getImageFromFile",
+      "port_verdict": "Original image lookup functions identical",
+      "explanation": "unknown and Loading... local images fall back to IMG_DEFAULT/UI priority; specific widget/HUD unknown."
+    },
+    {
+      "path": "indra/newview/llviewertexturelist.cpp",
+      "captured_line": 1366,
+      "current_line": 1367,
+      "count": 2,
+      "function": "LLViewerTextureList::updateImagesCreateTextures",
+      "port_verdict": "Original trigger; native downscale owner traced",
+      "explanation": "Loaded GPU level finer than changing demand queues maintenance;2throttled rows imply at least10incidences. Acceptance/outcome unknown."
+    },
+    {
+      "path": "indra/newview/llvoavatar.cpp",
+      "captured_line": 10612,
+      "current_line": 10612,
+      "count": 12,
+      "function": "LLVOAvatar::processAvatarAppearance",
+      "port_verdict": "Original function identical",
+      "explanation": "12 equal-version self appearance updates skipped to prevent rollback; accepted texture completion is separate."
+    },
+    {
+      "path": "indra/newview/llvoavatar.cpp",
+      "captured_line": 11053,
+      "current_line": 11053,
+      "count": 29,
+      "function": "LLVOAvatar::onBakedTextureMasksLoaded",
+      "port_verdict": "Original callback/consumer identical; producer unresolved",
+      "explanation": "29 successful bake callbacks lack required1-channel auxiliary mask, skip CPU morph application. Disjoint from22missing textureIDs; actual mask content unknown."
+    }
+  ]
+}

@@ -2895,4 +2895,18 @@ if(AL_BUILD_TESTS)
     SUPPORT newview_test_viewertexture
     INCLUDES ${llui_headers}
   )
+  if(DARWIN AND Python3_Interpreter_FOUND)
+    # Execute the real upload/publication control bodies with failed queue and
+    # storage outcomes; these tests need neither a viewer login nor a GPU.
+    foreach(thread_check IN ITEMS 0 1)
+      add_test(
+        NAME "newview/texture_upload_recovery_${thread_check}"
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/llviewertexture_upload_recovery_test.py"
+          --thread-check "${thread_check}"
+      )
+      set_tests_properties("newview/texture_upload_recovery_${thread_check}"
+        PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    endforeach()
+  endif()
 endif()

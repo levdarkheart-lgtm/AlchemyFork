@@ -1328,7 +1328,8 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             {
                 ++sTexturePublicationCensus.native_worker_posts;
                 sTexturePublicationCensus.worker_raw_input_bytes += raw_input_bytes;
-                imagep->mCreateQueuedFrame = 0;
+                // Publication can fail asynchronously. Keep the original age
+                // until its completion finalizes or requeues this upload.
                 if (create_timer.getElapsedTimeF32() > max_time) break;
                 continue;
             }
