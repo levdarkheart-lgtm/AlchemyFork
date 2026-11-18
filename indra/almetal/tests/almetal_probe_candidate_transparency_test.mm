@@ -12,7 +12,9 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <vector>
 
@@ -92,6 +94,7 @@ struct Inputs
     Cell cell;
     std::unique_ptr<ALMetalBuffer> vertices,indices;
     std::array<std::unique_ptr<ALMetalTexture>,3> diffuse;
+    std::array<std::unique_ptr<ALMetalTexture>,4> material_maps;
     std::unique_ptr<ALMetalTexture> radiance,irradiance,shadow;
     std::array<ALMetalWorldSimpleBatch,2> batches;
     std::array<float,16> palette{{0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0}};
@@ -108,24 +111,26 @@ struct Inputs
             {{1.4f,2.6f,-4.f,0.f}},{{-3.4f,2.6f,-4.f,0.f}},
             {{-1.4f,-2.3f,-3.75f,0.f}},{{3.4f,-2.3f,-3.75f,0.f}},
             {{3.4f,2.3f,-3.75f,0.f}},{{-1.4f,2.3f,-3.75f,0.f}}}};
-        std::array<std::array<float,4>,8> encoded=positions,normals{},weights{};
+        std::array<std::array<float,4>,8> encoded=positions,normals{},weights{},tangents{};
         std::array<std::array<float,2>,8> uv{};
         std::array<std::array<std::uint8_t,4>,8> colors{};
         for(unsigned i=0;i<8;++i)
         {
             encoded[i][3]=std::bit_cast<float>(std::uint32_t(i/4));
-            normals[i]={{0,0,1,0}}; weights[i]={{.5f,0,0,0}};
+            normals[i]={{0,0,1,0}}; weights[i]={{.5f,0,0,0}}; tangents[i]={{1,0,0,1}};
             uv[i]={{float(i&1u),float((i>>1u)&1u)}};
             colors[i]={{255,std::uint8_t(i<4?224:255),255,std::uint8_t(i<4?144:112)}};
         }
         constexpr std::size_t normal_offset=sizeof(encoded),uv_offset=normal_offset+sizeof(normals);
         constexpr std::size_t color_offset=uv_offset+sizeof(uv),weight_offset=(color_offset+sizeof(colors)+15)&~std::size_t(15);
-        std::array<std::uint8_t,weight_offset+sizeof(weights)> bytes{};
+        constexpr std::size_t tangent_offset=weight_offset+sizeof(weights);
+        std::array<std::uint8_t,tangent_offset+sizeof(tangents)> bytes{};
         std::memcpy(bytes.data(),encoded.data(),sizeof(encoded));
         std::memcpy(bytes.data()+normal_offset,normals.data(),sizeof(normals));
         std::memcpy(bytes.data()+uv_offset,uv.data(),sizeof(uv));
         std::memcpy(bytes.data()+color_offset,colors.data(),sizeof(colors));
         std::memcpy(bytes.data()+weight_offset,weights.data(),sizeof(weights));
+        std::memcpy(bytes.data()+tangent_offset,tangents.data(),sizeof(tangents));
         vertices=f.buffer(bytes.data(),bytes.size());
         const std::array<std::uint16_t,12> index{{0,1,2,0,2,3,4,5,6,4,6,7}};
         indices=f.buffer(index.data(),sizeof(index));
@@ -140,7 +145,9 @@ struct Inputs
             auto& batch=batches[i];
             batch.vertices=vertices.get(); batch.indices=indices.get(); batch.vertex_count=8;
             batch.position_offset=0; batch.normal_offset=normal_offset; batch.texcoord_offset=uv_offset;
-            batch.color_offset=color_offset; batch.index_offset=i*6*sizeof(std::uint16_t); batch.index_count=6;
+            batch.color_offset=color_offset; batch.tangent_offset=tangent_offset;
+            batch.texcoord1_offset=batch.texcoord2_offset=uv_offset;
+            batch.index_offset=i*6*sizeof(std::uint16_t); batch.index_count=6;
             batch.texture_count=2; batch.pre_water_alpha=true;
             batch.pre_water_simple=true; batch.pre_water_shadows=cell.shadow;
             identity(batch.modelview); std::copy_n(p,16,batch.modelview_projection);
@@ -204,6 +211,43 @@ struct Inputs
         scene.width=cell.width;scene.height=cell.height;scene.reverse_z=cell.reverse;scene.hdr=cell.hdr;
         scene.batches=batches.data();scene.batch_count=batches.size();scene.reflection_probes=&probes;
         scene.alpha_environment=&environment;scene.alpha_lighting=&lighting;scene.alpha_directional_shadows=cell.shadow?&shadows:nullptr;
+    }
+    void family(unsigned kind)
+    {
+        auto upload=f.device->makeCommandBuffer("Authored full production alpha material maps",&f.error); REQUIRE(upload);
+        const std::array<std::array<std::uint8_t,4>,4> values{{
+            {{128,128,255,255}},{{128,96,64,192}},{{255,128,64,255}},{{16,24,32,255}}}};
+        for(unsigned i=0;i<material_maps.size();++i)
+        {
+            ALMetalTextureDescriptor d;d.format=ALMetalPixelFormat::rgba8_unorm;
+            material_maps[i]=ALMetalTexture::create(*f.device,d,&f.error);REQUIRE(material_maps[i]);
+            REQUIRE(material_maps[i]->upload(*upload,0,0,{},values[i].data(),4,&f.error));
+        }
+        REQUIRE(upload->commitAndWait(&f.error));
+        for(auto& batch:batches)
+        {
+            batch.pre_water_simple=kind==0;batch.pre_water_material=kind==1;batch.pre_water_pbr=kind==2;
+            batch.material_slot_count=kind==1?2:0;batch.pbr_slot_count=kind==2?2:0;
+            batch.material_alpha_mode = kind == 1 ? 1u : 0u;
+            batch.texcoord1_offset = batch.texcoord_offset;
+            batch.texcoord2_offset = batch.texcoord_offset;
+            for(unsigned slot=0;slot<2;++slot)
+            {
+                if(kind==1)
+                {
+                    auto& material=batch.materialSlots()[slot];
+                    material.normal_texture=material_maps[0].get();material.specular_texture=material_maps[1].get();
+                    material.alpha_cutoff=-1.f;material.env_intensity=.35f;material.specular_color[3]=.6f;
+                }
+                if(kind==2)
+                {
+                    auto& material=batch.pbrSlots()[slot];
+                    material.normal_texture=material_maps[0].get();material.orm_texture=material_maps[2].get();
+                    material.emissive_texture=material_maps[3].get();material.emissive_color[0]=.05f;
+                    material.roughness_factor=.6f;material.metallic_factor=.25f;material.alpha_cutoff=-1.f;
+                }
+            }
+        }
     }
     void spatial()
     {
@@ -290,6 +334,318 @@ void encoded(const Inputs::Rendered& value,bool shadow,unsigned count)
     CHECK(value.diagnostics.probe_candidate_simple_batches==(shadow?0u:count));
     CHECK(value.diagnostics.probe_candidate_simple_shadow_batches==(shadow?count:0u));
 }
+void encodedFamily(const Inputs::Rendered& value,unsigned family,unsigned count)
+{
+    CHECK(value.diagnostics.probe_candidate_simple_batches==0);
+    CHECK(value.diagnostics.probe_candidate_simple_shadow_batches==0);
+    CHECK(value.diagnostics.probe_candidate_material_batches==(family==1?count:0u));
+    CHECK(value.diagnostics.probe_candidate_pbr_batches==(family==2?count:0u));
+}
+}
+
+TEST_CASE("Empty forward batch spans do not prepare masks or publish consumer activity",
+          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;Inputs input(f,{false,false,false,false,true,96,64});
+        input.scene.batches=nullptr;input.scene.batch_count=0;
+        const auto before=f.data->stats();
+        const auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+        auto generic=input.render(false);auto projected=input.render(true);
+        CHECK(projected.planes==generic.planes);
+        encoded(projected,false,0);encodedFamily(projected,1,0);encodedFamily(projected,2,0);
+        CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
+        CHECK(f.data->stats().candidate_reuses==before.candidate_reuses);
+        const auto& after=projected.diagnostics.probe_candidate_activity;
+        CHECK(after.encoded_calls==activity.encoded_calls+2);
+        CHECK(after.eligible_batches==activity.eligible_batches);
+        CHECK(after.prepared_batches==activity.prepared_batches);
+        CHECK(after.material_eligible_batches==activity.material_eligible_batches);
+        CHECK(after.material_prepared_batches==activity.material_prepared_batches);
+        CHECK(after.pbr_eligible_batches==activity.pbr_eligible_batches);
+        CHECK(after.pbr_prepared_batches==activity.pbr_prepared_batches);
+    }
+}
+
+TEST_CASE("Prepared material and PBR masks preserve the complete ordered alpha owner",
+          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        constexpr std::array<Cell,8> cells{{
+            {false,false,false,false,false,96,64},{false,true,true,false,true,97,65},
+            {true,false,false,true,true,97,65},{true,true,true,true,false,96,64},
+            {false,false,true,true,true,97,65},{false,true,false,true,false,96,64},
+            {true,false,true,false,false,96,64},{true,true,false,false,true,97,65}}};
+        unsigned frame=1000;
+        for(unsigned family:{1u,2u}) for(bool post:{false,true})
+        for(unsigned i=0;i<cells.size();++i)
+        {
+            CAPTURE(family,post,i);
+            f.data->beginFrame(++frame);Inputs input(f,cells[i]);input.family(family);
+            if(post)input.postWaterOnly();
+            input.scene.diagnostic_frame_index=frame;
+            input.scene.diagnostic_view_kind=1;input.scene.diagnostic_view_index=0;
+            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            auto generic=input.render(false);positive(generic.planes,!post||cells[i].skinned,cells[i].reverse);
+            encodedFamily(generic,family,0);
+            const auto cold=f.data->stats();auto prepared=input.render(true);
+            CHECK(prepared.planes==generic.planes);encodedFamily(prepared,family,2);
+            CHECK(f.data->stats().candidate_preparations+f.data->stats().candidate_reuses>
+                  cold.candidate_preparations+cold.candidate_reuses);
+            const auto warm=f.data->stats();auto reused=input.render(true);
+            CHECK(reused.planes==generic.planes);encodedFamily(reused,family,2);
+            CHECK(f.data->stats().candidate_preparations==warm.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses>warm.candidate_reuses);
+            const auto& activity=reused.diagnostics.probe_candidate_activity;
+            const auto& eligible=family==1?activity.material_eligible_batches:activity.pbr_eligible_batches;
+            const auto& original_eligible=family==1?before.material_eligible_batches:before.pbr_eligible_batches;
+            const auto& selected=family==1?activity.material_prepared_batches:activity.pbr_prepared_batches;
+            const auto& original_selected=family==1?before.material_prepared_batches:before.pbr_prepared_batches;
+            CHECK(eligible[post?1:0]==original_eligible[post?1:0]+6);
+            CHECK(selected[post?1:0]==original_selected[post?1:0]+4);
+            CHECK(reused.diagnostics.probe_candidate_frame_index==frame);
+            input.probes.constants.ref_params[1][0]=.25f;
+            auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
+            auto changed_prepared=input.render(true);
+            CHECK(changed_prepared.planes==changed.planes);encodedFamily(changed_prepared,family,2);
+            if(cells[i].skinned)
+            {
+                input.palette[0]=.25f;
+                auto posed=input.render(false);CHECK(posed.planes.color!=changed.planes.color);
+                auto posed_prepared=input.render(true);
+                CHECK(posed_prepared.planes==posed.planes);encodedFamily(posed_prepared,family,2);
+            }
+            if(i==0)
+            {
+                std::swap(input.batches[0],input.batches[1]);
+                auto reordered=input.render(false);CHECK(reordered.planes.color!=changed.planes.color);
+                auto reordered_prepared=input.render(true);
+                CHECK(reordered_prepared.planes==reordered.planes);encodedFamily(reordered_prepared,family,2);
+            }
+        }
+    }
+}
+
+TEST_CASE("Prepared material and PBR preserve manual neighbors default and cap semantics",
+          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        for(unsigned family:{1u,2u}) for(unsigned layout=0;layout<4;++layout)
+        {
+            CAPTURE(family,layout);
+            f.data->beginFrame(2000+family*10+layout);
+            Inputs input(f,{true,true,true,true,true,97,65});input.family(family);
+            auto& p=input.probes.constants;
+            if(layout==0)
+            {
+                p.ref_index[1][3]=1; // Manual sphere, remaining local autos stay bounded.
+                p.ref_index[2][3]=-1;identity(p.ref_box[2]);p.ref_box[2][14]=4.f;
+            }
+            else if(layout==1)
+            {
+                p.ref_index[1][1]=0;p.ref_index[1][2]=64;
+                for(unsigned i=0;i<64;++i)p.ref_neighbor[i]=i<60?-1:static_cast<int>(i-59);
+            }
+            else if(layout==2)
+            {
+                p.config[0]=1; // Default-only pack deliberately selects generic fallback.
+            }
+            else
+            {
+                p.config[0]=40;
+                for(unsigned i=1;i<32;++i)p.ref_sphere[i][3]=128.f;
+                // Eight bounded remaining rows keep preparation useful while
+                // the original accepted32/default rule remains authoritative.
+            }
+            for(bool classic:{false,true})
+            {
+                input.lighting.parameters[3]=classic?1.f:0.f;
+                auto generic=input.render(false);positive(generic.planes);
+                auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
+                encodedFamily(prepared,family,layout==2?0:2);
+            }
+        }
+    }
+}
+
+TEST_CASE("Prepared material and PBR retain active SSR history and the later hero finish",
+          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type=ALMetalTextureType::texture_cube;descriptor.format=ALMetalPixelFormat::rgba8_unorm;
+        auto hero_texture=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(hero_texture);
+        descriptor.type=ALMetalTextureType::texture_2d;
+        auto history_color=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(history_color);
+        descriptor.format=ALMetalPixelFormat::r32_float;
+        auto history_depth=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(history_depth);
+        auto upload=f.device->makeCommandBuffer("Prepared alpha independent SSR and hero inputs",&f.error);REQUIRE(upload);
+        const std::array<std::uint8_t,4> green{{0,255,0,255}},red{{255,0,0,255}};
+        const float depth=.5f;
+        for(unsigned face=0;face<6;++face)REQUIRE(hero_texture->upload(*upload,0,face,{},green.data(),4,&f.error));
+        REQUIRE(history_color->upload(*upload,0,0,{},red.data(),4,&f.error));
+        REQUIRE(history_depth->upload(*upload,0,0,{},&depth,sizeof(depth),&f.error));
+        REQUIRE(upload->commitAndWait(&f.error));
+        ALMetalWorldHeroProbe hero;hero.radiance_texture=hero_texture.get();
+        hero.constants.hero_sphere[2]=-4.f;hero.constants.hero_sphere[3]=128.f;
+        hero.constants.clip_plane[3]=1.f;hero.constants.config[0]=1;hero.constants.config[1]=1;
+        ALMetalWorldScreenSpaceReflections ssr;
+        ssr.scene_color=history_color.get();ssr.scene_depth=history_depth.get();
+        identity(ssr.constants.projection);identity(ssr.constants.inverse_projection);
+        identity(ssr.constants.inverse_modelview_delta);ssr.constants.inverse_projection[14]=-4.f;
+        ssr.constants.screen[0]=96;ssr.constants.screen[1]=ssr.constants.screen[2]=64;
+        ssr.constants.trace[0]=4;ssr.constants.trace[1]=.1f;ssr.constants.trace[2]=.2f;ssr.constants.trace[3]=.001f;
+        ssr.constants.sampling[0]=1;ssr.constants.sampling[1]=1.6f;ssr.constants.config[1]=1;
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);
+            Inputs input(f,{false,true,false,false,true,96,64});input.family(family);
+            for(auto& batch:input.batches)for(unsigned slot=0;slot<2;++slot)
+            {
+                if(family==1)batch.materialSlots()[slot].specular_color[3]=.9f;
+                else batch.pbrSlots()[slot].roughness_factor=.2f;
+            }
+            input.scene.screen_space_reflections=&ssr;
+            auto history=input.render(false);positive(history.planes);
+            auto history_prepared=input.render(true);CHECK(history_prepared.planes==history.planes);encodedFamily(history_prepared,family,2);
+            input.scene.hero_probe=&hero;
+            auto finished=input.render(false);positive(finished.planes);
+            CHECK(finished.planes.color!=history.planes.color); // Later hero contribution must remain observable.
+            auto finished_prepared=input.render(true);CHECK(finished_prepared.planes==finished.planes);encodedFamily(finished_prepared,family,2);
+            input.scene.hero_probe=nullptr;
+            auto restored=input.render(true);CHECK(restored.planes==history.planes);encodedFamily(restored,family,2);
+        }
+        // This authors an active valid SSR-history path and proves its complete
+        // generic/prepared output. A positive SSR hit is not inferred from a
+        // bound history; the independent hero omission above is the positive control.
+    }
+}
+
+TEST_CASE("Prepared PBR preserves runtime and optional probe shadow executables",
+          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        for(bool probe:{false,true})for(bool custom:{false,true})
+        {
+            CAPTURE(probe,custom);
+            Inputs input(f,{true,true,true,false,true,97,65});input.family(2);input.postWaterOnly();
+            input.scene.probe_pbr_shadow_specialization=probe;
+            input.scene.diagnostic_view_kind=3;input.scene.diagnostic_view_index=2;
+            input.shadows.constants.config[3]=probe
+                ? 2u|ALMetalWorldDirectionalShadowConstants::probe_single_tap : 3u;
+            if(custom)for(auto& batch:input.batches)
+            {
+                batch.pre_water_source_rgb=ALMetalBlendFactor::one;
+                batch.pre_water_destination_rgb=ALMetalBlendFactor::one;
+            }
+            auto generic=input.render(false);positive(generic.planes);
+            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);encodedFamily(prepared,2,2);
+            // Reload must preserve already-used optional/custom executables.
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
+            auto restored=input.render(true);CHECK(restored.planes==generic.planes);encodedFamily(restored,2,2);
+        }
+    }
+}
+
+TEST_CASE("Prepared material and PBR preserve a frozen generic library and reload fallback",
+          "[almetal][probe-candidate-material][.probe-candidate-previous-library]")
+{
+    @autoreleasepool
+    {
+        const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
+        REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
+        for(unsigned family:{1u,2u})for(bool custom:{false,true})
+        {
+            CAPTURE(family,custom);
+            Fixture f;Inputs input(f,{true,true,true,true,true,97,65});input.family(family);input.postWaterOnly();
+            if(custom)for(auto& batch:input.batches)
+            {
+                batch.pre_water_source_rgb=ALMetalBlendFactor::one;
+                batch.pre_water_destination_rgb=ALMetalBlendFactor::one;
+            }
+            const char* optional=family==1?"almetal_world_pre_water_material_candidates_fragment"
+                                           :"almetal_world_pre_water_pbr_candidates_fragment";
+            REQUIRE(f.renderer->shaderLibrary()->hasFunction(optional));
+            auto generic=input.render(false);positive(generic.planes);
+            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);encodedFamily(prepared,family,2);
+            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));INFO(f.error);
+            REQUIRE_FALSE(f.renderer->shaderLibrary()->hasFunction(optional));
+            const auto before=f.data->stats();auto previous=input.render(true);positive(previous.planes);
+            CHECK(previous.planes==generic.planes);encodedFamily(previous,family,0);
+            CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses==before.candidate_reuses);
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));INFO(f.error);
+            auto restored=input.render(true);CHECK(restored.planes==generic.planes);encodedFamily(restored,family,2);
+        }
+    }
+}
+
+TEST_CASE("Prepared lit custom blends keep cache identity failure fallback and reload activity",
+          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        for(unsigned family:{1u,2u})
+        {
+            Inputs input(f,{true,true,false,false,true,96,64});input.family(family);input.postWaterOnly();
+            input.scene.diagnostic_frame_index=3000+family;
+            for(unsigned blend=0;blend<3;++blend)
+            {
+                CAPTURE(family,blend);
+                for(auto& batch:input.batches)
+                {
+                    batch.pre_water_source_rgb=blend==0?ALMetalBlendFactor::one:ALMetalBlendFactor::source_alpha;
+                    batch.pre_water_destination_rgb=blend==1?ALMetalBlendFactor::one:ALMetalBlendFactor::zero;
+                }
+                auto generic=input.render(false);positive(generic.planes);
+                auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);encodedFamily(prepared,family,2);
+            }
+            const auto initial=input.probes.constants;
+            unsigned admissions=0;
+            f.data->setSourcePublicationAdmission([&](const ALMetalWorldSourcePublicationWork&)->std::shared_ptr<const void>{++admissions;return {};});
+            input.probes.constants.ref_sphere[1][0]=1000.f;
+            auto denied_generic=input.render(false);auto denied=input.render(true);
+            CHECK(denied.planes==denied_generic.planes);encodedFamily(denied,family,0);CHECK(admissions>0);
+            input.probes.constants=initial;admissions=0;
+            input.probes.constants.ref_params[1][0]=.25f;
+            auto current=input.render(false);const auto cached=f.data->stats();auto hit=input.render(true);
+            CHECK(hit.planes==current.planes);encodedFamily(hit,family,2);CHECK(admissions==0);
+            CHECK(f.data->stats().candidate_preparations==cached.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses>cached.candidate_reuses);
+            f.data->setSourcePublicationAdmission({});
+            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
+            const auto after=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            CHECK(after.material_eligible_batches==before.material_eligible_batches);
+            CHECK(after.material_prepared_batches==before.material_prepared_batches);
+            CHECK(after.pbr_eligible_batches==before.pbr_eligible_batches);
+            CHECK(after.pbr_prepared_batches==before.pbr_prepared_batches);
+            auto reloaded=input.render(true);CHECK(reloaded.planes==current.planes);encodedFamily(reloaded,family,2);
+            auto gbuffer=input.seeded(true),composed=input.seeded(false);
+            input.batches[0].pre_water_alpha=true; // Invalid both-stage preflight must publish nothing.
+            auto invalid=input.scene;invalid.gbuffer=gbuffer.get();invalid.composed_lighting=composed.get();
+            CHECK_FALSE(f.renderer->renderOpaquePostDeferred(invalid,&f.error));
+            const auto failed=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            CHECK(failed.encoded_calls==reloaded.diagnostics.probe_candidate_activity.encoded_calls);
+            CHECK(failed.material_eligible_batches==reloaded.diagnostics.probe_candidate_activity.material_eligible_batches);
+            CHECK(failed.material_prepared_batches==reloaded.diagnostics.probe_candidate_activity.material_prepared_batches);
+            CHECK(failed.pbr_eligible_batches==reloaded.diagnostics.probe_candidate_activity.pbr_eligible_batches);
+            CHECK(failed.pbr_prepared_batches==reloaded.diagnostics.probe_candidate_activity.pbr_prepared_batches);
+        }
+    }
 }
 
 TEST_CASE("Prepared probe masks preserve ordered rigid and skinned simple alpha",
@@ -473,9 +829,9 @@ TEST_CASE("Alpha mask denial and reuse preserve current lighting and fallback",
         f.data->setSourcePublicationAdmission({});
         for(auto& batch:input.batches){batch.pre_water_source_rgb=ALMetalBlendFactor::one;batch.pre_water_destination_rgb=ALMetalBlendFactor::one;}
         auto custom_generic=input.render(false);const auto custom_before=f.data->stats();auto custom=input.render(true);
-        CHECK(custom.planes==custom_generic.planes);encoded(custom,false,0);
+        CHECK(custom.planes==custom_generic.planes);encoded(custom,false,2);
         CHECK(f.data->stats().candidate_preparations==custom_before.candidate_preparations);
-        CHECK(f.data->stats().candidate_reuses==custom_before.candidate_reuses);
+        CHECK(f.data->stats().candidate_reuses>custom_before.candidate_reuses);
     }
 }
 
@@ -531,6 +887,9 @@ TEST_CASE("Cumulative prepared alpha activity survives later same-frame generic 
         {
             batch.pre_water_source_rgb=ALMetalBlendFactor::one;
             batch.pre_water_destination_rgb=ALMetalBlendFactor::one;
+            // Fullbright has no probe consumer. Lit custom blends are now
+            // covered separately and must not stand in for this fallback.
+            batch.pre_water_simple=false;batch.pre_water_fullbright=true;
         }
         auto custom=input.render(true);positive(custom.planes,false,true);encoded(custom,false,0);
         activity(custom,3,4,2);

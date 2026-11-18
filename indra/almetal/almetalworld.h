@@ -1670,6 +1670,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     // Independent forward-lighting input. Virtual candidate coordinates use
     // this projection with the actual interpolated eye position, never opaque
     // depth or an assumed equality with any batch's rounded MVP/MV matrices.
+    // Simple, material and PBR alpha share this proof in rigid/skinned and
+    // standard/custom blend paths. Unsupported or older libraries stay generic.
     float forward_probe_projection[16]{};
     bool forward_probe_projection_valid = false;
     const ALMetalRenderTarget* gbuffer = nullptr;
