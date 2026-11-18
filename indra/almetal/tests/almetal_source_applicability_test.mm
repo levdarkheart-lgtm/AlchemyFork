@@ -111,7 +111,9 @@ struct E3Fixture : Fixture
                 std::vector<std::byte> bytes;
                 const auto append=[&](const auto& values)
                 {
-                    const auto offset=bytes.size();const auto size=values.size()*sizeof(values[0]);
+                    // Keep every stream compatible with the float4 tangent
+                    // contract even when the unique-vertex count is odd.
+                    const auto offset=(bytes.size()+15)&~std::size_t(15);const auto size=values.size()*sizeof(values[0]);
                     bytes.resize(offset+size);std::memcpy(bytes.data()+offset,values.data(),size);return offset;
                 };
                 source.position_offset=append(positions);source.normal_offset=append(normals);
