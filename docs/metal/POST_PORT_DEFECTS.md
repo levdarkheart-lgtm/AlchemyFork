@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-388 -->
+<!-- next-defect-id: PPD-391 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3471,7 +3471,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Compiled4918fd7 pipeline.cpp12241 PBR MASK/pass guard,15761 terrain compound guard, and hero publication/warm-up branches. Different from unproved PPD088 SH-ticket and PPD103 admission attribution.
 - Evidence: [Whole-session warning audit](research/retest-whole-session-warnings-2026-11-14.md).
-- Next action: Trace transition input/material/terrain revisions and mirror publication recovery. Preserve fail-closed guards until the inconsistent state or lifecycle cause is known; do not weaken validation to hide warnings.
+- Next action: Qualify the integrated startup-readiness repair and retest cold startup/eligible mirror/transition; keep historical terrain/PBR rejection acceptance separate and all completeness guards intact.
 - Verification: Five actual post-capture rejected face transactions at10:25:20–22:one PBR MASK/pass mismatch and four terrain compound rejects. Teleport starts18/arrives20–21; quit51/cleanup53, so these are transition, not shutdown. First successful hero publication20 does not prove final recovery or a broken mirror in the earlier club with unproved owner eligibility.
 - Owner verification: pending
 - Push approval: not_granted
@@ -3498,6 +3498,18 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-16 narrow parity repair integrated from d9eccdef2c: ordered missing_buffer skips only the current face and increments a capture-owned cumulative census; preceding pointer failures and every nonnull native-publication/range/material guard retain incomplete/clear behavior. Previously accepted draws remain owned. Production diagnostics now print unready_buffer_skips even without failures. Three new actual-body cases exercise protected phase memory, ready/null/ready progress and nullskip followed by real missing-publisher failure; no viewer/runtime recovery claim. Build/native execution pending on next frozen source.
 
 - 2026-11-16 repair verification at frozen43a44724c7/build26.4.0.69162 (89): doctor/configure/build exits0, build38.247s. Actual production preflight include passes213assertions/7cases with protected-memory and real missing-publisher controls, including the three new omission/failure progression cases. Exactapp/ARM64/signature/import/native-resource checks and strict3598files/0blockers pass. Receipts frozen-source-build-89.json and terrain-validation-89.json retain exact argv/source/log hashes. Earlier88 full34renderer proof remains separate, not relabelled89. No viewer launch, owner transition retest or final mirror-recovery evidence; record remains open.
+
+- 2026-11-18 isolated startup-cause investigation on `codex/ppd125-startup-cause-20261118`: all20 warning rows per successful69258 Home run source/log attributed. Twelve begin-guard and four radiance-withheld rows occur during STATE_PRECACHE: manager permits it but native begin requires STATE_STARTED. Two empty end-capture rows and two parent failures occur after STARTED while the separate probe renderer compiles asynchronously; renderer/GBuffer/batches/post_attempted are zero, terrain is not_evaluated, and successful compilation follows in all three logs. Distinct from the historical teleport null-buffer repair. No six-complete-face success message; later eligibility/recovery, mirror correctness and transition acceptance remain unproved. No source fix/build/launch/profile. [Exact source/original contract/private receipt](research/ppd125-startup-warning-cause-20261118.md). Isolated from concurrent engine work; no push.
+
+- 2026-11-18 owner follow-up: owner confirms mirrors work later in the viewer. This is positive functional evidence of eventual mirror operation, without pinning a new exact build/transition retest. Scope the new repair to startup readiness coordination: keep CPU discovery/owner maintenance, wait for STATE_STARTED, prepare/poll the actual separate probe renderer before beginning any face, and retain genuine preparation/publication failures. Implementation and contained tests are in the isolated diagnosis worktree; canonical engine worktree stays untouched. Historical terrain/teleport acceptance and changed-source runtime verification remain separate.
+
+- 2026-11-18 local readiness repair `a7696a3c1d`: renderProbes waits for STARTED; explicit preparation polls the separate probe owner before credit/flags/swap/face work and retains same-device publication plus CPU origin maintenance during deferral. Native face entry now requires the prepared correct-device probe owner. Real preparation and publication failures remain visible, and all completeness guards remain. Actual production readiness body passes116assertions/5 ARM64 CPU cases; two independent source reviews find no actionable regression. Doctor/configure pass; full isolated build in progress. Owner's observation concerns existing later mirror operation, not this unlaunched changed source. No push.
+
+- 2026-11-18 qualification of unchanged a7696a3c1d: full isolated Release build exits0 after intentional exit130/resume for parallelism; both original and resumed logs retained. Built project readiness filter passes116assertions/5cases, matching standalone actual-body results (counts not summed). Strict3614files has0blockers/scan errors; app26.4.0.69279 has346ARM64/0invalid and deep strict signature pass. Binary795f592d33d4679fc8553d58511bb91c675fef65c99588d99c62a2666687c588. No launch/live warning retest or changed-source mirror/transition acceptance; remains investigating and local, concurrent engine worktree untouched. [Exact qualification and receipts](research/ppd125-startup-warning-cause-20261118.md).
+
+- 2026-11-18 final documentation check rejected free text in the Owner verification enum. Restored its required `pending` value; the owner's positive later-mirror observation remains retained in dated history, separately from pending changed-source and historical-transition acceptance. Failed final-qualification receipt retained before corrected rerun; renderer/build unchanged.
+
+- 2026-11-18 owner explicitly requests integration into the current combined engine change. Root reviews and applies the seven source/test/CMake files from a7696a3c1d; every source blob and full indra tree match that independently qualified source before any further shader work. Report/owner observation/failed qualification history retained, current active docs preserved. No changed-source runtime acceptance or whole PPD125 closure is inferred.
 
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
@@ -7706,6 +7718,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 PPD319 actual capture-disabled69258 control uphzzchc still falls32.657→16.249FPS, main wait9.166→42.802ms; decoder effectively0 late, main runningCPU falls. Four saved controls replay67.91→110.26 and66.80→131.43ms. Main probes1→22/47, stable points/projector rectangles, both late actual prepared masks8/9; ALU/inv nearly doubles fused and~5× alpha while fragments stay fixed/fall. This supports a growing required per-fragment-lighting burden, not a full isolated SH/spill attribution or old/new gain. Full source/evidence/limits retained in research/shared-shadow-main-admission-checkpoint-69258-20261118.md. Home symptom and broader acceptance remain OPEN pending owner feedback.
 
+- 2026-11-18 owner resumes active goal and directs proceeding with the measured next target. New group accepted-probe-lighting-20261118 starts atb34d82d38e; no prior visual/performance acceptance is inferred. Source audit excludes complete per-probe irradiance caching because receiver position/normal/parallax remain dynamic. Current strict scoped-clone qualification and controlled saved-frame accepted-tap/traversal/SH/shadow separation precede a production change; old C112/H56/scalar/ambient/noinline failures remain retained and unselected. [Work](work/active/accepted-probe-lighting-20261118.md).
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -9095,3 +9109,60 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before metadata correction; no source or evidence bytes are removed.
 
 - 2026-11-18 PPD387 corrected next-ID388 and Markdown evidence citations; final-docs-harness-02 actual validate_harness.py exits0 with33required files, empty stderr. Failed01 remains retained. This is documentation structure qualification, not viewer or performance acceptance.
+
+## PPD-388 — Private scoped shader clone fails strict current-source parity
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex accepted-probe diagnostic qualification
+- Discovered: 2026-11-18
+- Original reference: A source-math-identical helper clone is not automatically output-bit-identical or compiler-isolated; preserve strict half-output/depth/stencil gates for production selection. Diagnostic wrong-image variants are separate from quality-preserving fixes.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); private checks/scoped-clone-parity-01/qualification.json e4ef7b67 records current239144 control vs6a7d5c99 scoped-clone gate. Compile/link succeeds,22pipeline validation rows are enabled;4images pass, case5 has1RGBA16F component mismatch and actual run exits42 (483assertions,482pass/1fail). Remaining1228planned images do not execute. Raw18failure files, inputs, exactcommands/binarye54a999f/librarya1f96e7e are retained. No prepared-target image was reached; no production/viewer failure is established.
+- Next action: Inspect raw bits/case identity and baseline/candidate compilation paths; qualify an A/A control if needed without changing tolerances. Keep clone unselected as a production improvement. Saved-frame cut diagnostics may proceed only with the strict-parity limitation and compiler/control changes explicit, unchanged/restored scoped controls and no quality claim.
+- Verification: Actual strict failure retained before diagnosis/correction. No tolerance change, rerun or source repair has occurred at registration.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before further private diagnosis. No production source changes or accepted optimization.
+
+- 2026-11-18 raw case5 is actual-row1/default-only modern ambient helper: pixel62,9 green0x2114→0x2115 (+1halfULP,7.62939453125e-06); other30719components match, gloss/legacy0. Both helper paths runtimecompile whole-source plus same wrapper/options. Bounded same-baseline A/A first5cases passes0 through both helper/Boffline paths without comparator changes. This narrows the failure to added clone/compiler context for this prefix, not proof of a compiler bug;1228cases remain unrun. Clone still unselected for production. Five diagnostic sources separately compile/link10/10 with original flags, but those exits are not output parity or GPU cost.
+
+## PPD-389 — Saved-frame source editor cannot receive bounded input
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex saved-frame diagnostic orchestration
+- Discovered: 2026-11-18
+- Original reference: Shader cuts require actual source-buffer edits and verified Reload/restored controls, not proposed file hashes or successful screenshot reads. No original rendering equivalent for CUA input delivery.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); fresh untouched47-probe replay completes131.36ms and retains all107counter rows before any edit. Actual fragment source editor opens, but AX SourceEditor click reports cannotClickOffscreenElement; coordinate focus reports noWindowsAvailable although screenshots show the editor and inventory lists Xcode running. No text mutation, Reload, variant profile, viewer or source edit is observed. Exact failure/attempt receipts pending GPU agent handoff.
+- Next action: Preserve actual failures and one bounded state/rebind recovery; confirm desktop/window availability rather than retry a blind10KB/full-file paste. Request owner desktop-unlock information if input remains unavailable. Continue independent source/correctness work after stopping replay and releasing the quiet window.
+- Verification: Unchanged A0 control qualified; shader-cut input route currently unqualified. Cause of input failure is unknown; no GPU/engine crash or shader performance result is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before additional orchestration remedy. Original captures, prior copies, production source and staged app remain unchanged.
+
+- 2026-11-18 PPD389 documented SourceEditor.selectText focuses the visible editor where click/coordinate routes failed; CmdF/unique declaration and cursor-before proof permit bounded10312B insertion. Exact target return andtap0/walk0 are observed before Reload, no Undo/fullfilepaste. Reload click/AX request then hits server timeoutReached (~21.6s), but one bounded state read succeeds and shows Reloading Shaders: Building shader libraries. This is pending compilation, not a proved compiler failure/hang/crash; no repeated Reload or variant timing is claimed. All actualsource/AX evidence remains under saved-frame-diagnostics-20261118.
+
+## PPD-390 — Private GPU receipt generator has an unescaped apostrophe
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex saved-frame evidence bookkeeping
+- Discovered: 2026-11-18
+- Original reference: Derived evidence receipts must reflect actual completed runs; a failed metadata writer cannot manufacture a qualification result.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); final GPU receipt inline Python command fails at parse time on an unescaped apostrophe in Don't Save. No statements execute and no source/counter/profile result changes. Full report/numeric reduction already exists; exact command/error is retained separately.
+- Next action: Retain failed command/error and correct quoting in a new private receipt script. Reuse actual saved inputs/results; do not rerun profiles or relabel failed gates.
+- Verification: Parse failure observed before bookkeeping mutation; corrected writer pending. All profile/closure evidence remains independent.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before corrected private writer; no production or GPU repair is needed.
+
+- 2026-11-18 PPD390 final receipt writer had a second pre-execution quote error while quoting failure prose; both exact failed scripts/tool errors remain under derived/before-PPD390. New JSON-backed writer exits0, final receipt656cbbf1/report e332380e/focus60db1219 pin all actual completed controls and stop/Don'tSave/closure proof. No profiles are rerun, no source/library bytes change and no failed parity/coverage result is relabelled.

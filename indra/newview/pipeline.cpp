@@ -2203,21 +2203,17 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
         owner_epoch == 0 || face >= 6 ||
         LLStartUp::getStartupState() < STATE_STARTED ||
         !mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->renderer)
+        !mMetalWorldSimpleCapture->renderer ||
+        !mMetalProbeWorldSimpleCapture ||
+        !mMetalProbeWorldSimpleCapture->renderer ||
+        mMetalProbeWorldSimpleCapture->device !=
+            mMetalWorldSimpleCapture->device)
     {
         return false;
     }
 
     finishMetalShadowEncoding();
     std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
-    if (!mMetalWorldSimpleCapture)
-    {
-        mMetalWorldSimpleCapture =
-            std::make_unique<MetalWorldSimpleCapture>();
-        if (mMetalProbeWorldSimpleCapture)
-            mMetalWorldSimpleCapture->avatar_resources =
-                mMetalProbeWorldSimpleCapture->avatar_resources;
-    }
     mMetalHeroWorldCaptureActive = true;
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
 
@@ -2958,6 +2954,8 @@ void LLPipeline::prepareMetalWorldRenderer(
         << LL_ENDL;
     return;
 }
+
+#include "pipeline_hero_capture_readiness_native.inl"
 
 void LLPipeline::prewarmMetalWorldRenderer()
 {

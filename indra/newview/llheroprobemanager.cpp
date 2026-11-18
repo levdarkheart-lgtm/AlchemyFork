@@ -215,7 +215,7 @@ void LLHeroProbeManager::update()
 
 void LLHeroProbeManager::renderProbes()
 {
-    if (!gPipeline.resourcePlan().heroProbes() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_PRECACHE)
+    if (!gPipeline.resourcePlan().heroProbes() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
     {
 #if LL_DARWIN
         mNativeUpdateCredit.reset();
@@ -260,6 +260,14 @@ void LLHeroProbeManager::renderProbes()
         std::optional<ALNativeFramePlan::OptionalScope> group_scope;
         if (!mProbes[0]->mOccluded)
         {
+            if (!gPipeline.prepareMetalHeroProbeCapture())
+            {
+                // Warm-up is deferred work, not an incomplete face. Retain
+                // owner/origin maintenance and prior coherent radiance.
+                mProbes[0]->mViewerObject = mNearestHero;
+                mProbes[0]->autoAdjustOrigin();
+                return;
+            }
             bool admitted = required || bool(mNativeUpdateCredit);
             if (required) ++mNativeUpdateStats.required_steps;
             if (!admitted)

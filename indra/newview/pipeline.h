@@ -1007,6 +1007,9 @@ public:
     bool fillMetalImpostorHeroProbe();
     bool isMetalHeroProbeActive() const;
     void retireMetalHeroProbeResources();
+    // Starts/polls the separate probe renderer without opening a face.
+    // Startup or asynchronous warm-up defers the manager's work.
+    bool prepareMetalHeroProbeCapture();
     bool beginMetalHeroProbeFaceCapture(
         const LLUUID& hero_id, U64 owner_epoch,
         U32 face, U32 max_probe_lod);
