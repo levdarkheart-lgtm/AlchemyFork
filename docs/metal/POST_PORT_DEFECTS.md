@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-408 -->
+<!-- next-defect-id: PPD-409 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3513,6 +3513,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-18 final combined25faff/cf8355 native llrender readiness/terrain/API selection passes698443assertions/32cases with API+GPU validation1. This includes the original readiness gates plus new native geometry cases; no new viewer startup/teleport observation and no incident closure.
 
+- 2026-11-18 owner69264 Home+club live retest source25faff/exe46fb9270 completes normalrequestQuit→Goodbye and PIDabsence (OSexitcodeunknown). No pipeline/almetalworld warningrows; all136matched main/probe shadowcensus rows have failed_views0/all8CPUstages0. This supports startup/preflight repair behavior through TP; no blanket hero/mirror visual/general closure or FPS attribution.
+
 
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
@@ -5899,6 +5901,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-18 final combined25faff/cf8355 native readiness/terrain selection passes with API+GPU validation1, layout853assertions/13cases passes. Currentness/upload/COW/preflight guards remain present; the historical42/81/15 exact startup operands remain unknown until a viewer retest.
 
+- 2026-11-18 same69264 retest: prior terrain/pool-hook failure-warning pattern not observed, all136main/probe census rows failedviews/stages0. Historical failed42/81/15operands remain unproved; current successful retest does not infer their exact old cause or owner fullvisualacceptance.
+
 
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
@@ -7738,6 +7742,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 accepted-probe investigation: matched real-Metal helper controls pass87 strict/59 release checks and3600 observations. Same original PSO with16x16 tiles reproduces paired−6.10%ambient/−42.33%sparse/−6.37%7layers; packed-SH consumption atmatchedtiles changes−0.79%/+0.061%/−0.58%, so packedcache remainsunselected. Sourceaudit current native BASE/forward passes leaves Metal hardware geometry automatic; this is not proof of a driver/engine defect or current47scene gain. Before a native experiment, original1eb44 full-screen BASE and ordered alpha preserve exact attachments/blend/depth/stencil; GL has no equivalent explicit tile-size mechanism. Add a bounded typed default/16 choice in current Metal pass owner, immutable per-view inputs, runtimecapability check and original automatic control. Qualify actual BASE/alpha output and completepass costs before selecting for owner combinedviewer. No shader/arithmetic/lighting cap or contribution reduction, no newpass/queue/cache framework.
 
+- 2026-11-18 exact69264 Homeowner~31→16,club~28–29→stable19. Four fresh allqueue GPUframes profiledMedium/Overlapping: Home77.47→146.26ms,club53.88→116.19ms diagnosticenvelopes, notliveframes. HomefusedFSunchanged273.188M withALU/inv117.22→232.87; largealphaFS56.385→23.216M yetALU/inv255.19→1395.03. DominantlateBASE/simplealphaareprepared. CensoredHome30–60→120–180 recordedwait25.557→42.058ms/remainder25.152→24.070; clubhaslargermainCPU/geometry/shadowcost. Current3456x2168 vsprior3456x1916, captureinstrumentation/scene/EEP/ClubFair differences andnocaptureOFFcontrol preventoldnewFPSgain/regressionattribution. Fullsource/replay/warning evidence in69264checkpointreport; goalacceptancepartial.
+
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -8241,6 +8248,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 subsequent fresh69241Home comment-only Reload/profile control128.10ms explicitly reports0SpilledBytes for preparedsimple222GPR/BASE226GPR/inspectedprojector188GPR. Full rawAX and completed Reload/profile evidence are retained. This qualifies those recompiled control rows; original captured blank cells stayunknown and no precise metadata-absence explanation, originalbinaryzero or whole-run allshaderzero claim follows. Initial profile controls and earlier comment-reload214GPRstillblank history remain separate. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
 
 - 2026-11-18 PPD343 four current frames actually Profile-after-Replay Medium/Overlapping. All hot simple/BASE/PBR spill fields remain blank/unknown, while SSAO/lightmap explicitly0;109/95/115/133shader rows retain blank/zero distinctions. Observed fused buffer writes0 and alpha~818KiB across growth do not establish zero private stack traffic. No new source Reload/recompiled control, no retroactive0claim. GPU report913f9bf6 preserves the actual fields; previous recompiled allocations remain separate historical evidence.
+
+- 2026-11-18 fresh69264 fourcaptures actuallyreplayed/profiled inXcode26.6 withMediumrequested/Overlapping/newsession. All5countertables satisfy109/52/113/55rowgates;411shaderrowsretain181blankunknown/230explicitzero/0observednonzerospillfields. Hot preparedBASE226GPR/simple222/projector188 stillblankafterprofiling; zero fieldselsewhere do not establish zerosforhotrows. SelectedHomealphaFSBufferL1writes~1.02MiBstable; devicewrites409.44→589.31KiB, whereasClubalpha10.21MiBisdevice-level. Differentcounterlevelsnotpooled; trafficrequiresattribution,notaspillcount. No shader edit/trafficcausalityclaim.
+
 
 ## PPD-344 — Bounded native additive lights lack original volume-depth rejection
 
@@ -9168,6 +9178,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 PPD389 documented SourceEditor.selectText focuses the visible editor where click/coordinate routes failed; CmdF/unique declaration and cursor-before proof permit bounded10312B insertion. Exact target return andtap0/walk0 are observed before Reload, no Undo/fullfilepaste. Reload click/AX request then hits server timeoutReached (~21.6s), but one bounded state read succeeds and shows Reloading Shaders: Building shader libraries. This is pending compilation, not a proved compiler failure/hang/crash; no repeated Reload or variant timing is claimed. All actualsource/AX evidence remains under saved-frame-diagnostics-20261118.
 
+- 2026-11-18 first69264 workingcopy GoTo filepath entry throughAXtypeText/setValue didnotcommitfileeditor state; Meta key rejectedpreaction and onePerformanceelementstaledafterasyncprofilecompletion. No wrongcaptureopened/sourcechanged. ExplicitselectTextclear+individualnativepressKeycharacters openedverifiedexactpath; later3filesselectedobservedsamefolderrows. All4profiledstopped/closed,WelcomeobservedandCUAcompletionreceived; input-recovery.json retained.
+
+
 ## PPD-390 — Private GPU receipt generator has an unescaped apostrophe
 
 - Status: investigating
@@ -9369,6 +9382,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 final combined25faff/cf8355 exact appearance suite passes883assertions/18cases; source3files retain isolated328fe hashes. No appearance-manager/network/bake ordering was changed, and automated tests do not establish live avatar propagation or owner acceptance.
 
+- 2026-11-18 owner69264 Home/club runtime has0llwearabledata.cpp warningrows; expected otherappearance/assetcallback groups remain source-mapped. ExactgetWearableIndexrepair supports absenceofoldvalid-typefalsewarning, notfullavatarpropagation/visualacceptanceorFPScause. Automated andpriorred history preserved.
+
 
 ## PPD-400 — Root tile-policy field is placed in the adjacent color-grade type
 
@@ -9538,3 +9553,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before whitespace correction. Independently staged69264 source/bytes/signature and all native results remain unchanged.
 
 - 2026-11-18 optional blank lines only removed, all prior facts retained. Standalone harness0 (33requiredfiles) and diff-check0 are captured in checks/final-document-validation-01/receipt.json. No production change or replacement app/cost execution.
+
+
+## PPD-408 — Combined Home/club Overview recorder exceeds its raw-size guard during finalization
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex69264 runtime recording
+- Discovered: 2026-11-18
+- Original reference: A stopped recorder and finalized trace do not establish complete CPU/GPU coverage. Preserve size-guard failures and qualify the retained data independently without relabeling the failed collector.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); private Alchemy-home-jhdlfjso/overview/session.json statusfailed and terminal-result recorder_exit_code1. Underlying xctrace recorder_exit0, operator stop12:12:27UTC, max_observed_raw_bytes2223515824 exceeds2048MiB guard during finalization; final_trace_bytes86782294 is preserved. Four device-allqueue capture metadata records stopped Home219/220+3326/3327 and club4498/4499+7893/7894. Native206633219bytes/1129082records/0malformed at collector audit remains below256MiB. No CPU exports or coverage qualification executed by the failed collector.
+- Next action: Keep failed session/transcript and all captures. After the owner closes the viewer, perform bounded read-only exports/coverage analysis of the existing finalized trace in a new evidence directory, separating capture gaps from normal-frame claims. Determine size-guard/finalization cause; do not silently raise the failed run cap or rerun the viewer.
+- Verification: Four stopped capture intervals and raw trace exist; replay contents, GPU profile and CPU retention are still unqualified. Source says the active-display policy stops triggering if telemetry is disabled; native cap did not block these four captures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before offline export/recovery or any recorder repair. Owner reports Home~31→16FPS, club~28–29→23–24→20–21→stable19. All selected main encoders request/effectively use16x16; ordinary probe/hero remainautomatic32x32 in live logs. No whole-viewer improvement or regression attribution claimed.
+
+- 2026-11-18 afterownerclose, threeboundedofflineexports ofpreservedtrace exit0 withoutmodifyingfailedsession: TOC519.580843s,targetPID55666;CPU723953rows/519.318s/max85msgap;GPU16096rows/519.696s/max9.028589sgap. Expected518.452286sready→stopcovered. Originalcollector remainsFAILED; separate unchangednormal5sGPUgapgate alsoFAILSaroundcaptureAPIs, nointerpolation/relaxation. Fourindependentworkingcopiesprofiledwithallcounterrowgatespass andsources/evidence preserved. Qualifyfuturelongercontrollerraw-finalizationpeak beforeownercontrols, no rererecordrequiredtorecoverthistrace.

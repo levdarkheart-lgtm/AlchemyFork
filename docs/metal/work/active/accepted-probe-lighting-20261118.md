@@ -364,3 +364,63 @@ retains recovery-document linecap/EOF guard failure after moving latest state;
 only extra whitespace removed and standalone harness33/diff0 pass. Exact
 recorded awakeguard55971 stopped atcheckpoint; no other processes stopped.
 Goal remains unfinished; requested engineering pause is for ownerfeedback.
+
+
+## Owner Home/club runtime —69264,2026-11-18
+
+Owner explicitly requests launch+usualreplayable Home/club recording and
+assessment. New privatecopy runtime-home-club-69264-20261118 retainsoriginal
+19flags plusSmallLightingTilesTRUE,20pair/5TRUEguard and50readonly controls.
+Guarded exactapp/source/library dryrun0, AST0, no savedgraphics/environment
+changes. ContinuousOverview600s supports ownerphase timing; latepolicy180.
+ActualPID55666 launch12:03:45, recorderready12:03:49, ownerLogin→world12:04:27.
+All mainbegins use requested/effective16/native16; ordinaryprobe/hero retain
+automatic32. Settings2s/100s are50/50complete with tileBooleantrue. OwnerHome
+~31→16FPS, clubarrival~28–29 then23–24/22/20–21/19stable. Ownerclosedviewer,
+PIDabsenceverified. Full runprivate /Users/dekstroza/Alchemy-home-jhdlfjso.
+
+Four metadata-stopped/error0/deviceallqueue intervals:219→220,3326→3327,
+scene2:4498→4499,7893→7894. These are retained CPUAPIbounds, not replay GPU
+durations/contentqualification. Operatorstop12:12:27; PPD408records failed
+collectorraw-sizeguard duringfinalization, underlyingrecorder0, observedpeak
+2223515824bytes versus2048MiB, finalizedtrace86782294bytes preserved. Native
+206633219bytes atfailureaudit remainsbelowcap; fourcapturetriggers succeeded.
+
+Postclose independent boundedread-only exports518.452286sexpected are owned
+architectureagent; native/warningaudit evidenceagent; independentAPFS
+capturepreservation+workingcopies gpuagent. RootaloneoperatesXcode, waits
+forheavyjobs terminalbefore4sequentialprofiles. No source/render changes,
+relaunch, newrecording, runtimeFPSacceptance orpush. Newawakeguard61416
+protects only saved-frameanalysis; stop exactrecordedPID atfinalhandoff.
+
+
+## 69264 findings and requested checkpoint pause
+
+Fourindependentworkingcopiesreplayed/profiledXcode26.6 sequentiallyMedium
+requested/Overlapping/newsession. ActualGPUenvelopes77.47/146.26Home and
+53.88/116.19Club, notFPS. Everycountercategory109/52/113/55rows,411shaderrows
+with181unknownspill/230explicitzeros. AllGPUworkloadsstopped,documentsclosed,
+Welcomeobserved,CUAcompletionreceived. Source/evidenceclonespreserved; no
+shaderedit,incorrectcaptureopened,newviewerlaunchorpush.
+
+HomefusedFS273.188Munchanged,ALU32.022→63.616B/perinv1.99x; largealphaFS
+56.385→23.216M,butALU14.389→32.387B/perinv5.47x. LateactualpreparedBASE226GPR/
+simple222GPRentriesdominant; genericmaterial/PBRcapabilityremainsunimplemented
+andlowerpriority. Homewait25.557→42.058ms/remainder25.152→24.070afterinitial
+loading; Clubmain77.37%corewithsunshadow/geometry/lighting/instrumentationcost.
+Detailed293warning/42sites+3PNGsourceaudit0ERROR/FATAL. All136matchedshadow
+censusrowsfailedviews/stages0; prior125/241/399familiesabsentbutnotclosed.
+
+Liveimprovementnotproven: currenttarget13.1524%morepixelsthanoldnormal; EEP/
+geometry/loading/thermal/captureoverheaddifferandnocaptureOFFcontrol. PPD408
+originalcollectorrawguardFAILEDretained; offline519sCPU/GPUexports0recover
+data,normal5sgapgateFAIL9.03saroundcaptureAPIs. Native600scutoff/285contention
+drops/23pendingnotrelabeledGPUerrors/lossfree. Fullreportlinksprivateproofs:
+[69264Home/clubfindings](../../research/home-club-replay-checkpoint-69264-20261118.md).
+
+Assessmentcomplete, pauseforownerdiscussionbeforefurtherimplementationor
+recording. NextsamebinarycaptureOFFauto/16controlsatmatchedactualviewport
+andqualifiedrecordercaps; targetedrequiredGPUacceptedlighting/projectorvolume
+work,plusoneboundedremainingClubsmallshadow/nativebinding/commandboundary.
+Sharedmembershipcacheandadmissionfeedbackalreadyexist;priorbanks/churntaxes
+remainopen,broaderarchitectureacceptancepartial. Everyevidence/failurekept.
