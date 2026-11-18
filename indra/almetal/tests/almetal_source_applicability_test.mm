@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <unordered_set>
+#include <stdexcept>
 
 namespace
 {
@@ -600,7 +601,10 @@ TEST_CASE("almetal: actual routed world cohorts preserve scalar gaps queries and
                 std::shared_ptr<ALMetalVisibilityResultBatch> results;
                 auto target=f.renderer->render(scene,&f.error,&results);INFO(f.error);REQUIRE(target);REQUIRE(results);
                 auto completion=f.renderer->commandBatchCompletion();REQUIRE(completion);
-                REQUIRE(f.renderer->commitCommandBatch(&f.error));REQUIRE(f.device->waitUntilIdle(&f.error));
+                std::string pending_error;CHECK_FALSE(completion->waitUntilCompleted(&pending_error));
+                CHECK_FALSE(pending_error.empty());const auto committed=ALMetalDevice::committedCommandBufferCount();
+                REQUIRE(f.renderer->commitCommandBatch(&f.error));REQUIRE(completion->waitUntilCompleted(&f.error));
+                CHECK(ALMetalDevice::committedCommandBufferCount()==committed+1);
                 CHECK(completion->status()==ALMetalCommandStatus::completed);
                 E3Fixture::Output actual{f.read(*target),std::vector<std::uint64_t>(queries.size())};
                 for(unsigned i=0;i<queries.size();++i)REQUIRE(results->wait(i,actual.queries[i],&f.error));
@@ -616,6 +620,11 @@ TEST_CASE("almetal: actual routed world cohorts preserve scalar gaps queries and
                 if(native)
                 {
                     CHECK(after.last_pipeline_validation!=UINT32_MAX);CHECK(after.cache.last_static_validation!=UINT32_MAX);
+                    if(const char* validation=std::getenv("MTL_SHADER_VALIDATION"))
+                    {
+                        if(std::string(validation)=="1"){CHECK(after.last_pipeline_validation==1);CHECK(after.cache.last_static_validation==1);}
+                        if(std::string(validation)=="0"){CHECK(after.last_pipeline_validation==2);CHECK(after.cache.last_static_validation==2);}
+                    }
                     CHECK(after.routing_native-before.routing_native==2);
                 }
                 else
@@ -665,7 +674,10 @@ TEST_CASE("almetal: actual routed world failures preserve direct fallback before
             CHECK_FALSE(f.renderer->commitCommandBatch(&f.error));CHECK_FALSE(f.renderer->commandBatchActive());
             CHECK(ALMetalDevice::committedCommandBufferCount()==commits);
             CHECK(completion->status()==ALMetalCommandStatus::unknown);
+            std::string abandoned_error;CHECK_FALSE(completion->waitUntilCompleted(&abandoned_error));CHECK_FALSE(abandoned_error.empty());
             CHECK(f.renderer->worldSourceCommandStats().bank_draws==initial.bank_draws);
         }
     }
 }
+
+#include "almetal_source_routing_owner_cost.inl"

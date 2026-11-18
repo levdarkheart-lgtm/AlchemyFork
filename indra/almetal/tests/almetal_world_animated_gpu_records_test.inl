@@ -756,3 +756,52 @@ TEST_CASE("almetal: animated metadata and command byte caps preserve required dr
         CHECK(pages->stats().live_metadata_bytes==0);CHECK(budget.snapshot().scene_publications_in_flight==0);
     }
 }
+
+TEST_CASE("almetal: automatic source routing uses only admitted current animated capabilities",
+          "[almetal][source-routing-owner][world-animated-gpu-records]")
+{
+    using namespace AnimatedGpuRecordTest;
+    @autoreleasepool
+    {
+        for(unsigned family:{1u,2u})
+        {
+            CAPTURE(family);RiggedFixture f;auto first=palette(0,f.error),moved=palette(.375f,f.error,true);
+            auto prototype=f.source(family,true,first);auto proof=f.seal(prototype,family);
+            REQUIRE(proof->gpuReady());REQUIRE(proof->boundsQualified());
+            auto owners=std::make_shared<CpuOwners>();owners->sources={proof};owners->palettes={first,moved};
+            std::vector<ALMetalWorldSourceReference> refs;
+            for(unsigned at=0;at<4;++at)
+            {
+                auto view=matrices(prototype);view.modelview_projection[0]=view.modelview_projection[5]=.4f;
+                view.modelview_projection[12]=(at&1)?.45f:-.45f;view.modelview_projection[13]=at<2?-.45f:.45f;
+                refs.push_back(reference(proof,at&1?moved:first,view));
+            }
+            auto scene=f.scene();const auto expected=render(f,scene,{},refs,owners);REQUIRE(expected.queries.front()>0);
+            scene.source_routing=true;scene.source_native_visibility=true;
+            scene.source_routing_policy.minimum_qualified_indices=0; // Bounded mechanism qualification, not production selection.
+            const auto before=f.renderer->worldAnimatedStats();
+            CHECK(render(f,scene,{},refs,owners)==expected);
+            const auto after=f.renderer->worldAnimatedStats();CHECK(after.gpu_draws-before.gpu_draws==4);
+            CHECK(after.visibility_dispatches-before.visibility_dispatches==1);
+            CHECK(f.renderer->worldSourceCommandStats().last_pipeline_validation!=UINT32_MAX);
+            CHECK(f.renderer->worldSourceCommandStats().cache.last_animated_validation!=UINT32_MAX);
+            if(const char* validation=std::getenv("MTL_SHADER_VALIDATION"))
+            {
+                const auto actual=f.renderer->worldSourceCommandStats();
+                if(std::string(validation)=="1"){CHECK(actual.last_pipeline_validation==1);CHECK(actual.cache.last_animated_validation==1);}
+                if(std::string(validation)=="0"){CHECK(actual.last_pipeline_validation==2);CHECK(actual.cache.last_animated_validation==2);}
+            }
+            // A source without the separately admitted GPU/bone capability is
+            // still the required direct path, even with the native policy on.
+            auto direct=f.seal(prototype,family,2,1,false);REQUIRE_FALSE(direct->gpuReady());
+            auto direct_owners=std::make_shared<CpuOwners>();direct_owners->sources={direct};direct_owners->palettes={first,moved};
+            auto direct_refs=refs;for(unsigned at=0;at<direct_refs.size();++at)
+                direct_refs[at]=reference(direct,at&1?moved:first,refs[at].view);
+            const auto fallback_before=f.renderer->worldAnimatedStats();
+            const auto pages=f.renderer->worldSourceStats().pages;
+            CHECK(render(f,scene,{},direct_refs,direct_owners)==expected);
+            CHECK(f.renderer->worldAnimatedStats().gpu_draws==fallback_before.gpu_draws);
+            CHECK(f.renderer->worldSourceStats().pages.animated_source_publications==pages.animated_source_publications);
+        }
+    }
+}
