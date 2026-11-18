@@ -6209,9 +6209,94 @@ static float3 almetal_legacy_probe_mix(
 static float3 almetal_sample_legacy_probes(
     float3 position, float3 normal,
     texturecube_array<float> radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    ALMetalLegacyProbeSums sums{};
+    const int probe_count = clamp(int(probes.config.x), 1, 256);
+    const float3 reflection_direction = normalize(reflect(position, normal));
+    bool automatic = true;
+    int accepted_count = 0;
+    int index = almetal_probe_start_index(position, probe_count, probes);
+    int neighbor = -1;
+    int neighbor_base = 0;
+    int neighbor_count = 0;
+    while (accepted_count < 32)
+    {
+        int candidate;
+        if (neighbor < 0)
+        {
+            if (index >= probe_count ||
+                probes.ref_params[index].w > -position.z)
+            {
+                break;
+            }
+            candidate = index++;
+        }
+        else
+        {
+            if (neighbor >= neighbor_count)
+            {
+                break;
+            }
+            const int vector_index = neighbor_base + (neighbor >> 2);
+            if (vector_index < 0 || vector_index >= 1024)
+            {
+                break;
+            }
+            candidate = probes.ref_neighbor[vector_index][neighbor & 3];
+            ++neighbor;
+            if (candidate < 0 || candidate >= probe_count)
+            {
+                continue;
+            }
+        }
+
+        bool boxed = false;
+        float3 box_position = 0.0;
+        if (!almetal_probe_holds(
+                candidate, position, automatic,
+                boxed, box_position, probes))
+        {
+            continue;
+        }
+        if (boxed)
+        {
+            automatic = false;
+        }
+        almetal_legacy_probe_tap(
+            candidate, position, box_position, reflection_direction,
+            radiance, probe_sampler, probes, sums);
+        ++accepted_count;
+
+        if (neighbor < 0 && probes.ref_index[candidate].y != -1)
+        {
+            neighbor_base = probes.ref_index[candidate].y;
+            // The manager packs up to 64 candidates; only accepted taps
+            // consume the separate 32-probe sampling limit.
+            neighbor_count = clamp(probes.ref_index[candidate].z, 0, 64);
+            neighbor = 0;
+        }
+    }
+
+    if (automatic && accepted_count < 32)
+    {
+        const float3 default_box_position = probes.ref_index[0].w < 0
+            ? (probes.ref_box[0] * float4(position, 1.0)).xyz
+            : float3(0.0);
+        almetal_legacy_probe_tap(
+            0, position, default_box_position, reflection_direction,
+            radiance, probe_sampler, probes, sums);
+    }
+    return almetal_legacy_probe_mix(sums, automatic);
+}
+
+// Prepared-only overload: preserve the original walk plus conservative rejection.
+static float3 almetal_sample_legacy_probes(
+    float3 position, float3 normal,
+    texturecube_array<float> radiance, sampler probe_sampler,
     constant ALMetalWorldReflectionProbeConstants& probes,
-    const device uint* candidate_masks = nullptr,
-    size_t candidate_word_offset = 0)
+    const device uint* candidate_masks,
+    size_t candidate_word_offset)
 {
     ALMetalLegacyProbeSums sums{};
     const int probe_count = clamp(int(probes.config.x), 1, 256);
@@ -7188,10 +7273,57 @@ fragment float4 almetal_world_shiny_fragment(
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
     constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
 {
-    return almetal_world_shiny_impl(
-        input, diffuse_textures, reflection_probes, hero_probe, legacy_sky,
-        diffuse_sampler, probe_sampler, environment, probes, hero,
-        nullptr, nullptr);
+    const float4 diffuse = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord)
+        : float4(1.0, 0.0, 1.0, 1.0);
+    float3 color = diffuse.rgb * input.color.rgb;
+    const float3 normal = normalize(input.normal);
+    const float environment_intensity = input.color.a;
+    const bool legacy_environment_path =
+        environment.environment_config.x != 0u;
+    float3 legacy_environment = 0.0;
+    if (legacy_environment_path)
+    {
+        legacy_environment = almetal_sample_legacy_sky(input.eye_position,
+            normal, legacy_sky, probe_sampler, environment);
+    }
+    if (legacy_environment_path)
+    {
+        color = almetal_srgb_to_linear(mix(
+            almetal_linear_to_srgb(color),
+            legacy_environment * 2.0,
+            environment_intensity));
+    }
+    else
+    {
+        const float hero_weight = almetal_shiny_hero_weight(
+            input.eye_position, 1.0, hero);
+        // Partial blends still need the exact ordinary probe selection/mix.
+        if (hero_weight == 1.0)
+        {
+            legacy_environment = almetal_sample_shiny_hero(input.eye_position,
+                normal, 1.0, hero_probe, probe_sampler, probes, hero);
+        }
+        else
+        {
+            legacy_environment = almetal_sample_legacy_probes(input.eye_position,
+                normal, reflection_probes, probe_sampler, probes);
+            legacy_environment = almetal_mix_shiny_hero(legacy_environment,
+                input.eye_position, normal, 1.0, hero_weight,
+                hero_probe, probe_sampler, probes, hero);
+        }
+        float fresnel = 1.0 + dot(
+            normalize(input.eye_position), normal);
+        fresnel *= fresnel;
+        fresnel = min(fresnel + environment_intensity, 1.0);
+        const float3 reflected_color = legacy_environment *
+            (environment_intensity * fresnel);
+        color = mix(
+            color, reflected_color * 0.5,
+            environment_intensity);
+    }
+    return max(float4(color, 1.0), float4(0.0));
 }
 
 fragment float4 almetal_world_shiny_candidates_fragment(
@@ -9359,7 +9491,7 @@ fragment float4 almetal_world_pre_water_simple_shadow_candidates_fragment(
         probe_sampler, environment, probes, lighting, selected_masks, candidate_word_offset);
 }
 
-// Shared arithmetic and ordering for generic/prepared material alpha.
+// Prepared material arithmetic/order matches the independent generic entry.
 static float4 almetal_world_pre_water_material_impl(
     ALMetalWorldLegacyAlphaVaryings input,
     array<texture2d<float>, 8> diffuse_textures,
@@ -9694,16 +9826,282 @@ fragment float4 almetal_world_pre_water_material_fragment(
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]])
 {
-    return almetal_world_pre_water_material_impl(
-        input, diffuse_textures, normal_textures,
-        specular_textures, reflection_radiance, shadow_maps,
-        hero_probe, ssr_scene_color, ssr_scene_depth,
-        reflection_irradiance, legacy_sky, material_sampler,
-        probe_sampler, ssr_color_sampler, ssr_depth_sampler,
-        constants, probes, lighting,
-        shadows, hero, ssr,
-        environment,
-        nullptr, nullptr);
+    // Receiver and normal derivatives must remain outside all non-uniform
+    // alpha and water discards, matching materialF.glsl's shadow and
+    // specular-AA contract.
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    const float water_side =
+        dot(input.eye_position, environment.water_plane.xyz) +
+        environment.water_plane.w;
+    if ((environment.water_fog.z > 0.0 && water_side < 0.0) ||
+        (environment.water_fog.z <= 0.0 && water_side > 0.0))
+    {
+        discard_fragment();
+    }
+
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint material_index = min(input.material_index, slot_count - 1u);
+    const uint slot = min(material_index, 7u);
+    const ALMetalWorldMaterialSlotConstants material =
+        constants.slots[slot];
+    float4 diffuse = diffuse_textures[slot].sample(
+        material_sampler, input.texcoord);
+    diffuse.rgb *= input.color.rgb;
+
+    float glossiness = material.specular_color.a;
+    float3 normal = normalize(input.normal);
+    if (constants.config.z != 0u)
+    {
+        const float4 tangent_sample = normal_textures[slot].sample(
+            material_sampler, input.texcoord1);
+        glossiness *= tangent_sample.a;
+        const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
+        normal = normalize(
+            tangent_normal.x * input.tangent +
+            tangent_normal.y * input.bitangent +
+            tangent_normal.z * input.normal);
+    }
+
+    float4 specular = float4(
+        almetal_srgb_to_linear(material.specular_color.rgb), 1.0);
+    if (constants.config.w != 0u)
+    {
+        const float4 specular_sample = specular_textures[slot].sample(
+            material_sampler, input.texcoord2);
+        specular = float4(
+            specular_sample.rgb * specular.rgb, specular_sample.a);
+    }
+    const float environment_intensity =
+        material.properties.x * specular.a;
+
+    const float3 normal_dx = dfdx(normal);
+    const float3 normal_dy = dfdy(normal);
+    const float variance = 0.15 *
+        (dot(normal_dx, normal_dx) + dot(normal_dy, normal_dy));
+    const float specular_kernel = min(2.0 * variance, 0.25);
+    const float perceptual_roughness = 1.0 - glossiness;
+    const float roughness_alpha =
+        perceptual_roughness * perceptual_roughness;
+    glossiness = 1.0 - sqrt(sqrt(clamp(
+        roughness_alpha * roughness_alpha + specular_kernel,
+        0.0, 1.0)));
+    specular.a = glossiness;
+
+    const float minimum_alpha = environment.water_fog.w;
+    if (input.color.a < minimum_alpha ||
+        (diffuse.a * input.color.a < minimum_alpha &&
+         glossiness <= 0.0 && environment_intensity <= 0.0))
+    {
+        discard_fragment();
+    }
+
+    float directional_visibility = lighting.parameters.z;
+    if ((shadows.config.y & 0xfu) != 0xfu)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, shadows.parameters.w - input.position.y);
+        directional_visibility *= almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy,
+            gl_fragment_position / shadows.resolution.zw,
+            lighting.sun_direction.xyz);
+    }
+
+    const bool classic_mode = lighting.parameters.w != 0.0;
+    const float ambient_facing = 1.0 -
+        pow(0.5 * min(abs(dot(
+            normal, environment.light_direction.xyz)), 1.0), 2.0);
+    float3 sunlit = classic_mode
+        ? environment.atmos_sunlit.rgb
+        : environment.atmos_sunlit_linear.rgb;
+    float3 ambient = environment.atmos_amblit.rgb * ambient_facing;
+    if (!classic_mode)
+    {
+        ambient = almetal_srgb_to_linear(ambient);
+        ambient = float3(dot(
+            ambient, float3(0.2126, 0.7152, 0.0722)));
+    }
+    else
+    {
+        sunlit *= 1.35;
+    }
+    sunlit *= environment.atmos_sunlit.w;
+    ambient *= environment.atmos_sunlit_linear.w;
+
+    float3 ambient_environment = ambient;
+    float3 gloss_environment = 0.0;
+    float3 legacy_environment = 0.0;
+    const bool legacy_environment_path =
+        environment.environment_config.x != 0u;
+    if (legacy_environment_path)
+    {
+        ambient_environment = almetal_legacy_sky_ambient(
+            ambient, environment);
+        legacy_environment = almetal_sample_legacy_sky(
+            input.eye_position, normal, legacy_sky,
+            probe_sampler, environment);
+        gloss_environment = legacy_environment;
+    }
+    else
+    {
+        almetal_sample_base_probes(
+            false, input.eye_position, normal, glossiness,
+            environment_intensity, ambient, classic_mode,
+            reflection_radiance, reflection_irradiance,
+            probe_sampler, probes,
+            ambient_environment, gloss_environment,
+            legacy_environment);
+    }
+    if (!legacy_environment_path && glossiness > 0.0)
+    {
+        gloss_environment = almetal_finish_legacy_ssr(
+            gloss_environment,
+            float2(input.position.x, ssr.screen.z - input.position.y) /
+                ssr.screen.xy,
+            input.eye_position, normal, glossiness,
+            ssr_scene_color, ssr_scene_depth,
+            ssr_color_sampler, ssr_depth_sampler, ssr);
+    }
+    if (!legacy_environment_path && environment_intensity > 0.0)
+    {
+        legacy_environment = almetal_finish_legacy_ssr(
+            legacy_environment,
+            float2(input.position.x, ssr.screen.z - input.position.y) /
+                ssr.screen.xy,
+            input.eye_position, normal, glossiness,
+            ssr_scene_color, ssr_scene_depth,
+            ssr_color_sampler, ssr_depth_sampler, ssr);
+    }
+    if (!legacy_environment_path)
+    {
+        gloss_environment = almetal_finish_hero_probe(
+            gloss_environment, input.eye_position, normal, glossiness,
+            hero_probe, probe_sampler, probes, hero);
+        legacy_environment = almetal_finish_hero_probe(
+            legacy_environment, input.eye_position, normal, 1.0,
+            hero_probe, probe_sampler, probes, hero);
+    }
+
+    float directional = clamp(dot(
+        normal, environment.light_direction.xyz), 0.0, 1.0);
+    float3 sunlit_linear = sunlit;
+    float3 color = ambient_environment;
+    if (classic_mode)
+    {
+        directional = pow(directional, 1.2);
+        const float3 sun_contribution = float3(
+            min(directional, directional_visibility));
+        color = almetal_srgb_to_linear(
+            color * 0.9 +
+            almetal_linear_to_srgb(sun_contribution) * sunlit * 0.7);
+        sunlit_linear = almetal_srgb_to_linear(sunlit);
+    }
+    else
+    {
+        color += min(directional, directional_visibility) * sunlit_linear;
+    }
+    color *= diffuse.rgb;
+
+    float glare = 0.0;
+    const float3 view = -normalize(input.eye_position);
+    if (glossiness > 0.0)
+    {
+        float3 half_vector;
+        float3 light_direction;
+        float nh;
+        float nl;
+        float nv;
+        float vh;
+        almetal_legacy_half_vectors(
+            lighting.sun_direction.xyz, normal, view,
+            half_vector, light_direction, nh, nl, nv, vh);
+        if (dot(normal, light_direction) > 0.0 &&
+            dot(normal, half_vector) > 0.0)
+        {
+            const float lit = min(nl * 6.0, 1.0);
+            const float fresnel = pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+            const float geometry_denominator = 2.0 * nh;
+            const float geometry = max(
+                0.0, min(geometry_denominator * nv / vh,
+                         geometry_denominator * nl / vh));
+            const float lobe = directional_visibility * fresnel *
+                almetal_legacy_blinn_phong_lobe(
+                    nh, glossiness, lighting.parameters.x) *
+                geometry / (nh * nl);
+            const float3 contribution = lit * lobe *
+                sunlit_linear * specular.rgb;
+            color += contribution;
+            glare = max(max(contribution.r, contribution.g),
+                        contribution.b);
+        }
+
+        if (!legacy_environment_path)
+        {
+            gloss_environment *= 0.5;
+            float fresnel = clamp(
+                1.0 + dot(normalize(input.eye_position), normal),
+                0.3, 1.0);
+            fresnel *= fresnel * specular.a;
+            gloss_environment *= specular.rgb * fresnel;
+            gloss_environment *= float3(1.0) - color;
+            color += gloss_environment * 0.5;
+        }
+    }
+
+    const float emissive = material.properties.z;
+    color = mix(color, diffuse.rgb, emissive);
+    if (environment_intensity > 0.0)
+    {
+        if (legacy_environment_path)
+        {
+            color = almetal_srgb_to_linear(mix(
+                almetal_linear_to_srgb(color),
+                legacy_environment * 2.0,
+                environment_intensity));
+        }
+        else
+        {
+            float fresnel = 1.0 +
+                dot(normalize(input.eye_position), normal);
+            fresnel *= fresnel;
+            fresnel = min(fresnel + environment_intensity, 1.0);
+            const float3 reflected = legacy_environment *
+                (environment_intensity * fresnel);
+            color = mix(
+                color, reflected * 0.5,
+                environment_intensity);
+        }
+        const float environment_glare = max(
+            max(legacy_environment.r, legacy_environment.g),
+            legacy_environment.b);
+        glare += max(environment_glare, 0.0) *
+            environment_intensity * 4.0;
+    }
+    if (classic_mode)
+    {
+        color *= 1.1;
+    }
+
+    for (uint light_index = 0; light_index < 7; ++light_index)
+    {
+        color += almetal_legacy_local_light(
+            lighting.local_lights[light_index], diffuse.rgb,
+            normal, input.eye_position, view,
+            specular.rgb, glossiness, lighting.parameters.x,
+            classic_mode, glare);
+    }
+    color = almetal_world_alpha_fog(
+        input.eye_position, color, environment);
+
+    glare *= 1.0 - emissive;
+    glare = min(glare, 1.0);
+    const float coverage = max(diffuse.a, glare) * input.color.a;
+    if (coverage < minimum_alpha)
+    {
+        discard_fragment();
+    }
+    return max(float4(color, coverage), float4(0.0));
 }
 
 fragment float4 almetal_world_pre_water_material_candidates_fragment(
@@ -9941,12 +10339,151 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]])
 {
-    return almetal_world_legacy_alpha_impl(
-        input, diffuse_textures, normal_textures, specular_textures,
-        reflection_probes, hero_probe, ssr_scene_color, ssr_scene_depth,
-        material_sampler, probe_sampler, ssr_color_sampler, ssr_depth_sampler,
-        constants, probes, lighting, shadow_maps, shadows, hero, ssr,
-        nullptr, nullptr);
+    // Keep the receiver derivatives in uniform control flow, before the
+    // material cutoffs below can discard only part of a quad.
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint material_index = min(input.material_index, slot_count - 1u);
+    const uint slot = min(material_index, 7u);
+    const ALMetalWorldMaterialSlotConstants material =
+        constants.slots[slot];
+    const float4 diffuse = diffuse_textures[slot].sample(
+        material_sampler, input.texcoord);
+
+    float3 normal = normalize(input.normal);
+    float glossiness = material.specular_color.a;
+    if (constants.config.z != 0u)
+    {
+        const float4 tangent_sample = normal_textures[slot].sample(
+            material_sampler, input.texcoord1);
+        glossiness *= tangent_sample.a;
+        const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
+        normal = normalize(
+            tangent_normal.x * input.tangent +
+            tangent_normal.y * input.bitangent +
+            tangent_normal.z * input.normal);
+    }
+
+    float4 specular = float4(
+        almetal_srgb_to_linear(material.specular_color.rgb), 1.0);
+    if (constants.config.w != 0u)
+    {
+        const float4 specular_sample = specular_textures[slot].sample(
+            material_sampler, input.texcoord2);
+        specular = float4(
+            specular_sample.rgb * specular.rgb, specular_sample.a);
+    }
+    const float environment_intensity =
+        material.properties.x * specular.a;
+
+    const float3 normal_dx = dfdx(normal);
+    const float3 normal_dy = dfdy(normal);
+    const float variance = 0.15 *
+        (dot(normal_dx, normal_dx) + dot(normal_dy, normal_dy));
+    const float specular_kernel = min(2.0 * variance, 0.25);
+    const float perceptual_roughness = 1.0 - glossiness;
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    glossiness = 1.0 - sqrt(sqrt(clamp(
+        alpha * alpha + specular_kernel, 0.0, 1.0)));
+
+    float directional_visibility = lighting.parameters.z;
+    if ((shadows.config.y & 0xfu) != 0xfu)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x,
+            shadows.parameters.w - input.position.y);
+        const float2 screen_position =
+            gl_fragment_position / shadows.resolution.zw;
+        directional_visibility *= almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy, screen_position,
+            lighting.sun_direction.xyz);
+    }
+
+    const float minimum_alpha = lighting.parameters.y;
+    if (input.color.a < minimum_alpha ||
+        (diffuse.a * input.color.a < minimum_alpha &&
+         glossiness <= 0.0 && environment_intensity <= 0.0))
+    {
+        discard_fragment();
+    }
+
+    float glare = 0.0;
+    const float3 view = -normalize(input.eye_position);
+    if (glossiness > 0.0)
+    {
+        const float3 light_vector = normalize(lighting.sun_direction.xyz);
+        float3 half_vector;
+        float3 light_direction;
+        float nh;
+        float nl;
+        float nv;
+        float vh;
+        almetal_legacy_half_vectors(
+            light_vector, normal, view, half_vector, light_direction,
+            nh, nl, nv, vh);
+        if (dot(normal, light_direction) > 0.0 &&
+            dot(normal, half_vector) > 0.0)
+        {
+            const float lit = min(nl * 6.0, 1.0);
+            const float fresnel = pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+            const float geometry_denominator = 2.0 * nh;
+            const float geometry = max(
+                0.0, min(geometry_denominator * nv / vh,
+                         geometry_denominator * nl / vh));
+            const float lobe = directional_visibility * fresnel *
+                almetal_legacy_blinn_phong_lobe(
+                    nh, glossiness, lighting.parameters.x) *
+                geometry / (nh * nl);
+            const float3 contribution =
+                lit * lobe * lighting.sun_color.rgb * specular.rgb;
+            glare = max(max(contribution.r, contribution.g),
+                        contribution.b);
+        }
+    }
+
+    if (environment_intensity > 0.0)
+    {
+        float3 legacy_environment = almetal_sample_legacy_probes(
+            input.eye_position, normal,
+            reflection_probes, probe_sampler, probes);
+        const float2 gl_fragment_position = float2(
+            input.position.x,
+            ssr.screen.z - input.position.y);
+        legacy_environment = almetal_finish_legacy_ssr(
+            legacy_environment,
+            gl_fragment_position / ssr.screen.xy,
+            input.eye_position, normal, glossiness,
+            ssr_scene_color, ssr_scene_depth,
+            ssr_color_sampler, ssr_depth_sampler, ssr);
+        legacy_environment = almetal_finish_hero_probe(
+            legacy_environment, input.eye_position, normal, 1.0,
+            hero_probe, probe_sampler, probes, hero);
+        const float environment_glare = max(
+            max(legacy_environment.r, legacy_environment.g),
+            legacy_environment.b);
+        glare += max(environment_glare, 0.0) *
+                 environment_intensity * 4.0;
+    }
+
+    for (uint light_index = 0; light_index < 7; ++light_index)
+    {
+        almetal_legacy_local_glare(
+            lighting.local_lights[light_index], normal,
+            input.eye_position, view, specular.rgb, glossiness,
+            lighting.parameters.x, glare);
+    }
+
+    glare *= 1.0 - material.properties.z;
+    glare = min(glare, 1.0);
+    const float coverage = max(diffuse.a, glare) * input.color.a;
+    if (coverage < minimum_alpha)
+    {
+        discard_fragment();
+    }
+    const float3 flat_color = diffuse.rgb * input.color.rgb;
+    return max(float4(flat_color, coverage), float4(0.0));
 }
 
 fragment float4 almetal_world_legacy_alpha_candidates_fragment(
@@ -13043,7 +13580,7 @@ static float3 almetal_world_pre_water_pbr_local_light(
     return color * (classic_mode ? 0.9 : 1.0);
 }
 
-// Shared arithmetic and ordering for generic/prepared pbr alpha.
+// Prepared PBR arithmetic/order matches the independent generic entry.
 static float4 almetal_world_pre_water_pbr_impl(
     ALMetalWorldPBRVaryings input,
     array<texture2d<float>, 8> base_color_textures,
@@ -13301,17 +13838,199 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
     bool front_facing [[front_facing]])
 {
-    return almetal_world_pre_water_pbr_impl(
-        input, base_color_textures, normal_textures,
-        orm_textures, emissive_textures, reflection_radiance,
-        shadow_maps, hero_probe, ssr_scene_color,
-        ssr_scene_depth, reflection_irradiance, brdf_lut,
-        legacy_sky, material_sampler, probe_sampler,
-        linear_sampler, depth_sampler, constants,
-        probes, lighting, shadows,
-        hero, ssr, environment,
-        front_facing,
-        nullptr, nullptr);
+    // Keep receiver and normal derivatives in uniform control flow before
+    // water or coverage can discard only part of a quad.
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    const float water_side =
+        dot(input.eye_position, environment.water_plane.xyz) +
+        environment.water_plane.w;
+    if ((environment.water_fog.z > 0.0 && water_side < 0.0) ||
+        (environment.water_fog.z <= 0.0 && water_side > 0.0))
+    {
+        discard_fragment();
+    }
+
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint slot = min(input.material_index,
+                          min(slot_count - 1u, 7u));
+    const ALMetalWorldPBRSlotConstants material = constants.slots[slot];
+    const float4 base_color = base_color_textures[slot].sample(
+        material_sampler, input.base_color_texcoord) * input.color;
+    const float3 tangent_normal = normal_textures[slot].sample(
+        material_sampler, input.normal_texcoord).rgb * 2.0 - 1.0;
+    const float facing = front_facing ? 1.0 : -1.0;
+    float3 normal = normalize(
+        tangent_normal.x * input.tangent +
+        tangent_normal.y * input.bitangent +
+        tangent_normal.z * input.normal) * facing;
+    const float3 geometric_normal = normalize(input.normal) * facing;
+    const float3 orm_sample = orm_textures[slot].sample(
+        material_sampler, input.orm_texcoord).rgb;
+    const float ao = orm_sample.r;
+    float perceptual_roughness =
+        orm_sample.g * material.properties.x;
+    const float metallic = orm_sample.b * material.properties.y;
+    perceptual_roughness = almetal_pbr_filtered_roughness(
+        perceptual_roughness, normal);
+    const float3 emissive = material.emissive_color.rgb *
+        emissive_textures[slot].sample(
+            material_sampler, input.emissive_texcoord).rgb;
+
+    const float coverage = base_color.a;
+    if (coverage < environment.water_fog.w)
+    {
+        discard_fragment();
+    }
+
+    float directional_visibility = lighting.parameters.z;
+    if ((shadows.config.y & 0xfu) != 0xfu)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, shadows.parameters.w - input.position.y);
+        directional_visibility *= almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy,
+            gl_fragment_position / shadows.resolution.zw,
+            lighting.sun_direction.xyz);
+    }
+
+    const bool classic_mode = lighting.parameters.w != 0.0;
+    const float ambient_facing = 1.0 -
+        pow(0.5 * min(abs(dot(
+            normal, environment.light_direction.xyz)), 1.0), 2.0);
+    float3 sunlit = classic_mode
+        ? environment.atmos_sunlit.rgb
+        : environment.atmos_sunlit_linear.rgb;
+    float3 ambient = environment.atmos_amblit.rgb * ambient_facing;
+    if (!classic_mode)
+    {
+        ambient = almetal_srgb_to_linear(ambient);
+        ambient = float3(dot(
+            ambient, float3(0.2126, 0.7152, 0.0722)));
+    }
+    else
+    {
+        sunlit *= 1.35;
+    }
+    sunlit *= environment.atmos_sunlit.w;
+    ambient *= environment.atmos_sunlit_linear.w;
+
+    const float glossiness = 1.0 - perceptual_roughness;
+    float3 irradiance = ambient;
+    float3 radiance = 0.0;
+    float3 unused_legacy = 0.0;
+    const bool legacy_environment_path =
+        environment.environment_config.x != 0u;
+    if (legacy_environment_path)
+    {
+        irradiance = almetal_legacy_sky_ambient(
+            ambient, environment);
+        radiance = almetal_srgb_to_linear(
+            almetal_sample_legacy_sky(
+                input.eye_position, normal, legacy_sky,
+                probe_sampler, environment));
+    }
+    else
+    {
+        almetal_sample_base_probes(
+            true, input.eye_position, normal, glossiness, 0.0,
+            ambient, classic_mode,
+            reflection_radiance, reflection_irradiance,
+            probe_sampler, probes,
+            irradiance, radiance, unused_legacy);
+    }
+    const float3 mirror_direction = normalize(
+        reflect(input.eye_position, normal));
+    const float3 dominant_direction = almetal_base_dominant_direction(
+        normal, mirror_direction, perceptual_roughness);
+    const float2 gl_fragment_position = float2(
+        input.position.x, ssr.screen.z - input.position.y);
+    if (!legacy_environment_path)
+    {
+        const float4 ssr_sample = almetal_sample_ssr(
+            gl_fragment_position / ssr.screen.xy,
+            input.eye_position, normal, dominant_direction,
+            glossiness, true,
+            ssr_scene_color, ssr_scene_depth,
+            linear_sampler, depth_sampler, ssr);
+        radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
+        radiance = almetal_finish_hero_probe(
+            radiance, input.eye_position, normal, glossiness,
+            hero_probe, probe_sampler, probes, hero);
+    }
+    radiance *= almetal_pbr_horizon_occlusion(
+        reflect(normalize(input.eye_position), normal),
+        geometric_normal);
+
+    const float3 diffuse_color = base_color.rgb * (1.0 - metallic);
+    const float3 specular_color = mix(
+        float3(0.04), base_color.rgb, metallic);
+    const float3 view = -normalize(input.eye_position);
+    const float nv = clamp(abs(dot(normal, view)), 0.001, 1.0);
+    const float roughness = max(perceptual_roughness, 0.045);
+    const ALMetalPBRPreviewIBL ibl = almetal_pbr_ibl(
+        brdf_lut, linear_sampler, diffuse_color, specular_color,
+        radiance, irradiance, ao, nv, roughness);
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    const float sun_roughness = sqrt(clamp(
+        alpha + 0.00465, 0.0, 1.0));
+    const float3 light_direction = normalize(
+        lighting.sun_direction.xyz);
+    ALMetalPBRPreviewPunctual punctual = almetal_pbr_punctual(
+        diffuse_color, specular_color, sun_roughness,
+        normal, view, light_direction);
+    punctual.specular *= almetal_pbr_energy_compensation(
+        brdf_lut, linear_sampler, specular_color, roughness, nv);
+
+    float3 color;
+    if (classic_mode)
+    {
+        const float3 classic_irradiance = almetal_srgb_to_linear(
+            irradiance * 0.9);
+        const float directional = pow(punctual.nl, 1.2);
+        float3 sun_contribution = float3(
+            min(directional, directional_visibility));
+        sun_contribution = almetal_srgb_to_linear(
+            almetal_linear_to_srgb(sun_contribution) *
+            sunlit * 0.7) * M_PI_F;
+        const float3 final_ambient = classic_irradiance *
+            diffuse_color *
+            almetal_pbr_gtao_multibounce(ao, diffuse_color);
+        const float3 final_sun = almetal_world_bounded_radiance(
+            sun_contribution *
+            ((punctual.diffuse + punctual.specular) *
+             directional_visibility));
+        color = almetal_srgb_to_linear(
+            almetal_linear_to_srgb(final_ambient) +
+            almetal_linear_to_srgb(final_sun) * 1.1);
+    }
+    else
+    {
+        color = ibl.diffuse +
+            almetal_world_bounded_radiance(
+                punctual.nl *
+                (punctual.diffuse + punctual.specular)) *
+            sunlit * 3.0 * directional_visibility;
+    }
+    color += ibl.specular + emissive;
+    if (classic_mode)
+    {
+        color *= 1.1;
+    }
+
+    for (uint light_index = 0; light_index < 7; ++light_index)
+    {
+        color += almetal_world_pre_water_pbr_local_light(
+            lighting.local_lights[light_index],
+            diffuse_color, specular_color, perceptual_roughness,
+            normal, input.eye_position, view,
+            brdf_lut, linear_sampler, classic_mode);
+    }
+    color = almetal_world_alpha_fog(
+        input.eye_position, color, environment);
+    color = almetal_world_bounded_radiance(color);
+    return max(float4(color, coverage), float4(0.0));
 }
 
 fragment float4 almetal_world_pre_water_pbr_candidates_fragment(
