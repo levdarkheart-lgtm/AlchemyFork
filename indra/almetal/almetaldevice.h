@@ -19,9 +19,19 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include "almetalresourceplan.h"
 
 class ALMetalPipelineCache;
 class ALMetalRenderEncoder;
+class ALMetalComputeEncoder;
+class ALMetalBuffer;
+class ALMetalTexture;
+class ALMetalTextureReadbackRing;
+class ALMetalVisibilityResultBatch;
+
+// Temporary private qualification controls. The complete operational mode
+// must pass correctness and whole-owner cost before it becomes the default.
+enum class ALMetalResourcePlanMode { disabled, accounting_only, enabled };
 
 // Native submission-owner scope, used by an outer main/probe work group.
 // Each command created on this thread retains the current owner until actual
@@ -150,6 +160,13 @@ public:
     // bridge these to id<MTLCommandBuffer>/id<MTLDevice>; their lifetime is
     // bounded by this wrapper.
     void* nativeHandle() const noexcept;
+    // Identity comparisons and completion metadata only: no native GPU
+    // encoding permission is granted by this non-owning observer.
+    const void* nativeIdentity() const noexcept;
+    // Audited native helpers declare their full resource closure through the
+    // current typed pass before using this handle. Missing/unknown closures
+    // must keep nativeHandle(), which conservatively marks the scope opaque.
+    void* nativeHandleForDeclaredResources() const noexcept;
     void* nativeDevice() const noexcept;
 
     ALMetalCommandStatus status() const noexcept;
@@ -164,6 +181,19 @@ public:
     bool retainUntilCompletion(std::shared_ptr<const void> owner,
                                std::string* error = nullptr);
 
+    // Typed native operations declare conservative backing-level uses within
+    // their real pass. No CPU wait, new queue, or shader-range inference occurs.
+    bool beginResourcePass(ALMetalResourcePlanning::Pass kind, std::uint64_t& pass,
+                           std::string* error = nullptr);
+    bool endResourcePass(std::uint64_t pass, std::string* error = nullptr);
+    bool useResource(const ALMetalResourcePlanning::View&, ALMetalResourcePlanning::Access,
+                     std::string* error = nullptr);
+    std::shared_ptr<ALMetalResourcePlanning::Command> resourceUsePlan() const noexcept;
+    // Foreign/platform-backed resources (not viewer allocation factories).
+    // Their bytes are deliberately excluded from unique owned backing totals.
+    bool registerExternalBacking(void* native_resource, ALMetalResourcePlanning::View& output,
+                                 std::string* error = nullptr) const;
+
     bool commit(std::string* error = nullptr);
     bool waitUntilCompleted(std::string* error = nullptr);
     bool commitAndWait(std::string* error = nullptr);
@@ -174,6 +204,15 @@ private:
     std::unique_ptr<Impl> mImpl;
 
     friend class ALMetalDevice;
+    friend class ALMetalBuffer;
+    friend class ALMetalTexture;
+    friend class ALMetalTextureReadbackRing;
+    friend class ALMetalVisibilityResultBatch;
+    friend class ALMetalRenderEncoder;
+    friend class ALMetalComputeEncoder;
+    // Unlike the public native escape, known typed backend paths do not mark
+    // their command's resource scope opaque. New callers must declare uses.
+    void* nativeHandleForEncoding() const noexcept;
 };
 
 class ALMetalDevice final
@@ -187,7 +226,8 @@ public:
 
     // Fails closed when the process is not native arm64 or the selected Metal
     // device is not a built-in unified-memory Apple GPU.
-    static std::unique_ptr<ALMetalDevice> create(std::string* error = nullptr);
+    static std::unique_ptr<ALMetalDevice> create(std::string* error = nullptr,
+        ALMetalResourcePlanMode resource_plan_mode = ALMetalResourcePlanMode::disabled);
 
     const ALMetalDeviceInfo& info() const noexcept;
     // Live driver-accounted bytes owned by this Metal device. Unlike the
@@ -196,6 +236,14 @@ public:
     std::uint64_t currentAllocatedSize() const noexcept;
     void* nativeHandle() const noexcept;
     void* nativeCommandQueue() const noexcept;
+    ALMetalResourcePlanMode resourcePlanningMode() const noexcept;
+    const std::shared_ptr<ALMetalResourcePlanning::Plan>& resourcePlan() const noexcept;
+    ALMetalResourcePlanning::Stats uniqueResourceStats() const noexcept;
+    // Native allocation FACTORY boundary only (for example an ICB). Register
+    // once per backing, retain this View in every alias/COW generation, and do
+    // not register shader views or uses as additional owned allocations.
+    bool registerNativeBacking(void* native_resource, ALMetalResourcePlanning::Description,
+        ALMetalResourcePlanning::View& output, std::string* error = nullptr) const;
 
     // Default-disabled app-owned native binary archive. Configure before the
     // first renderer PSO and before an explicit shader rebuild.

@@ -24,6 +24,58 @@
 
 namespace
 {
+    namespace RP = ALMetalResourcePlanning;
+    struct NativeBackingOwner
+    {
+        explicit NativeBackingOwner(id<MTLResource> value) : resource(value) {}
+        id<MTLResource> resource;
+    };
+
+    bool allocationView(const std::shared_ptr<RP::Plan>& registry,
+        id<MTLResource> resource, RP::Description description, RP::View& output,
+        std::string* error)
+    {
+        if (!registry) return true;
+        try
+        {
+            if (description.origin == RP::Origin::viewer_owned && !description.memoryless)
+                description.metal_reported_bytes = static_cast<std::uint64_t>(resource.allocatedSize);
+            output = registry->allocate(description, std::make_shared<NativeBackingOwner>(resource), (__bridge const void*)resource);
+            if (output) return true;
+        }
+        catch (...) {}
+        if (error) *error = "Metal could not register the exact native allocation backing";
+        return false;
+    }
+    class TransferResourcePass
+    {
+    public:
+        TransferResourcePass(ALMetalCommandBuffer& command, RP::Pass kind, std::string* error)
+        : mCommand(command), mError(error)
+        { mValid = mCommand.beginResourcePass(kind, mPass, error); }
+        ~TransferResourcePass() { if (mValid && !mEnded) mCommand.endResourcePass(mPass); }
+        explicit operator bool() const noexcept { return mValid; }
+        bool use(const RP::View& view, RP::Access access)
+        { return mValid && mCommand.useResource(view, access, mError); }
+        bool end()
+        {
+            if (!mValid || mEnded) return false;
+            mEnded = true;
+            return mCommand.endResourcePass(mPass, mError);
+        }
+    private:
+        ALMetalCommandBuffer& mCommand;
+        std::string* mError = nullptr;
+        std::uint64_t mPass = 0;
+        bool mValid = false, mEnded = false;
+    };
+    bool stagingView(const std::shared_ptr<RP::Plan>& registry, id<MTLBuffer> buffer,
+                     std::size_t bytes, RP::View& view, std::string* error)
+    {
+        RP::Description description;
+        description.kind = RP::Kind::staging_buffer; description.declared_bytes = bytes;
+        return allocationView(registry, buffer, description, view, error);
+    }
     std::atomic<std::uint64_t> buffers_created{0};
     std::atomic<std::uint64_t> buffers_destroyed{0};
     std::atomic<std::uint64_t> buffer_bytes_live{0};
@@ -520,6 +572,8 @@ struct ALMetalBuffer::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLBuffer> buffer = nil;
+    std::shared_ptr<RP::Plan> registry;
+    RP::View resource_view;
 };
 
 ALMetalBuffer::ALMetalBuffer(std::unique_ptr<Impl> impl, ALMetalBufferDescriptor descriptor)
@@ -575,6 +629,11 @@ std::unique_ptr<ALMetalBuffer> ALMetalBuffer::create(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->buffer = buffer;
+        if (device.resourcePlanningMode() != ALMetalResourcePlanMode::disabled)
+            impl->registry = device.resourcePlan();
+        RP::Description allocation;
+        allocation.kind = RP::Kind::buffer; allocation.declared_bytes = descriptor.length;
+        if (!allocationView(impl->registry, buffer, allocation, impl->resource_view, error)) return nullptr;
         auto result = std::unique_ptr<ALMetalBuffer>(
             new ALMetalBuffer(std::move(impl), descriptor));
         buffers_created.fetch_add(1, std::memory_order_relaxed);
@@ -589,6 +648,9 @@ void* ALMetalBuffer::nativeHandle() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->buffer : nullptr;
 }
+
+const RP::View& ALMetalBuffer::resourceView() const noexcept
+{ static const RP::View unavailable; return mImpl ? mImpl->resource_view : unavailable; }
 
 std::size_t ALMetalBuffer::length() const noexcept
 {
@@ -698,7 +760,12 @@ bool ALMetalBuffer::upload(ALMetalCommandBuffer& command_buffer,
             setError(error, "Metal could not allocate the buffer upload staging resource");
             return false;
         }
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        RP::View staging_view;
+        if (!stagingView(mImpl->registry, staging, length, staging_view, error)) return false;
+        TransferResourcePass resources(command_buffer, RP::Pass::blit, error);
+        if (!resources || !resources.use(staging_view, RP::Access::read) ||
+            !resources.use(mImpl->resource_view, RP::Access::write)) return false;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -743,8 +810,10 @@ bool ALMetalBuffer::fillWords(ALMetalCommandBuffer& command_buffer,
 
     @autoreleasepool
     {
+        TransferResourcePass resources(command_buffer, RP::Pass::blit, error);
+        if (!resources || !resources.use(mImpl->resource_view, RP::Access::write)) return false;
         id<MTLCommandBuffer> command =
-            (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+            (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -773,6 +842,10 @@ bool ALMetalBuffer::fillWords(ALMetalCommandBuffer& command_buffer,
                 setError(error, "Metal could not allocate buffer-fill staging storage");
                 return false;
             }
+            RP::View staging_view;
+            if (!stagingView(mImpl->registry, staging, length, staging_view, error) ||
+                !resources.use(staging_view, RP::Access::read))
+            { [encoder endEncoding]; return false; }
             [encoder copyFromBuffer:staging
                        sourceOffset:0
                            toBuffer:mImpl->buffer
@@ -817,8 +890,11 @@ bool ALMetalBuffer::copyFrom(ALMetalCommandBuffer& command_buffer,
 
     @autoreleasepool
     {
+        TransferResourcePass resources(command_buffer, RP::Pass::blit, error);
+        if (!resources || !resources.use(source.resourceView(), RP::Access::read) ||
+            !resources.use(mImpl->resource_view, RP::Access::write)) return false;
         id<MTLCommandBuffer> command =
-            (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+            (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -864,7 +940,13 @@ bool ALMetalBuffer::readback(const ALMetalDevice& device,
             // coherent shared memory is read by the CPU.
             auto completion = device.makeCommandBuffer(
                 "Alchemy shared buffer readback completion", error);
-            if (!completion || !completion->commitAndWait(error))
+            if (!completion) return false;
+            if (device.resourcePlanningMode() == ALMetalResourcePlanMode::enabled &&
+                !mImpl->resource_view.canReadAfterQueueBarrier())
+            { setError(error, "Metal shared buffer readback requires its uncommitted producer owner to settle"); return false; }
+            TransferResourcePass resources(*completion, RP::Pass::readback, error);
+            if (!resources || !resources.use(mImpl->resource_view, RP::Access::read) || !resources.end()) return false;
+            if (!completion->commitAndWait(error))
             {
                 return false;
             }
@@ -883,7 +965,15 @@ bool ALMetalBuffer::readback(const ALMetalDevice& device,
         {
             return false;
         }
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer->nativeHandle();
+        RP::View staging_view;
+        if (!stagingView(mImpl->registry, staging, length, staging_view, error)) return false;
+        if (device.resourcePlanningMode() == ALMetalResourcePlanMode::enabled &&
+            !mImpl->resource_view.canReadAfterQueueBarrier())
+        { setError(error, "Metal buffer readback requires its uncommitted producer owner to settle"); return false; }
+        TransferResourcePass resources(*command_buffer, RP::Pass::readback, error);
+        if (!resources || !resources.use(mImpl->resource_view, RP::Access::read) ||
+            !resources.use(staging_view, RP::Access::write)) return false;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer->nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -896,6 +986,7 @@ bool ALMetalBuffer::readback(const ALMetalDevice& device,
               destinationOffset:0
                            size:length];
         [encoder endEncoding];
+        if (!resources.end()) return false;
         if (!command_buffer->commitAndWait(error))
         {
             return false;
@@ -1040,7 +1131,7 @@ void* ALMetalVisibilityResultBatch::nativeBufferHandle() const noexcept
 bool ALMetalVisibilityResultBatch::attachCommand(
     const ALMetalCommandBuffer& command, std::string* error)
 {
-    if (!mImpl || !mImpl->buffer || !command.nativeHandle() ||
+    if (!mImpl || !mImpl->buffer || !command.nativeHandleForEncoding() ||
         command.nativeDevice() != (__bridge void*)mImpl->device)
     {
         setError(error,
@@ -1048,7 +1139,7 @@ bool ALMetalVisibilityResultBatch::attachCommand(
         return false;
     }
     mImpl->command =
-        (__bridge id<MTLCommandBuffer>)command.nativeHandle();
+        (__bridge id<MTLCommandBuffer>)command.nativeHandleForEncoding();
     mImpl->completion = command.completionToken();
     return true;
 }
@@ -1071,6 +1162,8 @@ struct ALMetalTexture::Impl
     // Created lazily only when a second wrapper shares this allocation.
     // Allocation telemetry retires once, at the last wrapper's destruction.
     std::shared_ptr<const ALMetalTextureAllocationRecord> allocation_record;
+    std::shared_ptr<RP::Plan> registry;
+    RP::View resource_view;
 };
 
 ALMetalTexture::ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescriptor descriptor)
@@ -1106,6 +1199,8 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::retainSharedBacking(
     impl->texture = source.mImpl->texture;
     impl->shader_view = source.mImpl->shader_view;
     impl->linear_view = source.mImpl->linear_view;
+    impl->registry = source.mImpl->registry;
+    impl->resource_view = source.mImpl->resource_view;
     return std::unique_ptr<ALMetalTexture>(
         new ALMetalTexture(std::move(impl), std::move(descriptor)));
 }
@@ -1227,6 +1322,12 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
         impl->device = native_device;
         impl->texture = texture;
         impl->shader_view = shader_view;
+        if (device.resourcePlanningMode() != ALMetalResourcePlanMode::disabled)
+            impl->registry = device.resourcePlan();
+        RP::Description allocation;
+        allocation.kind = RP::Kind::texture; allocation.declared_bytes = textureAllocationBytes(descriptor);
+        allocation.memoryless = descriptor.storage == ALMetalStorageMode::memoryless;
+        if (!allocationView(impl->registry, texture, allocation, impl->resource_view, error)) return nullptr;
         auto result = std::unique_ptr<ALMetalTexture>(
             new ALMetalTexture(std::move(impl), descriptor));
         recordTextureCreated(descriptor);
@@ -1335,12 +1436,22 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::createFromIOSurface(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->texture = texture;
+        if (device.resourcePlanningMode() != ALMetalResourcePlanMode::disabled)
+            impl->registry = device.resourcePlan();
+        RP::Description allocation;
+        allocation.kind = RP::Kind::texture; allocation.origin = RP::Origin::external_unknown;
+        if (!allocationView(impl->registry, texture, allocation, impl->resource_view, error)) return nullptr;
         auto result = std::unique_ptr<ALMetalTexture>(
             new ALMetalTexture(std::move(impl), descriptor));
         recordTextureCreated(descriptor);
         return result;
     }
 }
+
+const RP::View& ALMetalTexture::resourceView() const noexcept
+{ static const RP::View unavailable; return mImpl ? mImpl->resource_view : unavailable; }
+bool ALMetalTexture::issueResourceGeneration(const std::shared_ptr<RP::Command>& current) noexcept
+{ return mImpl && mImpl->resource_view.issueGeneration(current); }
 
 void* ALMetalTexture::nativeHandle() const noexcept
 {
@@ -1541,7 +1652,12 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
                         layout.tight_row);
         }
 
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        RP::View staging_view;
+        if (!stagingView(mImpl->registry, staging, staging_size, staging_view, error)) return false;
+        TransferResourcePass resources(command_buffer, RP::Pass::blit, error);
+        if (!resources || !resources.use(staging_view, RP::Access::read) ||
+            !resources.use(mImpl->resource_view, RP::Access::write)) return false;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -1628,7 +1744,10 @@ bool ALMetalTexture::copyFrom(ALMetalCommandBuffer& command_buffer,
 
     @autoreleasepool
     {
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        TransferResourcePass resources(command_buffer, RP::Pass::blit, error);
+        if (!resources || !resources.use(source.resourceView(), RP::Access::read) ||
+            !resources.use(mImpl->resource_view, RP::Access::write)) return false;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -1677,7 +1796,9 @@ bool ALMetalTexture::generateMipmaps(ALMetalCommandBuffer& command_buffer,
 
     @autoreleasepool
     {
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        TransferResourcePass resources(command_buffer, RP::Pass::blit, error);
+        if (!resources || !resources.use(mImpl->resource_view, RP::Access::read_write)) return false;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -1747,6 +1868,16 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
         if (mDescriptor.storage == ALMetalStorageMode::shared &&
             !depth_from_combined)
         {
+            if (device.resourcePlanningMode() == ALMetalResourcePlanMode::enabled)
+            {
+                if (!mImpl->resource_view.canReadAfterQueueBarrier())
+                { setError(error, "Metal shared texture readback requires its uncommitted producer owner to settle"); return false; }
+                auto completion = device.makeCommandBuffer("Alchemy shared texture readback completion", error);
+                if (!completion) return false;
+                TransferResourcePass resources(*completion, RP::Pass::readback, error);
+                if (!resources || !resources.use(mImpl->resource_view, RP::Access::read) ||
+                    !resources.end() || !completion->commitAndWait(error)) return false;
+            }
             [mImpl->texture getBytes:bytes
                          bytesPerRow:bytes_per_row
                        bytesPerImage:bytes_per_row * layout.rows
@@ -1775,7 +1906,15 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
         {
             return false;
         }
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer->nativeHandle();
+        RP::View staging_view;
+        if (!stagingView(mImpl->registry, staging, staging_size, staging_view, error)) return false;
+        if (device.resourcePlanningMode() == ALMetalResourcePlanMode::enabled &&
+            !mImpl->resource_view.canReadAfterQueueBarrier())
+        { setError(error, "Metal texture readback requires its uncommitted producer owner to settle"); return false; }
+        TransferResourcePass resources(*command_buffer, RP::Pass::readback, error);
+        if (!resources || !resources.use(mImpl->resource_view, RP::Access::read) ||
+            !resources.use(staging_view, RP::Access::write)) return false;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer->nativeHandleForEncoding();
         id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
         if (!encoder)
         {
@@ -1795,6 +1934,7 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
                              ? MTLBlitOptionDepthFromDepthStencil
                              : MTLBlitOptionNone];
         [encoder endEncoding];
+        if (!resources.end()) return false;
         if (!command_buffer->commitAndWait(error))
         {
             return false;
@@ -2050,8 +2190,14 @@ bool ALMetalTextureReadbackRing::request(const ALMetalTexture& source,
 
     @autoreleasepool
     {
+        if (mImpl->device->resourcePlanningMode() == ALMetalResourcePlanMode::enabled &&
+            !source.resourceView().canReadAfterQueueBarrier())
+        { setError(error, "Metal queued readback requires its uncommitted producer owner to settle"); return false; }
+        TransferResourcePass resources(*command, RP::Pass::readback, error);
+        if (!resources || !resources.use(source.resourceView(), RP::Access::read) ||
+            !resources.use(slot.staging->resourceView(), RP::Access::write)) return false;
         id<MTLCommandBuffer> native_command =
-            (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+            (__bridge id<MTLCommandBuffer>)command->nativeHandleForEncoding();
         id<MTLBuffer> staging = (__bridge id<MTLBuffer>)slot.staging->nativeHandle();
         id<MTLBlitCommandEncoder> encoder = [native_command blitCommandEncoder];
         if (!encoder)
@@ -2072,6 +2218,7 @@ bool ALMetalTextureReadbackRing::request(const ALMetalTexture& source,
                              ? MTLBlitOptionDepthFromDepthStencil
                              : MTLBlitOptionNone];
         [encoder endEncoding];
+        if (!resources.end()) return false;
     }
     if (!command->commit(error))
     {
@@ -2173,6 +2320,8 @@ bool ALMetalTextureReadbackRing::collect(void* bytes,
 struct ALMetalRenderPass::Impl
 {
     MTLRenderPassDescriptor* descriptor = nil;
+    std::vector<RP::View> resources;
+    bool opaque = false;
 };
 
 ALMetalRenderPass::ALMetalRenderPass(std::unique_ptr<Impl> impl)
@@ -2187,6 +2336,22 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createForColorAttachment(
     void* native_texture,
     ALMetalPixelFormat format,
     const ALMetalRenderPassColorConfig& config,
+    std::string* error)
+{
+    return createColorAttachment(device, native_texture, format, config, nullptr, error);
+}
+
+std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createForColorAttachment(
+    const ALMetalDevice& device, void* native_texture, ALMetalPixelFormat format,
+    const ALMetalRenderPassColorConfig& config, const RP::View& supplied_backing,
+    std::string* error)
+{
+    return createColorAttachment(device, native_texture, format, config, &supplied_backing, error);
+}
+
+std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createColorAttachment(
+    const ALMetalDevice& device, void* native_texture, ALMetalPixelFormat format,
+    const ALMetalRenderPassColorConfig& config, const RP::View* supplied_backing,
     std::string* error)
 {
     @autoreleasepool
@@ -2220,6 +2385,24 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createForColorAttachment(
             setError(error, "A single-sample Metal drawable cannot use a resolve store action");
             return nullptr;
         }
+        if (supplied_backing && device.resourcePlanningMode() != ALMetalResourcePlanMode::disabled)
+        {
+            bool matches = false;
+            id<MTLTexture> ancestor = texture;
+            // Format views retain their parent; do not treat a new shader
+            // view as a new allocation or trust an unrelated supplied token.
+            for (unsigned depth = 0; ancestor && depth != 16; ++depth)
+            {
+                if ((__bridge const void*)ancestor == supplied_backing->nativeIdentity())
+                { matches = true; break; }
+                ancestor = ancestor.parentTexture;
+            }
+            if (!matches || !device.resourcePlan()->containsCurrent(*supplied_backing))
+            {
+                setError(error, "Metal color attachment backing does not match this texture and generation");
+                return nullptr;
+            }
+        }
 
         MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
         MTLRenderPassColorAttachmentDescriptor* attachment = descriptor.colorAttachments[0];
@@ -2233,6 +2416,21 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createForColorAttachment(
 
         auto impl = std::make_unique<ALMetalRenderPass::Impl>();
         impl->descriptor = descriptor;
+        if (device.resourcePlanningMode() != ALMetalResourcePlanMode::disabled)
+        {
+            if (supplied_backing) impl->resources.push_back(*supplied_backing);
+            else
+            {
+                RP::Description allocation;
+                allocation.kind = RP::Kind::texture; allocation.origin = RP::Origin::external_unknown;
+                RP::View view;
+                if (!allocationView(device.resourcePlan(), texture, allocation, view, error)) return nullptr;
+                impl->resources.push_back(std::move(view));
+                // A raw native attachment may alias a known owned texture.
+                // Only a factory-captured supplied backing proves identity.
+                impl->opaque = true;
+            }
+        }
         return std::unique_ptr<ALMetalRenderPass>(new ALMetalRenderPass(std::move(impl)));
     }
 }
@@ -2240,6 +2438,16 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createForColorAttachment(
 void* ALMetalRenderPass::nativeHandle() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->descriptor : nullptr;
+}
+
+bool ALMetalRenderPass::registerResourceUses(ALMetalCommandBuffer& command, std::string* error) const
+{
+    if (!mImpl) return false;
+    if (mImpl->opaque)
+        if (const auto plan = command.resourceUsePlan()) plan->markOpaque();
+    for (const auto& view : mImpl->resources)
+        if (!command.useResource(view, RP::Access::read_write, error)) return false;
+    return true;
 }
 
 struct ALMetalRenderTarget::Impl
@@ -2269,8 +2477,28 @@ struct ALMetalRenderTargetPool::Impl
     std::uint64_t acquisitions = 0;
     std::uint64_t reuses = 0;
     std::uint64_t evictions = 0;
+    std::uint64_t dependency_deferrals = 0;
     mutable std::mutex mutex;
     std::vector<Entry> entries;
+
+    static bool issueGeneration(ALMetalRenderTarget::Impl& storage,
+        const std::shared_ptr<RP::Command>& current) noexcept
+    {
+        const auto each = [&](const auto& operation)
+        {
+            for (const auto& texture : storage.colors)
+                if (texture && !operation(*texture)) return false;
+            for (const auto& texture : storage.multisample_colors)
+                if (texture && !operation(*texture)) return false;
+            return !storage.depth_stencil || operation(*storage.depth_stencil);
+        };
+        if (!each([&](const ALMetalTexture& texture) {
+            return texture.resourceView() && texture.resourceView().canIssueGeneration(current); })) return false;
+        // The pool exclusively owns these wrappers. A concurrent opaque scope
+        // may conservatively interrupt this step; no native use is emitted and
+        // any already advanced metadata generation remains private to the pool.
+        return each([&](ALMetalTexture& texture) { return texture.issueResourceGeneration(current); });
+    }
 
     static bool complete(
         const ALMetalRenderTarget::Impl& storage,
@@ -2426,7 +2654,8 @@ ALMetalRenderTargetPool::create(
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalRenderTargetPool::acquire(
     const ALMetalRenderTargetDescriptor& descriptor,
-    std::string* error)
+    std::string* error,
+    const std::shared_ptr<RP::Command>& current_command)
 {
     if (!mImpl || !mImpl->device)
     {
@@ -2445,6 +2674,9 @@ ALMetalRenderTargetPool::acquire(
             {
                 continue;
             }
+            if (mImpl->device->resourcePlanningMode() == ALMetalResourcePlanMode::enabled &&
+                !Impl::issueGeneration(*entry->storage, current_command))
+            { ++mImpl->dependency_deferrals; continue; }
             auto storage = std::move(entry->storage);
             ++mImpl->reuses;
             mImpl->cached_bytes -= entry->bytes;
@@ -2555,6 +2787,7 @@ ALMetalRenderTargetPool::stats() const noexcept
         mImpl->evictions,
         mImpl->entries.size(),
         mImpl->cached_bytes,
+        mImpl->dependency_deferrals,
     };
 }
 
@@ -3086,6 +3319,20 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
 
         auto impl = std::make_unique<ALMetalRenderPass::Impl>();
         impl->descriptor = descriptor;
+        for (std::uint32_t index = 0; index < mDescriptor.color_attachment_count; ++index)
+        {
+            if (!config.colors[index].bind) continue;
+            if (mDescriptor.sample_count > 1 && mImpl->multisample_colors[index]->resourceView())
+                impl->resources.push_back(mImpl->multisample_colors[index]->resourceView());
+            if (const auto* texture = colorTexture(index); texture && texture->resourceView())
+                impl->resources.push_back(texture->resourceView());
+        }
+        if (config.bind_depth_stencil)
+            if (const auto* texture = depthStencilTexture(); texture && texture->resourceView())
+                impl->resources.push_back(texture->resourceView());
+        if (config.visibility_results && config.visibility_results->mImpl->buffer->resourceView())
+            impl->resources.push_back(config.visibility_results->mImpl->buffer->resourceView());
+
         return std::unique_ptr<ALMetalRenderPass>(new ALMetalRenderPass(std::move(impl)));
     }
 }

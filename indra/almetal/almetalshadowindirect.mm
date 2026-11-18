@@ -20,6 +20,7 @@
 
 namespace
 {
+    namespace RP = ALMetalResourcePlanning;
     void setError(std::string* error, const char* message)
     {
         if (error) *error = message;
@@ -109,6 +110,7 @@ namespace
     {
         id<MTLIndirectCommandBuffer> buffer = nil;
         id<MTLIndirectCommandBuffer> visible_buffer = nil;
+        RP::View buffer_view, visible_buffer_view;
         std::shared_ptr<ALMetalShadowVisibility::Batch> visibility;
         std::vector<NativeDraw> generated_draws;
         std::vector<id<MTLBuffer>> generated_resources;
@@ -116,7 +118,7 @@ namespace
         std::size_t capacity = 0;
         std::vector<CachedCommand> commands;
         std::vector<void*> resources;
-        IdentitySet resource_set;
+        std::vector<RP::View> resource_views;
         std::shared_ptr<const ALMetalCommandCompletion> completion;
         std::size_t previous_count = 0;
         bool leased = false;
@@ -129,6 +131,7 @@ namespace
         // One strong owner per unique native buffer, rather than three ARC
         // owners per draw. The packet array itself contains non-owning IDs.
         std::vector<id<MTLBuffer>> resources;
+        std::vector<RP::View> resource_views;
         std::shared_ptr<const ALMetalCommandCompletion> completion;
         bool leased = false;
         bool used = false;
@@ -146,6 +149,7 @@ namespace
         IdentitySet validated_resources;
         IdentitySet gpu_addresses;
         std::vector<void*> validated_handles;
+        std::vector<RP::View> validated_views;
         ALMetalShadowIndirectStats statistics;
         std::unique_ptr<ALMetalShadowVisibility> visibility;
     };
@@ -165,6 +169,7 @@ namespace
         }
         pool.validated_resources.reset(draws.size() * 10);
         pool.validated_handles.clear();
+        pool.validated_views.clear();
         std::array<void*, 3> previous_handles{};
         for (const auto& draw : draws)
         {
@@ -210,6 +215,9 @@ namespace
                         return false;
                     }
                     pool.validated_handles.push_back(handle);
+                    const ALMetalBuffer* buffer = role == 0 ? draw.positions :
+                        (role == 1 ? draw.constants : draw.indices);
+                    pool.validated_views.push_back(buffer->resourceView());
                 }
             }
             NativeDraw prepared{positions, constants, indices,
@@ -251,6 +259,7 @@ namespace
                         return false;
                     }
                     pool.validated_handles.push_back(handle);
+                    pool.validated_views.push_back(range.buffer->resourceView());
                 }
             }
             pool.scratch.push_back(std::move(prepared));
@@ -282,6 +291,10 @@ namespace
             return nullptr;
         }
         slot->buffer.label = @"Alchemy pooled opaque shadow indirect commands";
+        RP::Description description;
+        description.kind = RP::Kind::indirect_commands;
+        if (!pool.device_wrapper->registerNativeBacking((__bridge void*)slot->buffer,
+                description, slot->buffer_view, error)) return nullptr;
         slot->commands.resize(capacity);
         for (std::size_t i = 0; i < capacity; ++i)
         {
@@ -293,7 +306,6 @@ namespace
             }
         }
         slot->resources.reserve(capacity * 10);
-        slot->resource_set.reset(capacity * 10);
         }
         ++pool.statistics.slot_allocations;
         pool.slots.push_back(slot);
@@ -391,7 +403,7 @@ try
 {
     if (failure) *failure = ALMetalShadowPrepareFailure::none;
     auto& pool = *mImpl->pool;
-    if (!pool.supported || !command.nativeHandle() || command.isCommitted() ||
+    if (!pool.supported || !command.nativeIdentity() || command.isCommitted() ||
         command.nativeDevice() != (__bridge void*)pool.device ||
         draws.size() > maximum_draw_count)
     {
@@ -413,7 +425,7 @@ try
     }
     auto batch_impl = std::make_unique<Batch::Impl>();
     batch_impl->owner = mImpl->pool;
-    batch_impl->command = (__bridge id<MTLCommandBuffer>)command.nativeHandle();
+    batch_impl->command = (__bridge id<MTLCommandBuffer>)command.nativeIdentity();
     batch_impl->count = draws.size();
     std::uint64_t extended_count = 0;
     if (!draws.empty())
@@ -445,15 +457,14 @@ try
         if (slot->used) ++pool.statistics.slot_reuses;
         slot->visibility.reset();
         slot->used = true;
-        if (!gpu_generated) slot->resource_set.reset(draws.size() * 10);
-        slot->resources.clear();
+        slot->resources = pool.validated_handles;
+        slot->resource_views = pool.validated_views;
         slot->generated = gpu_generated;
         if (gpu_generated)
         {
             // The immutable native record table is the GPU command source.
             // No CPU setVertexBuffer/setFragmentBuffer/draw emission occurs.
             slot->generated_draws.swap(pool.scratch);
-            slot->resources = pool.validated_handles;
             slot->generated_resources.clear();
             slot->generated_resources.reserve(pool.validated_handles.size());
             for (void* handle : pool.validated_handles)
@@ -522,12 +533,8 @@ try
                     cached.extra_buffers[binding] = buffer;
                     cached.extra_offsets[binding] = input.extra_offsets[binding];
                 }
-                if (slot->resource_set.insert(input.extra_buffers[binding]))
-                    slot->resources.push_back(input.extra_buffers[binding]);
             }
             if (input.binding_mask) ++extended_count;
-            for (void* handle : {input.positions, input.constants, input.indices})
-                if (slot->resource_set.insert(handle)) slot->resources.push_back(handle);
         }
         for (std::size_t i = draws.size(); i < slot->previous_count; ++i)
         {
@@ -571,7 +578,7 @@ bool ALMetalShadowIndirectCommands::execute(
     if (!prepared.indirect || prepared.owner != mImpl->pool || first > prepared.count ||
         count > prepared.count - first || !encoder.canExecuteIndirect() ||
         encoder.nativeDeviceForIndirect() != (__bridge void*)mImpl->pool->device ||
-        encoder.nativeCommandBufferForIndirect() != (__bridge void*)prepared.command)
+        encoder.nativeCommandBufferIdentity() != (__bridge void*)prepared.command)
     {
         setError(error, "Metal shadow indirect execution requires the prepared command and compatible encoder");
         return false;
@@ -583,7 +590,7 @@ bool ALMetalShadowIndirectCommands::execute(
         return false;
     }
     id<MTLRenderCommandEncoder> __unsafe_unretained native =
-        (__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForIndirect();
+        (__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForDeclaredResources();
     if (!native)
     {
         setError(error, "Metal shadow indirect render encoder is unavailable");
@@ -591,6 +598,13 @@ bool ALMetalShadowIndirectCommands::execute(
     }
     if (prepared.declared_encoder != native)
     {
+        for (const auto& view : prepared.slot->resource_views)
+            if (!encoder.declareResourceUse(view, RP::Access::read, error)) return false;
+        const auto& commands = prepared.slot->visibility ? prepared.slot->visible_buffer_view
+                                                        : prepared.slot->buffer_view;
+        if (!encoder.declareResourceUse(commands, RP::Access::read, error)) return false;
+        if (prepared.slot->visibility && !encoder.declareResourceUse(
+                prepared.slot->visibility->executionRangesResourceView(), RP::Access::read, error)) return false;
         const auto& resources = prepared.slot->resources;
         const auto* native_resources = reinterpret_cast<
             id<MTLResource> __unsafe_unretained const*>(resources.data());
@@ -627,7 +641,7 @@ bool ALMetalShadowIndirectCommands::prepareVisibility(
 {
     auto& prepared=*batch.mImpl;
     if(!prepared.indirect || prepared.owner!=mImpl->pool || !prepared.slot ||
-        prepared.command!=(__bridge id<MTLCommandBuffer>)command.nativeHandle() ||
+        prepared.command!=(__bridge id<MTLCommandBuffer>)command.nativeIdentity() ||
         inputs.size()!=prepared.count || prepared.slot->visibility)
     {setError(error,"Shadow visibility requires its own unmodified indirect batch");return false;}
     auto& pool=*mImpl->pool;
@@ -642,10 +656,17 @@ bool ALMetalShadowIndirectCommands::prepareVisibility(
         descriptor.commandTypes=MTLIndirectCommandTypeDrawIndexed;
         descriptor.inheritPipelineState=YES;descriptor.inheritBuffers=NO;
         descriptor.maxVertexBufferBindCount=7;descriptor.maxFragmentBufferBindCount=2;
-        prepared.slot->visible_buffer=[pool.device newIndirectCommandBufferWithDescriptor:descriptor
+        id<MTLIndirectCommandBuffer> candidate=[pool.device newIndirectCommandBufferWithDescriptor:descriptor
             maxCommandCount:prepared.slot->capacity options:MTLResourceStorageModePrivate];
-        if(!prepared.slot->visible_buffer)
+        if(!candidate)
         {setError(error,"Could not allocate GPU-visible shadow commands");return false;}
+        RP::Description allocation;
+        allocation.kind = RP::Kind::indirect_commands;
+        RP::View candidate_view;
+        if (!pool.device_wrapper->registerNativeBacking((__bridge void*)candidate,
+                allocation, candidate_view, error)) return false;
+        prepared.slot->visible_buffer = candidate;
+        prepared.slot->visible_buffer_view = std::move(candidate_view);
     }
     prepared.visibility_runs.assign(runs.begin(),runs.end());
     std::vector<ALMetalShadowVisibilityDraw> draws(prepared.count);
@@ -689,7 +710,8 @@ bool ALMetalShadowIndirectCommands::prepareVisibility(
     }
     prepared.slot->visibility=pool.visibility->encode(command,
         (__bridge void*)prepared.slot->visible_buffer,
-        inputs,runs,prepared.slot->resources,draws,request_metal4,error);
+        inputs,runs,prepared.slot->resources,draws,request_metal4,error,
+        prepared.slot->resource_views, prepared.slot->visible_buffer_view);
     if(!prepared.slot->visibility)return false;
     ++pool.statistics.visibility_dispatches;
     if(prepared.slot->visibility->usedMetal4())++pool.statistics.metal4_visibility_dispatches;
@@ -705,7 +727,7 @@ try
 {
     if (failure) *failure = ALMetalShadowPrepareFailure::none;
     auto& pool = *mImpl->pool;
-    if (!command.nativeHandle() || command.isCommitted() ||
+    if (!command.nativeIdentity() || command.isCommitted() ||
         command.nativeDevice() != (__bridge void*)pool.device ||
         draws.size() > maximum_draw_count)
     {
@@ -727,7 +749,7 @@ try
     }
     auto batch_impl = std::make_unique<Batch::Impl>();
     batch_impl->owner = mImpl->pool;
-    batch_impl->command = (__bridge id<MTLCommandBuffer>)command.nativeHandle();
+    batch_impl->command = (__bridge id<MTLCommandBuffer>)command.nativeIdentity();
     batch_impl->count = draws.size();
     batch_impl->indirect = false;
     if (!draws.empty())
@@ -757,6 +779,7 @@ try
         // the retired array's capacity for the next preparation.
         slot->draws.swap(pool.scratch);
         slot->resources.clear();
+        slot->resource_views = pool.validated_views;
         slot->resources.reserve(pool.validated_handles.size());
         for (void* handle : pool.validated_handles)
             slot->resources.push_back((__bridge id<MTLBuffer>)handle);
@@ -781,23 +804,29 @@ bool ALMetalShadowIndirectCommands::executeDirect(
     ALMetalRenderEncoder& encoder, const Batch& batch,
     std::size_t first, std::size_t count, std::string* error)
 {
-    const auto& prepared = *batch.mImpl;
+    auto& prepared = *batch.mImpl;
     if (prepared.indirect || prepared.owner != mImpl->pool ||
         first > prepared.count || count > prepared.count - first ||
         !encoder.canExecuteStaticDraws() ||
         encoder.nativeDeviceForIndirect() != (__bridge void*)mImpl->pool->device ||
-        encoder.nativeCommandBufferForIndirect() != (__bridge void*)prepared.command)
+        encoder.nativeCommandBufferIdentity() != (__bridge void*)prepared.command)
     {
         setError(error, "Metal static shadow execution requires its prepared command and active pipeline");
         return false;
     }
     if (count == 0) return true;
     id<MTLRenderCommandEncoder> __unsafe_unretained native =
-        (__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForIndirect();
+        (__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForDeclaredResources();
     if (!native)
     {
         setError(error, "Metal static shadow render encoder is unavailable");
         return false;
+    }
+    if (prepared.declared_encoder != native)
+    {
+        for (const auto& view : prepared.direct_slot->resource_views)
+            if (!encoder.declareResourceUse(view, RP::Access::read, error)) return false;
+        prepared.declared_encoder = native;
     }
     id<MTLBuffer> __unsafe_unretained positions = nil;
     id<MTLBuffer> __unsafe_unretained constants = nil;

@@ -462,6 +462,17 @@ public:
                      std::uint32_t base_instance = 0, std::string* error = nullptr);
     bool end(std::string* error = nullptr);
 
+    // These audited native-owner bridges declare graph uses separately from
+    // Metal useResource/useResources and preserve the existing binding cache.
+    bool declareResourceUse(const ALMetalResourcePlanning::View&, ALMetalResourcePlanning::Access,
+                            std::string* error = nullptr);
+    void* nativeHandleForDeclaredResources() const noexcept;
+    // Unknown/legacy native closures remain explicitly opaque. This flushes
+    // earlier joined draws and prevents optimistic pool reuse until commit.
+    void* nativeHandleForOpaqueResources() const noexcept;
+    const void* nativeCommandBufferIdentity() const noexcept;
+
+
 private:
     struct Impl;
     explicit ALMetalRenderEncoder(std::unique_ptr<Impl> impl);
@@ -519,6 +530,12 @@ public:
                   std::uint32_t threads_per_group_depth = 1,
                   std::string* error = nullptr);
     bool end(std::string* error = nullptr);
+
+    bool declareResourceUse(const ALMetalResourcePlanning::View&, ALMetalResourcePlanning::Access,
+                            std::string* error = nullptr);
+    void* nativeHandleForDeclaredResources() const noexcept;
+    void* nativeHandleForOpaqueResources() const noexcept;
+
 
 private:
     struct Impl;

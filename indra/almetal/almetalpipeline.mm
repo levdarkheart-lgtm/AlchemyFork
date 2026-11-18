@@ -29,6 +29,23 @@
 
 namespace
 {
+    namespace RP = ALMetalResourcePlanning;
+    struct ResourcePassGuard
+    {
+        ALMetalCommandBuffer* command = nullptr;
+        std::uint64_t pass = 0;
+        ~ResourcePassGuard() { if (command) command->endResourcePass(pass); }
+    };
+    bool graphUse(const std::shared_ptr<RP::Command>& plan, const RP::View& view,
+                  RP::Access access, std::string* error)
+    {
+        if (!plan) return true;
+        try { if (plan->use(view, access)) return true; } catch (...) {}
+        plan->invalidate();
+        if (error) *error = "Metal encoder could not retain the declared resource generation";
+        return false;
+    }
+
     std::atomic<std::uint64_t> sBuiltinReloadGeneration{1};
 
     void setError(std::string* destination, const std::string& message)
@@ -950,6 +967,8 @@ void* ALMetalSamplerState::nativeHandle() const noexcept
 
 struct ALMetalRenderEncoder::Impl
 {
+    std::shared_ptr<RP::Command> resources;
+    std::uint64_t resource_pass = 0;
     struct BufferBinding
     {
         void* handle = nullptr;
@@ -1057,6 +1076,8 @@ ALMetalRenderEncoder::~ALMetalRenderEncoder()
         [mImpl->encoder endEncoding];
         mImpl->publishCounts();
         mImpl->ended = true;
+        if (mImpl->resources && !mImpl->resources->endPass(mImpl->resource_pass))
+            mImpl->resources->invalidate();
     }
     if(mImpl)mImpl->declaration_identity.reset();
 }
@@ -1069,12 +1090,15 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
 {
     @autoreleasepool
     {
-        if (command_buffer.isCommitted() || !command_buffer.nativeHandle() || !render_pass.nativeHandle())
+        if (command_buffer.isCommitted() || !command_buffer.nativeHandleForEncoding() || !render_pass.nativeHandle())
         {
             setError(error, "Metal render encoding requires an uncommitted command and render pass");
             return nullptr;
         }
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        ResourcePassGuard resource_guard{&command_buffer};
+        if (!command_buffer.beginResourcePass(RP::Pass::render, resource_guard.pass, error)) return nullptr;
+        if (!render_pass.registerResourceUses(command_buffer, error)) return nullptr;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         MTLRenderPassDescriptor* original =
             (__bridge MTLRenderPassDescriptor*)render_pass.nativeHandle();
         MTLRenderPassDescriptor* descriptor = original;
@@ -1128,8 +1152,11 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
+        impl->resources = command_buffer.resourceUsePlan();
+        impl->resource_pass = resource_guard.pass;
+        resource_guard.command = nullptr;
         impl->timed_pass = std::move(timed_pass);
-        impl->command_buffer = command_buffer.nativeHandle();
+        impl->command_buffer = command_buffer.nativeHandleForEncoding();
         impl->count_draws = ALMetalDevice::commandTimingEnabled();
         impl->render_info_epoch = ALMetalDevice::renderInfoEpoch();
         return std::unique_ptr<ALMetalRenderEncoder>(new ALMetalRenderEncoder(std::move(impl)));
@@ -1242,6 +1269,7 @@ bool ALMetalRenderEncoder::setVertexBuffer(std::uint32_t index, const ALMetalBuf
         setError(error, "Metal vertex buffer belongs to another device");
         return false;
     }
+    if (!graphUse(mImpl->resources, buffer.resourceView(), RP::Access::read_write, error)) return false;
     mImpl->flushPendingIndexed();
     [mImpl->encoder setVertexBuffer:native_buffer offset:offset atIndex:index];
     mImpl->vertex_buffers[index] = {handle, offset};
@@ -1275,6 +1303,7 @@ bool ALMetalRenderEncoder::setFragmentBuffer(std::uint32_t index, const ALMetalB
         setError(error, "Metal fragment buffer belongs to another device");
         return false;
     }
+    if (!graphUse(mImpl->resources, buffer.resourceView(), RP::Access::read_write, error)) return false;
     mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentBuffer:native_buffer offset:offset atIndex:index];
     mImpl->fragment_buffers[index] = {handle, offset};
@@ -1327,6 +1356,9 @@ bool ALMetalRenderEncoder::setVertexTexture(std::uint32_t index, const ALMetalTe
         setError(error, "Metal vertex texture belongs to another device");
         return false;
     }
+    if (texture && !graphUse(mImpl->resources, texture->resourceView(),
+        alMetalHasUsage(texture->descriptor().usage, ALMetalTextureUsage::shader_write)
+            ? RP::Access::read_write : RP::Access::read, error)) return false;
     mImpl->flushPendingIndexed();
     [mImpl->encoder setVertexTexture:native_texture atIndex:index];
     mImpl->vertex_textures[index] = native_handle;
@@ -1348,6 +1380,9 @@ bool ALMetalRenderEncoder::setFragmentTexture(std::uint32_t index, const ALMetal
         setError(error, "Metal fragment texture belongs to another device");
         return false;
     }
+    if (texture && !graphUse(mImpl->resources, texture->resourceView(),
+        alMetalHasUsage(texture->descriptor().usage, ALMetalTextureUsage::shader_write)
+            ? RP::Access::read_write : RP::Access::read, error)) return false;
     mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
     mImpl->fragment_textures[index] = native_handle;
@@ -1379,6 +1414,9 @@ bool ALMetalRenderEncoder::setFragmentTextureLinear(std::uint32_t index,
         setError(error, "Metal fragment texture belongs to another device");
         return false;
     }
+    if (texture && !graphUse(mImpl->resources, texture->resourceView(),
+        alMetalHasUsage(texture->descriptor().usage, ALMetalTextureUsage::shader_write)
+            ? RP::Access::read_write : RP::Access::read, error)) return false;
     mImpl->flushPendingIndexed();
     [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
     mImpl->fragment_textures[index] = native_handle;
@@ -1637,6 +1675,7 @@ bool ALMetalRenderEncoder::setTessellationFactorBuffer(const ALMetalBuffer& buff
         setError(error, "Metal tessellation factor buffer belongs to another device");
         return false;
     }
+    if (!graphUse(mImpl->resources, buffer.resourceView(), RP::Access::read, error)) return false;
     mImpl->flushPendingIndexed();
     [mImpl->encoder setTessellationFactorBuffer:native_buffer
                                           offset:offset
@@ -1708,6 +1747,7 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
         setError(error, "Metal indexed draw has invalid state or index range");
         return false;
     }
+    if (!graphUse(mImpl->resources, index_buffer.resourceView(), RP::Access::read, error)) return false;
     id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
     if (!native_buffer || native_buffer.device != mImpl->device)
     {
@@ -1767,6 +1807,7 @@ bool ALMetalRenderEncoder::drawIndexedWithBaseInstance(ALMetalPrimitiveType prim
         setError(error, "Metal source-row draw has invalid state or index range");
         return false;
     }
+    if (!graphUse(mImpl->resources, index_buffer.resourceView(), RP::Access::read, error)) return false;
     id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
     if (!native_buffer || native_buffer.device != mImpl->device)
     {
@@ -1806,6 +1847,8 @@ bool ALMetalRenderEncoder::drawIndexedIndirect(ALMetalPrimitiveType primitive,
         setError(error, "Metal indexed indirect draw has invalid state or admitted range");
         return false;
     }
+    if (!graphUse(mImpl->resources, index_buffer.resourceView(), RP::Access::read, error) ||
+        !graphUse(mImpl->resources, arguments.resourceView(), RP::Access::read, error)) return false;
     id<MTLBuffer> native_indices = (__bridge id<MTLBuffer>)index_buffer.nativeHandle();
     id<MTLBuffer> native_arguments = (__bridge id<MTLBuffer>)arguments.nativeHandle();
     if (!native_indices || !native_arguments || native_indices.device != mImpl->device ||
@@ -1870,6 +1913,8 @@ bool ALMetalRenderEncoder::end(std::string* error)
     [mImpl->encoder endEncoding];
     mImpl->publishCounts();
     mImpl->ended = true;
+    if (mImpl->resources && !mImpl->resources->endPass(mImpl->resource_pass))
+    { mImpl->resources->invalidate(); return false; }
     mImpl->declaration_identity.reset();
     return true;
 }
@@ -1884,11 +1929,44 @@ std::shared_ptr<const void> ALMetalRenderEncoder::declarationIdentity(bool creat
 
 void* ALMetalRenderEncoder::nativeHandleForResources() const noexcept
 {
+    if (mImpl && mImpl->resources) mImpl->resources->markOpaque();
     return mImpl && !mImpl->ended ? (__bridge void*)mImpl->encoder : nullptr;
+}
+
+bool ALMetalRenderEncoder::declareResourceUse(const RP::View& view, RP::Access access, std::string* error)
+{
+    if (!mImpl || mImpl->ended) return false;
+    return graphUse(mImpl->resources, view, access, error);
+}
+
+void* ALMetalRenderEncoder::nativeHandleForDeclaredResources() const noexcept
+{
+    if (!mImpl || mImpl->ended) return nullptr;
+    if (mImpl->resources)
+    {
+        const auto state = mImpl->resources->stats();
+        if (!state.valid || state.retired || state.active_pass != mImpl->resource_pass) return nullptr;
+    }
+    // A declared native draw has the same ordering boundary as the legacy
+    // indirect bridge: emit earlier joined draws before native state changes.
+    mImpl->flushPendingIndexed();
+    mImpl->indexed_triangle_joining = false;
+    return (__bridge void*)mImpl->encoder;
+}
+
+const void* ALMetalRenderEncoder::nativeCommandBufferIdentity() const noexcept
+{ return mImpl ? mImpl->command_buffer : nullptr; }
+
+void* ALMetalRenderEncoder::nativeHandleForOpaqueResources() const noexcept
+{
+    if (!mImpl || mImpl->ended) return nullptr;
+    if (mImpl->resources) mImpl->resources->markOpaque();
+    return nativeHandleForDeclaredResources();
 }
 
 void* ALMetalRenderEncoder::nativeHandleForIndirect() const noexcept
 {
+    if (mImpl && mImpl->resources) mImpl->resources->markOpaque();
     if (mImpl && !mImpl->ended)
     {
         mImpl->flushPendingIndexed();
@@ -1905,6 +1983,7 @@ void* ALMetalRenderEncoder::nativeDeviceForIndirect() const noexcept
 
 void* ALMetalRenderEncoder::nativeCommandBufferForIndirect() const noexcept
 {
+    if (mImpl && mImpl->resources) mImpl->resources->markOpaque();
     return mImpl ? mImpl->command_buffer : nullptr;
 }
 
@@ -1958,6 +2037,8 @@ void ALMetalRenderEncoder::recordIndirectSubmission(std::uint32_t command_slots)
 
 struct ALMetalComputeEncoder::Impl
 {
+    std::shared_ptr<RP::Command> resources;
+    std::uint64_t resource_pass = 0;
     id<MTLDevice> device = nil;
     id<MTLComputeCommandEncoder> encoder = nil;
     id<MTLComputePipelineState> pipeline = nil;
@@ -1976,6 +2057,8 @@ ALMetalComputeEncoder::~ALMetalComputeEncoder()
     {
         [mImpl->encoder endEncoding];
         mImpl->ended = true;
+        if (mImpl->resources && !mImpl->resources->endPass(mImpl->resource_pass))
+            mImpl->resources->invalidate();
     }
 }
 
@@ -1986,12 +2069,14 @@ std::unique_ptr<ALMetalComputeEncoder> ALMetalComputeEncoder::begin(
 {
     @autoreleasepool
     {
-        if (command_buffer.isCommitted() || !command_buffer.nativeHandle())
+        if (command_buffer.isCommitted() || !command_buffer.nativeHandleForEncoding())
         {
             setError(error, "Metal compute encoding requires an uncommitted command buffer");
             return nullptr;
         }
-        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        ResourcePassGuard resource_guard{&command_buffer};
+        if (!command_buffer.beginResourcePass(RP::Pass::compute, resource_guard.pass, error)) return nullptr;
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForEncoding();
         std::unique_ptr<ALMetalStageTimingWindow::PreparedPass> timed_pass;
         if (const auto* scope = ALMetalStageTimingScope::current(); scope && scope->window())
         {
@@ -2024,6 +2109,9 @@ std::unique_ptr<ALMetalComputeEncoder> ALMetalComputeEncoder::begin(
         auto impl = std::make_unique<Impl>();
         impl->device = (__bridge id<MTLDevice>)command_buffer.nativeDevice();
         impl->encoder = encoder;
+        impl->resources = command_buffer.resourceUsePlan();
+        impl->resource_pass = resource_guard.pass;
+        resource_guard.command = nullptr;
         impl->timed_pass = std::move(timed_pass);
         return std::unique_ptr<ALMetalComputeEncoder>(new ALMetalComputeEncoder(std::move(impl)));
     }
@@ -2058,6 +2146,7 @@ bool ALMetalComputeEncoder::setBuffer(std::uint32_t index, const ALMetalBuffer& 
         setError(error, "Metal compute buffer belongs to another device");
         return false;
     }
+    if (!graphUse(mImpl->resources, buffer.resourceView(), RP::Access::read_write, error)) return false;
     [mImpl->encoder setBuffer:native_buffer offset:offset atIndex:index];
     return true;
 }
@@ -2085,6 +2174,9 @@ bool ALMetalComputeEncoder::setTexture(std::uint32_t index, const ALMetalTexture
         setError(error, "Metal compute texture belongs to another device");
         return false;
     }
+    if (texture && !graphUse(mImpl->resources, texture->resourceView(),
+        alMetalHasUsage(texture->descriptor().usage, ALMetalTextureUsage::shader_write)
+            ? RP::Access::read_write : RP::Access::read, error)) return false;
     [mImpl->encoder setTexture:native_texture atIndex:index];
     return true;
 }
@@ -2139,8 +2231,37 @@ bool ALMetalComputeEncoder::end(std::string* error)
     }
     [mImpl->encoder endEncoding];
     mImpl->ended = true;
+    if (mImpl->resources && !mImpl->resources->endPass(mImpl->resource_pass))
+    { mImpl->resources->invalidate(); return false; }
     return true;
 }
 
 void* ALMetalComputeEncoder::nativeHandleForResources() const noexcept
-{return mImpl && !mImpl->ended ? (__bridge void*)mImpl->encoder : nullptr;}
+{
+    if (mImpl && mImpl->resources) mImpl->resources->markOpaque();
+    return mImpl && !mImpl->ended ? (__bridge void*)mImpl->encoder : nullptr;
+}
+
+bool ALMetalComputeEncoder::declareResourceUse(const RP::View& view, RP::Access access, std::string* error)
+{
+    if (!mImpl || mImpl->ended) return false;
+    return graphUse(mImpl->resources, view, access, error);
+}
+
+void* ALMetalComputeEncoder::nativeHandleForDeclaredResources() const noexcept
+{
+    if (!mImpl || mImpl->ended) return nullptr;
+    if (mImpl->resources)
+    {
+        const auto state = mImpl->resources->stats();
+        if (!state.valid || state.retired || state.active_pass != mImpl->resource_pass) return nullptr;
+    }
+    return (__bridge void*)mImpl->encoder;
+}
+
+void* ALMetalComputeEncoder::nativeHandleForOpaqueResources() const noexcept
+{
+    if (!mImpl || mImpl->ended) return nullptr;
+    if (mImpl->resources) mImpl->resources->markOpaque();
+    return nativeHandleForDeclaredResources();
+}

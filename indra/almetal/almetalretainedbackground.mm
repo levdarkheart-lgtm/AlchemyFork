@@ -273,15 +273,9 @@ ALMetalRetainedBackground::Lease ALMetalRetainedBackground::makeCleared(
     auto pass = target->makeRenderPass(pc, error);
     auto command = context.device->makeCommandBuffer("Alchemy cleared UI backing", error);
     if (!pass || !command) return {};
-    id<MTLCommandBuffer> native = (__bridge id<MTLCommandBuffer>)command->nativeHandle();
-    id<MTLRenderCommandEncoder> encoder =
-        [native renderCommandEncoderWithDescriptor:(__bridge MTLRenderPassDescriptor*)pass->nativeHandle()];
-    if (!encoder)
-    {
-        fail(error, "Cleared UI backing render encoder is unavailable");
-        return {};
-    }
-    [encoder endEncoding];
-    if (!command->commit(error)) return {};
+    // The typed encoder declares both attachments in the command's real pass.
+    // This is a clear-only pass, so no shader or draw binding is required.
+    auto encoder = ALMetalRenderEncoder::begin(*command, *pass, "Cleared UI backing", error);
+    if (!encoder || !encoder->end(error) || !command->commit(error)) return {};
     return retain(context, std::numeric_limits<std::uint64_t>::max(), target, target, error);
 }

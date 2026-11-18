@@ -15,21 +15,33 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace
 {
+namespace RP = ALMetalResourcePlanning;
 void fail(std::string* error,const char* text) { if(error)*error=text; }
 constexpr const char* names[]{"almetal_shadow_visibility_classify", "almetal_shadow_visibility_compact"};
 struct Feedback
 {
     std::atomic<std::uint64_t> failures{0},timed{0},nanoseconds{0};
 };
+struct ResourcePass
+{
+    ALMetalCommandBuffer& command;
+    std::uint64_t pass = 0;
+    bool active = false;
+    ResourcePass(ALMetalCommandBuffer& value, std::string* error) : command(value)
+    { active = command.beginResourcePass(RP::Pass::compute, pass, error); }
+    ~ResourcePass() { if (active) command.endResourcePass(pass); }
+};
 }
 
 struct ALMetalShadowVisibility::Batch::Impl
 {
     std::array<id<MTLBuffer>,7> buffers{};
+    std::array<RP::View,7> buffer_views{};
     std::vector<id<MTLBuffer>> referenced_buffers;
     id<MTLIndirectCommandBuffer> destination=nil;
     id<MTL4CommandAllocator> allocator=nil;
@@ -52,6 +64,7 @@ struct ALMetalShadowVisibility::Batch::Impl
 struct ALMetalShadowVisibility::Impl
 {
     id<MTLDevice> device=nil;
+    const ALMetalDevice* device_wrapper = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<id<MTLComputePipelineState>,2> pipelines{}, metal4_pipelines{};
     id<MTLArgumentEncoder> icb_encoder=nil;
@@ -67,6 +80,8 @@ bool ALMetalShadowVisibility::Batch::computeComplete()const noexcept
 bool ALMetalShadowVisibility::Batch::usedMetal4()const noexcept { return mImpl->metal4; }
 void* ALMetalShadowVisibility::Batch::executionRanges()const noexcept
 { return (__bridge void*)mImpl->buffers[4]; }
+const RP::View& ALMetalShadowVisibility::Batch::executionRangesResourceView()const noexcept
+{ return mImpl->buffer_views[4]; }
 ALMetalShadowVisibility::ALMetalShadowVisibility(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalShadowVisibility::~ALMetalShadowVisibility()=default;
 bool ALMetalShadowVisibility::metal4Supported()const noexcept { return mImpl->queue!=nil; }
@@ -81,6 +96,7 @@ std::unique_ptr<ALMetalShadowVisibility> ALMetalShadowVisibility::create(
     const ALMetalDevice& device,std::string* error)
 {
     auto impl=std::make_unique<Impl>();
+    impl->device_wrapper = &device;
     impl->device=(__bridge id<MTLDevice>)device.nativeHandle();
     impl->library=ALMetalShaderLibrary::compileSource(device,alMetalShadowVisibilitySource,
         "Alchemy ordered shadow visibility",error);
@@ -127,7 +143,8 @@ std::shared_ptr<ALMetalShadowVisibility::Batch> ALMetalShadowVisibility::encode(
     std::span<const ALMetalShadowVisibilityRun> runs,
     std::span<void* const> native_buffers,
     std::span<const ALMetalShadowVisibilityDraw> draws,
-    bool request_metal4,std::string* error)
+    bool request_metal4,std::string* error,
+    std::span<const RP::View> captured_buffers, const RP::View& destination_backing)
 {
     if(command.isCommitted() || command.nativeDevice()!=(__bridge void*)mImpl->device ||
        !destination_icb || inputs.empty() || inputs.size()>16384 || runs.empty() ||
@@ -158,7 +175,17 @@ std::shared_ptr<ALMetalShadowVisibility::Batch> ALMetalShadowVisibility::encode(
     for(std::size_t i=0;i<7;++i)
     {
         if(!slot->buffers[i] || slot->buffers[i].length<sizes[i])
-            slot->buffers[i]=[mImpl->device newBufferWithLength:sizes[i] options:MTLResourceStorageModeShared];
+        {
+            auto candidate=[mImpl->device newBufferWithLength:sizes[i] options:MTLResourceStorageModeShared];
+            if (!candidate) {fail(error,"Could not allocate shadow visibility data");return nullptr;}
+            RP::Description description;
+            description.declared_bytes = sizes[i];
+            RP::View candidate_view;
+            if (!mImpl->device_wrapper->registerNativeBacking((__bridge void*)candidate,
+                    description, candidate_view, error)) return nullptr;
+            slot->buffers[i] = candidate;
+            slot->buffer_views[i] = std::move(candidate_view);
+        }
         if(!slot->buffers[i]) {fail(error,"Could not allocate shadow visibility data");return nullptr;}
     }
     std::memcpy(slot->buffers[1].contents,inputs.data(),inputs.size_bytes());
@@ -171,9 +198,12 @@ std::shared_ptr<ALMetalShadowVisibility::Batch> ALMetalShadowVisibility::encode(
     slot->referenced_buffers.clear();
     for(void* handle:native_buffers) slot->referenced_buffers.push_back((__bridge id<MTLBuffer>)handle);
     if(!command.retainUntilCompletion(slot,error))return nullptr;
-    id<MTLCommandBuffer> consumer=(__bridge id<MTLCommandBuffer>)command.nativeHandle();
     if(slot->metal4)
     {
+        // This existing optional path submits a separate Metal4 queue. Its
+        // event/slot owners remain authoritative; do not mislabel that work
+        // as uses on the legacy command's one-queue ordered graph.
+        id<MTLCommandBuffer> consumer=(__bridge id<MTLCommandBuffer>)command.nativeHandle();
         if(!slot->allocator)slot->allocator=[mImpl->device newCommandAllocator];
         else [slot->allocator reset];
         if(!slot->event)slot->event=[mImpl->device newSharedEvent];
@@ -243,8 +273,24 @@ std::shared_ptr<ALMetalShadowVisibility::Batch> ALMetalShadowVisibility::encode(
     }
     else
     {
+        bool complete = captured_buffers.size() == native_buffers.size() &&
+            destination_backing.nativeIdentity() == destination_icb;
+        for (std::size_t i = 0; complete && i < captured_buffers.size(); ++i)
+            complete = captured_buffers[i].nativeIdentity() == native_buffers[i];
         for(std::size_t phase=0;phase<2;++phase)
         {
+            ResourcePass resources(command, error);
+            if (!resources.active) return nullptr;
+            for (const auto& view : slot->buffer_views)
+                if (!command.useResource(view, RP::Access::read_write, error)) return nullptr;
+            if (complete)
+            {
+                if (!command.useResource(destination_backing, RP::Access::write, error)) return nullptr;
+                for (const auto& view : captured_buffers)
+                    if (!command.useResource(view, RP::Access::read, error)) return nullptr;
+            }
+            id<MTLCommandBuffer> consumer=(__bridge id<MTLCommandBuffer>)(complete
+                ? command.nativeHandleForDeclaredResources() : command.nativeHandle());
             auto encoder=[consumer computeCommandEncoder];
             if(!encoder) {fail(error,"Could not encode shadow visibility");return nullptr;}
             [encoder setComputePipelineState:mImpl->pipelines[phase]];

@@ -29,6 +29,16 @@
 
 namespace
 {
+    struct QueueSubmission
+    {
+        std::mutex mutex;
+        std::uint64_t next_serial = 1;
+    };
+    struct NativeBackingOwner
+    {
+        explicit NativeBackingOwner(id<MTLResource> value) : resource(value) {}
+        id<MTLResource> resource;
+    };
     thread_local std::shared_ptr<const void> submission_owner;
     std::atomic<std::uint64_t> committed_command_buffers{0};
     std::atomic<std::uint64_t> encoded_draw_calls{0};
@@ -217,12 +227,19 @@ struct ALMetalCommandBuffer::Impl
     std::shared_ptr<const ALMetalCommandCompletion> completion;
     // Empty commands allocate no owner list or completion callback.
     std::shared_ptr<std::vector<std::shared_ptr<const void>>> resource_owners;
+    std::shared_ptr<ALMetalResourcePlanning::Command> resource_plan;
+    std::shared_ptr<ALMetalResourcePlanning::Plan> resource_registry;
+    std::shared_ptr<QueueSubmission> submission_order;
 };
 
 struct ALMetalDevice::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> command_queue = nil;
+    ALMetalResourcePlanMode resource_plan_mode = ALMetalResourcePlanMode::disabled;
+    std::shared_ptr<ALMetalResourcePlanning::Plan> resource_plan =
+        std::make_shared<ALMetalResourcePlanning::Plan>();
+    std::shared_ptr<QueueSubmission> submission_order = std::make_shared<QueueSubmission>();
 };
 
 ALMetalCommandBuffer::ALMetalCommandBuffer(std::unique_ptr<Impl> impl)
@@ -232,6 +249,8 @@ ALMetalCommandBuffer::ALMetalCommandBuffer(std::unique_ptr<Impl> impl)
 
 ALMetalCommandBuffer::~ALMetalCommandBuffer()
 {
+    if (mImpl && !mImpl->committed && mImpl->resource_plan)
+        mImpl->resource_plan->retire(ALMetalResourcePlanning::Outcome::abandoned);
     if (mImpl && !mImpl->committed)
         ALMetalDiagnosticTelemetry::commandAbandoned(mImpl->diagnostic);
     if (mImpl && !mImpl->committed && mImpl->completion)
@@ -243,7 +262,26 @@ ALMetalCommandBuffer::~ALMetalCommandBuffer()
 
 void* ALMetalCommandBuffer::nativeHandle() const noexcept
 {
+    if (mImpl && mImpl->resource_plan) mImpl->resource_plan->markOpaque();
+    return nativeHandleForEncoding();
+}
+
+void* ALMetalCommandBuffer::nativeHandleForEncoding() const noexcept
+{
     return mImpl ? (__bridge void*)mImpl->command_buffer : nullptr;
+}
+
+const void* ALMetalCommandBuffer::nativeIdentity() const noexcept
+{ return nativeHandleForEncoding(); }
+
+void* ALMetalCommandBuffer::nativeHandleForDeclaredResources() const noexcept
+{
+    if (mImpl && mImpl->resource_plan)
+    {
+        const auto state = mImpl->resource_plan->stats();
+        if (!state.valid || state.retired || state.submitted || !state.active_pass) return nullptr;
+    }
+    return nativeHandleForEncoding();
 }
 
 void* ALMetalCommandBuffer::nativeDevice() const noexcept
@@ -301,6 +339,66 @@ bool ALMetalCommandBuffer::retainUntilCompletion(
     return true;
 }
 
+std::shared_ptr<ALMetalResourcePlanning::Command>
+ALMetalCommandBuffer::resourceUsePlan() const noexcept
+{ return mImpl ? mImpl->resource_plan : nullptr; }
+
+bool ALMetalCommandBuffer::registerExternalBacking(void* handle, ALMetalResourcePlanning::View& output,
+    std::string* error) const
+{
+    output = {};
+    id<MTLResource> resource = (__bridge id<MTLResource>)handle;
+    if (!mImpl || !resource || resource.device != mImpl->device)
+    { setError(error, "Metal foreign resource does not match its command device"); return false; }
+    if (!mImpl->resource_registry) return true;
+    try
+    {
+        ALMetalResourcePlanning::Description description;
+        description.kind = ALMetalResourcePlanning::Kind::texture;
+        description.origin = ALMetalResourcePlanning::Origin::external_unknown;
+        output = mImpl->resource_registry->allocate(description, std::make_shared<NativeBackingOwner>(resource), (__bridge const void*)resource);
+        if (output) return true;
+    }
+    catch (...) {}
+    setError(error, "Metal foreign resource backing could not be retained"); return false;
+}
+
+bool ALMetalCommandBuffer::beginResourcePass(ALMetalResourcePlanning::Pass kind,
+    std::uint64_t& pass, std::string* error)
+{
+    pass = 0;
+    if (!mImpl || mImpl->committed)
+    { setError(error, "Metal resource pass requires an uncommitted command"); return false; }
+    if (!mImpl->resource_plan) return true;
+    pass = mImpl->resource_plan->beginPass(kind);
+    if (!pass)
+    { setError(error, "Metal resource pass overlaps an active or invalid pass"); return false; }
+    return true;
+}
+
+bool ALMetalCommandBuffer::endResourcePass(std::uint64_t pass, std::string* error)
+{
+    if (!mImpl) return false;
+    if (!mImpl->resource_plan) return pass == 0;
+    if (mImpl->resource_plan->endPass(pass)) return true;
+    mImpl->resource_plan->invalidate();
+    setError(error, "Metal resource pass does not match its command owner"); return false;
+}
+
+bool ALMetalCommandBuffer::useResource(const ALMetalResourcePlanning::View& view,
+    ALMetalResourcePlanning::Access access, std::string* error)
+{
+    if (!mImpl || mImpl->committed) return false;
+    if (!mImpl->resource_plan) return true;
+    try
+    {
+        if (mImpl->resource_plan->use(view, access)) return true;
+    }
+    catch (...) {}
+    mImpl->resource_plan->invalidate();
+    setError(error, "Metal resource use could not retain the exact current backing"); return false;
+}
+
 bool ALMetalCommandBuffer::commit(std::string* error)
 {
     if (!mImpl || !mImpl->command_buffer)
@@ -312,6 +410,28 @@ bool ALMetalCommandBuffer::commit(std::string* error)
     {
         setError(error, "Metal command buffer was already committed");
         return false;
+    }
+    std::unique_lock<std::mutex> submission_lock;
+    if (mImpl->resource_plan)
+    {
+        submission_lock = std::unique_lock(mImpl->submission_order->mutex);
+        if (!mImpl->submission_order->next_serial)
+        { setError(error, "Metal resource submission identity exhausted"); return false; }
+    }
+    if (mImpl->resource_plan && !mImpl->resource_plan->prepareSubmit())
+    {
+        setError(error, "Metal resource use plan is invalid or still has an active pass");
+        return false;
+    }
+
+    if (const auto plan = mImpl->resource_plan)
+    {
+        [mImpl->command_buffer addCompletedHandler:^(id<MTLCommandBuffer> completed)
+        {
+            plan->retire(completed.status == MTLCommandBufferStatusCompleted
+                ? ALMetalResourcePlanning::Outcome::completed
+                : ALMetalResourcePlanning::Outcome::error);
+        }];
     }
 
     if (mImpl->resource_owners)
@@ -381,8 +501,13 @@ bool ALMetalCommandBuffer::commit(std::string* error)
         }];
         ALMetalDiagnosticTelemetry::commandCommitBegin(diagnostic);
     }
+    // This serial describes the real queue commit, never creation order.
+    // Publish committed uses only AFTER Metal has accepted that commit, so
+    // another owner cannot reuse backing while its producer is unqueued.
     [mImpl->command_buffer commit];
     mImpl->committed = true;
+    if (mImpl->resource_plan)
+        mImpl->resource_plan->submitted(mImpl->submission_order->next_serial++);
     committed_command_buffers.fetch_add(1, std::memory_order_relaxed);
     ALMetalDiagnosticTelemetry::commandCommitEnd(diagnostic);
     return true;
@@ -433,8 +558,13 @@ ALMetalPipelineCache& ALMetalDevice::pipelineCache() const noexcept
     return *mPipelineCache;
 }
 
-std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error)
+std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error,
+                                                  ALMetalResourcePlanMode resource_plan_mode)
 {
+    if (resource_plan_mode != ALMetalResourcePlanMode::disabled &&
+        resource_plan_mode != ALMetalResourcePlanMode::accounting_only &&
+        resource_plan_mode != ALMetalResourcePlanMode::enabled)
+    { setError(error, "Metal resource planning mode is invalid"); return nullptr; }
     @autoreleasepool
     {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -500,6 +630,7 @@ std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error)
         auto impl = std::make_unique<Impl>();
         impl->device = device;
         impl->command_queue = queue;
+        impl->resource_plan_mode = resource_plan_mode;
         return std::unique_ptr<ALMetalDevice>(new ALMetalDevice(std::move(impl), std::move(info)));
     }
 }
@@ -523,6 +654,37 @@ void* ALMetalDevice::nativeHandle() const noexcept
 void* ALMetalDevice::nativeCommandQueue() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->command_queue : nullptr;
+}
+
+ALMetalResourcePlanMode ALMetalDevice::resourcePlanningMode() const noexcept
+{ return mImpl ? mImpl->resource_plan_mode : ALMetalResourcePlanMode::disabled; }
+
+const std::shared_ptr<ALMetalResourcePlanning::Plan>& ALMetalDevice::resourcePlan() const noexcept
+{
+    static const std::shared_ptr<ALMetalResourcePlanning::Plan> unavailable;
+    return mImpl ? mImpl->resource_plan : unavailable;
+}
+
+ALMetalResourcePlanning::Stats ALMetalDevice::uniqueResourceStats() const noexcept
+{ return mImpl ? mImpl->resource_plan->stats() : ALMetalResourcePlanning::Stats{}; }
+
+bool ALMetalDevice::registerNativeBacking(void* handle, ALMetalResourcePlanning::Description description,
+    ALMetalResourcePlanning::View& output, std::string* error) const
+{
+    output = {};
+    id<MTLResource> resource = (__bridge id<MTLResource>)handle;
+    if (!mImpl || !resource || resource.device != mImpl->device)
+    { setError(error, "Metal native backing registration requires this device's exact resource"); return false; }
+    if (mImpl->resource_plan_mode == ALMetalResourcePlanMode::disabled) return true;
+    try
+    {
+        if (description.origin == ALMetalResourcePlanning::Origin::viewer_owned && !description.memoryless)
+            description.metal_reported_bytes = static_cast<std::uint64_t>(resource.allocatedSize);
+        output = mImpl->resource_plan->allocate(description, std::make_shared<NativeBackingOwner>(resource), (__bridge const void*)resource);
+        if (output) return true;
+    }
+    catch (...) {}
+    setError(error, "Metal native backing registration could not retain its allocation"); return false;
 }
 
 [[noreturn]] void ALMetalDevice::forceDriverCrash() const
@@ -670,6 +832,11 @@ std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(
         impl->device = mImpl->device;
         impl->command_buffer = command;
         impl->diagnostic = diagnostic;
+        impl->submission_order = mImpl->submission_order;
+        if (mImpl->resource_plan_mode != ALMetalResourcePlanMode::disabled)
+            impl->resource_registry = mImpl->resource_plan;
+        if (mImpl->resource_plan_mode == ALMetalResourcePlanMode::enabled)
+            impl->resource_plan = mImpl->resource_plan->command();
         ALMetalDiagnosticTelemetry::commandCreateEnd(diagnostic, true);
         auto result = std::unique_ptr<ALMetalCommandBuffer>(new ALMetalCommandBuffer(std::move(impl)));
         const auto& owner = ALMetalSubmissionScope::current();

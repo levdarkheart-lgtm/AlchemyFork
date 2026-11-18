@@ -180,7 +180,7 @@ std::unique_ptr<ALMetalTexture> ALMetalTerrainPaintRenderer::render(
     color.clear = {0.0, 0.0, 0.0, 0.0};
     auto pass = ALMetalRenderPass::createForColorAttachment(
         *mImpl->device, destination->nativeHandle(), ALMetalPixelFormat::rgba8_unorm,
-        color, error);
+        color, destination->resourceView(), error);
     if (!pass)
     {
         return nullptr;

@@ -85,6 +85,7 @@ public:
         std::string* error = nullptr);
 
     void* nativeHandle() const noexcept;
+    const ALMetalResourcePlanning::View& resourceView() const noexcept;
     std::size_t length() const noexcept;
     ALMetalStorageMode storageMode() const noexcept;
     void* mappedBytes() const noexcept;
@@ -364,6 +365,7 @@ public:
         std::string* error = nullptr);
 
     void* nativeHandle() const noexcept;
+    const ALMetalResourcePlanning::View& resourceView() const noexcept;
     // Shader-compatible view that suppresses automatic RGBA/BGRA sRGB
     // decoding while retaining any channel swizzle. Equal to nativeHandle for
     // formats without a supported linear view.
@@ -434,8 +436,10 @@ private:
     ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescriptor descriptor);
     std::unique_ptr<Impl> mImpl;
     ALMetalTextureDescriptor mDescriptor;
+    bool issueResourceGeneration(const std::shared_ptr<ALMetalResourcePlanning::Command>&) noexcept;
 
     friend class ALMetalRenderTarget;
+    friend class ALMetalRenderTargetPool;
 };
 
 // A bounded FIFO of texture-to-shared-buffer copies for recurring CPU
@@ -559,6 +563,7 @@ struct ALMetalRenderTargetPoolStats
     std::uint64_t evictions = 0;
     std::size_t cached_targets = 0;
     std::uint64_t cached_bytes = 0;
+    std::uint64_t dependency_deferrals = 0;
 };
 
 struct ALMetalRenderPassColorConfig
@@ -626,9 +631,23 @@ public:
         const ALMetalRenderPassColorConfig& config,
         std::string* error = nullptr);
 
+    // A previously imported drawable or an owned typed texture supplies the
+    // SAME backing token used by its producer/presenter. The factory verifies
+    // the device, registry, generation and native texture/format-view ancestry.
+    static std::unique_ptr<ALMetalRenderPass> createForColorAttachment(
+        const ALMetalDevice& device, void* native_texture, ALMetalPixelFormat format,
+        const ALMetalRenderPassColorConfig& config,
+        const ALMetalResourcePlanning::View& supplied_backing,
+        std::string* error = nullptr);
+
     void* nativeHandle() const noexcept;
 
 private:
+    static std::unique_ptr<ALMetalRenderPass> createColorAttachment(
+        const ALMetalDevice&, void*, ALMetalPixelFormat,
+        const ALMetalRenderPassColorConfig&, const ALMetalResourcePlanning::View*, std::string*);
+    bool registerResourceUses(ALMetalCommandBuffer&, std::string* error) const;
+    friend class ALMetalRenderEncoder;
     struct Impl;
     explicit ALMetalRenderPass(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
@@ -731,7 +750,8 @@ public:
 
     std::unique_ptr<ALMetalRenderTarget> acquire(
         const ALMetalRenderTargetDescriptor& descriptor,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        const std::shared_ptr<ALMetalResourcePlanning::Command>& current_command = {});
     void purge() noexcept;
     std::size_t cachedTargetCount() const noexcept;
     std::uint64_t cachedBytes() const noexcept;

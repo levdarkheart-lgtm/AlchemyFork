@@ -394,7 +394,7 @@ bool ALMetalTextureResampler::encode(ALMetalCommandBuffer& command_buffer,
         destination_descriptor.format);
     auto pass = ALMetalRenderPass::createForColorAttachment(
         *mImpl->device, destination.nativeLinearHandle(), render_format,
-        color, error);
+        color, destination.resourceView(), error);
     if (!pass)
     {
         return false;
@@ -570,7 +570,7 @@ bool ALMetalNormalMapGenerator::encode(
     color.store = ALMetalStoreAction::store;
     auto pass = ALMetalRenderPass::createForColorAttachment(
         *mImpl->device, destination.nativeHandle(),
-        ALMetalPixelFormat::rgba8_unorm, color, error);
+        ALMetalPixelFormat::rgba8_unorm, color, destination.resourceView(), error);
     if (!pass)
     {
         return false;

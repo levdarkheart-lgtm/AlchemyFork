@@ -38,6 +38,7 @@ public:
         bool computeComplete() const noexcept;
         bool usedMetal4() const noexcept;
         void* executionRanges() const noexcept;
+        const ALMetalResourcePlanning::View& executionRangesResourceView() const noexcept;
     private:
         struct Impl;
         std::shared_ptr<Impl> mImpl;
@@ -57,7 +58,9 @@ public:
         std::span<const ALMetalShadowVisibilityInput>, std::span<const ALMetalShadowVisibilityRun>,
         std::span<void* const> native_buffers,
         std::span<const ALMetalShadowVisibilityDraw> draws,
-        bool request_metal4, std::string* error=nullptr);
+        bool request_metal4, std::string* error=nullptr,
+        std::span<const ALMetalResourcePlanning::View> captured_buffers = {},
+        const ALMetalResourcePlanning::View& destination_backing = {});
 private:
     struct Impl;
     std::unique_ptr<Impl> mImpl;
