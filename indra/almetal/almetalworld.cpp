@@ -11939,6 +11939,50 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::vector<SourceBankRun> source_banks;
     std::size_t source_bank_cursor=0;
     ALMetalWorldSourceCommandDrawStats source_bank_stats;
+    const bool source_routing=scene.source_routing && !prepared && !scene.wireframe &&
+        !scene.stamp_opaque_coverage && !scene.native_visibility && !scene.early_visibility &&
+        !scene.cpu_cohort_visibility && !scene.source_command_banks && !scene.join_adjacent_static_draws;
+    std::vector<std::size_t> routed_native_cohorts,routed_cpu_cohorts;
+    if(source_routing)try
+    {
+        for(std::size_t i=0;i<scene.cohort_count;++i)
+        {
+            const auto& view=scene.cohorts[i];const auto& cohort=*view.cohort;
+            ++source_bank_stats.routing_cohorts;
+            auto route=ALMetalWorldSourceCommandRoute::direct;
+            if(cohort.hasBoundsPublication() && cohort.qualifiedBoundsCount())
+            {
+                const auto coarse=alMetalClassifyWorldBoundsCPU(cohort.qualifiedBoundsUnion(),view.view.modelview_projection);
+                if(coarse==ALMetalWorldCpuVisibilityResult::outside)route=ALMetalWorldSourceCommandRoute::cpu_visibility;
+                else if(coarse==ALMetalWorldCpuVisibilityResult::partial && scene.source_native_visibility &&
+                    (cohort.family()==1||cohort.family()==2))
+                {
+                    // Only an admitted, completed bounds capability reaches
+                    // this row inspection. No PSO/SourcePages/bank exists yet.
+                    if(!mImpl->source_commands)mImpl->source_commands=mImpl->frame_data
+                        ?mImpl->frame_data->worldSourceCommands():ALMetalWorldSourceCommands::create(*mImpl->device);
+                    ALMetalWorldSourceCommandContext context;
+                    context.pipeline_supports_indirect=mImpl->library->hasFunction(cohort.family()==2?
+                        "almetal_world_pbr_direct_bound_vertex":"almetal_world_material_direct_bound_vertex") &&
+                        mImpl->library->hasFunction(cohort.family()==2?
+                        "almetal_world_pbr_resources_fragment":"almetal_world_material_resources_fragment");
+                    context.ordered_ranges=cohort.size()+std::min(scene.visibility_query_count,scene.drawCount());
+                    if(mImpl->source_commands)route=mImpl->source_commands->applicability(view,context,scene.source_routing_policy).route;
+                }
+            }
+            if(route==ALMetalWorldSourceCommandRoute::gpu_visibility)
+            {routed_native_cohorts.push_back(i);++source_bank_stats.routing_native;}
+            else if(route==ALMetalWorldSourceCommandRoute::cpu_visibility)
+            {routed_cpu_cohorts.push_back(i);++source_bank_stats.routing_cpu;}
+            else ++source_bank_stats.routing_scalar;
+        }
+    }
+    catch(const std::bad_alloc&)
+    {
+        // No optional native prefix exists: a failed route-list allocation
+        // retains the complete original scalar/CPU path.
+        routed_native_cohorts.clear();routed_cpu_cohorts.clear();
+    }
     if (!scene.cpu_cohort_visibility && scene.source_command_banks && scene.source_rows)
     {
         source_bank_stats.requested_draws = scene.source_rows->candidates.size();
@@ -12027,7 +12071,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::vector<CohortBankRange> cohort_bank_ranges;
     std::size_t cohort_bank_cursor=0;
     bool cohort_bank_prefix_emitted=false;
-    if (!scene.cpu_cohort_visibility && scene.source_command_banks && scene.cohort_count)
+    if (!scene.cpu_cohort_visibility && (scene.source_command_banks||!routed_native_cohorts.empty()) && scene.cohort_count)
     {
         const auto fallback=[&](ALMetalWorldSourceCommandFailure reason,std::size_t count)
         {
@@ -12035,7 +12079,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             source_bank_stats.fallback_reasons[static_cast<std::size_t>(reason)]+=count;
             source_bank_stats.last_fallback=reason;
         };
-        for (std::size_t i=0;i<scene.cohort_count;++i)
+        if(scene.source_command_banks)for (std::size_t i=0;i<scene.cohort_count;++i)
             source_bank_stats.requested_draws+=scene.cohorts[i].cohort->size();
         const auto same_region=[](const ALMetalWorldViewMatrices& a,const ALMetalWorldViewMatrices& b)
         {
@@ -12053,6 +12097,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             while (at<scene.cohort_count)
             {
                 rows_requested=false;requested_count=0;
+                if(source_routing&&!std::binary_search(routed_native_cohorts.begin(),routed_native_cohorts.end(),at))
+                {++at;continue;}
                 const auto family=scene.cohorts[at].cohort->family();
                 if (family==0 || scene.native_visibility)
                 {fallback(ALMetalWorldSourceCommandFailure::unsupported,scene.cohorts[at++].cohort->size());continue;}
@@ -12065,6 +12111,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 for (;end<scene.cohort_count;++end)
                 {
                     const auto& view=scene.cohorts[end];const auto n=view.cohort->size();
+                    if(source_routing&&!std::binary_search(routed_native_cohorts.begin(),routed_native_cohorts.end(),end))break;
                     if (view.cohort->family()!=family || n>alMetalWorldSourceMaximumRows-count)break;
                     const auto identity=view.cohort->regionIdentity();const auto found=regions.find(identity);
                     if (found!=regions.end() && !same_region(found->second->view,view.view))break;
@@ -12073,8 +12120,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if (count<std::max<std::uint32_t>(2,scene.source_command_minimum_run))
                 {fallback(ALMetalWorldSourceCommandFailure::short_run,count);at=end;continue;}
                 std::string optional_error;
+                if(source_routing)source_bank_stats.requested_draws+=count;
+                const bool direct_bindings=source_routing||scene.source_direct_command_banks;
                 const auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,family==2,&optional_error,true,
-                                                          scene.source_direct_command_banks);
+                                                          direct_bindings);
                 if (!pipeline) {fallback(ALMetalWorldSourceCommandFailure::pipeline,count);at=end;continue;}
                 mImpl->source_draw_stats.requested+=count;rows_requested=true;requested_count=count;
                 if (!mImpl->source_pages)
@@ -12084,7 +12133,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 const auto selection=std::span(scene.cohorts+at,end-at);
                 auto frame=mImpl->source_pages
                     ? mImpl->source_pages->freezeCohortsForCommand(*command,selection,globals,&optional_error,mImpl->frame_data.get(),
-                                                                 scene.source_direct_command_banks) : nullptr;
+                                                                 direct_bindings) : nullptr;
                 if (!frame)
                 {
                     ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=count;
@@ -12093,8 +12142,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 }
                 const auto membership=frame->commandMembership();const auto ranges=frame->cohortRanges();
                 bool valid=membership && frame->size()==count && membership->calls().size()==count && ranges.size()==selection.size() &&
-                    frame->directBindings()==scene.source_direct_command_banks &&
-                    (!scene.source_direct_command_banks ||
+                    frame->directBindings()==direct_bindings &&
+                    (!direct_bindings ||
                         (frame->directNormalHDR()==scene.normal_hdr && frame->directBindingSlot()));
                 std::size_t next=0;
                 // The private membership already certified every static call
@@ -12113,10 +12162,20 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         ? mImpl->frame_data->worldSourceCommands(&optional_error)
                         : ALMetalWorldSourceCommands::create(*mImpl->device,{},&optional_error);
                 auto reason=ALMetalWorldSourceCommandFailure::unsupported;
-                auto bank=mImpl->source_commands
-                    ? (scene.source_gpu_visibility
-                        ? mImpl->source_commands->prepareVisibleCohortForCommand(*command,frame,*mImpl->device,*mImpl->library,&optional_error,&reason)
-                        : mImpl->source_commands->prepareCohortForCommand(*command,frame,&optional_error,&reason)) : nullptr;
+                std::shared_ptr<const ALMetalWorldSourceCommands::Batch> bank;
+                if(mImpl->source_commands && (source_routing||scene.source_gpu_visibility))
+                {
+                    auto prepared=mImpl->source_commands->prepareVisibleCohortChecked(
+                        *command,frame,*mImpl->device,*mImpl->library,&optional_error,&reason);
+                    if(!prepared && prepared.native_prefix)
+                    {
+                        setError(error,"Static source visibility failed after a native compute prefix");
+                        return nullptr; // Owning/borrowed command must be abandoned by the outer owner.
+                    }
+                    bank=std::move(prepared.batch);
+                }
+                else if(mImpl->source_commands)
+                    bank=mImpl->source_commands->prepareCohortForCommand(*command,frame,&optional_error,&reason);
                 if (!bank) {fallback(reason,count);at=end;continue;}
                 if (bank->size()!=count) {fallback(ALMetalWorldSourceCommandFailure::validation,count);at=end;continue;}
                 const auto owner=cohort_banks.size();
@@ -12153,7 +12212,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     };
     std::vector<AnimatedRange> animated_ranges;
     ALMetalWorldAnimatedStats animated_stats;
-    if(scene.animated_gpu_records)
+    const bool animated_use_visibility=scene.animated_gpu_records?scene.animated_gpu_visibility:true;
+    if(scene.animated_gpu_records||(source_routing&&scene.source_native_visibility&&scene.reference_count))
     {
         // CPU shape/pose ownership was qualified at adoption. Only references
         // enter this late overlay; ordinary/body/cloth remain required native.
@@ -12176,12 +12236,25 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             for(std::size_t first=0;first<candidates.size();first+=alMetalWorldSourceMaximumRows)
             {
                 const auto count=std::min(alMetalWorldSourceMaximumRows,candidates.size()-first);
+                if(!scene.animated_gpu_records)
+                {
+                    if(!mImpl->source_commands)mImpl->source_commands=mImpl->frame_data
+                        ?mImpl->frame_data->worldSourceCommands():ALMetalWorldSourceCommands::create(*mImpl->device);
+                    ALMetalWorldSourceCommandContext context;
+                    context.pipeline_supports_indirect=mImpl->library->hasFunction("almetal_world_animated_visibility") &&
+                        mImpl->library->hasFunction("almetal_world_material_animated_vertex") &&
+                        mImpl->library->hasFunction("almetal_world_pbr_animated_vertex");
+                    context.ordered_ranges=count+std::min(scene.visibility_query_count,draw_count);
+                    if(!mImpl->source_commands||mImpl->source_commands->applicability(
+                        std::span(candidates).subspan(first,count),context,scene.source_routing_policy).route!=
+                            ALMetalWorldSourceCommandRoute::gpu_visibility)continue;
+                }
                 std::vector<const ALMetalRenderPipeline*> pipelines;pipelines.reserve(count);
                 std::string optional_error;bool ready=true;
                 for(std::size_t at=first;at<first+count;++at)
                 {
                     auto* pipeline=mImpl->animatedPipeline(scene.hdr,scene.normal_hdr,
-                        isPBRBatch(*candidates[at]->source),scene.animated_gpu_visibility,&optional_error);
+                        isPBRBatch(*candidates[at]->source),animated_use_visibility,&optional_error);
                     if(!pipeline){ready=false;break;}pipelines.push_back(pipeline);
                 }
                 if(!ready || !mImpl->frame_data)continue;
@@ -12192,12 +12265,18 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 const auto before=mImpl->source_pages->stats().animated_source_publications;
                 if(!mImpl->source_pages->prepareAnimatedSourcesForCommand(*command,
                     std::span(candidates).subspan(first,count),gpu_views,&optional_error))continue;
-                auto bank=mImpl->source_commands->prepareAnimatedForCommand(*command,*mImpl->device,*mImpl->library,
-                    std::move(gpu_views),globals,*mImpl->frame_data,&optional_error,scene.animated_gpu_visibility);
+                auto prepared=mImpl->source_commands->prepareAnimatedChecked(*command,*mImpl->device,*mImpl->library,
+                    std::move(gpu_views),globals,*mImpl->frame_data,&optional_error,animated_use_visibility);
+                if(!prepared && prepared.native_prefix)
+                {
+                    setError(error,"Animated source visibility failed after a native compute prefix");
+                    return nullptr; // Do not hide an unknown prefix with the ordinary draw path.
+                }
+                auto bank=std::move(prepared.batch);
                 if(!bank)continue;
                 animated_stats.source_publications+=mImpl->source_pages->stats().animated_source_publications-before;
                 animated_stats.current_pose_publications+=count;
-                if(scene.animated_gpu_visibility)++animated_stats.visibility_dispatches;
+                if(animated_use_visibility)++animated_stats.visibility_dispatches;
                 for(std::size_t at=0;at<count;++at)
                 {
                     const bool cull=isPBRBatch(*candidates[first+at]->source)&&candidates[first+at]->source->double_sided;
@@ -12445,7 +12524,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr;
                     have_previous_world_constants=false;animated_prefix_emitted=true;
                     animated_stats.gpu_draws+=count;++animated_stats.execute_calls;
-                    if(scene.animated_gpu_visibility)for(std::size_t at=index;at<end;++at)
+                    source_bank_stats.last_pipeline_validation=range.pipeline->shaderValidationMode();
+                    if(animated_use_visibility)for(std::size_t at=index;at<end;++at)
                     {
                         const auto* reference=scene.draw(at).animatedReference();
                         if(reference->animated_source->boundsQualified())++animated_stats.bounds_tests;
@@ -12458,7 +12538,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             }
         }
         const auto* current_cohort=draw_cursor.cohort();
-        if(scene.cpu_cohort_visibility)
+        const bool routed_cpu=source_routing && !routed_cpu_cohorts.empty() && current_cohort &&
+            std::binary_search(routed_cpu_cohorts.begin(),routed_cpu_cohorts.end(),
+                static_cast<std::size_t>(current_cohort-scene.cohorts));
+        if(scene.cpu_cohort_visibility||routed_cpu)
         {
             using Result=ALMetalWorldCpuVisibilityResult;
             if(!current_cohort)
@@ -12544,6 +12627,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr; // Never bridge a native-bank gap.
                     cohort_bank_prefix_emitted=true;source_bound_draws+=count;cohort_draws+=count;
                     source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
+                    source_bank_stats.last_pipeline_validation=bank.pipeline->shaderValidationMode();
                     draw_cursor.advance(count-1);index+=count-1;continue;
                 }
                 // No fallback/replay is legal after any native pass prefix.
@@ -13257,8 +13341,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->animated_stats.direct_pose_publications+=animated_stats.direct_pose_publications;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
-    if(scene.cpu_cohort_visibility)
+    if(scene.cpu_cohort_visibility||cpu_visibility_stats.coarse_tests)
     {
+        // Automatic routing classifies only selected cohorts. Every other
+        // logical row remains CPU-visible without another source walk.
+        if(!scene.cpu_cohort_visibility)
+            cpu_visibility_stats.visible_draws=draw_count-cpu_visibility_stats.culled_draws;
         auto& total=mImpl->cpu_visibility_stats;
         ++total.views;
         total.groups+=cpu_visibility_stats.groups;
@@ -13287,6 +13375,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->source_command_stats.bank_draws += source_bank_stats.bank_draws;
     mImpl->source_command_stats.fallback_draws += source_bank_stats.fallback_draws;
     mImpl->source_command_stats.execute_calls += source_bank_stats.execute_calls;
+    mImpl->source_command_stats.routing_cohorts+=source_bank_stats.routing_cohorts;
+    mImpl->source_command_stats.routing_scalar+=source_bank_stats.routing_scalar;
+    mImpl->source_command_stats.routing_cpu+=source_bank_stats.routing_cpu;
+    mImpl->source_command_stats.routing_native+=source_bank_stats.routing_native;
+    if(source_bank_stats.last_pipeline_validation!=UINT32_MAX)
+        mImpl->source_command_stats.last_pipeline_validation=source_bank_stats.last_pipeline_validation;
     for (std::size_t i=0;i<source_bank_stats.fallback_reasons.size();++i)
         mImpl->source_command_stats.fallback_reasons[i] += source_bank_stats.fallback_reasons[i];
     if (source_bank_stats.fallback_draws)

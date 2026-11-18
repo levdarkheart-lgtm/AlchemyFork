@@ -257,6 +257,21 @@ ALMetalWorldSourceCommandDecision ALMetalWorldSourceCommands::applicability(
     ALMetalWorldSourceCommandDecision result;
     if(context.wireframe||context.depth_clamp||context.opaque_coverage_stamp)
     {result.reason=Reason::raster_policy;return result;}
+    // Completed producer metadata supplies these O(1) gates. Ordinary small
+    // or unqualified cohorts must not pay a per-row workload/bounds walk just
+    // to discover that optional command preparation is inapplicable.
+    if(!view.cohort||!view.cohort->matchesOwners(view.cpu_owner,view.native_owner)||
+       !ALMetalWorldSourceCohort::validView(view.view)||!view.cohort->size())return result;
+    result.draws=view.cohort->size();
+    if(!view.cohort->hasBoundsPublication()||!view.cohort->qualifiedBoundsCount())
+    {result.reason=Reason::unknown_bounds;return result;}
+    const auto coarse=alMetalClassifyWorldBoundsCPU(view.cohort->qualifiedBoundsUnion(),view.view.modelview_projection);
+    if(coarse==ALMetalWorldCpuVisibilityResult::inside)
+    {result.reason=Reason::inside;return result;}
+    if(coarse==ALMetalWorldCpuVisibilityResult::outside)
+    {result.route=Route::cpu_visibility;result.reason=Reason::outside;return result;}
+    if(coarse==ALMetalWorldCpuVisibilityResult::unknown)
+    {result.reason=Reason::unknown_bounds;return result;}
     const auto work=alMetalInspectWorldCohortVisibilityWork(view);
     result.draws=work.draws;result.indexed_elements=work.indexed_elements;
     result.qualified_indexed_elements=work.qualified_indexed_elements;
@@ -775,6 +790,7 @@ try
         [native useResource:bank.native usage:MTLResourceUsageWrite];
         if(!compute->dispatch(static_cast<std::uint32_t>(bank.count),1,1,32,1,1,error)||!compute->end(error))
             return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility dispatch failed");
+        state.statistics.last_static_validation=state.static_visibility_pipeline->shaderValidationMode();
         ++state.statistics.static_visibility_dispatches;state.statistics.static_visibility_rows+=bank.count;
         state.statistics.static_visibility_qualified_rows+=bank.static_visibility_qualified_count;
     }
@@ -1121,6 +1137,7 @@ try
         for(const auto& palette:result->mImpl->animated_palettes)[native useResource:(__bridge id<MTLBuffer>)palette.buffer->nativeHandle() usage:MTLResourceUsageRead];
         [native useResource:selected->native usage:MTLResourceUsageWrite];
         if(!compute->dispatch(static_cast<std::uint32_t>(inputs.size()),1,1,32,1,1,error)||!compute->end(error))return {};
+        state.statistics.last_animated_validation=state.animated_pipeline->shaderValidationMode();
     }
     if(publication){state.commitPublication(*publication);state.binding_limit=selected->binding_limit;
         state.statistics.charged_logical_binding_bytes+=inputs.size()*248;}

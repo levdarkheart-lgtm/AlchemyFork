@@ -1297,6 +1297,12 @@ struct ALMetalWorldGBufferScene
     // Same-command GPU bounds update of ordered static DIRECT-bank calls.
     // Requires both bank switches; unknown bounds retain their original draw.
     bool source_gpu_visibility = false;
+    // Production routing over already-published conservative source facts.
+    // Scalar/CPU alternatives run before optional PSO/SourcePages setup.
+    // Native selection remains a separate provisional qualification control.
+    bool source_routing = false;
+    bool source_native_visibility = false;
+    ALMetalWorldSourceCommandPolicy source_routing_policy;
     std::uint32_t source_command_minimum_run = 2;
     // Diagnostic native resource-table path; optional failure stays direct.
     bool material_argument_buffers = false;
@@ -1389,6 +1395,12 @@ struct ALMetalWorldSourceCommandDrawStats
     // Accepted-render requests/fallbacks count candidate intents (including
     // rejected metadata); bank_draws counts actual encoded logical commands.
     std::uint64_t requested_draws=0,bank_draws=0,fallback_draws=0,execute_calls=0;
+    // Policy classifications before optional publication/admission failures;
+    // actual native execution is reported separately by bank_draws/cache.
+    std::uint64_t routing_cohorts=0,routing_scalar=0,routing_cpu=0,routing_native=0;
+    // Actual selected owner PSO mode: native MTLShaderValidation value,
+    // UINT32_MAX when no routed/native source PSO has been observed.
+    std::uint32_t last_pipeline_validation=UINT32_MAX;
     std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> fallback_reasons{};
     ALMetalWorldSourceCommandFailure last_fallback=ALMetalWorldSourceCommandFailure::none;
     ALMetalWorldSourceCommandStats cache;

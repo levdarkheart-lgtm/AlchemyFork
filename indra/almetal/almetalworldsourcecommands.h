@@ -51,6 +51,7 @@ struct ALMetalWorldSourceCommandStats
     std::uint64_t static_visibility_dispatches=0,static_visibility_rows=0;
     // Qualified inputs in encoded dispatches; this is not a visible-row count.
     std::uint64_t static_visibility_qualified_rows=0;
+    std::uint32_t last_static_validation=UINT32_MAX,last_animated_validation=UINT32_MAX;
     std::size_t cached_banks=0,live_banks=0;
     std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> failures{};
     ALMetalWorldSourceCommandFailure last_failure=ALMetalWorldSourceCommandFailure::none;
@@ -80,6 +81,7 @@ struct ALMetalWorldSourceCommandDecision
 {
     ALMetalWorldSourceCommandRoute route=ALMetalWorldSourceCommandRoute::direct;
     ALMetalWorldSourceCommandReason reason=ALMetalWorldSourceCommandReason::invalid_input;
+    // Zero when an O(1) retained coarse proof avoids inspecting source rows.
     std::uint64_t indexed_elements=0,qualified_indexed_elements=0;
     std::size_t draws=0;
 };
