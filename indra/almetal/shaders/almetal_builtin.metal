@@ -6209,7 +6209,9 @@ static float3 almetal_legacy_probe_mix(
 static float3 almetal_sample_legacy_probes(
     float3 position, float3 normal,
     texturecube_array<float> radiance, sampler probe_sampler,
-    constant ALMetalWorldReflectionProbeConstants& probes)
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    const device uint* candidate_masks = nullptr,
+    size_t candidate_word_offset = 0)
 {
     ALMetalLegacyProbeSums sums{};
     const int probe_count = clamp(int(probes.config.x), 1, 256);
@@ -6251,6 +6253,14 @@ static float3 almetal_sample_legacy_probes(
             }
         }
 
+        // The same conservative containment rejection as the BASE walk.
+        // Keep the accepted cap, manual-family transition and neighbor pivot.
+        if (candidate_masks && candidate >= 0 && candidate < 256 &&
+            (candidate_masks[candidate_word_offset + (uint(candidate) >> 5u)] &
+                (1u << (uint(candidate) & 31u))) == 0u)
+        {
+            continue;
+        }
         bool boxed = false;
         float3 box_position = 0.0;
         if (!almetal_probe_holds(
@@ -7093,17 +7103,19 @@ static float3 almetal_legacy_sky_ambient(
     return mix(ambient, float3(ambiance * 0.25), ambiance);
 }
 
-fragment float4 almetal_world_shiny_fragment(
-    ALMetalWorldShinyVaryings input [[stage_in]],
-    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
-    texturecube_array<float> reflection_probes [[texture(32)]],
-    texturecube<float> hero_probe [[texture(34)]],
-    texturecube<float> legacy_sky [[texture(39)]],
-    sampler diffuse_sampler [[sampler(0)]],
-    sampler probe_sampler [[sampler(1)]],
-    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
-    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
+static float4 almetal_world_shiny_impl(
+    ALMetalWorldShinyVaryings input,
+    array<texture2d<float>, 32> diffuse_textures,
+    texturecube_array<float> reflection_probes,
+    texturecube<float> hero_probe,
+    texturecube<float> legacy_sky,
+    sampler diffuse_sampler,
+    sampler probe_sampler,
+    constant ALMetalWorldAlphaEnvironment& environment,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldHeroProbeConstants& hero,
+    const device uint* candidate_masks,
+    constant ALMetalProbeEyeProjection* candidate_view)
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
@@ -7139,8 +7151,14 @@ fragment float4 almetal_world_shiny_fragment(
         }
         else
         {
+            size_t candidate_word_offset = 0;
+            const device uint* selected_masks = candidate_view &&
+                almetal_probe_eye_mask_offset(input.eye_position,
+                    *candidate_view, candidate_word_offset)
+                ? candidate_masks : nullptr;
             legacy_environment = almetal_sample_legacy_probes(input.eye_position,
-                normal, reflection_probes, probe_sampler, probes);
+                normal, reflection_probes, probe_sampler, probes,
+                selected_masks, candidate_word_offset);
             legacy_environment = almetal_mix_shiny_hero(legacy_environment,
                 input.eye_position, normal, 1.0, hero_weight,
                 hero_probe, probe_sampler, probes, hero);
@@ -7156,6 +7174,44 @@ fragment float4 almetal_world_shiny_fragment(
             environment_intensity);
     }
     return max(float4(color, 1.0), float4(0.0));
+}
+
+fragment float4 almetal_world_shiny_fragment(
+    ALMetalWorldShinyVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    texturecube_array<float> reflection_probes [[texture(32)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texturecube<float> legacy_sky [[texture(39)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
+{
+    return almetal_world_shiny_impl(
+        input, diffuse_textures, reflection_probes, hero_probe, legacy_sky,
+        diffuse_sampler, probe_sampler, environment, probes, hero,
+        nullptr, nullptr);
+}
+
+fragment float4 almetal_world_shiny_candidates_fragment(
+    ALMetalWorldShinyVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    texturecube_array<float> reflection_probes [[texture(32)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texturecube<float> legacy_sky [[texture(39)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalProbeEyeProjection& candidate_view [[buffer(8)]],
+    const device uint* candidate_masks [[buffer(9)]])
+{
+    return almetal_world_shiny_impl(
+        input, diffuse_textures, reflection_probes, hero_probe, legacy_sky,
+        diffuse_sampler, probe_sampler, environment, probes, hero,
+        candidate_masks, &candidate_view);
 }
 
 struct ALMetalWorldEmbossVaryings
@@ -9688,26 +9744,28 @@ fragment float4 almetal_world_pre_water_material_candidates_fragment(
         candidate_masks, &candidate_view);
 }
 
-fragment float4 almetal_world_legacy_alpha_fragment(
-    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
-    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
-    array<texture2d<float>, 8> normal_textures [[texture(8)]],
-    array<texture2d<float>, 8> specular_textures [[texture(16)]],
-    texturecube_array<float> reflection_probes [[texture(32)]],
-    texturecube<float> hero_probe [[texture(34)]],
-    texture2d<float> ssr_scene_color [[texture(35)]],
-    texture2d<float> ssr_scene_depth [[texture(36)]],
-    sampler material_sampler [[sampler(0)]],
-    sampler probe_sampler [[sampler(1)]],
-    sampler ssr_color_sampler [[sampler(2)]],
-    sampler ssr_depth_sampler [[sampler(3)]],
-    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
-    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
-    texture2d_array<float> shadow_maps [[texture(33)]],
-    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
-    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
-    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]])
+static float4 almetal_world_legacy_alpha_impl(
+    ALMetalWorldLegacyAlphaVaryings input,
+    array<texture2d<float>, 8> diffuse_textures,
+    array<texture2d<float>, 8> normal_textures,
+    array<texture2d<float>, 8> specular_textures,
+    texturecube_array<float> reflection_probes,
+    texturecube<float> hero_probe,
+    texture2d<float> ssr_scene_color,
+    texture2d<float> ssr_scene_depth,
+    sampler material_sampler,
+    sampler probe_sampler,
+    sampler ssr_color_sampler,
+    sampler ssr_depth_sampler,
+    constant ALMetalWorldMaterialConstants& constants,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldLegacyAlphaLighting& lighting,
+    texture2d_array<float> shadow_maps,
+    constant ALMetalWorldDirectionalShadowConstants& shadows,
+    constant ALMetalWorldHeroProbeConstants& hero,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr,
+    const device uint* candidate_masks,
+    constant ALMetalProbeEyeProjection* candidate_view)
 {
     // Keep the receiver derivatives in uniform control flow, before the
     // material cutoffs below can discard only part of a quad.
@@ -9815,9 +9873,15 @@ fragment float4 almetal_world_legacy_alpha_fragment(
 
     if (environment_intensity > 0.0)
     {
+        size_t candidate_word_offset = 0;
+        const device uint* selected_masks = candidate_view &&
+            almetal_probe_eye_mask_offset(input.eye_position,
+                *candidate_view, candidate_word_offset)
+            ? candidate_masks : nullptr;
         float3 legacy_environment = almetal_sample_legacy_probes(
             input.eye_position, normal,
-            reflection_probes, probe_sampler, probes);
+            reflection_probes, probe_sampler, probes,
+            selected_masks, candidate_word_offset);
         const float2 gl_fragment_position = float2(
             input.position.x,
             ssr.screen.z - input.position.y);
@@ -9854,6 +9918,66 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     }
     const float3 flat_color = diffuse.rgb * input.color.rgb;
     return max(float4(flat_color, coverage), float4(0.0));
+}
+
+fragment float4 almetal_world_legacy_alpha_fragment(
+    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    texturecube_array<float> reflection_probes [[texture(32)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler ssr_color_sampler [[sampler(2)]],
+    sampler ssr_depth_sampler [[sampler(3)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]])
+{
+    return almetal_world_legacy_alpha_impl(
+        input, diffuse_textures, normal_textures, specular_textures,
+        reflection_probes, hero_probe, ssr_scene_color, ssr_scene_depth,
+        material_sampler, probe_sampler, ssr_color_sampler, ssr_depth_sampler,
+        constants, probes, lighting, shadow_maps, shadows, hero, ssr,
+        nullptr, nullptr);
+}
+
+fragment float4 almetal_world_legacy_alpha_candidates_fragment(
+    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    texturecube_array<float> reflection_probes [[texture(32)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler ssr_color_sampler [[sampler(2)]],
+    sampler ssr_depth_sampler [[sampler(3)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
+    constant ALMetalProbeEyeProjection& candidate_view [[buffer(8)]],
+    const device uint* candidate_masks [[buffer(9)]])
+{
+    return almetal_world_legacy_alpha_impl(
+        input, diffuse_textures, normal_textures, specular_textures,
+        reflection_probes, hero_probe, ssr_scene_color, ssr_scene_depth,
+        material_sampler, probe_sampler, ssr_color_sampler, ssr_depth_sampler,
+        constants, probes, lighting, shadow_maps, shadows, hero, ssr,
+        candidate_masks, &candidate_view);
 }
 
 fragment ALMetalWorldGBufferOutput almetal_world_bump_fragment(

@@ -23,10 +23,12 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace lighting_tiles_base
@@ -1143,6 +1145,7 @@ struct Fixture
     std::string error;
     std::unique_ptr<ALMetalDevice> device;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
+    std::shared_ptr<ALMetalWorldFrameData> frames;
     std::unique_ptr<ALMetalTexture> cells;
     std::unique_ptr<ALMetalRenderTarget> lighting;
     Image background;
@@ -1151,8 +1154,8 @@ struct Fixture
         REQUIRE([[NSBundle mainBundle] pathForResource:@"almetal_builtin" ofType:@"metallib"] != nil);
         device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
         renderer = ALMetalWorldGBufferRenderer::create(*device, 1, &error); INFO(error); REQUIRE(renderer);
-        auto frames = ALMetalWorldFrameData::create(*device, &error); REQUIRE(frames);
-        frames->beginFrame(1); renderer->setFrameData(std::move(frames));
+        frames = ALMetalWorldFrameData::create(*device, &error); REQUIRE(frames);
+        frames->beginFrame(1); renderer->setFrameData(frames);
         ALMetalTextureDescriptor cell;
         cell.width = cell.height = 1; cell.format = ALMetalPixelFormat::rg32_float;
         cells = ALMetalTexture::create(*device, cell, &error); REQUIRE(cells);
@@ -1342,5 +1345,87 @@ TEST_CASE("Production water-haze and water-surface restarts retain requested ras
             const auto current = f.depthStencil(*input->depthStencilTexture());
             REQUIRE(current.depth == retained.depth); REQUIRE(current.stencil == retained.stencil);
         }
+    }
+}
+
+TEST_CASE("Generic water retains exact frozen-library manual and default probe lighting",
+          "[almetal][probe-candidate-water][.probe-candidate-previous-library]")
+{
+    @autoreleasepool
+    {
+        using namespace lighting_tiles_water;
+        const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
+        REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
+        Fixture f;
+        auto normal=f.normals(4,false);
+        ALMetalTextureDescriptor descriptor;descriptor.type=ALMetalTextureType::texture_cube_array;
+        descriptor.array_length=4;descriptor.format=ALMetalPixelFormat::rgba8_unorm;
+        auto radiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(radiance);
+        descriptor={};descriptor.width=4;descriptor.height=4;descriptor.format=ALMetalPixelFormat::rgba32_uint;
+        auto irradiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(irradiance);
+        auto upload=f.device->makeCommandBuffer("Water manual/default radiance input",&f.error);REQUIRE(upload);
+        const std::array<std::array<std::uint8_t,4>,4> colors{{{{224,32,16,255}},{{16,224,32,255}},{{32,16,224,255}},{{224,224,16,255}}}};
+        for(unsigned layer=0;layer<4;++layer)for(unsigned face=0;face<6;++face)
+            REQUIRE(radiance->upload(*upload,0,layer*6+face,{},colors[layer].data(),4,&f.error));
+        const std::array<std::uint32_t,64> unused_sh{};
+        REQUIRE(irradiance->upload(*upload,0,0,{},unused_sh.data(),64,&f.error));
+        REQUIRE(upload->commitAndWait(&f.error));
+        ALMetalWorldReflectionProbes probes;probes.radiance_texture=radiance.get();probes.irradiance_texture=irradiance.get();
+        probes.constants.config[0]=4;
+        for(unsigned i=0;i<4;++i)
+        {
+            probes.constants.ref_index[i][0]=i;probes.constants.ref_index[i][1]=-1;
+            probes.constants.ref_index[i][3]=i==1||i==2?1:0;
+            probes.constants.ref_sphere[i][3]=2000.f;
+            probes.constants.ref_params[i][0]=probes.constants.ref_params[i][1]=probes.constants.ref_params[i][2]=1.f;
+        }
+        for(auto& bucket:probes.constants.ref_bucket)bucket[0]=1;
+        ALMetalWorldAlphaEnvironment environment;
+        environment.water_plane[2]=1.f;environment.water_plane[3]=-1.f;
+        environment.water_fog[0]=1.f;environment.water_fog[2]=-1.f;
+        environment.light_direction[2]=1.f;environment.atmospheric[1]=environment.atmospheric[2]=environment.atmospheric[3]=1.f;
+        environment.atmos_sunlit[3]=environment.atmos_sunlit_linear[3]=1.f;
+        ALMetalWorldLegacyAlphaLighting lighting;lighting.sun_direction[2]=1.f;
+        lighting.parameters[0]=128.f;lighting.parameters[1]=.004f;lighting.parameters[2]=1.f;
+        for(bool hdr:{false,true})for(bool reverse:{false,true})for(bool classic:{false,true})
+        {
+            CAPTURE(hdr,reverse,classic);
+            auto input=f.gbuffer(hdr,reverse);auto surface=f.water(*normal,reverse,4.f);
+            surface.underwater=false;surface.refracts=false;surface.field.default_height[0]=-.5f;surface.eye_position[2]=1.f;
+            surface.normal_matrix[0][0]=surface.normal_matrix[1][1]=surface.normal_matrix[2][2]=1.f;
+            surface.normal_scale_glint[0]=surface.normal_scale_glint[1]=surface.normal_scale_glint[2]=2.f;
+            surface.normal_scale_glint[3]=1.f;surface.optics[1]=1.f;surface.optics[2]=.7f;surface.light_direction[2]=1.f;
+            lighting.parameters[3]=classic?1.f:0.f;
+            const auto render=[&]()
+            {
+                ALMetalWorldSimpleBatch marker;marker.water_surface=true;
+                ALMetalWorldOpaquePostDeferredScene scene;scene.gbuffer=input.get();scene.composed_lighting=f.lighting.get();
+                scene.batches=&marker;scene.batch_count=1;scene.width=scene.height=SIDE;scene.hdr=hdr;scene.reverse_z=reverse;
+                scene.reflection_probes=&probes;scene.alpha_environment=&environment;scene.alpha_lighting=&lighting;scene.water_surface=&surface;
+                scene.forward_probe_projection_valid=true;identity(scene.forward_probe_projection);
+                auto output=f.renderer->renderOpaquePostDeferred(scene,&f.error);INFO(f.error);REQUIRE(output);
+                return std::pair{f.read(*output),f.depthStencil(*output->depthStencilTexture())};
+            };
+            const auto stats=f.frames->stats();
+            const auto current=render();CHECK(current.first!=f.background);
+            for(const auto& pixel:current.first)for(auto word:pixel)REQUIRE((word&0x7c00u)!=0x7c00u);
+            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));
+            const auto previous=render();CHECK(previous.first==current.first);
+            CHECK(previous.second.depth==current.second.depth);CHECK(previous.second.stencil==current.second.stencil);
+            probes.constants.ref_sphere[1][0]=1000000.f;
+            const auto manual_removed=render();CHECK(manual_removed.first!=previous.first);
+            probes.constants.ref_sphere[2][0]=1000000.f;
+            const auto default_only=render();CHECK(default_only.first!=manual_removed.first);
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.frames,owners,&f.error));
+            const auto current_default=render();CHECK(current_default.first==default_only.first);
+            CHECK(current_default.second.depth==default_only.second.depth);CHECK(current_default.second.stencil==default_only.second.stencil);
+            probes.constants.ref_sphere[1][0]=probes.constants.ref_sphere[2][0]=0.f;
+            CHECK(render().first==current.first);
+            CHECK(f.frames->stats().candidate_preparations==stats.candidate_preparations);
+            CHECK(f.frames->stats().candidate_reuses==stats.candidate_reuses);
+        }
+        // This is real generic water/radiance, not an SH test. The declared SH
+        // texture is valid but unused by the water helper. No mask is prepared.
     }
 }

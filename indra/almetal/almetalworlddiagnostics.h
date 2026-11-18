@@ -143,6 +143,14 @@ struct ALMetalWorldProbeCandidateActivity
     // Existing eligible/prepared_batches above retain their simple-only meaning.
     std::array<std::uint64_t, 2> material_eligible_batches{}, material_prepared_batches{};
     std::array<std::uint64_t, 2> pbr_eligible_batches{}, pbr_prepared_batches{};
+    // Avatar/body alpha is a separate ordered owner, not a pre/post-water pool.
+    // Depth-only/color-disabled replays do not need probe candidates.
+    std::uint64_t avatar_eligible_batches = 0, avatar_prepared_batches = 0;
+    std::uint64_t shiny_eligible_batches = 0, shiny_prepared_batches = 0;
+    // Separate compositor calls, published only after successful commit.
+    // Array owners: shiny0, standalone legacy-material-alpha1. Not completion.
+    std::uint64_t impostor_encoded_calls = 0;
+    std::array<std::uint64_t, 2> impostor_eligible_batches{}, impostor_prepared_batches{};
     // Eligible calls without a usable shared mask, grouped by their final
     // preparation decision; separate from per-draw missing-variant fallback.
     std::array<std::uint64_t, alMetalProbeCandidateReasonCount> unavailable_calls{};
@@ -175,6 +183,8 @@ struct ALMetalWorldPostDiagnostics
     std::uint64_t probe_candidate_simple_shadow_batches = 0;
     std::uint64_t probe_candidate_material_batches = 0;
     std::uint64_t probe_candidate_pbr_batches = 0;
+    std::uint64_t probe_candidate_avatar_batches = 0;
+    std::uint64_t probe_candidate_shiny_batches = 0;
     std::uint64_t probe_candidate_frame_index = 0;
     std::uint32_t probe_candidate_view_kind = 0, probe_candidate_view_index = 0;
     ALMetalWorldProbeCandidateActivity probe_candidate_activity;

@@ -56,14 +56,17 @@ struct Fixture
         auto result=ALMetalBuffer::create(*device,descriptor,&error); REQUIRE(result);
         REQUIRE(result->write(0,bytes,length,&error)); return result;
     }
-    Planes read(const ALMetalRenderTarget& target)
+    Planes read(const ALMetalRenderTarget& target,bool color=true)
     {
         const auto width=target.descriptor().width,height=target.descriptor().height;
         REQUIRE(target.colorTexture(0)); REQUIRE(target.depthStencilTexture());
-        REQUIRE(target.colorTexture(0)->descriptor().format==ALMetalPixelFormat::rgba16_float);
         Planes result;
-        result.color.resize(std::size_t(width)*height);
-        REQUIRE(target.colorTexture(0)->readback(*device,0,0,{},result.color.data(),width*8,&error));
+        if(color)
+        {
+            REQUIRE(target.colorTexture(0)->descriptor().format==ALMetalPixelFormat::rgba16_float);
+            result.color.resize(std::size_t(width)*height);
+            REQUIRE(target.colorTexture(0)->readback(*device,0,0,{},result.color.data(),width*8,&error));
+        }
         const std::size_t depth_row=(width*4u+255u)&~255u,stencil_row=(width+255u)&~255u;
         const auto stencil_offset=depth_row*height;
         auto command=device->makeCommandBuffer("Probe candidate alpha exact plane readback",&error); REQUIRE(command);
@@ -98,6 +101,8 @@ struct Inputs
     std::unique_ptr<ALMetalTexture> radiance,irradiance,shadow;
     std::array<ALMetalWorldSimpleBatch,2> batches;
     std::array<float,16> palette{{0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0}};
+    std::array<float,45*4> avatar_palette{};
+    std::size_t avatar_weight_offset=0,avatar_cloth_offset=0;
     ALMetalWorldReflectionProbes probes;
     ALMetalWorldAlphaEnvironment environment;
     ALMetalWorldLegacyAlphaLighting lighting;
@@ -124,13 +129,21 @@ struct Inputs
         constexpr std::size_t normal_offset=sizeof(encoded),uv_offset=normal_offset+sizeof(normals);
         constexpr std::size_t color_offset=uv_offset+sizeof(uv),weight_offset=(color_offset+sizeof(colors)+15)&~std::size_t(15);
         constexpr std::size_t tangent_offset=weight_offset+sizeof(weights);
-        std::array<std::uint8_t,tangent_offset+sizeof(tangents)> bytes{};
+        std::array<float,8> avatar_weights{};
+        std::array<std::array<float,4>,8> clothing{};
+        for(auto& value:clothing)value={{.1f,.05f,0.f,.25f}};
+        constexpr std::size_t avatar_weights_offset=tangent_offset+sizeof(tangents);
+        constexpr std::size_t clothing_offset=avatar_weights_offset+sizeof(avatar_weights);
+        std::array<std::uint8_t,clothing_offset+sizeof(clothing)> bytes{};
         std::memcpy(bytes.data(),encoded.data(),sizeof(encoded));
         std::memcpy(bytes.data()+normal_offset,normals.data(),sizeof(normals));
         std::memcpy(bytes.data()+uv_offset,uv.data(),sizeof(uv));
         std::memcpy(bytes.data()+color_offset,colors.data(),sizeof(colors));
         std::memcpy(bytes.data()+weight_offset,weights.data(),sizeof(weights));
         std::memcpy(bytes.data()+tangent_offset,tangents.data(),sizeof(tangents));
+        std::memcpy(bytes.data()+avatar_weights_offset,avatar_weights.data(),sizeof(avatar_weights));
+        std::memcpy(bytes.data()+clothing_offset,clothing.data(),sizeof(clothing));
+        avatar_weight_offset=avatar_weights_offset;avatar_cloth_offset=clothing_offset;
         vertices=f.buffer(bytes.data(),bytes.size());
         const std::array<std::uint16_t,12> index{{0,1,2,0,2,3,4,5,6,4,6,7}};
         indices=f.buffer(index.data(),sizeof(index));
@@ -273,6 +286,39 @@ struct Inputs
         // sweep. Keep these authored receivers on its visible side.
         environment.water_fog[2]=1.f;
     }
+    void avatar(unsigned variant)
+    {
+        for(unsigned joint=0;joint<15;++joint)
+        {
+            avatar_palette[joint*4]=1.f;
+            avatar_palette[15*4+joint*4+1]=1.f;
+            avatar_palette[30*4+joint*4+2]=1.f;
+        }
+        for(auto& batch:batches)
+        {
+            batch.pre_water_alpha=batch.post_water_alpha=false;
+            batch.avatar_alpha=true;batch.avatar_rigid=variant==0;batch.avatar_skinning=variant!=0;
+            batch.avatar_cloth=variant==2;batch.pre_water_minimum_alpha=.2f;
+            batch.texture_count=1; // System-avatar vertices always select slot0.
+            batch.skin_palette=variant?avatar_palette.data():nullptr;
+            batch.skin_palette_float_count=variant?avatar_palette.size():0;
+            batch.skin_joint_count=variant?15:0;batch.weight_offset=variant?avatar_weight_offset:0;
+            batch.cloth_offset=variant==2?avatar_cloth_offset:0;
+            batch.avatar_wind[2]=.2f;batch.avatar_wind[3]=.1f;
+            batch.avatar_sin_wave[0]=batch.avatar_sin_wave[1]=batch.avatar_sin_wave[2]=1.f;
+            batch.avatar_sin_wave[3]=.4f;batch.avatar_cloth_depth[2]=1.f;
+        }
+    }
+    void shiny()
+    {
+        for(auto& batch:batches)
+        {
+            batch.pre_water_alpha=batch.post_water_alpha=false;
+            batch.pre_water_simple=batch.pre_water_shadows=false;
+            batch.impostor_shiny=true;
+        }
+        scene.alpha_directional_shadows=nullptr;
+    }
     std::unique_ptr<ALMetalRenderTarget> seeded(bool gbuffer)
     {
         ALMetalRenderTargetDescriptor descriptor;descriptor.width=cell.width;descriptor.height=cell.height;
@@ -341,6 +387,161 @@ void encodedFamily(const Inputs::Rendered& value,unsigned family,unsigned count)
     CHECK(value.diagnostics.probe_candidate_material_batches==(family==1?count:0u));
     CHECK(value.diagnostics.probe_candidate_pbr_batches==(family==2?count:0u));
 }
+struct ImpostorPlanes
+{
+    std::array<std::vector<std::uint8_t>,4> colors;
+    Planes planes;
+    bool operator==(const ImpostorPlanes&) const = default;
+};
+ImpostorPlanes readImpostor(Fixture& f,const ALMetalRenderTarget& target)
+{
+    ImpostorPlanes result;result.planes=f.read(target,false);
+    for(unsigned i=0;i<4;++i)
+    {
+        const auto* texture=target.colorTexture(i);REQUIRE(texture);
+        const auto row=texture->width()*texture->bytesPerPixel();REQUIRE(row>0);
+        result.colors[i].resize(std::size_t(row)*texture->height());
+        REQUIRE(texture->readback(*f.device,0,0,{},result.colors[i].data(),row,&f.error));
+    }
+    return result;
+}
+struct ImpostorResult {ImpostorPlanes before,after;ALMetalWorldProbeCandidateActivity activity;};
+ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared)
+{
+    ALMetalRenderTargetDescriptor descriptor;descriptor.width=input.cell.width;descriptor.height=input.cell.height;
+    descriptor.color_attachment_count=4;descriptor.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
+    descriptor.colors[0].format=ALMetalPixelFormat::rgba8_unorm_srgb;
+    descriptor.colors[1].format=ALMetalPixelFormat::rgba8_unorm;
+    descriptor.colors[2].format=ALMetalPixelFormat::rgba16_unorm;
+    descriptor.colors[3].format=input.cell.hdr?ALMetalPixelFormat::rg11b10_float:ALMetalPixelFormat::rgba8_unorm;
+    auto target=ALMetalRenderTarget::create(*f.device,descriptor,&f.error);REQUIRE(target);
+    ALMetalRenderPassConfig config;config.clear_depth=input.cell.reverse?0.:1.;config.clear_stencil=0x5a;
+    config.depth_store=config.stencil_store=ALMetalStoreAction::store;
+    for(auto& color:config.colors)color.clear={.03125,.0625,.125,.5};
+    auto pass=target->makeRenderPass(config,&f.error);REQUIRE(pass);
+    auto command=f.device->makeCommandBuffer("Independent impostor attachments",&f.error);REQUIRE(command);
+    auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"Independent impostor clear",&f.error);REQUIRE(encoder);
+    REQUIRE(encoder->end(&f.error));REQUIRE(command->commitAndWait(&f.error));
+    ImpostorResult result;result.before=readImpostor(f,*target);
+    ALMetalWorldGBufferScene scene;scene.batches=input.batches.data();scene.batch_count=input.batches.size();
+    scene.width=input.cell.width;scene.height=input.cell.height;scene.hdr=input.cell.hdr;scene.normal_hdr=true;scene.reverse_z=input.cell.reverse;
+    scene.reflection_probes=&input.probes;scene.legacy_alpha_lighting=&input.lighting;
+    scene.directional_shadows=input.cell.shadow?&input.shadows:nullptr;
+    std::copy_n(input.scene.forward_probe_projection,16,scene.forward_probe_projection);
+    scene.forward_probe_projection_valid=prepared;
+    REQUIRE(f.renderer->compositeImpostorPostDeferred(*target,scene,&f.error));INFO(f.error);
+    result.after=readImpostor(f,*target);result.activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+    CHECK(result.after.colors[0]!=result.before.colors[0]);
+    for(unsigned i=1;i<4;++i)CHECK(result.after.colors[i]==result.before.colors[i]);
+    CHECK(result.after.planes.stencil==result.before.planes.stencil);
+    return result;
+}
+}
+
+TEST_CASE("Prepared legacy walks preserve main shiny and impostor material ownership",
+          "[almetal][probe-candidate-transparency][probe-candidate-legacy]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        for(bool material:{false,true})for(bool skinned:{false,true})for(bool reverse:{false,true})
+        {
+            CAPTURE(material,skinned,reverse);
+            Inputs input(f,{skinned,material,reverse,false,true,97,65});
+            if(material)
+            {
+                input.family(1);
+                for(auto& batch:input.batches)batch.pre_water_alpha=false;
+            }
+            else input.shiny();
+            const std::size_t owner=material?1:0;
+            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            auto generic=renderImpostor(f,input,false);auto prepared=renderImpostor(f,input,true);
+            CHECK(prepared.after==generic.after);
+            CHECK(prepared.activity.impostor_eligible_batches[owner]==before.impostor_eligible_batches[owner]+4);
+            CHECK(prepared.activity.impostor_prepared_batches[owner]==before.impostor_prepared_batches[owner]+2);
+            input.probes.constants.ref_sphere[1][0]=1000.f;
+            auto changed=renderImpostor(f,input,false);CHECK(changed.after.colors[0]!=generic.after.colors[0]);
+            auto changed_prepared=renderImpostor(f,input,true);CHECK(changed_prepared.after==changed.after);
+            input.probes.constants.ref_sphere[1][0]=-2.4f;
+            input.probes.constants.ref_index[1][3]=1;
+            input.probes.constants.ref_index[2][3]=-1;identity(input.probes.constants.ref_box[2]);input.probes.constants.ref_box[2][14]=4.f;
+            input.probes.constants.ref_index[1][1]=0;input.probes.constants.ref_index[1][2]=64;
+            for(unsigned i=0;i<64;++i)input.probes.constants.ref_neighbor[i]=i<60?-1:static_cast<int>(i-59);
+            auto manual=renderImpostor(f,input,false);auto manual_prepared=renderImpostor(f,input,true);CHECK(manual_prepared.after==manual.after);
+            // This projection is unsupported by the proof; no guessed matrix
+            // reconstruction may remove an otherwise valid probe.
+            input.scene.forward_probe_projection[0]=1e10f;
+            const auto stats=f.data->stats();auto unsupported=renderImpostor(f,input,true);
+            CHECK(unsupported.after==manual.after);CHECK(f.data->stats().candidate_preparations==stats.candidate_preparations);
+            CHECK(unsupported.activity.impostor_prepared_batches==manual_prepared.activity.impostor_prepared_batches);
+        }
+        for(bool skinned:{false,true})for(bool reverse:{false,true})
+        {
+            Inputs input(f,{skinned,false,reverse,false,true,97,65});input.shiny();
+            auto generic=input.render(false);positive(generic.planes);
+            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
+            CHECK(prepared.diagnostics.probe_candidate_shiny_batches==2);
+            input.probes.constants.ref_sphere[1][0]=1000.f;
+            auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
+            auto changed_prepared=input.render(true);CHECK(changed_prepared.planes==changed.planes);
+            CHECK(changed_prepared.diagnostics.probe_candidate_shiny_batches==2);
+        }
+    }
+}
+
+TEST_CASE("New legacy and body consumers preserve frozen-library outputs",
+          "[almetal][probe-candidate-legacy][.probe-candidate-previous-library]")
+{
+    @autoreleasepool
+    {
+        const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
+        REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
+        Fixture f;
+        for(bool material:{false,true})for(bool skinned:{false,true})
+        {
+            Inputs input(f,{skinned,material,true,false,true,97,65});
+            if(material){input.family(1);for(auto& batch:input.batches)batch.pre_water_alpha=false;}
+            else input.shiny();
+            const char* optional=material?"almetal_world_legacy_alpha_candidates_fragment":"almetal_world_shiny_candidates_fragment";
+            REQUIRE(f.renderer->shaderLibrary()->hasFunction(optional));
+            const auto generic=renderImpostor(f,input,false);const auto prepared=renderImpostor(f,input,true);
+            CHECK(prepared.after==generic.after);
+            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));
+            REQUIRE_FALSE(f.renderer->shaderLibrary()->hasFunction(optional));
+            const auto stats=f.data->stats();const auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            const auto previous=renderImpostor(f,input,true);CHECK(previous.after==generic.after);
+            CHECK(previous.activity.impostor_prepared_batches==activity.impostor_prepared_batches);
+            CHECK(f.data->stats().candidate_preparations==stats.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses==stats.candidate_reuses);
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
+            CHECK(renderImpostor(f,input,true).after==generic.after);
+        }
+        for(bool skinned:{false,true})
+        {
+            Inputs input(f,{skinned,false,true,false,true,97,65});input.shiny();
+            const auto generic=input.render(false);const auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
+            CHECK(prepared.diagnostics.probe_candidate_shiny_batches==2);
+            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));
+            const auto previous=input.render(true);CHECK(previous.planes==generic.planes);
+            CHECK(previous.diagnostics.probe_candidate_shiny_batches==0);
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
+            CHECK(input.render(true).planes==generic.planes);
+        }
+        for(unsigned variant=0;variant<3;++variant)
+        {
+            Inputs input(f,{false,true,true,false,true,97,65});input.avatar(variant);
+            auto generic=input.render(false);auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
+            CHECK(prepared.diagnostics.probe_candidate_avatar_batches==2);
+            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));
+            auto previous=input.render(false);CHECK(previous.planes==generic.planes);
+            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
+            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
+            CHECK(input.render(true).planes==generic.planes);
+        }
+    }
 }
 
 TEST_CASE("Empty forward batch spans do not prepare masks or publish consumer activity",
@@ -365,6 +566,53 @@ TEST_CASE("Empty forward batch spans do not prepare masks or publish consumer ac
         CHECK(after.material_prepared_batches==activity.material_prepared_batches);
         CHECK(after.pbr_eligible_batches==activity.pbr_eligible_batches);
         CHECK(after.pbr_prepared_batches==activity.pbr_prepared_batches);
+    }
+}
+
+TEST_CASE("Prepared avatar masks preserve rigid body cloth and depth-only ownership",
+          "[almetal][probe-candidate-transparency][probe-candidate-avatar]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        for(unsigned variant=0;variant<3;++variant)for(bool shadow:{false,true})for(bool reverse:{false,true})
+        {
+            CAPTURE(variant,shadow,reverse);
+            Inputs input(f,{false,shadow,reverse,false,true,97,65});input.avatar(variant);
+            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            auto generic=input.render(false);positive(generic.planes);
+            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
+            encoded(prepared,shadow,0);CHECK(prepared.diagnostics.probe_candidate_avatar_batches==2);
+            CHECK(prepared.diagnostics.probe_candidate_activity.avatar_eligible_batches==before.avatar_eligible_batches+4);
+            CHECK(prepared.diagnostics.probe_candidate_activity.avatar_prepared_batches==before.avatar_prepared_batches+2);
+            input.probes.constants.ref_params[1][0]=.25f;
+            auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
+            auto changed_prepared=input.render(true);CHECK(changed_prepared.planes==changed.planes);
+            CHECK(changed_prepared.diagnostics.probe_candidate_avatar_batches==2);
+            if(variant)
+                for(unsigned joint=0;joint<15;++joint)input.avatar_palette[joint*4+3]=.25f;
+            else for(auto& batch:input.batches)
+            {
+                batch.modelview[12]=.25f;batch.modelview_projection[12]=.25f;
+            }
+            auto posed=input.render(false);CHECK(posed.planes.color!=changed.planes.color);
+            auto posed_prepared=input.render(true);CHECK(posed_prepared.planes==posed.planes);
+            CHECK(posed_prepared.diagnostics.probe_candidate_avatar_batches==2);
+            for(auto& batch:input.batches)batch.avatar_diffuse_srgb=false;
+            auto raw=input.render(false);CHECK(raw.planes.color!=posed.planes.color);
+            auto raw_prepared=input.render(true);CHECK(raw_prepared.planes==raw.planes);
+            CHECK(raw_prepared.diagnostics.probe_candidate_avatar_batches==2);
+            for(auto& batch:input.batches){batch.avatar_color_write=false;batch.avatar_depth_write=true;}
+            const auto stats=f.data->stats();
+            const auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+            auto depth_generic=input.render(false);auto depth_prepared=input.render(true);
+            CHECK(depth_prepared.planes==depth_generic.planes);
+            CHECK(depth_prepared.diagnostics.probe_candidate_avatar_batches==0);
+            CHECK(depth_prepared.diagnostics.probe_candidate_activity.avatar_eligible_batches==activity.avatar_eligible_batches);
+            CHECK(depth_prepared.diagnostics.probe_candidate_activity.avatar_prepared_batches==activity.avatar_prepared_batches);
+            CHECK(f.data->stats().candidate_preparations==stats.candidate_preparations);
+            CHECK(f.data->stats().candidate_reuses==stats.candidate_reuses);
+        }
     }
 }
 

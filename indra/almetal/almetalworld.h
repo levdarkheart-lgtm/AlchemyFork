@@ -1368,6 +1368,10 @@ struct ALMetalWorldGBufferScene
     const ALMetalWorldLegacyAlphaLighting* legacy_alpha_lighting = nullptr;
     const ALMetalWorldDirectionalShadows* directional_shadows = nullptr;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
+    // Optional current-camera projection for exact-eye forward consumers in
+    // compositeImpostorPostDeferred. Unsupported/absent inputs stay generic.
+    float forward_probe_projection[16]{};
+    bool forward_probe_projection_valid = false;
 };
 
 struct ALMetalWorldSourceDrawStats
