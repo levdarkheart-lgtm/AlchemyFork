@@ -289,9 +289,12 @@ TEST_CASE("almetal: stage window keeps optional fallback and later committed own
             // original descriptor and preserve this blue draw.
             f.draw(*other,blue,"Fallback blue");
         }
+        // Snapshot on this exact owner: the intentionally unsubmitted opaque
+        // later command must continue to prohibit a fresh synchronous readback.
+        auto blue_snapshot=f.snapshot(*other);
         REQUIRE(other->commitAndWait(&f.error));
         std::array<std::uint8_t,bytes> blue_pixels{};
-        REQUIRE(f.target->colorTexture(0)->readback(*f.device,0,0,{},blue_pixels.data(),side*4,&f.error));
+        REQUIRE(blue_snapshot.color->read(0,blue_pixels.data(),blue_pixels.size(),&f.error));
         CHECK(blue_pixels[0]==0); CHECK(blue_pixels[2]==255);
         CHECK(window->rejectedPrepareCount()>=1);
         REQUIRE(window->seal(&f.error));
