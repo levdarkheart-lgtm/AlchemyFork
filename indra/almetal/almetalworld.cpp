@@ -2990,6 +2990,13 @@ struct ALMetalWorldGBufferRenderer::Impl
         return value && std::strcmp(value, "1") == 0;
     }();
     bool opaque_family_split_saw_timing = false;
+    // Diagnostic variant opt-in only. Normal rendering keeps the measured
+    // body/simple consumers and avoids unhelpful new-family preparation.
+    bool force_all_e6_prepared_consumers = []()
+    {
+        const char* value = std::getenv("ALCHEMY_METAL_E6_PREPARED_FORCE_ALL");
+        return value && std::strcmp(value, "1") == 0;
+    }();
     ALMetalWorldConstantStats constant_stats;
     std::unique_ptr<ALMetalProbeWorkloadCapture> probe_workload;
     std::array<std::array<std::shared_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -3784,6 +3791,7 @@ ALMetalWorldGBufferRenderer::createShadowEncodingContext(std::string* error) con
     peer->library = mImpl->library;
     peer->shader_generation = mImpl->shader_generation;
     peer->private_library = mImpl->private_library;
+    peer->force_all_e6_prepared_consumers = mImpl->force_all_e6_prepared_consumers;
     peer->max_anisotropy = mImpl->max_anisotropy;
     peer->shadow_submissions = mImpl->shadow_submissions;
     peer->shadow_visibility_pipeline = mImpl->shadow_visibility_pipeline;
@@ -7210,7 +7218,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     };
                     return make(ordinary, prepared) && make(high, prepared_high);
                 };
-                if (!prepare_family("almetal_world_pre_water_material_candidates_fragment",
+                if (impl->force_all_e6_prepared_consumers &&
+                    (!prepare_family("almetal_world_pre_water_material_candidates_fragment",
                         impl->pre_water_material_pipelines[hdr][coverage][rigged],
                         impl->high_pre_water_material_pipelines[hdr][coverage][rigged],
                         impl->candidate_pre_water_material_pipelines[hdr][coverage][rigged],
@@ -7219,7 +7228,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                         impl->pre_water_pbr_pipelines[hdr][coverage][rigged],
                         impl->high_pre_water_pbr_pipelines[hdr][coverage][rigged],
                         impl->candidate_pre_water_pbr_pipelines[hdr][coverage][rigged],
-                        impl->candidate_high_pre_water_pbr_pipelines[hdr][coverage][rigged]))
+                        impl->candidate_high_pre_water_pbr_pipelines[hdr][coverage][rigged])))
                     return nullptr;
             }
 
@@ -21467,6 +21476,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             std::clamp(forward_probe_constants.config[0], 0.f, 256.f));
     const auto has_candidate_family = [&](Impl::PreWaterAlphaFamily family)
     {
+        if (family != Impl::PreWaterAlphaFamily::simple &&
+            !mImpl->force_all_e6_prepared_consumers) return false;
         if (scene.batch_count == 0) return false;
         return std::any_of(scene.batches, scene.batches + scene.batch_count,
             [&](const ALMetalWorldSimpleBatch& batch)
@@ -21483,13 +21494,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     const bool candidate_material_family = has_candidate_family(Impl::PreWaterAlphaFamily::material);
     const bool candidate_pbr_family = has_candidate_family(Impl::PreWaterAlphaFamily::pbr);
     const bool has_candidate_alpha = candidate_simple_family || candidate_material_family || candidate_pbr_family;
-    const bool has_candidate_forward = has_candidate_alpha || has_shiny;
+    const bool candidate_shiny_family = has_shiny && mImpl->force_all_e6_prepared_consumers;
+    const bool has_candidate_forward = has_candidate_alpha || candidate_shiny_family;
     const auto hdr_index = scene.hdr ? 1u : 0u;
     const bool has_candidate_pipeline =
         (candidate_simple_family && mImpl->candidate_pre_water_simple_pipelines[hdr_index][0][0][0]) ||
         (candidate_material_family && mImpl->candidate_pre_water_material_pipelines[hdr_index][0][0]) ||
         (candidate_pbr_family && mImpl->candidate_pre_water_pbr_pipelines[hdr_index][0][0]) ||
-        (has_shiny && mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment"));
+        (candidate_shiny_family && mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment"));
     if (has_candidate_forward)
     {
         if (!scene.forward_probe_projection_valid)
@@ -22811,6 +22823,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 : alpha_family == Impl::PreWaterAlphaFamily::pbr
                 ? "almetal_world_pre_water_pbr_candidates_fragment" : nullptr;
             bool selected_custom_candidates = false;
+            const bool candidate_family_permitted =
+                alpha_family == Impl::PreWaterAlphaFamily::simple ||
+                mImpl->force_all_e6_prepared_consumers;
             bool candidate_avatar = false;
             ALMetalRenderPipeline* alpha_pipeline = nullptr;
             if (batch.avatar_alpha)
@@ -22851,9 +22866,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
             else if (!standard_blend)
             {
-                selected_custom_candidates = forward_candidates.masks && custom_candidate_fragment &&
+                selected_custom_candidates = candidate_family_permitted &&
+                    forward_candidates.masks && custom_candidate_fragment &&
                     mImpl->library->hasFunction(custom_candidate_fragment);
-                if (forward_candidates.masks && custom_candidate_fragment && !selected_custom_candidates)
+                if (candidate_family_permitted && forward_candidates.masks &&
+                    custom_candidate_fragment && !selected_custom_candidates)
                     ++candidate_decision.pipeline_fallback_batches;
                 alpha_pipeline = mImpl->customPreWaterAlphaPipeline(
                     alpha_family, scene.hdr, rigged,
@@ -22977,7 +22994,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 const bool material_family = alpha_family == Impl::PreWaterAlphaFamily::material;
                 const bool high = highShadowQuality(alpha_shadow_constants);
                 ALMetalRenderPipeline* prepared = nullptr;
-                if (forward_candidates.masks)
+                if (mImpl->force_all_e6_prepared_consumers && forward_candidates.masks)
                 {
                     const auto& pipelines = material_family
                         ? (high ? mImpl->candidate_high_pre_water_material_pipelines
@@ -23561,7 +23578,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             pipeline = mImpl->opaque_forward_shiny_pipelines
                 [scene.hdr ? 1 : 0][rigged ? 1 : 0].get();
-            if (forward_candidates.masks &&
+            if (mImpl->force_all_e6_prepared_consumers && forward_candidates.masks &&
                 mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment"))
             {
                 pipeline = mImpl->candidateLegacyPipeline(*pipeline,
@@ -23570,7 +23587,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 if (!pipeline) return fail_command();
                 candidate_shiny = true;
             }
-            else if (forward_candidates.masks) ++candidate_decision.pipeline_fallback_batches;
+            else if (mImpl->force_all_e6_prepared_consumers && forward_candidates.masks)
+                ++candidate_decision.pipeline_fallback_batches;
         }
         else
         {
@@ -27819,9 +27837,9 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                 if (batch.materialSlots()[slot].env_intensity>0.f) return true;
             return false;
         });
-    const bool has_candidate_function =
-        (has_shiny && mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment")) ||
-        (has_legacy_probe_work && mImpl->library->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
+    const bool has_candidate_function = mImpl->force_all_e6_prepared_consumers &&
+        ((has_shiny && mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment")) ||
+         (has_legacy_probe_work && mImpl->library->hasFunction("almetal_world_legacy_alpha_candidates_fragment")));
     if (scene.forward_probe_projection_valid && has_candidate_function &&
         impostor_probe_constants && mImpl->frame_data && mImpl->probe_candidate_pipeline)
     {
@@ -27980,7 +27998,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         const char* candidate_fragment = shiny_batch ? "almetal_world_shiny_candidates_fragment"
             : material_probe_work ? "almetal_world_legacy_alpha_candidates_fragment" : nullptr;
         bool candidate_bound = false;
-        if (impostor_candidates.masks && candidate_fragment && mImpl->library->hasFunction(candidate_fragment))
+        if (mImpl->force_all_e6_prepared_consumers && impostor_candidates.masks &&
+            candidate_fragment && mImpl->library->hasFunction(candidate_fragment))
         {
             auto& cached = shiny_batch
                 ? mImpl->candidate_shiny_pipelines[scene.hdr ? 1 : 0][rigged ? 1 : 0][scene.normal_hdr ? 1 : 0]

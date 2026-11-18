@@ -325,6 +325,9 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_library_test.mm
             tests/almetal_world_source_commands_test.mm
     LIBRARIES almetal llcommon
+    # Visible correctness cases exercise every compiled lighting variant.
+    # The production policy has a separate hidden native qualification case.
+    ENVIRONMENT "ALCHEMY_METAL_E6_PREPARED_FORCE_ALL=1"
     RESOURCE_LOCK apple_gpu
   )
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

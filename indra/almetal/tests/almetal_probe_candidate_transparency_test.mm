@@ -1293,6 +1293,79 @@ TEST_CASE("Forward probe decisions retain distinct conservative and admission fa
     }
 }
 
+TEST_CASE("Default prepared lighting keeps body and simple consumers with generic new families",
+          "[almetal][.probe-candidate-default-policy]")
+{
+    REQUIRE(std::getenv("ALCHEMY_METAL_E6_PREPARED_FORCE_ALL")==nullptr);
+    @autoreleasepool
+    {
+        Fixture f;
+        Inputs body(f,{false,true,false,false,true,97,65});body.avatar(2);
+        auto body_generic=body.render(false);positive(body_generic.planes);
+        CHECK(body_generic.diagnostics.probe_candidate_avatar_batches==0);
+        auto body_prepared=body.render(true);CHECK(body_prepared.planes==body_generic.planes);
+        CHECK(body_prepared.diagnostics.probe_candidate_avatar_batches==2);
+        body.probes.constants.ref_params[1][0]=.25f;
+        auto body_changed=body.render(false);CHECK(body_changed.planes.color!=body_generic.planes.color);
+        CHECK(body.render(true).planes==body_changed.planes);
+
+        Inputs simple(f,{false,true,false,false,true,97,65});
+        auto simple_generic=simple.render(false);positive(simple_generic.planes);
+        auto simple_prepared=simple.render(true);CHECK(simple_prepared.planes==simple_generic.planes);
+        encoded(simple_prepared,true,2);
+
+        const auto unchanged_preparation=[&](const auto& before)
+        {
+            const auto after=f.data->stats();
+            CHECK(after.candidate_preparations==before.candidate_preparations);
+            CHECK(after.candidate_reuses==before.candidate_reuses);
+            CHECK(after.candidate_declines==before.candidate_declines);
+        };
+        for(unsigned family:{1u,2u})for(bool custom:{false,true})
+        {
+            CAPTURE(family,custom);
+            Inputs input(f,{true,true,false,false,true,97,65});input.family(family);input.postWaterOnly();
+            if(custom)for(auto& batch:input.batches)
+            {batch.pre_water_source_rgb=ALMetalBlendFactor::one;batch.pre_water_destination_rgb=ALMetalBlendFactor::one;}
+            auto generic=input.render(false);positive(generic.planes);
+            const auto before=f.data->stats();auto selected=input.render(true);
+            CHECK(selected.planes==generic.planes);unchanged_preparation(before);
+            CHECK(selected.diagnostics.probe_candidate_material_batches==0);
+            CHECK(selected.diagnostics.probe_candidate_pbr_batches==0);
+            CHECK_FALSE(selected.diagnostics.probe_candidate_decision.masks_bound);
+            for(auto& value:input.probes.constants.ref_params){value[0]*=.25f;value[1]*=.5f;}
+            auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
+            CHECK(input.render(true).planes==changed.planes);
+        }
+        Inputs shiny(f,{false,false,false,false,true,97,65});shiny.shiny();
+        auto shiny_generic=shiny.render(false);positive(shiny_generic.planes);
+        auto before=f.data->stats();auto shiny_selected=shiny.render(true);
+        CHECK(shiny_selected.planes==shiny_generic.planes);unchanged_preparation(before);
+        CHECK(shiny_selected.diagnostics.probe_candidate_shiny_batches==0);
+
+        // A shared body mask must not select an unhelpful custom consumer.
+        Inputs material(f,{false,true,false,false,true,97,65});material.family(1);
+        Inputs pbr(f,{false,true,false,false,true,97,65});pbr.family(2);
+        std::array<ALMetalWorldSimpleBatch,3> mixed{{body.batches[0],material.batches[1],pbr.batches[1]}};
+        for(unsigned i=1;i<3;++i)
+        {mixed[i].pre_water_source_rgb=ALMetalBlendFactor::one;mixed[i].pre_water_destination_rgb=ALMetalBlendFactor::one;}
+        body.scene.batches=mixed.data();body.scene.batch_count=mixed.size();
+        auto mixed_generic=body.render(false);auto mixed_prepared=body.render(true);
+        CHECK(mixed_prepared.planes==mixed_generic.planes);
+        CHECK(mixed_prepared.diagnostics.probe_candidate_decision.masks_bound);
+        CHECK(mixed_prepared.diagnostics.probe_candidate_avatar_batches==1);
+        CHECK(mixed_prepared.diagnostics.probe_candidate_material_batches==0);
+        CHECK(mixed_prepared.diagnostics.probe_candidate_pbr_batches==0);
+
+        // The compositor's new families remain generic before mask work.
+        auto impostor_generic=renderImpostor(f,shiny,false);
+        before=f.data->stats();auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+        auto impostor_selected=renderImpostor(f,shiny,true);
+        CHECK(impostor_selected.after==impostor_generic.after);unchanged_preparation(before);
+        CHECK(impostor_selected.activity.impostor_prepared_batches==activity.impostor_prepared_batches);
+    }
+}
+
 namespace e6_cost
 {
 using Clock = std::chrono::steady_clock;
