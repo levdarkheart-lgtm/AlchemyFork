@@ -10743,6 +10743,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Final source forwards creation/publication results, preserves pending raw/old generation/reference/age on failure, returns stored settled result and cancels rejected-post metadata. Original d87 negative10/16fails; focused pre-rollback negative1/16fails; final16/171 each mode passes. Initial15case receipts and missing-S32 fixture compile failure remain retained. Full app build and integrated/native regressions pass; owner runtime pending. [Audit evidence](work/active/log-warning-port-audit-20261118.md).
 
+- 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.
+
 
 ## PPD-468 — Certificate validity parser misreads GeneralizedTime as UTCTime
 
@@ -10763,6 +10765,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Exact old-helper projection9fails/252checks and120valid roots; new helper0fails/256checks and121valid. Real class suite13/828 passes after both468/469repairs. Both GeneralizedTime endpoints,1950/2049pivot,UTC offset and null/malformed helpers covered. Trust policy/root bytes/hostname/crypto checks are unchanged. [Audit evidence](work/active/log-warning-port-audit-20261118.md).
 
+- 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.
+
 
 ## PPD-469 — Malformed certificate start date can become a valid epoch sentinel
 
@@ -10782,3 +10786,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before a narrow metadata guard or new malformed-certificate validation tests. PPD468 valid-GeneralizedTime repair does not alone close this separate invalid-input gap.
 
 - 2026-11-18 Source guards date insertion with ASN1_TIME_check; invalid dates stay absent so existing validator rejects missing period, while valid epoch stays present. Actual class test mutates owned valid X509 before first lazy metadata read because OpenSSL already rejects some malformed DER clones. Projection control and integrated full suite pass; independent review confirms no stale date keys or validation bypass. [Audit evidence](work/active/log-warning-port-audit-20261118.md).
+
+- 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.

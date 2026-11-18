@@ -64,6 +64,12 @@ Private evidence: `/Users/dekstroza/Alchemy-home-69277-rqs_6lzz/analysis/warning
 
 All three were registered before repair in [the defect register](../POST_PORT_DEFECTS.md). Build/test outcomes and owner acceptance remain separate.
 
+## Committed candidate
+
+Repair source `103043ba1645fcc445f8ff9155d63fdd259e2e41`, indra tree `40009d0c901dac6b6533a8ad83d09968fa2e69ef`. Local commit contains the source audit and all three repairs; branch `codex/log-warning-port-audit-20261118`. After initial69328validation, a14-action metadata refresh built **26.4.0.69329** with the exact source SHA embedded; no renderer/certificate test binary or functional source changed in that refresh. Their prior native/CPU results remain the matching implementation evidence. Preserved app path: `Alchemy-warning-audit-20261118/build-Darwin-warning-audit/newview/Release/Alchemy Metal Warning Audit.app`.
+
+Final ARM64/signature checks and exact executable/metallib/test-binary hashes are retained in private `committed-app-identity.json` and `validation-receipt.json`. Main viewer and both owned media hosts have0forbidden direct graphics imports; foreign CEF/plugin runtime behavior is a separate gate. Documentation-only followup commits preserve the same indra tree. No repair push, viewer launch or owner acceptance.
+
 ## What prevents a complete clearance
 
 - **PPD-311:** native finite fallback is active and changes rigged shape. The multiply, inverse numeric decode and world-matrix formula are original, but runtime inverse values/producer identity are not retained.7nonfinite inverses and9finite-input/bad-product diagnostics do not distinguish malformed input, overflow, lifetime/race or another numerical defect. Fallback safety is retained; cause and intended-shape correctness are open.

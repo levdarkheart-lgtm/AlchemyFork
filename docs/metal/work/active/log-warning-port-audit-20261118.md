@@ -3,7 +3,7 @@
 - State: complete (requested source accounting); repairs ready_for_owner, runtime/input gates open
 - Owner: Codex integrator
 - Branch: `codex/log-warning-port-audit-20261118`
-- Source checkpoint: `d87f9aced63cb8903f0e9abbdef72f7beff5ba8f`; captured `e426d7956f48268833513cae78894e92ce30a61e`, identical indra tree `7c5eaa088e1e2cb325fa6934e0d1dab8b9d856ad` before repairs.
+- Restored source checkpoint: `d87f9aced63cb8903f0e9abbdef72f7beff5ba8f`; captured `e426d7956f48268833513cae78894e92ce30a61e`, identical indra tree `7c5eaa088e1e2cb325fa6934e0d1dab8b9d856ad` before repairs.
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45` and relevant pre-removal history.
 
 The owner resumed after the reboot pause and requested every saved warning be accounted for in source before further performance work. Restored the latest source into a persistent sibling worktree because `/private/tmp/alchemy-engine-takeover-20261116` disappeared during reboot. The older original workspace and its five untracked research notes are untouched. Private raw evidence remains `/Users/dekstroza/Alchemy-home-69277-rqs_6lzz`; this work never rewrites the prior audits or logs.
@@ -38,6 +38,12 @@ All failed controls, original fixture alias compile failure and corrective retes
 
 ## Next action and acceptance boundary
 
-Requested all-warning source accounting is complete. Keep PPD467–469 local for owner testing and explicit push approval. Finish the source-identity commit/metadata refresh and record it below; integrate alongside published baseline560bdfd without dropping either checkpoint or warning records. No other chat allocates new PPD IDs during this handoff.
+Requested all-warning source accounting is complete. Keep PPD467–469 local for owner testing and explicit push approval. Source commit/metadata refresh is recorded below; integrate alongside published baseline560bdfd without dropping either checkpoint or warning records. No other chat allocates new PPD IDs during this handoff.
 
 The next correctness target is PPD311's first bad inverse/product producer, then the exact29bake-mask and22missingtexture/material identities if observable. Read `llmodel.cpp::LLMeshSkinInfo::fromLLSD`, `llskinningutil.cpp::initSkinningMatrixPalette`, and this audit's private rigging report before selecting a bounded diagnostic; do not treat PPD313's separate bind shape as the observed inverse cause. Owner runtime/asset identity is needed for incident attribution. PPD312/313/463/466 remain open and build/tests alone cannot close them. No unrelated performance work or blanket correctness assurance follows from this audit.
+
+## Committed handoff
+
+Code/audit commit `103043ba1645fcc445f8ff9155d63fdd259e2e41`, indra `40009d0c901dac6b6533a8ad83d09968fa2e69ef`. Exact source metadata refresh `AL_METAL_BUILD_DIR=build-Darwin-warning-audit AL_METAL_JOBS=8 tools/metal/build.sh` exits0,14planned actions; **26.4.0.69329** embeds `103043ba1645fcc445f8ff9155d63fdd259e2e41`. Only version-info objects/relinks/staging changed; the tested renderer/certificate binaries were not rebuilt. Candidate app path is `build-Darwin-warning-audit/newview/Release/Alchemy Metal Warning Audit.app` in this sibling. `committed-app-identity.json` retains exact executable/metallib/test hashes, bundle identity, source proof and3owned direct-import checks(0forbidden). Final signature/ARM64 results and master receipt are local under the private evidence directory. A documentation-only followup may advance HEAD while keeping this indra tree unchanged.
+
+Acceptance: requested source inventory/review complete,467–469ready_for_owner. Runtime/input issues311/312/313/463/466open; broader quality/stability/performance/release gates open. No viewer, Xcode replay or recording launched; no repair pushed. Restore/review this branch directly or integrate its coherent commits alongside560bdfd. Do not overwrite the parallel checkpoint ledger.
