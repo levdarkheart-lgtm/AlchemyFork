@@ -527,9 +527,10 @@ struct Owner
     std::unique_ptr<ALMetalRenderPipeline> render;
     std::unique_ptr<ALMetalComputePipeline> compute;
     std::unique_ptr<ALMetalBuffer> indices;
+    std::vector<std::unique_ptr<ALMetalBuffer>> alternate_indices;
     std::shared_ptr<ALMetalRenderTargetPool> pool;
     static constexpr unsigned width = 128, height = 128;
-    explicit Owner(ALMetalResourcePlanMode value) : mode(value)
+    explicit Owner(ALMetalResourcePlanMode value,unsigned index_count=1) : mode(value)
     {
         device = ALMetalDevice::create(&error, mode); INFO(error); REQUIRE(device);
         REQUIRE(device->resourcePlanningMode() == mode);
@@ -568,6 +569,14 @@ kernel void resource_owner_compute(texture2d<float,access::read> input [[texture
         indices = ALMetalBuffer::create(*device, bd, &error); INFO(error); REQUIRE(indices);
         const std::array<std::uint16_t,3> data{0,1,2};
         std::memcpy(indices->mappedBytes(), data.data(), sizeof(data));
+        REQUIRE(index_count>=1); REQUIRE(index_count<=256);
+        for(unsigned i=1;i<index_count;++i)
+        {
+            auto buffer=ALMetalBuffer::create(*device,bd,&error); REQUIRE(buffer);
+            const auto changed=i%2?std::array<std::uint16_t,3>{0,2,1}:data;
+            std::memcpy(buffer->mappedBytes(),changed.data(),sizeof(changed));
+            alternate_indices.push_back(std::move(buffer));
+        }
         pool = ALMetalRenderTargetPool::create(*device, 1 << 20); REQUIRE(pool);
     }
     ALMetalRenderTargetDescriptor targetDescriptor() const
@@ -576,6 +585,13 @@ kernel void resource_owner_compute(texture2d<float,access::read> input [[texture
         d.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
         d.colors[0].shader_read = true; d.colors[0].shader_write = true;
         return d;
+    }
+    unsigned indexCount() const noexcept {return unsigned(alternate_indices.size())+1;}
+    const ALMetalBuffer& index(unsigned draw) const noexcept
+    {
+        if(alternate_indices.empty())return *indices;
+        const auto at=draw%indexCount();
+        return at?*alternate_indices[at-1]:*indices;
     }
 };
 
@@ -613,10 +629,10 @@ Row frame(Owner& owner, unsigned cell, bool verify)
         check(bool(render->setViewport({0,0,Owner::width,Owner::height,0,1}, &owner.error)), "viewport");
         check(bool(render->setCullMode(ALMetalCullMode::none, &owner.error)), "cull-mode");
         check(bool(render->setFragmentBuffer(0, *color, 0, &owner.error)), "color-bind");
-        const unsigned draws = cell == 0 ? 1 : (cell == 2 ? 256 : 16);
+        const unsigned draws = cell == 0 ? 1 : ((cell == 2 || cell>=4) ? 256 : 16);
         for (unsigned i = 0; i != draws; ++i)
             check(bool(render->drawIndexed(ALMetalPrimitiveType::triangle, 3, ALMetalIndexType::uint16,
-                *owner.indices, 0, 1, &owner.error)), "indexed-draw");
+                owner.index(i), 0, 1, &owner.error)), "indexed-draw");
         check(bool(render->end(&owner.error)), "render-end"); render.reset(); pass.reset();
         auto compute = ALMetalComputeEncoder::begin(*command, "Resource owner sampled compute", &owner.error); check(bool(compute), "compute-encoder");
         check(bool(compute->setPipeline(*owner.compute, &owner.error)), "compute-pipeline");
@@ -641,7 +657,7 @@ Row frame(Owner& owner, unsigned cell, bool verify)
         {
             const auto state = graph->stats();
             check(bool(state.valid), "graph-valid"); check(bool(state.retired), "graph-retired"); check(bool(!(state.opaque)), "graph-not-opaque");
-            check(bool(state.resources >= 8), "graph-use-count"); check(bool(state.passes == 5), "graph-pass-count");
+            check(bool(state.resources >= owner.indexCount()+7), "graph-use-count"); check(bool(state.passes == 5), "graph-pass-count");
             row.resources = state.resources; row.passes = state.passes;
         }
         if (verify)
@@ -680,7 +696,7 @@ Row frame(Owner& owner, unsigned cell, bool verify)
     const auto stats = owner.device->uniqueResourceStats();
     check(bool(stats.active_commands == 0), "active-command-retirement"); check(bool(stats.uncommitted_uses == 0), "uncommitted-use-retirement"); check(bool(stats.submitted_uses == 0), "submitted-use-retirement");
     check(bool(stats.opaque_uncommitted_commands == 0), "opaque-owner-retirement");
-    const auto expected = owner.mode == ALMetalResourcePlanMode::disabled ? 0u : (cell == 3 ? 1u : 3u);
+    const auto expected = owner.mode == ALMetalResourcePlanMode::disabled ? 0u : owner.indexCount()+(cell==3?0u:2u);
     check(bool(stats.owned_backings == expected), "unique-backing-conservation");
     row.live_backings = stats.owned_backings; row.live_declared = stats.owned_declared_bytes;
     row.live_reported = stats.owned_metal_reported_bytes;
@@ -701,7 +717,7 @@ TEST_CASE("Complete native resource allocation use and retirement owner cost",
         REQUIRE((setting(name).empty() || setting(name)=="0"));
     const auto cell_text = setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_COST_CELL");
     const auto pair_text = setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_COST_PAIR");
-    REQUIRE(cell_text.size()==1); REQUIRE(cell_text[0]>='0'); REQUIRE(cell_text[0]<='3');
+    REQUIRE(cell_text.size()==1); REQUIRE(cell_text[0]>='0'); REQUIRE(cell_text[0]<='5');
     REQUIRE(pair_text.size()==1); REQUIRE(pair_text[0]>='0'); REQUIRE(pair_text[0]<='2');
     const auto precheck_text = setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_PRECHECK_ONLY");
     REQUIRE((precheck_text.empty() || precheck_text=="0" || precheck_text=="1"));
@@ -710,12 +726,13 @@ TEST_CASE("Complete native resource allocation use and retirement owner cost",
     const std::array<ALMetalResourcePlanMode,3> modes{ALMetalResourcePlanMode::disabled,
         ALMetalResourcePlanMode::accounting_only, ALMetalResourcePlanMode::enabled};
     const unsigned ai = pair==2 ? 1 : 0, bi = pair==1 ? 1 : 2;
-    resource_plan_owner_cost::Owner a(modes[ai]), b(modes[bi]);
+    const unsigned index_count=cell==4?2:(cell==5?256:1);
+    resource_plan_owner_cost::Owner a(modes[ai],index_count), b(modes[bi],index_count);
     const auto check_a=resource_plan_owner_cost::frame(a,cell,true);
     const auto check_b=resource_plan_owner_cost::frame(b,cell,true);
     REQUIRE(check_a.native_commit_delta == check_b.native_commit_delta);
     const auto drain = [](resource_plan_owner_cost::Owner& owner) {
-        owner.pool->purge(); owner.indices.reset();
+        owner.pool->purge(); owner.indices.reset(); owner.alternate_indices.clear();
         const auto state=owner.device->uniqueResourceStats();
         REQUIRE(state.active_commands==0); REQUIRE(state.uncommitted_uses==0); REQUIRE(state.submitted_uses==0);
         REQUIRE(state.owned_backings==0); REQUIRE(state.owned_declared_bytes==0); REQUIRE(state.owned_metal_reported_bytes==0);
@@ -732,7 +749,7 @@ TEST_CASE("Complete native resource allocation use and retirement owner cost",
         resource_plan_owner_cost::frame(i%2 ? a:b,cell,false);
     }
     std::cout << "resource_owner_cost_scope cell=" << cell << " pair=" << pair << " mode_a=" << ai << " mode_b=" << bi
-              << " configured_draws=" << (cell==0?1:(cell==2?256:16))
+              << " configured_draws=" << (cell==0?1:((cell==2||cell>=4)?256:16)) << " index_buffers=" << index_count
               << " extent=128x128 passes=5 main_commands=1 thread_cpu_not_all_process_cpu=1"
               << " compile_device_pso_long_lived_index_setup_excluded=1 timer_and_postwait_observer_overhead_retained=1 cold_pool=" << (cell==3)
               << " pixel_prechecks=2 readback_in_measurement=0 retirement_in_total=1\n";
@@ -757,4 +774,110 @@ TEST_CASE("Complete native resource allocation use and retirement owner cost",
         }
     }
     drain(a); drain(b);
+}
+
+TEST_CASE("Native index reads reject a colliding registry on the same Metal device and recover only in a new encoder",
+          "[metal-resource-plan-native][PPD-435]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto other=ALMetalDevice::create(&f.error,ALMetalResourcePlanMode::enabled); REQUIRE(other);
+        REQUIRE(other->nativeHandle()==f.device->nativeHandle()); // Actual SAME MTLDevice, separate use registries.
+        ALMetalBufferDescriptor bd; bd.length=6; bd.storage=ALMetalStorageMode::shared;
+        auto index=ALMetalBuffer::create(*f.device,bd,&f.error); REQUIRE(index);
+        auto foreign=ALMetalBuffer::create(*other,bd,&f.error); REQUIRE(foreign);
+        REQUIRE(index->resourceView().identity()==foreign->resourceView().identity());
+        REQUIRE(index->resourceView().generation()==foreign->resourceView().generation());
+        const std::array<std::uint16_t,3> values{0,1,2};
+        std::memcpy(index->mappedBytes(),values.data(),sizeof(values));
+        std::memcpy(foreign->mappedBytes(),values.data(),sizeof(values));
+        const std::string source=R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+vertex float4 cache_vertex(uint v [[vertex_id]])
+{
+    const float2 p[3]={float2(-1,-1),float2(3,-1),float2(-1,3)};
+    return float4(p[v],0,1);
+}
+fragment float4 cache_fragment() { return float4(1,0,1,1); }
+)MSL";
+        auto library=ALMetalShaderLibrary::compileSource(*f.device,source,"Index cache actual registry contract",&f.error); REQUIRE(library);
+        ALMetalRenderPipelineDescriptor pd; pd.library=library.get();
+        pd.vertex_function="cache_vertex";pd.fragment_function="cache_fragment";
+        pd.colors[0].format=ALMetalPixelFormat::rgba8_unorm;
+        auto pipeline=ALMetalRenderPipeline::create(*f.device,pd,&f.error); REQUIRE(pipeline);
+        validation([(__bridge id<MTLRenderPipelineState>)pipeline->nativeHandle() shaderValidation],"index_cache_registry");
+        auto target=ALMetalRenderTarget::create(*f.device,f.targetDescriptor(),&f.error); REQUIRE(target);
+        ALMetalRenderPassConfig config;config.colors[0].load=ALMetalLoadAction::clear;
+        config.colors[0].clear={0,0,0,1};config.colors[0].store=ALMetalStoreAction::store;
+        auto pass=target->makeRenderPass(config,&f.error);REQUIRE(pass);
+        auto command=f.device->makeCommandBuffer("Index cache invalidated joined prefix",&f.error);REQUIRE(command);
+        auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"Index registry failure",&f.error);REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline,&f.error));REQUIRE(encoder->setCullMode(ALMetalCullMode::none,&f.error));
+        REQUIRE(encoder->setViewport({0,0,side,side,0,1},&f.error));
+        REQUIRE(encoder->setIndexedTriangleJoining(true,&f.error));
+        REQUIRE(encoder->drawIndexed(ALMetalPrimitiveType::triangle,3,ALMetalIndexType::uint16,*index,0,1,&f.error));
+        CHECK_FALSE(encoder->drawIndexed(ALMetalPrimitiveType::triangle,3,ALMetalIndexType::uint16,*foreign,0,1,&f.error));
+        CHECK_FALSE(command->resourceUsePlan()->stats().valid);
+        CHECK_FALSE(encoder->drawIndexed(ALMetalPrimitiveType::triangle,3,ALMetalIndexType::uint16,*index,0,1,&f.error));
+        REQUIRE(encoder->end(&f.error));
+        const auto commits=ALMetalDevice::committedCommandBufferCount();
+        CHECK_FALSE(command->commit(&f.error));CHECK(ALMetalDevice::committedCommandBufferCount()==commits);
+        encoder.reset();command.reset();CHECK(f.device->uniqueResourceStats().uncommitted_uses==0);
+        f.error.clear();
+        auto changed=ALMetalBuffer::create(*f.device,bd,&f.error);REQUIRE(changed);
+        std::memcpy(changed->mappedBytes(),values.data(),sizeof(values));
+        command=f.device->makeCommandBuffer("Index cache new encoder valid exact tickets",&f.error);REQUIRE(command);
+        encoder=ALMetalRenderEncoder::begin(*command,*pass,"Index registry positive",&f.error);REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline,&f.error));REQUIRE(encoder->setCullMode(ALMetalCullMode::none,&f.error));
+        REQUIRE(encoder->setViewport({0,0,side,side,0,1},&f.error));
+        for(const ALMetalBuffer* current:{index.get(),index.get(),changed.get(),index.get()})
+            REQUIRE(encoder->drawIndexed(ALMetalPrimitiveType::triangle,3,ALMetalIndexType::uint16,*current,0,1,&f.error));
+        REQUIRE(encoder->end(&f.error));CHECK(command->resourceUsePlan()->stats().resources==3);
+        index.reset();changed.reset();CHECK(f.device->uniqueResourceStats().owned_backings==3);
+        REQUIRE(command->commitAndWait(&f.error));
+        CHECK(f.device->uniqueResourceStats().owned_backings==1);
+        std::array<std::uint8_t,side*side*4> pixels{};
+        REQUIRE(target->colorTexture(0)->readback(*f.device,0,0,{},pixels.data(),side*4,&f.error));magenta(pixels);
+    }
+}
+
+TEST_CASE("Native cached reads rerecord an exact same-command generation and release backing on completion",
+          "[metal-resource-plan-native][PPD-435]")
+{
+    @autoreleasepool
+    {
+        Fixture f;using Result=RP::Command::ReadUseResult;
+        id<MTLBuffer> source=[(__bridge id<MTLDevice>)f.device->nativeHandle() newBufferWithLength:16 options:MTLResourceStorageModeShared];REQUIRE(source);
+        const std::array<std::uint8_t,16> input{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+        std::memcpy(source.contents,input.data(),input.size());
+        RP::Description description;description.declared_bytes=input.size();RP::View source_view;
+        REQUIRE(f.device->registerNativeBacking((__bridge void*)source,description,source_view,&f.error));
+        ALMetalBufferDescriptor bd;bd.length=input.size();bd.storage=ALMetalStorageMode::shared;
+        auto output=ALMetalBuffer::create(*f.device,bd,&f.error);REQUIRE(output);
+        auto command=f.device->makeCommandBuffer("Cached exact generations actual native copies",&f.error);REQUIRE(command);
+        RP::Command::ReadUseCache cache;
+        const auto original=source_view.generation();
+        for(unsigned round=0;round!=2;++round)
+        {
+            std::uint64_t pass=0;REQUIRE(command->beginResourcePass(RP::Pass::blit,pass,&f.error));
+            CHECK(command->resourceUsePlan()->useCachedRead(source_view,cache)==Result::recorded);
+            CHECK(command->resourceUsePlan()->useCachedRead(source_view,cache)==Result::cached);
+            REQUIRE(command->useResource(output->resourceView(),RP::Access::write,&f.error));
+            auto native=(__bridge id<MTLCommandBuffer>)command->nativeHandleForDeclaredResources();REQUIRE(native);
+            auto blit=[native blitCommandEncoder];REQUIRE(blit);
+            [blit copyFromBuffer:source sourceOffset:0 toBuffer:(__bridge id<MTLBuffer>)output->nativeHandle() destinationOffset:0 size:input.size()];
+            [blit endEncoding];REQUIRE(command->endResourcePass(pass,&f.error));
+            if(round==0)REQUIRE(source_view.issueGeneration(command->resourceUsePlan()));
+        }
+        CHECK(source_view.generation()==original+1);
+        CHECK(command->resourceUsePlan()->stats().resources==3);CHECK(command->resourceUsePlan()->stats().passes==2);
+        CHECK(f.device->uniqueResourceStats().logical_aliases==2);
+        source_view={};source=nil;CHECK(f.device->uniqueResourceStats().owned_backings==2);
+        REQUIRE(command->commitAndWait(&f.error));CHECK(f.device->uniqueResourceStats().owned_backings==1);
+        std::array<std::uint8_t,16> result{};REQUIRE(output->read(0,result.data(),result.size(),&f.error));CHECK(result==input);
+        CHECK(command->resourceUsePlan()->useCachedRead({},cache)==Result::failed);
+        output.reset();CHECK(f.device->uniqueResourceStats().owned_backings==0);
+    }
 }
