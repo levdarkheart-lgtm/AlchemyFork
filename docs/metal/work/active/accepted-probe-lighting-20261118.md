@@ -267,3 +267,100 @@ Nextfreezecombinedsourceandmirrorfullindra, build03with actualworld+appearance
 tests, run exactparity then exclusivecost0..3; inspectnegative6/7 beforeselection
 andgeneric4/5ifprimarysignal warrants. Retainallfailures, then build/test/stage
 one selected combinedviewer andownercheckpoint. No viewerlaunch/push.
+
+
+## Combined qualification and authored-demand boundary
+
+Production remains root0ad plus exact PPD399 repair, no MSL/library change.
+Build03 passes; combined appearance883/18 passes. Native actualworld parity01
+fails at the first invalid authored material declaration (PPD404), after BASE
+and simple-alpha prefixes. Failed native binary/bundle retained; no cost run.
+Three fixture-only declarations corrected by6a2. Build04 passes35.144s, and
+parity02 passes1,249,016assertions/4cases with actualvalidation1. App69262 static
+346ARM64/deep signature passes. The suite exercises actual BASE legacy/PBR,
+simple/material/PBR alpha rigid/skinned, reverse/HDR/infinite modes, preserved
+depth/stencil, probe-response, atmosphere omission and water normal response.
+
+Native validation-OFF costs0/1/2/3/6/7 all complete0 with600observations each,
+300/arm in150counterbalanced blocks, all adverse blocks/raw output retained.
+GPU paired median B/A: 0=1.0000708,1=.9929274,2=.9471578,3=.5973415,
+6=.9789457,7=.9676468. Owner wall includes waitUntilIdle barrier/owner prep/
+receipt retirement; exact consuming-command GPU timestamps exclude the barrier.
+Actual A32/request0/effective0 versus B16/request1/effective1 for every sample.
+First reducer uses a wrong metadata key (PPD405); failure retained and only
+reduction repeated on unchanged native observations. No discarded pairs.
+
+Independent authored-demand census shows primary47configured probes only
+accept1–5SH entries/fragment (BASE area mean~2.63), not47heavy accepted work.
+The original low-overlap test bundle/binaryb62bafdf is privately APFS-cloned
+before overwrite. Root e595/builderb157/indra15c6 adds optional authored stress
+8/9/10 with31full+15bounded locals, preserving prepared eligibility and32semantic
+SH entries/covered fragment via unchanged cap/default. Source peer clear;
+fullReleasebuild05 passes36.162s and nativeparity03 passes1,249,016/4 with
+validation1, binarycc1c8482/libfae7. Exclusive heavy cost window is live; no
+source/frontend/build/large-hash activity is allowed during measurement.
+The current Home pack's actual accepted/positive-scale distribution is unknown.
+
+Two bounded source-only final checks are assigned: compound main lighting
+BASE+sky+point/projector tile parity, and successful reload after census
+population. No further architecture experiment before final stage/owner pause.
+Hidden control staysdefaultOFF and packedSHtilecache staysunselected. Every
+whole-viewer FPS/visual/loading/stability and architecture acceptance remains
+partial. No viewer launch/login/profile or push occurred in this group.
+
+
+## Final bounded integration qualification
+
+All heavy8/9/10 nativecosts complete0,600rows each, prepared47 and actual
+validation2; pairedGPU B/A .93841953/.94236187/.95823791 with9/11/21adverse
+blocks. Ownerwall .94383258/.95126604/.95803546 with13/15/22adverse. These
+authored32semantic-SH stress inputs show useful signal without any probe/
+shader-quality change; no actual Home pack/GPU instruction/FPS inference.
+All nine costs retain5400rows and no sample filtering. Nativecost test bundles
+b62bafdf andcc1c8482 are separately APFS-cloned before later rebuilds.
+
+Peer-cleared bf8552/root e94d/builder25faff adds only two existing-fixture
+correctness cases: compound mainBASE+sky+point/projector auto/16 exact output/
+depth/stencil/stores/query and positive15-field census retention across native
+shared reload. Empty forward contributes real encoder counters only; alpha
+lighting is independently covered by the separate world fixture. Finalbuild06
+passes36.419s, indracf835598. Final world/main1255075/11, llrender698443/32,
+terrainlayout853/13 and appearance883/18 pass0 with API/GPU validation where
+applicable. Current source strict0; fresh doctor0. GeneratedReleasecommands
+for world/resource/pipeline/wearable areO3/NDEBUG/ARM64/no-flto, LTOOFF.
+
+Separate candidate69264 exact app staging is in progress; no viewer launch,
+login, profiling or push. At its completion, pause for the owner's Home/club
+visual/performance checkpoint, no further architecture experiment. Native
+control remainsfalse/nonpersistent; proposed runtimecomparison uses true
+versus automaticfalse in the same exact app. Readiness69259 and every earlier
+candidate/capture/failure remains preserved. Full source/evidence/limits:
+[Native lighting tile report](../../research/native-lighting-raster-tiles-20261118.md).
+
+
+## Owner evaluation checkpoint —69264
+
+Separate stage final-combined-checkpoint-69264 completes0 in29.560s. Exact8273
+nodes includingroot/bytes/modes/symlinks/sourceidentity match;346ARM64/0invalid,
+deepstrict signature and3firstparty directimport checks0. Exe46fb9270a18f79ec
+30868b34402709c6f576cd0849220e9406efe8581bf8ca63; libraryfae7 unchanged.
+Builder25faff429e27aae824321e686fc75cda8bead272 is embedded in both source and
+staged app; indracf835598516daa65ffd47d66473cf449281c8d6a matches canonical.
+Every command/source/node manifest is in stage-verification/receipt.json.
+Ownercheckpoint-plan.json is an unexecuted plan, not a qualified new controller.
+
+Engineering pauses at the requested checkpoint, with no viewerlaunch/login/
+recording/push and no further architecture work. Next is owner Home initial/
+settled then clubTP/loading/settled, samebinaryautomatic/native16 controls,
+replayable allqueue frames plusCPU/native/resource/workload/fullwarninglogs
+and normal controls; refresh exact launch/capture identity before execution.
+No product/performance/architecture acceptance is complete. Hidden control
+staysOFF, proposedmain16trial is provisional; all runtime/owner gates open.
+
+
+Build06appendix audits5knownwarnings/0errors;03–06total35allmapped. Independent
+read-only review reproduces all5400CSVpaired summaries/adverse counts. PPD407
+retains recovery-document linecap/EOF guard failure after moving latest state;
+only extra whitespace removed and standalone harness33/diff0 pass. Exact
+recorded awakeguard55971 stopped atcheckpoint; no other processes stopped.
+Goal remains unfinished; requested engineering pause is for ownerfeedback.

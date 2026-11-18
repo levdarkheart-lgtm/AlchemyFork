@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-404 -->
+<!-- next-defect-id: PPD-408 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3511,6 +3511,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-18 owner explicitly requests integration into the current combined engine change. Root reviews and applies the seven source/test/CMake files from a7696a3c1d; every source blob and full indra tree match that independently qualified source before any further shader work. Report/owner observation/failed qualification history retained, current active docs preserved. No changed-source runtime acceptance or whole PPD125 closure is inferred.
 
+- 2026-11-18 final combined25faff/cf8355 native llrender readiness/terrain/API selection passes698443assertions/32cases with API+GPU validation1. This includes the original readiness gates plus new native geometry cases; no new viewer startup/teleport observation and no incident closure.
+
+
 ## PPD-126 — Shutdown reports one remaining volume and LOD reference
 
 - Status: investigating
@@ -5893,6 +5896,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-18 final qualification: app69283 passes346ARM64/0invalid and deep strict signature0; binary3a02a1ebae785c6c986c68e0c383e2bdb3dc39c8e6349c8af73ff91e5d8ebc46. Pre-freeze review caught unnecessary invalidation on empty/outside dirty rectangles, including composition-only pending state; corrected beforeaa8b05a5d6, preliminary494 and extended508CPU results retained without GPU overclaim. Final source unchanged; live startup/transition verification remains pending. Owner requests performance-session integration; validation-window notification sent, exact qualified-source handoff follows final docs check. No launch/profile/push.
 
 - 2026-11-18 performance integrator independently reviews the qualified source/original invariant and height/geometry ownership before integration. Owner-authorized11source/test/CMake files applied from a769→aa8 only, preserving current PPD125 code and all current investigation docs; everyblob/full-indra cc04a93c matches qualified source. Receipt ppd241-integration-01/receipt.json retains proof. Combined build and live acceptance remain pending; historical operands and broader shadow architecture stay partial.
+
+- 2026-11-18 final combined25faff/cf8355 native readiness/terrain selection passes with API+GPU validation1, layout853assertions/13cases passes. Currentness/upload/COW/preflight guards remain present; the historical42/81/15 exact startup operands remain unknown until a viewer retest.
+
 
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
@@ -9361,6 +9367,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 owner explicitly authorizes the isolated diagnostic repair and inclusion in the combined source. Root reviews the enum range/absent-bucket guard and test-only SUPPORT wiring; insertion, capacity, update, appearance-version/bake/rollback guards remain unchanged. Selective3file integration from328fe89d01 is authorized; combined qualification pending, ownerverification remains pending.
 
+- 2026-11-18 final combined25faff/cf8355 exact appearance suite passes883assertions/18cases; source3files retain isolated328fe hashes. No appearance-manager/network/bake ordering was changed, and automated tests do not establish live avatar propagation or owner acceptance.
+
+
 ## PPD-400 — Root tile-policy field is placed in the adjacent color-grade type
 
 - Status: investigating
@@ -9380,6 +9389,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 corrected forward member now belongs to ALMetalWorldOpaquePostDeferredScene; ColorGrade is restored. Exact before/after hashes and source retained in root-geometry-integration-01. DefaultOFF native experiment, full ABI build/caller qualification still pending.
 
+- 2026-11-18 full ABI rebuild02 and finalRelease06 pass; actual world-main1255075assertions/11cases and backend/readiness698443/32 pass on final25faff/cf8355. The field is correctly in ALMetalWorldOpaquePostDeferredScene; no ColorGrade state remains altered.
+
 
 ## PPD-401 — New lighting tile census is dropped by shader reload
 
@@ -9389,14 +9400,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Cumulative renderer telemetry must survive a successful same-owner shader reload alongside its other lifetime counters.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); Read-only peer review515b659e confirms commitShaderReload copies other cumulative stats but omits the new lighting_tile_stats before swapping Impl. The unbuilt experiment would reset these counters after reload; rendering is unchanged.
-- Next action: Copy the new census alongside existing statistics before swap and include source/caller qualification; retain prior source review.
-- Verification: Source review before new ABI build or runtime. No shader/output regression or accepted performance claim.
+- Next action: Root0ad repair and final populated-census native reload test pass. Keep owner checkpoint and viewer counter continuity distinct from the verified component test.
+- Verification: Source repair plus final actual native populated-census reload test pass; all15fields and retained/rerendered output are equal. Whole-viewer counter continuity and owner acceptance remain pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-18 registered before correction; original peer findings/source retained privately.
+
+- 2026-11-18 source repair integrated0ad; actualworld4-case suite passes with populated original/effective/actual counters. The dedicated populated-census reload assertion remains source work in progress; no reload-runtime proof is inferred.
+
+- 2026-11-18 final actual native compound/reload tests pass within world-main1255075assertions/11cases at25faff/cf8355. Positive BASE and real empty-forward encoder calls populate both owner histories; all15 named census fields remain equal across successful public shared-shader reload, then rerendered pixels remain exact. Empty forward proves telemetry retention only; separate world fixtures prove alpha contributions.
 
 
 ## PPD-402 — Lighting tile telemetry omits each pass requested and effective policy
@@ -9407,14 +9422,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Actual16 dimensions alone cannot prove explicit selection because automatic hardware choice may also be16; runtime evidence must distinguish request, capability fallback and actual dimensions.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); Read-only peer review515b659e confirms the new stats record actual dimensions only and the log prints the current global control, which can differ from earlier passes. No runtime activation or performance result was inferred from this source-only telemetry.
-- Next action: Record original request and effective policy for each successfully begun BASE/forward pass, preserve it through reload, and use those values in real-caller assertions/census. Keep actual dimensions independent.
-- Verification: Source review before new ABI build or runtime. No shader/output regression or accepted performance claim.
+- Next action: Root0ad records original request/effective policy separately from actual dimensions at every BASE/forward begin. Actual real-world parity and cost assertions now validate activation; owner routing/census still needs the whole-viewer checkpoint.
+- Verification: Actual API/world/compound tests and all5400cost samples distinguish requested/effective/actual policy. Whole-viewer main/probe routing and continuation split remain pending; no FPS acceptance.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-18 registered before correction; original peer findings/source retained privately.
+
+- 2026-11-18 root0ad source repair integrated and build/API tested. Full actualworld parity02/03 pass1,249,016assertions/4cases, with requested/effective policy and native dimensions asserted separately. Six retained cost cells0/1/2/3/6/7 each preserve600observations; all automatic passes are32x32/request0/effective0 and explicit passes16x16/request1/effective1 on this host. No viewer-routing or FPS claim.
+
+- 2026-11-18 final compound path explicitly asserts original/effective/native16 policy and actual BASE+sky+point+projector PSO participation in one encoder, with exact output/depth/stencil/stores/query controls. New runtime owner routing and continuation-family split remain unobserved in a viewer; no full coverage waiver.
 
 
 ## PPD-403 — New atmospheric-restart fixture can discard its post-restart alpha draw
@@ -9425,8 +9444,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A renderer restart parity test must prove the post-restart draw contributes; matching pixels and begun-encoder counts from an earlier draw cannot establish later alpha coverage.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); peer review of unrun newworld fixture4812b69 confirms atmospheric marker places ordered2 after-water, while inherited water-plane(0,0,1,-100)/sign−1 causes that draw to discard after the original post-water sign flip. The earlier pre-water draw can satisfy positive-output and actual-tile counters. No production change or native test failure is attributed.
-- Next action: Preserve4812 draft, author visible pre/post geometry and plane consistent with existing shader sides, and require an omission/change control proving the post-restart draw changes output. Keep production shader/thresholds unchanged; source review then fresh build required.
-- Verification: Caught before compilation/GPU execution; initial draft cannot qualify post-restart contribution.
+- Next action: Corrected3.875 plane and post-draw omission control pass the actual-world native parity suite. Preserve the source-only failure history and confirm ordinary viewer visuals at the next checkpoint.
+- Verification: Initial draft caught before compilation/GPU; corrected3.875plane and mandatory omission control pass actual final world parity. No owner visual acceptance.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9435,3 +9454,87 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before isolated fixture correction. Root engine ABI build at0ad is independent and does not yet contain this new file.
 
 - 2026-11-18 corrected fixture source43cee806 (720+6fd isolated commits) now uses plane3.875 and requires a color difference when the post-restart draw is omitted. Peer delta review clear before compilation. Actual world fixture is registered in existing almetal_tests bundle with the real production metallib; no compileSource fallback. Runtime qualification still pending.
+
+- 2026-11-18 corrected fixture passes full actualworld parity02/03 with API+GPU validation1 and mandatory post-restart omission difference. Scope covers actual ordinary material/PBR/rigid/skinned/water/haze output paths, not owner visual acceptance.
+
+
+## PPD-404 — Actual-world tile fixture rejects its first material-alpha attribute declaration
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex actual-world raster tile qualification fixture
+- Discovered: 2026-11-18
+- Original reference: Material/PBR parity requires a valid real vertex/texture attribute contract; a failed fixture setup cannot prove a production rendering regression or qualify unrun cases.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); world-raster-parity-01/receipt.json records native28541 exit42, binaryd31b384e/source90ff23f7/indraf391 with unchangedfae7 library, actualsamefactoryvalidation1. BASE case passes; alpha reaches family1/i0/prewater/rigid/generic then input.render rejects batch0 at fixture574 (textures2/materialslots2/pbrslots0/alpha1/glow0/rigged0/min-alpha.004).804722assertions pass before1failure;2cases entered, remaining alpha/atmosphere/water unqualified. Rawstdout/stderr retained; no cost run.
+- Next action: The three authored declarations are corrected: material mode1, PBR mode0 and UV1/UV2 aliases to the valid UV0 stream. Complete actual-world parity passes; preserve the failed bundle and require owner visuals for viewer acceptance.
+- Verification: Initial fail-closed rejection and invalid authored mode/UV declaration confirmed; three fixture-only corrections pass full final world/main parity. Failed bundle/history retained; no production regression/guard relaxation or owner visual acceptance inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before any fixture correction. Fresh fullbuild03 and combined appearance883/18 pass; nativeworld qualification remains incomplete.
+
+- 2026-11-18 cause confirmed against production validation: authored legacy material_alpha_mode0 was invalid for the material path; PBR needs mode0 and all declared UV streams must be present. Isolatedc588/root6a2 changes only three fixture declarations. Failed native28541 bundle/binaryd31b384e retained under world-raster-parity-01. Fullbuild04/05 pass, actualworld parity02/03 each pass1,249,016assertions/4cases with validation1 and unchanged production shader/math/guards. No tolerance change or cost from the failed run.
+
+
+## PPD-405 — Private world-cost reducer assumes the wrong probe-count column
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex actual-world raster cost evidence
+- Discovered: 2026-11-18
+- Original reference: Reductions must use the actual retained CSV schema and never relabel, drop or rerun valid native observations to hide an analysis failure.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); world-raster-cost-cell0-01/reducer-failure-01.json retains inline KeyError configured_count after600 rows parsed. Actual header is configured_probes. No summary had been written; native cost exits0 with300observations/arm andactualvalidation2. Raw output/source unchanged; no renderer/test failure.
+- Next action: Corrected reduction uses configured_probes and qualifies unchanged600rows/300perarm/150completeblocks. Retain the failed reducer receipt; use paired block estimates and all adverse blocks, without replacing native samples.
+- Verification: Failed reduction retained, corrected schema-only reducer qualifies unchanged raw600rows. Cell0paired ratio is neutral; all adverse pairs retained and no native rerun.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correcting the private reducer; no GPU/source/threshold change.
+
+- 2026-11-18 corrected reduction of the unchanged cell0 raw output succeeds:600rows/300perarm/150completecounterbalanced blocks and actualnative32/16 modes; pairedGPU B/A1.0000708 is neutral, not a positive result. Initial KeyError receipt retained, no repeat GPU run or sample filtering.
+
+
+
+## PPD-406 — Private build-warning evidence writer fails before execution
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined warning evidence
+- Discovered: 2026-11-18
+- Original reference: An evidence-writer parse failure cannot create a successful report or invalidate independently retained build diagnostics; keep the failed attempt separate.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); combined-build-warning-review-02/evidence-writer-draft-failure.txt preserves the heredoc generator SyntaxError at line151 caused by nested triple-quoted report text ending the outer string. The stdin script did not parse; no audit.py/report/receipt was written or executed. Independent build03/04/05 receipts and raw log counts are unchanged.
+- Next action: Preserve the parse failure, replace only the private evidence writer with a directly authored file, syntax-check it and regenerate the warning inventory from unchanged logs. No native test or build rerun is required.
+- Verification: Initial parse failure retained; corrected direct writer passes AST/execution0 and pins unchanged build03/04/05 raw logs/counts in a generated report. Build06 appendage is separately retained; no build/native rerun.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before repairing the private writer. No compiler/GPU activity, build-output change or viewer/FPS attribution.
+
+- 2026-11-18 direct-file private writer AST and execution pass0, regenerating unchanged build03/04/05 inventory:20/5/5warnings,0errors. Report66140de2/receipt15943ab4 retained under combined-build-warning-review-02 alongside original parse failure. No native/build rerun or source suppression.
+
+
+
+## PPD-407 — Latest checkpoint paragraph move exceeds recovery-document line caps
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex checkpoint documentation
+- Discovered: 2026-11-18
+- Original reference: CURRENT and the main active ledger must remain within their160/180line recovery limits; moving the latest observed state must preserve bounded recovery structure.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); checks/final-document-validation-01/initial-failure.json retains both failed harness diagnostics and actual line counts. Moving the existing accepted-probe paragraph to the top inserted an extra blank line in each already-at-limit document. A combined shell wrapper returned the final command0, so the harness exit was not retained separately; its explicit failure diagnostics were observed and are not called a pass. Diff check separately reports a new final blank line in this register.
+- Next action: Whitespace-only correction and separate captured harness/diff exits pass0. Keep the initial failed diagnostics and standalone-check receipt; do not treat the earlier combined wrapper0 as a harness pass.
+- Verification: Initial line-limit/EOF failures retained; whitespace-only correction passes separate harness33 and diff-check0. No source/build/app/cost/owner acceptance changed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before whitespace correction. Independently staged69264 source/bytes/signature and all native results remain unchanged.
+
+- 2026-11-18 optional blank lines only removed, all prior facts retained. Standalone harness0 (33requiredfiles) and diff-check0 are captured in checks/final-document-validation-01/receipt.json. No production change or replacement app/cost execution.
