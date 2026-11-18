@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-463 -->
+<!-- next-defect-id: PPD-467 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7518,6 +7518,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 unchanged fresh69172 has no nonfinite skin/operand/fallback warning. This does not close the earlier reproduced symptom or prove equal avatar/assets; no corrective source change was made.
 
+- 2026-11-18 exact69277 closed-log audit02 reproduces32 throttled palette-stabilization notices reaching at least2900 calls, with16 operand diagnostics:7 nonfinite inverse XYZ and9 finite inverse/world operands producing bad XYZ; all world XYZ/W finite. Root/source audit finds existing shared palette publication and quantized skin-hash identity, so neither a missing architecture boundary nor a specific corruption cause is established. Preserve current GPU-input protection; next useful diagnostic is bounded exact operand bits plus opaque producer/content/pose/lifecycle/frame/thread identity. Owner hair report PPD466 has no proved association; no repair attempted. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
+
 ## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
 
 - Status: investigating
@@ -7744,6 +7746,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 exact69264 Homeowner~31→16,club~28–29→stable19. Four fresh allqueue GPUframes profiledMedium/Overlapping: Home77.47→146.26ms,club53.88→116.19ms diagnosticenvelopes, notliveframes. HomefusedFSunchanged273.188M withALU/inv117.22→232.87; largealphaFS56.385→23.216M yetALU/inv255.19→1395.03. DominantlateBASE/simplealphaareprepared. CensoredHome30–60→120–180 recordedwait25.557→42.058ms/remainder25.152→24.070; clubhaslargermainCPU/geometry/shadowcost. Current3456x2168 vsprior3456x1916, captureinstrumentation/scene/EEP/ClubFair differences andnocaptureOFFcontrol preventoldnewFPSgain/regressionattribution. Fullsource/replay/warning evidence in69264checkpointreport; goalacceptancepartial.
 
+- 2026-11-18 owner reports final69277 Home starts29FPS then16 during capture-enabled checkpoint /Users/dekstroza/Alchemy-home-69277-rqs_6lzz. Preserve as owner observation, not matched normal-rendering regression/gain. StartupHUD/darkdelay reports registeredseparately463; newrecordinganalysispending.
+
+- 2026-11-18 69277 Home capture-excluded native cadence28.763→15.161Hz, required-main CPU21.925→22.358ms and main wait7.720→37.930ms. Fresh Medium/Overlapping saved-frame profiles show main BASE ALU/invocation922.35→5378.81 at identical7520256 invocations; alpha-containing encoder244.00→1424.76 despite fewer invocations. Actual late prepared BASE/simple alpha are selected; point/projector invocations remain essentially unchanged. Per-receiver work is the demonstrated next GPU focus, but traversal/accepted weighting/SH/radiance/shadows/data access are not isolated. Blank compiler spill cells remain unknown; replay63.05→145.77ms is not live FPS. No old/new gain or sole-root-cause claim. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
 
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
@@ -10080,6 +10085,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Independent all36strict prechecks pass sixcells×threemodepairs×twomatchedversions with actualrender/computevalidation2, exactpixels/pattern/conservation and no warm/measured rows; receiptc3b47377cabf7e965a65790fb5de9a9452214651d8f85114b83690837bf3309d. Quiet primary12processes then pass0,7200rawrows,300observations/arm/cell; receipt2526d4ea3e7d3e6101c09e83e8b767de18d46bfb683d09710d28c1bdc66b477d. Cache enabled/disabled CPUratios cells0–5=1.03645,1.03437,1.03018,1.03670,1.08875,1.20683; wall=1.00402,1.00520,1.00840,1.00977,1.01410,1.04703. Repeated256 tax improves fromoriginal1.09192 to1.03018; alternating/unique remain adverse. Absolute unique CPUincrement21.502us/256draw,19.349us encoding; alternating6.295us/5.799us encoding. Source mutex/map/sharedptr costs remain hypotheses within measured encode scope. Preserve allorders/adverse/power/thermal data; no universalwin/FPSclaim, actualWorldcost/defaultselection stillpending.
 
+- 2026-11-18 real69277 Club120–173.292s main thread consumes52.473CPU-s/53.292s. Resource-plan stacks6.515s inclusive and2.374s exclusive hash insertion leaf corroborate a bookkeeping target, not guaranteed removable seconds or a plan-OFF FPS comparison. Existing key-hit Use temporary construction is a bounded source candidate; exact pins/generations/pass/access/completion retirement must remain. Binding/index read caches already exist. No implementation change before owner reboot pause. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
+
 ## PPD-436 — Contained surface fixture can leave SDL initialized on constructor skip
 
 - Status: investigating
@@ -10623,3 +10630,88 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 Readablepersistedadapter passespy_compile then actualtwoReleaseTUcommands pass0/0 with emptydiagnostics; no native claimed. Priorpreparsefailure transcriptionreceipt78b4fe160ebb18bdad6e88503b7fc5498f533e95ec01f150bae6db8feba0aef3 retained. Sourcehandoff22fff79711994446b1d2b4fb3ff3c3784bf474aa1a50213166ccd71b63bc8919 containsactualcommands/sourcepins and explicitnative-unrun scope.
 
 - 2026-11-18 standalone native adapter py_compile passes, but preflight computes GROUP ancestor one level too high and fails old-receipt lookup with FileNotFoundError before linker/native/test execution. No source/object changes; preliminary58/60snapshot files match, onlyapprovedDevice/nativefixture differ. Failed script/traceback retained. Root supersedes this optional standalone route: actual matched combined build12 will execute the already registered15native cases directly, avoiding more bespoke adapter work. No C++/GPU failure or nativepass inferred.
+
+## PPD-463 — Owner reports delayed HUD loading and a dark post-progress login interval
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex owner runtime checkpoint analysis
+- Discovered: 2026-11-18
+- Original reference: Preserve original Second Life HUD/asset startup and display behavior, including existing black-login repair PPD008; correlate actual startup/first-world/presentation and asset work rather than guessing from the progress indicator.
+- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner Home report29→16FPS, slow HUDs and dark post-progress interval; exacte426/builderd2c9 appPID65356 and private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retained.
+- Next action: After the owner reboot pause, correlate first-visible world/HUD timestamps with wearable, asset, presentation, admission and capture boundaries using bounded identity-aware diagnostics. Preserve cold-cache/compiler/instrumentation hypotheses as unproved; keep PPD008 history and PPD466 separate.
+- Verification: Owner report retained. Source/log/native analysis identifies a13.120277s startup iteration aligned with wearable-wait cleanup but lacks first-visible HUD/dark timing. Home early GPU replay is qualified; it does not isolate the reported appearance cause. No repair or owner acceptance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before any repair or attribution. Existing PPD008 and319 history retained.
+
+- 2026-11-18 closed-run source/log/native analysis retains a13.120277s startup iteration aligned with wearable-wait cleanup, but lacks first-visible HUD/dark-screen timestamps and cannot establish its cause. Home early capture has a separate3.992615s stop call about2s after first world. All317 warnings/37sites and three stderr PNG warnings mapped; no exact widget/HUD/asset correspondence. PPD466 separately retains later hair/loading report. No repair or closure; owner requested pause for reboot after saved-data analysis. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
+
+## PPD-464 — Owner reports brief unresponsiveness just after club teleport
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex owner runtime checkpoint analysis
+- Discovered: 2026-11-18
+- Original reference: Preserve responsive teleport/loading, actual frame pacing and valid scene work. Separate instrumentation pause from normal engine stalls using retained capture request/return bounds and CPU/native timelines.
+- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner reports51FPS rapidly falling18, then21 and brief unresponsiveness just after Club arrival. Three automatic frames and separate later external archive retained; automaticClub-late is missing. ExactPID65356/sourcee426/runtimebuilderd2c9.
+- Next action: After owner reboot pause, preserve a normal capture-OFF control and precise stall/first-visible timestamps. Compare arrival capture API bounds with CPU/admission/resource/upload events before deciding a renderer responsiveness repair.
+- Verification: Club early API capture starts2.030287s after scene2 and stop takes8.916251s, overlapping an8.996305s native iteration. Capture-associated pause is measured; exact owner symptom timing and normal-runtime recurrence are unknown. No source-confirmed regression or closure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before attribution/fix. Native/settings/rendering unchanged during run.
+
+- 2026-11-18 actual Club early capture starts2.030287s after scene2 and stop call takes8.916251s; native8.996305s iteration overlaps it. This establishes substantial capture-associated pause near arrival, without independently timing the owner symptom or proving capture-OFF recurrence. Later Club retained main thread is98.46%running with shadow/frontend/resource work, a separate sustained cost. No source change or normal-runtime responsiveness acceptance. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
+
+## PPD-465 — Runtime checkpoint capture timing and evidence qualification are incomplete
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex checkpoint integrator
+- Discovered: 2026-11-18
+- Original reference: Every owner checkpoint requires qualified actual retained CPU/GPU/native coverage and replay contents, including Home and club arrival/settlement; successful recorder exit alone is insufficient. Preserve failed evidence and separate diagnostic overhead from normal pacing.
+- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retains full recordings, four archives and exact per-attempt qualification. Native600s expires21:01:05.947789251UTC before Club late180s target. Overview exports exit0 but coverage fails13.481942458s GPUgap (>5s). External later archive is not simultaneous; its replay profile remains incomplete/unavailable.
+- Next action: Pause for owner reboot. After resume, repair coordinated scene/duration scheduling and qualify the incomplete external replay before relying on it; preserve all original archives, missing intervals and refusal/failed/corrected derivative receipts. Do not relax the5s gap gate or interpret placeholders/blank spill fields as measured zero.
+- Verification: Home early/late and Club early have complete Medium/Overlapping profiles with all five counter categories and shader rows; external opens/replays but profile never completes before stop. Native footer191contention drops,24committed pending, zero full/budget/I/O loss; pending is not GPU failure. GPU workloads stopped, Xcode/viewer closed. No normal control or complete four-phase profile acceptance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before tooling repair. Home early/late and club arrival API capture-stop wall intervals~3.993/8.566/8.916s are diagnostic overhead candidates, not normal engine stall proof. Native timing budget began before login; owner-directed transition plus180s club settlement exceeded remaining budget. Xcode menu attachment was absent from CUA accessibility tree, but owner successfully attached PID65356; external Frame1/Profile after replay requested afterward. A transient No GPU workload detected and exposed Abort action preceded eventual workload summary12commands/37render encoders/6580draws; completion/whole-frame coverage not yet established.
+- 2026-11-18 private log audit draft had an incorrect cleanup-count literal42; original draft preserved, exact retained1032/861 counts restored in corrected report and correction-history.json without changing raw log/census. Private process snapshot writer raised ValueError: Circular reference detected before producing JSON because ancestry reused a row later augmented with ancestry; failed writer retained. Narrow record-copy repair authorized after this registration; raw process snapshot remains independent evidence. These are evidence defects, not renderer failures or runtime regressions.
+
+- 2026-11-18 external Xcode capture export completes5,538,665,103bytes/5files; originalworkingview12commandbuffers/37render/1compute/5blit/6580draws. Profileafterreplay was checked, but export Embedperformancedata was disabled0; savedperformancecoverage remains unknown until freshreplay. OwnerforcedquitSIGKILL whilecapture/exportactive; Xcodepause was not released before root saidlogoutallowed. Preserve this operational failure separately from normalexit or spontaneousenginecrash. ViewerPIDabsent afterforcequit. Incidental XcodeZERO_CHECK/vcpkgconfigure started21:18:30UTC and overlaps externalcapture only, afterOverviewended21:01:54; guardedSIGINTattempt sendsNOsignal because exactmakealreadyexited. No broadkill performed.
+- 2026-11-18 private preservation01 fails beforepayloadhash on legitimate internal MTLBuffer symlink (first independentAPFSclone alreadycreated/unopened). Preservefailedscript; sourcearchivehas2527internallinks infirstHome. Repairmustretainexactinternal target strings and verifyresolvedtargetsremaininsideeacharchive; rejectexternal/brokenlinks, preserveallpayloadhashesandonlyopenindependentcopies. No originals modified or replayed.
+
+- 2026-11-18 private compactshader extraction initially merges seven tail rows into the100th record: Xcode AX emits later row/cell elements without(disabled), while parser requiredthatlabel. Actualraw observedtail provesseparate1517/1532/1545/1558/1571/1586/1599 rowIDs. Preservemalformedhome-late-shaders output, failrowlengthgate, accept plain rowelements aswell asdisabledones onlyinsideactualtable. Reprocesssame retainedobservedAXwithoutanotherGPUprofile; neverdrop tailshaderrowsorreplaceblankSpilledByteswithzero. FullsmallAXandcompactcountersemanticJSON remainseparateevidenceformats.
+
+- 2026-11-18 private replay-evidence adapter rejects Club-early profile-controls because the code contains two AX requests, although the first explicitly suppresses emission and the tool returns exactly one complete full AX snapshot. Initial refusal and adapter source retained before correction. Narrow the guard to count emitted observations while retaining strict one-full-window/output-block, no-diff/no-truncation and exact call/output provenance checks; do not request another GPU replay merely to recover already retained data.
+
+- 2026-11-18 closed warning audit02 has a stale cross-site sentence: its unchanged bake-mask row still says no overlap with21 missing texture IDs, while the EOF summary correctly compares all22 and reports zero intersection. Register before correction; preserve prior report/classified rows/receipts, refresh only the stale derived sentence to the already measured EOF identity set, and distinguish instrument/debugger warnings from the317 viewer warnings. No raw log, source, runtime or numerical result changes.
+
+- 2026-11-18 source review catches an unexecuted four-frame comparison draft choosing the first same-label projector encoder even when Club-early main has none: API42303 belongs to the ordinary-probe sequence after production UI, not the main-view sequence. Preserve the draft before narrowing selection to actual primary API order before first production UI/fused presentation; retain later duplicate rows separately and represent missing main projector as absent, not measured zero. Existing Home primary API matches remain valid; no published four-frame result or GPU run relied on the draft.
+- 2026-11-18 saved external Club archive opens/replays to12CB/37render/1compute/5blit/6580draws, but Medium/Overlapping profiling remains in background with incomplete activity and43 cost rows showing '-' plus placeholders. No completed profile is claimed. Stop debugging GPU workload for owner reboot pause; retained stopped UI says Finished running, and subsequent app inventory confirms Xcode/viewer not running. Three automatic archives have completed profiles and full counter/shader tables; external profile/timing/spills remain unavailable. No shader variant, renderer change, new viewer run or counterfactual performed. Private log-audit final hash-print step raises NameError after artifacts were written; failed command retained and subsequent separate read-only hash/consistency inspection passes, without rewriting raw evidence.
+
+## PPD-466 — Owner reports slow avatar texture and hair appearance after club arrival
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex checkpoint integrator
+- Discovered: 2026-11-18
+- Original reference: Preserve original avatar/attachment texture, material, bake and rigged appearance behavior during loading. Retain valid resource admission and eventual progress; distinguish transport/content failure, geometry deformation and loading latency.
+- Evidence: [69277 checkpoint ledger](work/active/apple-first-engine-completion-20261118.md). Private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retains owner reports that avatar textures, especially hair, seemed incomplete, followed by most appearing loaded at21:04:27UTC. Closed full-log warning audit02 maps22 distinct HTTP403/marked-missing textures,19 material failures across15 assets,29 missing bake auxiliary masks, transport timeouts and recurring PPD311 palette fallbacks. No exact affected hair/HUD object-to-asset correspondence is available.
+- Next action: Preserve the owner report and full warning-site/trigger audit. After the owner reboot pause, correlate affected object/material/texture identity and first-visible state with bounded private asset/admission/palette diagnostics before selecting a general repair. Do not discard valid lighting or relax resource lifetime safety to improve apparent loading.
+- Verification: Reported appearance/loading symptom; cause and regression attribution unknown. The mostly-loaded receipt is after native and Overview coverage ended. Eventual recovery of the22 specific marked-missing textures is not established; palette fallback affects intended deformation but is not proved to explain this report.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before any repair or causal attribution. No settings, asset handling, shader or source change was made during this checkpoint analysis. Related PPD311/463/464 remain independent open records.

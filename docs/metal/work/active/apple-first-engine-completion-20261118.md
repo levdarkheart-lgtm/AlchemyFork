@@ -3,7 +3,8 @@
 Owner explicitly sets a new active goal after clearing the previous one:
 complete the integrated architecture FIRST, then stage one verified viewer
 and pause for owner-started profiling/optimization. Existing69264 app/captures/
-reports/failures remain untouched. No new viewer launch/login/profile/push.
+reports/failures remain untouched. Initial implementation prohibited new viewer
+launch/login/profile/push; later explicitly authorized runtime is recorded below.
 Contained correctness and complete-path cost checks remain authorized.
 
 Baseline canonicaleda333fbe296c89a871e8d797485181d7b16ead4, production
@@ -579,3 +580,62 @@ Exactapp/source/provenance/results/limits andnextownerprotocol:
 
 No viewerlaunch/login/profile/push occurred. PausehereforownerHome/clubfeedback,
 thenqualifiedreplayableGPU+CPU/native/resource/full-log/captureOFFassessment.
+
+
+## Owner-authorized live checkpoint —69277
+
+Ownerrequestslaunch; exactstagedapphashesrechecked, PID65356 actualproc_pidpath
+verified. Run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz. Savedsettings/location
+retained,no --set/session/preset overrides. No autologin. Read-onlyqualifiedLEAP
+controllercopiedwith50keywhitelist, no request-saved-login filecreated. Native
+sourceheaderreportsbuilderd2c9bd, notcanonicale426; collectorusesactualbuilder
+identity withcanonicalmappingretainedinlaunch.json.
+Overview600s/raw4096MiB/export512MiB/native256MiB attaches65517; ready20:51:54UTC
+verifiedownednotification/rawdata. Nativeautoearly+late180s/2scenes,4attempts
+maximum; capture layerON andvalidation/HUD/ForceAll/oldexperimentalenvcleared.
+LoginHomecuegiven; ownerOKnotproofloggedin. No viewerlocation/graphics writes.
+NeedfollowHome~world+180latecapture, thenclubTP/loading+~180settled,stopbefore
+native600s. Capturepauses/armedlayeroverhead notnormalFPS; newcontents/coverage/
+warnings unqualifieduntilactualretentionandanalysis. No push.
+
+
+## Saved-data analysis complete; owner reboot pause
+
+Actual runtime and preserved evidence supersede the earlier live instructions.
+Viewer65356 was forcequit during later Xcode capture/export; no normal logout,
+Goodbye or cleanup acceptance is claimed. Three automatic captures stopped/error0
+and fresh Medium/Overlapping profiles retained Home63.05/145.77ms and Clubearly
+45.40ms. These are replay diagnostics, not normal FPS. External settled Club
+archive5,538,665,103bytes opens/replays, but profiling remained incomplete; '-' cost
+and zero placeholders are unqualified. Stop GPU debugging and close Xcode verified;
+final process checks contain no viewer/replayer/recording/build jobs.
+
+Home native cadence28.763→15.161Hz accompanies main wait7.720→37.930ms while
+required-main CPU21.925→22.358ms. Retained main BASE and alpha-containing encoder
+ALU/invocation each grow~5.83×; actual late prepared shaders are selected. Native
+phase-only configured probes grow, while light/projector inputs remain stable.
+Neither exact accepted counts nor traversal/SH/radiance/shadow/data-access
+attribution has been isolated. Club native-backed tail is98.46%main-running with
+shadow/frontend/resource tracking costs; inclusive owners overlap. New architecture
+performance gain/loss is not isolated by this single capture-enabled run.
+
+Coverage remains FAILED/partial: native600s ends before automaticClub-late180s;
+Overview successful export has13.481942458s GPUgap (>5s);191native contention drops,
+no full/budget/I/O loss; external interval is later and not simultaneous. No normal
+capture-OFF control. Preserve all failed attempts, parser/refusal/correction history,
+internal-link archive preservation and unknown heavy shader spill fields.
+
+Closed warning audit maps317WARN/37sites, zeroERROR/FATAL, three separate PNGstderr
+warnings, plus339recorderDWARF diagnostics and qualified debugger messages. PPD311
+nonfinite palette fallback recurs; PPD463HUD/dark,464TP unresponsiveness and466hair
+appearance have unproved causes/object association. PPD435CPU bookkeeping remains a
+bounded optimization target over implemented resource safety; PPD465 records capture
+and evidence defects/corrections. No source fix was implemented in this analysis.
+
+[Canonical findings](../../research/engine-checkpoint-69277-findings-20261118.md)
+links all private native/CPU/log/process/source/GPU reports and scope limitations.
+Source/source flags/staged app remain exactly the final69277 checkpoint above.
+After owner resumes: use restored saved-frame Home receiver-cost experiments and
+bounded Club actual-owner CPU checks, keep lighting/quality/lifetime safety, repair
+coordinated recording coverage before any new runtime. Current goal remains paused
+for owner's reboot; no automatic reboot, implementation, launch, recording or push.
