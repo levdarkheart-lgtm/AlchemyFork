@@ -135,7 +135,7 @@ struct ALViewerMetalShadowSourceCache
     U64 bounds_revision=0;
     ~ALViewerMetalShadowSourceCache(){if(auto table=visibility.lock())table->retire(bounds);}
 };
-struct LLDrawInfo
+struct LLDrawInfo : std::enable_shared_from_this<LLDrawInfo>
 {
     LLPointer<LLVertexBuffer> mVertexBuffer;
     U32 mCount=3,mOffset=0;
@@ -4403,3 +4403,5 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 
 #include "alpipeline_producer_preparation_native.inl"
 #include "alpipeline_producer_drain_native.inl"
+
+#include "alpipeline_producer_owner_cost_native.inl"

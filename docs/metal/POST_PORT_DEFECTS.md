@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-441 -->
+<!-- next-defect-id: PPD-445 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10169,3 +10169,77 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before API addition. Build02 was intentionally interrupted before final viewer compilation; raw logs/receipt/source and interruption cause retained separately, never relabeled a completed build.
 
 - 2026-11-18 PPD440 additional source scope: E6 forward/water cost drafts likewise call device.waitUntilIdle at observation end, adding the same unrelated queue command. Actual owner GPU timestamps are already token-derived; no new cost rows executed. Both test-only callers will use explicit actual-token native wait. Missing/precommit/abandoned/late-token and no-extra-commit cases are authored in existing completion fixture. Production normal render remains asynchronous.
+
+
+## PPD-441 — Actual source-owner cost draft omits frame lifecycle and retains timed outputs
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual source routing cost qualification
+- Discovered: 2026-11-18
+- Original reference: The outer FrameData owner starts each actual frame; sequential samples must not accumulate into one unchanging frame arena. Both passes of a single frame share that actual epoch.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E3 peer finds new UNRUN owner-cost lambda initializes FrameData once1, uses successful Catch callbacks inside clocks(430class), and holds all output targets after wall-end(432class). No new cost/native observations executed. Production/header source freeze unchanged.
+- Next action: Begin a frame per observation inside owner scope; ordinary checked throws inside clock; retain strict/first-use targets only and retire steady outputs/tokens inside per-observation pool before wall-end. Audit E6 for the same frame-lifecycle omission.
+- Verification: New test-source scope/lifecycle defects; prior original backend controls and actual correctness gates remain valid at their exact sources.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before author correction; preserve all draft bytes and peer findings.
+
+
+## PPD-442 — Producer cost draft uses unsafe cache isolation and incomplete query inputs
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual producer owner cost qualification
+- Discovered: 2026-11-18
+- Original reference: Independent fixture caches require ordinary mutable unique ownership; visibility queries must retain actual box/fan/sample inputs before positive controls are meaningful. Public getter spelling is source-defined.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); root self-review preserves new uncompiled producer-owner/source-draft-01. Draft declares moved previous material cache const then moves through const_cast (invalid mutation of const), omits box/fan/sample query controls, and spells worldSourceCommandStats incorrectly. Churn input also depends on arm-specific frame parity, so it must be made arm-identical and prechecked before cost. No compile/native/timing execution occurred.
+- Next action: Remove const_cast by mutable ordinary unique ownership, use exact actual query/getter contracts, matched churn value and strict changed-state controls; compile before execution.
+- Verification: Source-only fixture defects, no production failure/cost/FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before draft corrections; all original bytes retained privately.
+
+
+## PPD-443 — Producer cost draft would time a linear fixture-only source-pin search
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual producer owner cost qualification
+- Discovered: 2026-11-18
+- Original reference: Production pins the already-proven LLDrawInfo directly through LLPointer in constant time. A benchmark must not substitute a per-row vector search or extra selection callbacks only on the candidate arm.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); root source review before first compile/run finds cost draft calls DrainFixture::drain, whose correctness seam linearly finds shared owners and increments selection diagnostics. Sixty-four rows would pay fixture-only quadratic searches. No costs executed; initial draft already retained under442.
+- Next action: Give the typed fixture source a direct weak/shared owner certificate, use constant-time direct pinning in the cost call of the unchanged production drain template, and call the uninstrumented actual ordinaryFlavor selector. Retain the correctness fixture selection counters only for those tests.
+- Verification: Source-only cost-fixture tax; no production complexity or performance failure attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before source correction; compile/native/cost still required.
+
+- 2026-11-18 PPD443 first actual producer-owner syntax01 fails Werror unused [this] capture left by the direct-pin correction. Raw log/argv/hash retained; remove only that capture and rerun before native execution. New producer cost source had no other reported syntax diagnostics in this attempt.
+
+
+## PPD-444 — Private lighting runner accepts mismatched cells and missing plane manifests
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex combined cost qualification
+- Discovered: 2026-11-18
+- Original reference: Cost qualification requires the exact selected workload and actual nonempty retained image controls. Missing evidence is unknown, never an exact cross-mode equality proof.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); peer review of unrun combined-gate-runner02 finds qualify_rows omits row.cell==job.cell; reducer permits two absent/empty plane manifests to compare equal. No native/cost result or false pass has occurred. Original02 bytes/findings preserved before correction.
+- Next action: Require exact selected cell in every row and nonempty expected plane records in each manifest; add CPU negative controls for wrong cell and either missing/empty plane side. Produce new retained runner03 and execute only matching final binaries after strict gates.
+- Verification: Private validation defects, not viewer/shader failures; original source/native receipts unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before guards/negative controls. Counts and balanced mode-order math were source-reviewed separately.

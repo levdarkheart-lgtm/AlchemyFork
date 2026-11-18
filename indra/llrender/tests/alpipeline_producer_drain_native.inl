@@ -113,10 +113,9 @@ struct DrainFixture : Publication
         Inputs::ALSceneProducerDrainNative::drain(groups.begin(), groups.end(), policy,
             Inputs::sNativeSceneSources, serial, U32(inputs.frame), budget,
             [](DrainGroup* owner) { return owner->shared_from_this(); },
-            [this](Inputs::LLDrawInfo* source)
+            [](Inputs::LLDrawInfo* source)
             {
-                for (const auto& draw : group->draws) if (draw.get() == source) return draw;
-                return std::shared_ptr<Inputs::LLDrawInfo>{};
+                return source ? source->weak_from_this().lock() : std::shared_ptr<Inputs::LLDrawInfo>{};
             },
             [this](U32 pass, const Inputs::LLDrawInfo& source, const Policy& actual)
             {

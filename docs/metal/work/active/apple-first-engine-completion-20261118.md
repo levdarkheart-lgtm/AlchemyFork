@@ -247,3 +247,34 @@ No normal renderer wait is added. Narrow native syntax passes, actual run pendin
 Test-only C++ callback autorelease pool bridge enables accurate producer-owner
 wall scopes without product API or per-observation autorelease retention.
 Full updated matching build03 follows this new ABI/source freeze.
+
+
+Completion440 fresh exacte65ee backend compile/link/native passes2920assertions/
+13cases with enabledresourceplanning +33/1defaultunset completion control,
+API/GPUvalidation1; no warnings/errors. Exactcurrentroot objects/60source/header
+inputs, no oldarchives. Addendum receipt d12805c675b56a9448995896bdf4698c22c2d0c73c29d0d1964f8214387e9303.
+Build03 mirrors e65ee->d1737ebb/indra07011dd, Release4jobs, RUNNING; no success
+claimed yet. E6test-only2b97->f19d replaces dummy settlement waits with actual
+tokens and450samples/process (150/arm;2freshprocesses =>300/arm/mode/cell).
+Per-observation E6FrameData.beginFrame already correct;441does not affect it.
+
+Rootnew producer-owner hidden fixture includes exact base/capability drain,
+separate group admission/seal, original cull-range/capture bodies, realGBuffer
+commands and actual token/autorelease retirement. Six bounded cells cover1/16
+small rows;64sources×3072uniquevertices/indices inside/outside/partial3identity
+camera consumers and one-source material churn. Mesh creation/upload and original
+scene-discovery are explicit excluded boundaries. OldprototypesOFF; B selects
+CPU/scalar routing only.300measuredsamples/arm/cell with retained ABBA/BAAB/order/
+adverse rows. First/pre-churn timings and4color/depth/query bytes are written
+before strict prechecks; changed-state output response required. Stencilcoverage
+is separate E3nativefixture, not claimed by these C++ readbacks.
+
+PPD442/443retain uncompiled unsafe-cache/query/churn and linearfixturepin drafts.
+Direct weak/shared typed source pin replaces the linear lookup; costselector is
+the actual ordinaryFlavor without fixture selection counters. Actual production
+LLPointer pin remains unchanged. Syntax01fails leftover unusedcapture;02passes
+unchangedpinned source. Sourcepeer corrected evidence delta clear. Newcost is
+UNRUN pending finalmatchingllrender_tests incremental build and all strict
+prechecks before timing. PPD441E3newcost lifecycle/Catch/retirement draft and
+PPD444privateE6wrong-cell/emptyplane guards retained; finalscripts CPUqualified,
+no new timing/FPS result. No source/API expansion anticipated after e65ee freeze.
