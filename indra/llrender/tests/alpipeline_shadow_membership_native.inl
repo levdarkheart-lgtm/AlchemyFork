@@ -72,7 +72,7 @@ struct Driver
     ALMetalShadowMembershipCache memberships;
     std::vector<ALMetalWorldSpotShadowBatch> output;
     LLMatrix4a model=LLMatrix4a::identity();LLMatrix4 uv;
-    std::uint64_t frame=0,epoch=0,factories=0,builders=0,raw_rows=0,positive_rows=0,stamped_spans=0;
+    std::uint64_t frame=0,epoch=0,factories=0,builders=0,raw_rows=0,positive_rows=0,stamped_spans=0,preparation_deferrals=0;
     std::string error;
     Driver(Publication& f,U32 count,Coverage c,const LLPointer<LLVertexBuffer>& geometry,bool use_skin=false):fixture(f),coverage(c),rigged(use_skin)
     {
@@ -134,7 +134,9 @@ struct Driver
         auto stamped=admitted_spans.empty()?Bridge::AdmittedSpan{}:admitted_spans.front();stamped.coverage=coverage;
         auto owners=std::make_shared<Lease>();
         std::shared_ptr<CPUOwners> cpu_owners;
-        auto hit=cached&&!admitted_spans.empty()?Bridge::current(memberships,stamped,residency,U32(frame)):ALMetalShadowMembershipPublisher::Result{};
+        auto hit=cached&&!admitted_spans.empty()?Bridge::current(memberships,stamped,residency,U32(frame),budget.snapshot().frame):ALMetalShadowMembershipPublisher::Result{};
+        preparation_deferrals+=hit.defer_preparation;
+        const bool collect_members=cached&&!admitted_spans.empty()&&!hit.defer_preparation;
         ALMetalShadowPrepareContext context;context.view[12]=.013f*F32(view+1);context.projection[5]=.79f;
         model=LLMatrix4a::translation(.021f*F32(frame%7),.017f*F32(view),0.f);uv.setTranslation(LLVector3(.031f*F32(view),.013f*F32(frame%5),0.f));
         LLMatrix4a view_matrix(context.view.data()),projection(context.projection.data());
@@ -160,7 +162,7 @@ struct Driver
             // The real integrated per-family pending vector is local. Charge
             // its cold reserve/destruction here rather than hiding it in a
             // persistent pre-reserved fixture scratch allocation.
-            std::vector<Source> pending;if(cached&&!admitted_spans.empty())pending.reserve(stamped.count);
+            std::vector<Source> pending;if(collect_members)pending.reserve(stamped.count);
             for(std::size_t i=0;i<count;++i)
             {
                 const auto& info=infoAt(i);++factories;
@@ -168,9 +170,9 @@ struct Driver
                 if(!published)return false;
                 owners->publications.push_back(published.owner);const auto* source=owners->retain(*published.record);
                 if(!prepareSmall(*source,i))return false;
-                if(cached&&!admitted_spans.empty()){const auto& producer=info.metalSourcePublication();pending.push_back({producer,producer->identity(),published.owner->producer_revision,*published.record});}
+                if(collect_members){const auto& producer=info.metalSourcePublication();pending.push_back({producer,producer->identity(),published.owner->producer_revision,*published.record});}
             }
-            if(cached&&!admitted_spans.empty())
+            if(collect_members)
             {
                 // Optional cache failure does not replay or discard the already
                 // complete required old-path outputs.
@@ -231,7 +233,20 @@ TEST_CASE("Shadow membership frontier preserves actual admission across small ra
         {CHECK(now.memberships.stats().resource_unions==0);CHECK(now.memberships.stats().hits==0);CHECK(old.factories==now.factories);CHECK(now.memberships.stats().entries==0);}
         if(mode==3||rows<Bridge::minimum_members)for(const auto& value:now.stability){CHECK_FALSE(value.pendingSince());CHECK_FALSE(value.lastConsideredFrame());}
         if(mode==0&&rows>=Bridge::minimum_members){CHECK(now.memberships.stats().resource_unions==3);CHECK(now.factories<old.factories);}
-        if(mode==4&&rows>=Bridge::minimum_members){CHECK(now.memberships.stats().resource_unions==6);CHECK(now.factories<old.factories);}
+        if(mode==4&&rows>=Bridge::minimum_members)
+        {
+            CHECK(now.memberships.stats().resource_unions==3);CHECK(now.preparation_deferrals==7);
+            CHECK(now.factories<old.factories);
+            // Once real source writes stop, the same current records may seal
+            // on a later outer frame and then reuse without caching pose/UV.
+            old.begin(false,false);now.begin(false,false);
+            for(U32 view=0;view<7;++view){REQUIRE(old.capture(false,view,false,a));REQUIRE(now.capture(true,view,false,b));equal(old,now);a.reset();b.reset();}
+            CHECK(now.memberships.stats().resource_unions==6);
+            const auto before=now.factories;
+            old.begin(false,false);now.begin(false,false);
+            for(U32 view=0;view<7;++view){REQUIRE(old.capture(false,view,false,a));REQUIRE(now.capture(true,view,false,b));equal(old,now);a.reset();b.reset();}
+            CHECK(now.factories==before);CHECK(now.memberships.stats().resource_unions==6);
+        }
     }
 }
 
@@ -262,7 +277,7 @@ TEST_CASE("Shadow source factory frontier retains cold changing cull and denied 
                 // frames, with independent source/cache ownership per arm.
                 // Construction is setup; final teardown is measured separately.
                 auto fresh=mode==5?std::make_unique<Driver>(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged):nullptr;
-                auto& driver=fresh?*fresh:(order[position]?now:old);const auto factories=driver.factories,observations=driver.observations(),unions=driver.memberships.stats().resource_unions,raw=driver.raw_rows,positive=driver.positive_rows,spans=driver.stamped_spans;
+                auto& driver=fresh?*fresh:(order[position]?now:old);const auto factories=driver.factories,observations=driver.observations(),unions=driver.memberships.stats().resource_unions,raw=driver.raw_rows,positive=driver.positive_rows,spans=driver.stamped_spans,deferrals=driver.preparation_deferrals;
                 std::int64_t nanos=0,retirement=0;bool complete=true;
                 for(unsigned iteration=0;iteration<iterations;++iteration)
                 {
@@ -270,9 +285,9 @@ TEST_CASE("Shadow source factory frontier retains cold changing cull and denied 
                     for(U32 view=0;view<7;++view){start=std::chrono::steady_clock::now();complete=driver.capture(order[position]!=0,view,mode==1,owner)&&complete;stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();start=std::chrono::steady_clock::now();owner.reset();stop=std::chrono::steady_clock::now();retirement+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();}
                 }
                 REQUIRE(complete);REQUIRE(!driver.output.empty());REQUIRE(driver.output[0].vertices);
-                const auto factory_delta=driver.factories-factories,observation_delta=driver.observations()-observations,union_delta=driver.memberships.stats().resource_unions-unions,raw_delta=driver.raw_rows-raw,positive_delta=driver.positive_rows-positive,span_delta=driver.stamped_spans-spans,debt=driver.memberships.stats().metadata_bytes;
+                const auto factory_delta=driver.factories-factories,observation_delta=driver.observations()-observations,union_delta=driver.memberships.stats().resource_unions-unions,raw_delta=driver.raw_rows-raw,positive_delta=driver.positive_rows-positive,span_delta=driver.stamped_spans-spans,deferral_delta=driver.preparation_deferrals-deferrals,debt=driver.memberships.stats().metadata_bytes;
                 const auto teardown_start=std::chrono::steady_clock::now();fresh.reset();const auto teardown=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-teardown_start).count();
-                if(block>=warm)std::cout<<"shadow_frontier_cost cell="<<cell<<" rows="<<cells[cell].rows<<" coverage="<<U32(cells[cell].coverage)<<" mode="<<mode<<" block="<<block-warm<<" position="<<position<<" arm="<<order[position]<<" seven_view_iterations="<<iterations<<" handoff_ns="<<nanos<<" owner_retirement_ns="<<retirement<<" producer_teardown_ns="<<teardown<<" factories="<<factory_delta<<" observation_calls="<<observation_delta<<" successful_unions="<<union_delta<<" raw_rows="<<raw_delta<<" positive_rows="<<positive_delta<<" stamped_spans="<<span_delta<<" cpu_debt="<<debt<<std::endl;
+                if(block>=warm)std::cout<<"shadow_frontier_cost cell="<<cell<<" rows="<<cells[cell].rows<<" coverage="<<U32(cells[cell].coverage)<<" mode="<<mode<<" block="<<block-warm<<" position="<<position<<" arm="<<order[position]<<" seven_view_iterations="<<iterations<<" handoff_ns="<<nanos<<" owner_retirement_ns="<<retirement<<" producer_teardown_ns="<<teardown<<" factories="<<factory_delta<<" observation_calls="<<observation_delta<<" successful_unions="<<union_delta<<" raw_rows="<<raw_delta<<" positive_rows="<<positive_delta<<" stamped_spans="<<span_delta<<" preparation_deferrals="<<deferral_delta<<" cpu_debt="<<debt<<std::endl;
             }
         }
     }

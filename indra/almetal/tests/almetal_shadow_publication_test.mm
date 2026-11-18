@@ -288,6 +288,12 @@ TEST_CASE("shadow publication: nested newer membership survives stale outer seal
             CHECK(current.membership->members()[0].record==inner_rows[0].record);CHECK(current.membership->resources().size()==2);
             CHECK(debt>=inner.membership->metadataBytes());CHECK(debt<=cache.accounting()->maximumBytes());
             CHECK(cache.stats().resource_unions==1);
+            // The old in-progress A callback ran after inner B committed. It
+            // must not mutate B's witness even when B later loses native cache.
+            one.clear();
+            CHECK_FALSE(cache.current(owner,0,one,3,3).defer_preparation);
+            inner_rows[0].producer->invalidate();
+            CHECK(cache.current(owner,0,one,3,3).defer_preparation);
         }
     }
 }
@@ -354,5 +360,130 @@ TEST_CASE("shadow publication: pending age survives busy denial and revision chu
         auto fresh=cache.seal(owner,1,rows,ranges,f.residency,busy,f.serial,4,4);
         CHECK_FALSE(fresh);CHECK(fresh.failure==Publisher::Failure::admission);CHECK(busy.snapshot().progress_admissions==1);
         REQUIRE(completed.membership);CHECK(completed.membership->members()[0].record==rows[0].record);
+    }
+}
+
+TEST_CASE("shadow publication: source witness survives empty cache and denied attempts", "[almetal][shadow-publication][shadow-publication-source-stability]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALNativeFrameBudget budget;ALMetalShadowMembershipCache cache;auto owner=group();
+        budget.beginFrame({.frame=0});std::array rows{f.source(1)};
+        const std::array ranges{Range{3,Coverage::opaque,0,1}};
+        auto initial=cache.seal(owner,3,rows,ranges,f.residency,budget,f.serial,0,0);REQUIRE(initial);
+        auto ready=cache.current(owner,3,f.residency,0,0);REQUIRE(ready);CHECK_FALSE(ready.defer_preparation);
+        f.residency.clear();ready={};initial={};
+        auto same_frame=cache.current(owner,3,f.residency,0,0);CHECK_FALSE(same_frame);CHECK(same_frame.defer_preparation);
+        // Frame0 is a real attempt, not an unknown sentinel. Unopted current
+        // retains its old validity-only contract and does not reset the watch.
+        CHECK_FALSE(cache.current(owner,3,f.residency,0).defer_preparation);
+        CHECK_FALSE(cache.current(owner,3,f.residency,1,1).defer_preparation);
+        const auto mutate=[&](std::uint64_t generation){
+            rows[0].producer->invalidate();auto fresh=f.source(generation);
+            rows[0].record=std::move(fresh.record);rows[0].revision=rows[0].producer->revision();
+            REQUIRE(rows[0].producer->publish(rows[0].revision,rows[0].record));
+        };
+        mutate(2);CHECK(cache.current(owner,3,f.residency,1,1).defer_preparation);
+        mutate(3);CHECK(cache.current(owner,3,f.residency,2,2).defer_preparation);
+        CHECK_FALSE(cache.current(owner,3,f.residency,3,3).defer_preparation);
+        ALNativeFrameBudget::FrameInputs pressure;pressure.frame=3;pressure.frame_interval_ns=100;pressure.required_main_cpu_ns=90;budget.beginFrame(pressure);
+        auto denied=cache.seal(owner,3,rows,ranges,f.residency,budget,f.serial,3,0);
+        CHECK_FALSE(denied);CHECK(denied.failure==Publisher::Failure::admission);
+        CHECK(cache.current(owner,3,f.residency,3,3).defer_preparation);
+        // The failed attempt advanced derived validity, but must keep watching
+        // real changes. Otherwise this second write would appear stable.
+        mutate(4);CHECK(cache.current(owner,3,f.residency,4,4).defer_preparation);
+        mutate(5);CHECK(cache.current(owner,3,f.residency,5,5).defer_preparation);
+        CHECK(cache.stats().resource_unions==1);
+        CHECK_FALSE(cache.current(owner,3,f.residency,6,6).defer_preparation);
+        budget.beginFrame({.frame=6});
+        auto progressed=cache.seal(owner,3,rows,ranges,f.residency,budget,f.serial,6,0);REQUIRE(progressed);
+        auto current=cache.current(owner,3,f.residency,6,6);REQUIRE(current);CHECK_FALSE(current.defer_preparation);
+        CHECK(current.membership==progressed.membership);CHECK(cache.stats().resource_unions==2);
+    }
+}
+
+TEST_CASE("shadow publication: watcher debt survives rows and retires with cache owner", "[almetal][shadow-publication][shadow-publication-source-stability]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALMetalShadowMembershipCache::Limits limits;limits.maximum_metadata_bytes=1024*1024;
+        ALMetalShadowMembershipCache cache(limits);auto owner=group();auto source=f.source(1);
+        std::vector<Source> rows(1024,source);const std::array ranges{Range{3,Coverage::opaque,0,rows.size()}};
+        std::vector<std::shared_ptr<ALNativePublication::State>> owners;
+        unsigned retained=0;Publisher::Result denied;
+        // Conservatively charged source subscriptions remain after all large
+        // membership/native readers retire; they cannot manufacture free debt.
+        for(unsigned attempt=0;attempt<16;++attempt)
+        {
+            auto next=group();owners.push_back(next);f.budget.beginFrame({.frame=attempt+1});
+            auto result=cache.seal(next,3,rows,ranges,f.residency,f.budget,f.serial,attempt+1,0);
+            if(!result){denied=std::move(result);break;}
+            ++retained;f.residency.clear();result={};
+            CHECK(cache.accounting()->bytes()>0);CHECK(cache.accounting()->bytes()<=limits.maximum_metadata_bytes);
+        }
+        CHECK(retained>0);CHECK(retained<16);CHECK_FALSE(denied);CHECK(denied.failure==Publisher::Failure::cpu_residency);
+        const auto held=cache.accounting()->bytes();CHECK(held>sizeof(Publisher));
+        // The watch owns neither native SourceRecord nor source State.
+        std::weak_ptr<const ALMetalShadowSourceRecord> record=source.record;
+        std::weak_ptr<ALNativePublication::State> producer=source.producer;
+        source.producer->evict();source={};rows.clear();
+        CHECK(record.expired());CHECK(producer.expired());CHECK(cache.accounting()->bytes()==held);
+        cache.clear();CHECK(cache.accounting()->bytes()==0);
+        // The same domain can now admit ordinary required-current inputs.
+        auto fresh=f.source(2);const std::array new_rows{fresh};const std::array one{Range{3,Coverage::opaque,0,1}};
+        f.budget.beginFrame({.frame=20});auto recovered=cache.seal(owner,3,new_rows,one,f.residency,f.budget,f.serial,20,20);REQUIRE(recovered);
+        auto native=recovered.membership->nativeOwner();const auto native_bytes=recovered.membership->nativeMetadataBytes();
+        f.residency.clear();recovered={};CHECK(cache.accounting()->bytes()>native_bytes);
+        cache.clear();CHECK(cache.accounting()->bytes()==native_bytes);native.reset();CHECK(cache.accounting()->bytes()==0);
+    }
+}
+
+TEST_CASE("shadow publication: transient attempts throttle opted preparation and keep child witness", "[almetal][shadow-publication][shadow-publication-source-stability]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALNativeSourceWorkingSet none{0,0,0};ALMetalShadowMembershipCache cache;auto owner=group();
+        std::array rows{f.source(1)};const std::array ranges{Range{3,Coverage::opaque,0,1}};
+        auto result=cache.seal(owner,3,rows,ranges,none,f.budget,f.serial,1,1);REQUIRE(result);CHECK(result.outcome==Publisher::Outcome::transient);
+        CHECK(cache.current(owner,3,none,1,1).defer_preparation);
+        CHECK_FALSE(cache.current(owner,3,none,2,2).defer_preparation);
+        rows[0].producer->invalidate();CHECK(cache.current(owner,3,none,2,2).defer_preparation);
+        CHECK_FALSE(cache.current(owner,3,none,3,3).defer_preparation);
+        CHECK(result.membership->members()[0].record==rows[0].record);
+    }
+}
+
+TEST_CASE("shadow publication: first denied frame0 opts into bounded retry without unwatched proof", "[almetal][shadow-publication][shadow-publication-source-stability]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALNativeFrameBudget budget;ALMetalShadowMembershipCache cache;auto owner=group();
+        std::array rows{f.source(1)};const std::array ranges{Range{3,Coverage::opaque,0,1}};
+        ALNativeFrameBudget::FrameInputs busy;busy.frame=0;busy.frame_interval_ns=100;busy.required_main_cpu_ns=90;budget.beginFrame(busy);
+        auto denied=cache.seal(owner,3,rows,ranges,f.residency,budget,f.serial,0,0);
+        CHECK_FALSE(denied);CHECK(denied.failure==Publisher::Failure::admission);CHECK(cache.stats().resource_unions==0);
+        for(unsigned view=0;view<7;++view)CHECK(cache.current(owner,3,f.residency,0,0).defer_preparation);
+        CHECK_FALSE(cache.current(owner,3,f.residency,0).defer_preparation);
+        // With no successful source set yet, a later frame permits one retry;
+        // it does not invent a subscription or claim source stability proof.
+        CHECK_FALSE(cache.current(owner,3,f.residency,1,1).defer_preparation);
+        budget.beginFrame({.frame=1});auto ready=cache.seal(owner,3,rows,ranges,f.residency,budget,f.serial,1,0);REQUIRE(ready);
+        auto hit=cache.current(owner,3,f.residency,1,1);REQUIRE(hit);CHECK_FALSE(hit.defer_preparation);
+        CHECK(cache.stats().resource_unions==1);
+    }
+}
+
+TEST_CASE("shadow publication: opted new-key hard-cap preflight never allocates an entry", "[almetal][shadow-publication][shadow-publication-source-stability]")
+{
+    @autoreleasepool
+    {
+        Fixture f;ALMetalShadowMembershipCache::Limits limits;
+        auto domain=std::make_shared<ALMetalShadowMembershipAccounting>(1);
+        ALMetalShadowMembershipCache cache(limits,domain);auto owner=group();const auto before=f.budget.snapshot();
+        CHECK_FALSE(cache.current(owner,3,f.residency,1).defer_preparation);
+        auto impossible=cache.current(owner,3,f.residency,1,1);CHECK_FALSE(impossible);CHECK(impossible.defer_preparation);
+        CHECK(cache.stats().entries==0);CHECK(domain->bytes()==0);
+        CHECK(f.budget.snapshot().admitted==before.admitted);CHECK(f.budget.snapshot().deferred==before.deferred);
     }
 }

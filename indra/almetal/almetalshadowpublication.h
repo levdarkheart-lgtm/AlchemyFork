@@ -9,6 +9,7 @@
 #include "../llcommon/alnativepublication.h"
 #include "../llcommon/alnativesourceworkingset.h"
 #include "../llcommon/alnativeframebudget.h"
+#include <optional>
 
 // Source and membership operations are publication-owner only. Detached jobs
 // receive immutable records and copied view values, never these producer States.
@@ -92,6 +93,10 @@ public:
         // Work completed by THIS transaction, never a shared before/after
         // Publisher delta that may include a nested reentrant transaction.
         bool sealed_resource_union = false;
+        // Optional source-stability hint, never native/source validity. An
+        // opted-in miss may skip preparation input allocation and keep the
+        // required per-row path until the source witness survives a frame.
+        bool defer_preparation = false;
         explicit operator bool() const noexcept { return bool(membership); }
     };
     struct Limits
@@ -128,10 +133,14 @@ public:
 private:
     friend class ALMetalShadowMembershipCache;
     class Dependencies;
+    struct SourceWatch;
     std::shared_ptr<ALNativePublication::State> mState;
     // Owner membership edge persists across publications. Child backing edges
-    // belong to one exact derived-State revision and are replaced on a miss.
+    // actual payload validity belongs to one exact derived-State revision.
+    // The last successful source witness/child lease survives native eviction
+    // and denied attempts, and is replaced only by a current successful seal.
     std::shared_ptr<ALNativePublication::Observer> mOwnerDependencies, mChildDependencies;
+    std::shared_ptr<SourceWatch> mSourceWitness;
     std::shared_ptr<ALMetalShadowMembershipAccounting> mAccounting;
     Limits mLimits;
     Stats mStats;
@@ -169,7 +178,8 @@ public:
     // Call BEFORE resolving LLDrawInfo rows, but only after the ordinary cull,
     // render-type, group validity and exact span-membership decisions.
     Result current(const std::shared_ptr<ALNativePublication::State>& membership_owner,
-        std::uint64_t flavor, ALNativeSourceWorkingSet&, std::uint32_t frame);
+        std::uint64_t flavor, ALNativeSourceWorkingSet&, std::uint32_t frame,
+        std::optional<ALNativeFrameBudget::Frame> preparation_frame = std::nullopt);
     Result seal(const std::shared_ptr<ALNativePublication::State>& membership_owner,
         std::uint64_t flavor, std::span<const ALMetalShadowMembershipSource>,
         std::span<const ALMetalShadowMembershipRange>, ALNativeSourceWorkingSet&,
