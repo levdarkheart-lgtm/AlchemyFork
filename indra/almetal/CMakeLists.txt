@@ -95,6 +95,8 @@ target_sources(
   almetal
   PRIVATE
     almetaldevice.mm
+    almetalresourceplan.cpp
+    almetalresourceplan.h
     almetaldiagnostictelemetry.mm
     almetalavatarresources.cpp
     almetalframe.mm
@@ -232,6 +234,9 @@ if(AL_BUILD_TESTS)
     almetal_tests
     PROJECT almetal
     SOURCES tests/almetal_command_timing_test.mm
+            tests/almetal_resource_plan_test.cpp
+            tests/almetal_resource_plan_native_test.mm
+            tests/almetal_source_applicability_test.mm
             tests/almetal_retained_background_test.mm
             tests/almetal_scene_monitor_test.mm
             tests/almetal_render_info_test.mm
@@ -322,6 +327,8 @@ if(AL_BUILD_TESTS)
     RESOURCE_LOCK apple_gpu
   )
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_source_applicability_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_retained_background_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_scene_monitor_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_render_info_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

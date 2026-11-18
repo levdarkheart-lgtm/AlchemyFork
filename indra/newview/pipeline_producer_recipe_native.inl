@@ -67,6 +67,10 @@ inline std::optional<ALScenePublicationNative::WorldFlavor> ordinaryFlavor(
     if (!supported) return {};
     auto flavor = ALSceneSourcePolicyNative::select(info, family, indexed, false, pass,
         policy.native_visibility, policy.native_resources, policy.native_groups).flavor;
+    // The base producer ticket must not nest the separate per-source animated
+    // capability admission. Current poses remain live; optional animated/GPU
+    // certificates use their existing admitted promotion phase over this base.
+    flavor.animated_source = flavor.animated_gpu_source = flavor.stabilize_animated_direct = false;
     // Cohort certificates are optional supersets, not different shading keys.
     flavor.cohort_source = policy.native_groups && !pass.rigged && !info.mTextureMatrix &&
         (type == LLRenderPass::PASS_SIMPLE || family != 0);

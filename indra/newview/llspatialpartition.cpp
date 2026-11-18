@@ -199,6 +199,7 @@ try
     work->mDependencies = std::move(dependencies);
     mMetalSourceWork = std::move(work);
     ++sMetalSourceWorkPublications;
+    gPipeline.prepareMetalProducerSources(*this);
     return true;
 }
 catch (const std::bad_alloc&) { ++sMetalSourceWorkDeclines; return false; }

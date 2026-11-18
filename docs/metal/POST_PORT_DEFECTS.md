@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-419 -->
+<!-- next-defect-id: PPD-436 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -9706,6 +9706,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before exception-safety repair. Preserve the draft and failure controls; actual native resource acceptance remains unproved.
 
+- 2026-11-18 draft shadow closure review finds a related native/registration transaction edge: visible_buffer ICB was assigned before backing registration succeeded, so a declined retry could retain a native buffer without its View and skip registration. Before compile/execution, preserve the draft and construct native allocation plus View in locals, publishing both only after success. No production runtime incident or successful native retest attributed.
+
 
 ## PPD-416 — Producer-drain draft requests an unsupported simple alpha-mask cohort capability
 
@@ -9742,6 +9744,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before native readback correction. Any synchronous wait must remain confined to actual CPU readback APIs, not normal frame rendering.
 
+- 2026-11-18 before native execution, fixture preflight finds its raw Gate encoder marks the command opaque before the negative unqueued-writer check. That could pass from the opaque guard without isolating the writer counter. Preserve the unrun fixture, split an ungated unqueued-write rejection/no-extra-commit control from a fresh committed gated producer/barrier/pixel control. Pure CPU168assertions/9cases already isolate known writers from opaque scope; native coverage remains pending.
+
 
 ## PPD-418 — Optional native visibility preparation cannot report failure after a compute prefix
 
@@ -9759,3 +9763,317 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before guarded preparation API changes. Existing rejected bank/worker cost history and diagnostic controls remain intact.
+
+
+## PPD-419 — First producer drain runs after the frame's earlier shadow consumers
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex producer drain integration
+- Discovered: 2026-11-18
+- Original reference: Original display preserves generateSunShadow before normal stateSort. Native producer-owned publication must fit that order and must not depend solely on a later main-view drain.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); root653d4e/f810 builder group places bounded draining only after main postSort flushBuffers. llviewerdisplay.cpp2027 precedes normal stateSort2105; probe display similarly2454 precedes2463. Thus completed producers encountered in earlier shadow sorting still fall through their first required factory. Existing immutable source reuse and rendering remain correct, but first-boundary completion is not established.
+- Next action: Invoke bounded producer preparation from actual completed group publication, sharing one outer-frame row allowance and reentrancy guard with the later drain. Preserve original display order, required factory recovery, source readiness and all view-specific inputs. Qualify callback, total-work and first-shadow tests.
+- Verification: Source scheduling gap only; no runtime failure or performance regression attributed. First combined build remains a preserved intermediate qualification, not completion.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before adding the producer-completion caller. Do not move shadow/probe/main rendering order to make a cache appear early.
+
+- 2026-11-18 before executing the early hook, source review of LLVertexBuffer::prepareMetalBuffers1514/setBuffer1504 finds a pending mapped producer would be forcibly unmapped with a missing-unmap warning. Early optional preparation must instead require already-published vertex/index stores, retain pending cursor state, and retry after the original flush boundary. Earlier shadow/probe postSort can use only the shared64-row early allowance; preserve at least192rows for the later main drain. No early-hook binary or viewer ran with the unguarded draft.
+
+
+## PPD-420 — Prepared impostor draft places its local snapshot in a different renderer owner
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex prepared lighting completion
+- Discovered: 2026-11-18
+- Original reference: PostDeferred and impostor compositor own separate local probe/projection lifetimes. Copying a current-view snapshot must remain within the actual consuming function.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); isolated lighting source review finds a broad patch context inserted the new compositor snapshot at PostDeferred's earlier probe_constants_buffer declaration, leaving compositor uses undeclared. Before-source SHA73f3b740 and finding retained privately in lighting/source-review-03. Earlier committed material/PBR source is unaffected.
+- Next action: Move only the snapshot block to its intended compositor owner, review complete scopes, then compile and qualify actual consumer parity/cost.
+- Verification: Unexecuted draft placement error; no compilation, GPU or viewer failure attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the narrow scope correction. Keep failure history and independent first-group build identity unchanged.
+
+
+## PPD-421 — Producer preparation can nest a second animated-capability admission
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex producer and native command integration
+- Discovered: 2026-11-18
+- Original reference: Existing animated source promotion owns a separate bounded per-source compilation ticket and direct/stability recovery. Shared producer base publication must preserve that owner instead of spending two credits on one nested operation.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); prepareProducerSources acquires an outer scene-publication credit, then world() can call admitAnimatedCompilation and acquire a second credit for requested animated_source/animated_gpu_source. Root ordinary policy previously forwarded these optional flags. A busy one-credit frontier could repeatedly leave an upgrade incomplete; no owner animation/FPS incident is attributed.
+- Next action: Keep producer base recipes pose-free and exclude animated capability promotion from this outer ticket. Reject unsupported combined requests explicitly; preserve the existing separately admitted capability phase and direct required recovery. E3 heavy animation must use that phase or a qualified reserved-credit mechanism, never blind nested admission.
+- Verification: Source-confirmed admission composition gap before correction; one-credit/unsupported-recovery tests required.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before separating base publication from animated capabilities. Existing rejected GPU/worker experiments remain unselected.
+
+
+## PPD-422 — Private matched-test preflight assumes the wrong executable bundle shape
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined source qualification
+- Discovered: 2026-11-18
+- Original reference: CTest inventory defines each native test executable and working directory. App-bundle layout is target-specific and must not be guessed.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); private checks/matched-native-01/preflight-failure.json retains assertion exit1 after assuming llrender_tests.app. The actual retained CTest inventory supplies the correct binary; assertion occurred before any test, GPU command or viewer launch.
+- Next action: Resolve both native executable paths and working directories from the pinned CTest inventory, persist the driver/argv and validate files before executing matched qualification. Keep initial failure separate from any successful retry.
+- Verification: Preflight failure only; first combined69265 build passed0. No native test result inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the private harness retry; no repository tool, renderer, app or settings change is required.
+
+
+## PPD-423 — Drawable render and presentation imports do not share a backing identity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native presentation integration
+- Discovered: 2026-11-18
+- Original reference: One acquired CAMetalDrawable texture is the shared backing consumed by UI rendering and presentation. Native ordering/lifetime already exists; new dependency accounting must identify that same allocation without claiming foreign physical bytes.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); new raw render-pass import allocates an external record and conservatively marks opaque, while a separate Surface.present import would create another record. ALMetalDrawable::Impl currently owns no imported View. These records cannot prove a shared render-to-present edge. No integration/runtime/physical-allocation defect attributed.
+- Next action: Import one exact backing View per acquired drawable and forward it to typed color-pass creation and presentation. Keep raw imports conservative, foreign sizes unknown, old Metal presentation retention and failure/device/surface generation checks.
+- Verification: Draft/source integration gap only; typed native presentation and lifetime qualification required.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before Surface/Drawable/UI typed-closure changes. Preserve the old raw entrypoint as a conservative control.
+
+
+## PPD-424 — New declared render handle does not flush pending joined indexed draws
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native encoder lifetime completion
+- Discovered: 2026-11-18
+- Original reference: Existing nativeHandleForIndirect flushes pending joined indexed draws and disables joining before a native command escapes. Declared-resource direct/ICB emission must preserve that exact ordering.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); new declared getter draft validates its resource pass then returns the encoder without the existing flush/join-disable actions. A following audited direct/ICB emission could overtake an earlier deferred draw. Caught before this API's native qualification; no owner rendering failure attributed.
+- Next action: Preserve the draft, apply the existing flush/join-disable boundary without marking the fully declared scope opaque, and test ordered joined-prefix plus direct/ICB emissions.
+- Verification: Source-confirmed draft ordering gap, no native execution or performance result claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the declared getter correction. Required query/order and CPU/native-cache invalidation remain unchanged.
+
+
+## PPD-425 — New retained command-cache backing leases are outside the old asset charge
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native command preparation completion
+- Discovered: 2026-11-18
+- Original reference: Existing idle cohort/animated caches bound their retained native assets separately from per-command readers. Adding immutable backing leases must preserve that cache budget instead of retaining formerly raw geometry without a charge.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); isolated E3 source review finds copied resource-planning Views retain geometry/index/numeric native backing in idle CohortBinding while the existing asset ledger charges textures. Equivalent animated closures need the same accounting audit. Caught before compilation or runtime; no viewer memory regression attributed.
+- Next action: Preserve draft, charge and deduplicate every newly retained root backing within the existing cohort/animated asset limits, include metadata capacities, and test same-backing aliases, COW churn, denial and last-reader retirement. Keep driver/unique/cache scopes distinct.
+- Verification: Source-only cache-budget composition gap; no build, GPU or cost result claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before idle-cache accounting correction. Do not increase existing cache limits or add overlapping totals to physical memory claims.
+
+
+## PPD-426 — New typed command closure has an ambiguous dangling else
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native command preparation completion
+- Discovered: 2026-11-18
+- Original reference: A complete typed resource certificate and the conservative legacy opaque path are mutually exclusive owner branches. Braces must retain that intended declaration/encoding contract.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E3/syntax-01 retains exact overlay/source/header hashes and compiler argv/log. Sourcecommands.mm fails -Werror,-Wdangling-else around static index declarations; the analogous animated declaration has the same unbraced if/for/if pattern. No linking or GPU execution occurred.
+- Next action: Brace both outer complete-certificate branches, review intended opaque recovery, and rerun actual TU syntax plus typed declaration/order tests.
+- Verification: Failed source compilation retained; no native failure or performance result attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the two scope corrections. Final matched engine ABI and native qualification remain required.
+
+
+## PPD-427 — Animated legacy closure recovery calls a private encoder bridge
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native command preparation completion
+- Discovered: 2026-11-18
+- Original reference: Complete typed native closures use declared access; legacy incomplete closures must remain explicitly opaque while preserving the original encoder/order boundary. Native friendship cannot be silently expanded to bypass ownership.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E3/syntax-02 retains overlay/header/source hashes and compiler output. Sourcecommands syntax passes0; sourcepages fails on two new AnimatedGpuSource calls to nativeHandleForResources, whose bridge is private/friended to SourcePages. No linking/GPU execution occurred.
+- Next action: Correct the incomplete-closure recovery through the explicit public opaque-command contract, preserving typed access for complete certificates and current native encoder/order semantics. Coordinate backend and consumer API owners; add no unchecked friend bypass.
+- Verification: Failed source compilation retained; no native runtime incident or performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the API-boundary correction. Final matched native declaration/order and complete-cost gates remain required.
+
+
+## PPD-428 — New native command fixture uses incorrect descriptor fields and narrowing viewport values
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native command qualification
+- Discovered: 2026-11-18
+- Original reference: Native stencil descriptors use front_stencil/back_stencil with explicit stencil_enabled; viewport dimensions are double. Fixture controls must exercise the actual enabled stencil state.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E3/syntax-03 retains exact source/overlay hashes and failed fixture compilation. All four production TUs pass0; the new fixture uses front/back and unsigned dimensions in a narrowing list. Header review also finds omitted stencil_enabled, which would invalidate the intended positive0x5a guard. No linking or GPU execution occurred.
+- Next action: Correct descriptor members, explicitly enable the authored stencil guard and cast viewport dimensions to double, then rerun syntax and unchanged native parity/order assertions.
+- Verification: Failed fixture compilation retained; no production failure or passing stencil result inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the test-only corrections. Preserve all strict output/query/native-plan criteria.
+
+
+## PPD-429 — New lighting cost observation references a nonexistent reason enum
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex lighting component cost qualification
+- Discovered: 2026-11-18
+- Original reference: Cost diagnostics use the production ALMetalProbeCandidateReason values and cannot invent an unavailable classification.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); source-only cost draft9b4c4f7a and finding retained in lighting/cost-source-review-01. Observation default uses no_eligible_batches; the actual enum member is not_eligible. Caught before compilation/run; no timing or output result claimed.
+- Next action: Use the actual enum value, compile the hidden fixture, and preserve first-use versus steady-state retirement measurement scopes explicitly.
+- Verification: Unexecuted test-source typo only; no renderer or performance regression attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the one-token correction. Strict native correctness gates still precede any cost execution.
+
+
+## PPD-430 — New command cost controls conceal policy work and misstate qualified index totals
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native command component cost qualification
+- Discovered: 2026-11-18
+- Original reference: A component comparison must include the candidate policy tax only in the candidate and report the actual qualified workload for both cohorts. Unexecuted synthetic costs cannot support runtime/FPS claims.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E3 syntax-03 snapshot preserves hidden cost draft that evaluates new applicability for both control and candidate, concealing its CPU cost. CSV also doubles the first cohort's qualified-index count although odd unknown-row distributions differ. No cost/native invocation occurred.
+- Next action: Evaluate the new policy only in the candidate, sum exact metadata across both cohorts outside timing, and preserve original setup/source, raw arm samples, adverse/order outcomes and changed labels.
+- Verification: Source-only measurement design defects; no cost, speedup or native result inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the pending fixture corrections. PPD428 separately retains compile/stencil setup failures.
+
+- 2026-11-18 independent backend-owner cost draft review finds timed per-draw Catch REQUIRE calls would add common nonproduction work and dilute the graph tax. Preserve draftab3e82a8 before replacing the successful timed path with an ordinary error branch; keep fatal checks and exact positive pixel/conservation prechecks. Report the post-wait observation gap separately so owner wall is fully partitioned. No timing ran; actual10case backend correctness2558assertions already passed separately and is not repinned as cost evidence.
+
+- 2026-11-18 E6 forward/water cost review finds the same timed REQUIRE/INFO success callbacks around API/status checks. Preserve pre-fix cost-source-review-02, replace only the inside-clock success path with ordinary branch/throw, and retain all strict precheck/selection/overlap assertions outside timing unchanged. No native/cost run occurred.
+
+
+## PPD-431 — Water cost fixture dimensions are shadowed by an existing height sample
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex lighting component cost qualification
+- Discovered: 2026-11-18
+- Original reference: The water fixture's float height sample is upload data, while newly variable render dimensions are integer extents. The names must not change which value reaches native dimensions.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); lighting/cost-syntax-02 retains failed water source8444f450, argv/stdout/stderr. Existing local array<float,2> height shadows the new fixture height member, so later dimensions resolve to an array. Transparency cost syntax independently passes0; no linking/GPU/cost occurred.
+- Next action: Rename only the local upload sample to height_sample, preserve its payload and dimensions/quality criteria, then recompile the actual water fixture.
+- Verification: Test-only compilation failure retained; no production rendering or performance outcome attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the narrow local rename. Strict actual old-library water output and cost execution remain required.
+
+- 2026-11-18 rename applied with unchanged upload payload. Retest cost-syntax-03 then fails in the private copied-header adapter before semantic compilation: relative ../almetalprobecandidates.h is absent from the staged tree. Preserve that adapter failure separately; before retry add the exact canonical test-source parent to -iquote so remaining relative includes resolve while the copied completion-observation header stays pinned. No GPU/link/cost ran and the earlier successful source check does not qualify this retest.
+
+
+## PPD-432 — Lighting cost observations retain frame-local autoreleases outside owner wall
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex lighting component cost qualification
+- Discovered: 2026-11-18
+- Original reference: Viewer frame-local Objective-C lifetime ends at its autorelease boundary. A complete-owner component sample must include that boundary or explicitly exclude retained first-use objects.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); independent source review finds forward/water measures use only the outer test-case autorelease pool, so native temporaries can persist across360observations. Exact pre-fix sources fcbee1be/ab4a86f9 and finding are retained in lighting/cost-source-review-02. No native or timing run occurred.
+- Next action: Add a pool per observation, start clocks before it and end after drain; retire nonretained output/token inside. Keep deliberately retained first-use planes outside-wall parity and persistent renderer caches/receipts explicitly scoped. Recompile and qualify strict prechecks before timing.
+- Verification: Source-only lifetime/measurement scope defect, not a measured engine memory or performance regression.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the per-observation pool correction. Preserve both original drafts and all subsequent first-use/steady labels.
+
+
+## PPD-433 — Backend cost fixture writes through a const attachment accessor
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native backend owner cost qualification
+- Discovered: 2026-11-18
+- Original reference: RenderTarget owns mutable destination copying through copyColorFrom; colorTexture exposes a const sampling/reader view. The fixture must use the existing owner bridge.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); owner-cost-syntax01 retains failed source933 and compiler/receipt2e980090. Calling final->colorTexture(0)->copyFrom is invalid because the attachment accessor returns const ALMetalTexture. No GPU/precheck/timing ran; prior native10case correctness is unchanged.
+- Next action: Use existing final->copyColorFrom(command,0,source,{},error), preserving the five-pass fixture and exact pixels. Do not add const_cast or expand backend mutability APIs; recompile and qualify prechecks before timing.
+- Verification: Test-only compilation failure retained; no production failure or cost outcome inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the one-owner-bridge correction. Larger alternate render-copy design was considered but unimplemented and unnecessary.
+
+
+## PPD-434 — Private integration syntax driver assumes one Release entry per source
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined source qualification
+- Discovered: 2026-11-18
+- Original reference: A source can be compiled into both the viewer and a native test target. Qualification must select its actual target, preserve every result, and pin source/header inputs before and after execution.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); checks/integration-syntax-06 retains driver exit1 on two alnativeframeplan.cpp Release entries. Two earlier outcomes0 were recorded; other queued logs/argv survive, but aggregate result iteration aborted. Source hashes were only read after compilation and root later edited metadata source, so the batch is not a current frozen-source qualification. First f810 build/native results are unaffected.
+- Next action: Select production output paths explicitly, retain all per-future outcomes/exceptions, freeze canonical sources during the run and verify complete source/header hashes before/after. Rerun rather than infer success from empty logs.
+- Verification: Private wrapper failed; no new combined source/syntax pass claimed. Existing first-build and separate native receipts remain valid at their exact sources.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the wrapper retry. Preserve failed driver and partial/log receipts; do not relabel them as a successful batch.
+
+
+## PPD-435 — Enabled backing-use tracking adds measured whole-owner CPU cost
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native resource-plan integration
+- Discovered: 2026-11-18
+- Original reference: Required native lifetime/dependency tracking must retain the shared architecture while avoiding demonstrated submission-path regressions. Existing binding caches already avoid redundant native binds; repeated indexed reads still revisit the new command map/registry mutex.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); resource-plan/owner-primary-cost-summary-01 retains2400rows,4fresh-process primary controls, unchanged explicit9a/b61c code and actual shaderValidation2. Paired enabled/disabled owner-wall ratios1.00391/1.01896/1.02596/1.00858; threadCPU1.03656/1.04170/1.08265/1.04524 for cached1/16/256draws and cold16pool. All pixels/ledger/no-overlap gates pass; all adverse/order blocks retained. AC100%/thermal0 is observed, not a no-throttle proof. No viewer/FPS result is attributed.
+- Next action: Preserve controls; remove redundant within-pass index-read bookkeeping through an exact backing/generation/registry-aware cache with explicit active-pass validity. Reject empty/cross-plan/stale/invalidated reads, reset on encoder/pass changes, preserve joins/order and completion retirement. Qualify unique-index changing controls as well as repeated-index wins, then actual integrated renderer costs before activation.
+- Verification: Measured bounded backend-owner overhead is confirmed. Per-index repeated declaration is a source-grounded hypothesis, not exclusive CPU attribution. Production defaults remain unselected; no performance gain/owner acceptance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before any cache correction. Retain original9a/native2558/10 and all four cost cells unchanged; optimize the operational shared tracking boundary rather than abandoning it.

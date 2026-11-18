@@ -1438,3 +1438,71 @@ TEST_CASE("Main pressure hints preserve saturation and drain retirement without 
     owner.reset();
     CHECK(budget.snapshot().uploads_in_flight == 0);
 }
+
+TEST_CASE("Native admission keeps overlapping driver backing and logical debt scopes separate",
+          "[native-frame-budget][unique-allocation]")
+{
+    Budget budget;
+    auto input = frame(1);
+    input.native_allocated_bytes = 60;
+    input.native_owned_reported_bytes = 50;
+    input.native_owned_unknown_declared_bytes = 30;
+    input.native_budget_bytes = 90;
+    // A disabled/incomplete accounting source is not invented as a live total.
+    budget.beginFrame(input);
+    CHECK(budget.snapshot().native_driver_allocated_bytes == 60);
+    CHECK(budget.snapshot().native_admission_allocated_bytes == 60);
+    CHECK_FALSE(budget.snapshot().native_owned_accounting);
+    CHECK_FALSE(budget.snapshot().memory_pressure);
+    input.native_owned_accounting = true;
+    input.native_registered_use_tracking = true;
+    ++input.frame; budget.beginFrame(input);
+    CHECK(budget.snapshot().native_admission_allocated_bytes == 80); // max(60,50+30), not 140.
+    CHECK(budget.snapshot().native_owned_reported_bytes == 50);
+    CHECK(budget.snapshot().native_owned_unknown_declared_bytes == 30);
+    CHECK(budget.snapshot().native_registered_use_tracking);
+    CHECK_FALSE(budget.snapshot().memory_pressure);
+    auto upload = budget.tryAcquire(Budget::Work::upload, 8);
+    REQUIRE(upload);
+    CHECK(budget.snapshot().upload_bytes_in_flight == 8);
+    CHECK(budget.snapshot().native_admission_allocated_bytes == 80); // Debt is not another backing allocation.
+    input.native_allocated_bytes = 100;
+    ++input.frame; budget.beginFrame(input);
+    CHECK(budget.snapshot().native_admission_allocated_bytes == 100);
+    CHECK(budget.snapshot().memory_pressure);
+    CHECK(budget.decodeCeiling(2,4,6) == 2);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::preparation, 1));
+    CHECK(budget.snapshot().uploads_in_flight == 1);
+    upload.credit.reset();
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+}
+
+TEST_CASE("Unique allocation fallback saturates and never claims unsupported completion coverage",
+          "[native-frame-budget][unique-allocation]")
+{
+    Budget budget;
+    auto input = frame(1);
+    input.native_owned_accounting = true;
+    input.native_owned_reported_bytes = Budget::unknown_bytes - 5;
+    input.native_owned_unknown_declared_bytes = 6;
+    input.native_budget_bytes = 100;
+    budget.beginFrame(input);
+    CHECK(budget.snapshot().native_allocation_estimate_saturated);
+    CHECK(budget.snapshot().native_admission_allocated_bytes == Budget::unknown_bytes);
+    CHECK(budget.snapshot().memory_pressure);
+    CHECK_FALSE(budget.snapshot().native_registered_use_tracking);
+    input.native_registered_use_tracking = true;
+    input.native_owned_accounting = false;
+    ++input.frame; budget.beginFrame(input);
+    CHECK_FALSE(budget.snapshot().native_allocation_estimate_saturated);
+    CHECK_FALSE(budget.snapshot().native_registered_use_tracking);
+    CHECK(budget.snapshot().native_admission_allocated_bytes == 0);
+    CHECK_FALSE(budget.snapshot().memory_pressure);
+    input.native_owned_accounting = true; input.native_budget_bytes = 0;
+    ++input.frame; budget.beginFrame(input);
+    CHECK(budget.snapshot().native_allocation_estimate_saturated);
+    CHECK_FALSE(budget.snapshot().memory_pressure); // No supplied native bound.
+    input.os_available_bytes = 0;
+    ++input.frame; budget.beginFrame(input);
+    CHECK(budget.snapshot().memory_pressure); // Existing OS/process guards still apply.
+}

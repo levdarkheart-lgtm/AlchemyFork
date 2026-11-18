@@ -3460,6 +3460,17 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << prepared.probe_candidate_activity.pbr_eligible_batches[1]
                     << ", cumulative_pbr_prepared(pre/post)=" << prepared.probe_candidate_activity.pbr_prepared_batches[0]
                     << '/' << prepared.probe_candidate_activity.pbr_prepared_batches[1]
+                    << ", last_encoded_avatar/shiny=" << prepared.probe_candidate_avatar_batches
+                    << '/' << prepared.probe_candidate_shiny_batches
+                    << ", cumulative_avatar_eligible/prepared=" << prepared.probe_candidate_activity.avatar_eligible_batches
+                    << '/' << prepared.probe_candidate_activity.avatar_prepared_batches
+                    << ", cumulative_shiny_eligible/prepared=" << prepared.probe_candidate_activity.shiny_eligible_batches
+                    << '/' << prepared.probe_candidate_activity.shiny_prepared_batches
+                    << ", cumulative_impostor_calls=" << prepared.probe_candidate_activity.impostor_encoded_calls
+                    << ", cumulative_impostor_eligible(shiny/legacy)=" << prepared.probe_candidate_activity.impostor_eligible_batches[0]
+                    << '/' << prepared.probe_candidate_activity.impostor_eligible_batches[1]
+                    << ", cumulative_impostor_prepared(shiny/legacy)=" << prepared.probe_candidate_activity.impostor_prepared_batches[0]
+                    << '/' << prepared.probe_candidate_activity.impostor_prepared_batches[1]
                     << ", unavailable_calls=" << reasons(prepared.probe_candidate_activity.unavailable_calls)
                     << ", missing_variant_batches=" << prepared.probe_candidate_activity.pipeline_fallback_batches
                     << ", scope=renderer_lifetime_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
@@ -3587,8 +3598,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << '/' << producer_drain.rows << '/' << producer_drain.requests
                 << ", warm/prepared/completed/deferred=" << producer_drain.warm << '/' << producer_drain.prepared
                 << '/' << producer_drain.completed << '/' << producer_drain.deferred
-                << ", stale/incomplete/refreshed/allocation_failures=" << producer_drain.stale << '/'
-                << producer_drain.incomplete << '/' << producer_drain.refreshed << '/' << producer_drain.allocation_failures
+                << ", stale/incomplete/resources_pending/refreshed/allocation_failures=" << producer_drain.stale << '/'
+                << producer_drain.incomplete << '/' << producer_drain.resources_pending << '/'
+                << producer_drain.refreshed << '/' << producer_drain.allocation_failures
                 << ", owner_wall_ns=" << producer_drain.wall_ns
                 << ", scope=bounded_cpu_metadata_and_source_factories_not_gpu_execution_or_ram" << LL_ENDL;
             LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
@@ -3616,6 +3628,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << frame_plan.previous_main_gpu_wait_non_cpu_ns
                 << ", effective_gpu_pressure_ns=" << frame_plan.required_main_gpu_pressure_ns
                 << ", scope=admission_hint_not_current_measured_wait" << LL_ENDL;
+            LL_INFOS("MetalFramePlan") << "Native allocation admission: frame=" << frame_plan.frame
+                << ", driver_allocated/owned_reported/owned_unknown_declared/effective/budget_bytes="
+                << frame_plan.native_driver_allocated_bytes << '/' << frame_plan.native_owned_reported_bytes
+                << '/' << frame_plan.native_owned_unknown_declared_bytes << '/'
+                << frame_plan.native_admission_allocated_bytes << '/' << frame_plan.native_budget_bytes
+                << ", owned_accounting/registered_use_tracking/saturated=" << frame_plan.native_owned_accounting
+                << '/' << frame_plan.native_registered_use_tracking << '/' << frame_plan.native_allocation_estimate_saturated
+                << ", scope=overlapping_allocation_views_not_physical_residency_or_logical_debt" << LL_ENDL;
 
             const auto main_completion = ALNativeFramePlan::mainCompletionCensus();
             for (std::size_t phase = 0; phase < main_completion.size(); ++phase)
@@ -11674,6 +11694,10 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         scene.stamp_opaque_coverage = false;
         scene.reflection_probes = has_shiny
             ? &capture.impostor_reflection_probes : nullptr;
+        std::memcpy(scene.forward_probe_projection,
+            LLViewerCamera::getCurrent().getProjection().getF32ptr(),
+            sizeof(scene.forward_probe_projection));
+        scene.forward_probe_projection_valid = true;
         scene.hero_probe = has_shiny && hero_active
             ? &capture.impostor_hero_probe : nullptr;
         std::string error;
@@ -11803,6 +11827,10 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     scene.reverse_z = capture.reverse_z;
     scene.reflection_probes = legacy_alpha_uses_probes
         ? &capture.impostor_reflection_probes : nullptr;
+    std::memcpy(scene.forward_probe_projection,
+        LLViewerCamera::getCurrent().getProjection().getF32ptr(),
+        sizeof(scene.forward_probe_projection));
+    scene.forward_probe_projection_valid = true;
     scene.hero_probe = legacy_alpha_uses_environment && hero_active
         ? &capture.impostor_hero_probe : nullptr;
     scene.screen_space_reflections =
@@ -22634,7 +22662,55 @@ bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& 
     }
     return false;
 }
+
+bool nativeProducerPreparationEnabled() noexcept
+{
+    static const bool enabled = []
+    {
+        const char* control = std::getenv("ALCHEMY_METAL_PRODUCER_PREPARATION");
+        return !control || std::strcmp(control, "0") != 0;
+    }();
+    return enabled;
 }
+
+ALSceneProducerDrainNative::Policy nativeProducerPreparationPolicy()
+{
+    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
+    static LLCachedControl<bool> resources(gSavedSettings, "RenderMetalWorldResourceTables", false);
+    static LLCachedControl<bool> groups(gSavedSettings, "RenderMetalGroupSources", false);
+    static LLCachedControl<bool> rows(gSavedSettings, "RenderMetalSourceRows", false);
+    static LLCachedControl<bool> banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
+    static LLCachedControl<bool> cpu_bounds(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
+    static LLCachedControl<bool> early_bounds(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
+    static LLCachedControl<bool> command_bounds(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
+    static LLCachedControl<bool> animated(gSavedSettings, "RenderMetalAnimatedSources", false);
+    static LLCachedControl<bool> animated_gpu(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
+    ALSceneProducerDrainNative::Policy policy;
+    policy.native_visibility = native_visibility();
+    policy.native_resources = resources();
+    policy.native_groups = groups();
+    policy.cohort_bounds = native_visibility() || cpu_bounds() || early_bounds() || command_bounds();
+    policy.pass.source_rows_active = rows() || (banks() && !groups());
+    policy.pass.animated_sources_active = animated() || animated_gpu();
+    policy.pass.animated_gpu_records_active = animated_gpu();
+    policy.pass.animated_direct_stability = true;
+    return policy;
+}
+}
+
+void LLPipeline::prepareMetalProducerSources(LLSpatialGroup& group) noexcept
+try
+{
+    if (!nativeProducerPreparationEnabled()) return;
+    LLPointer<LLSpatialGroup> owner(&group);
+    const std::array groups{owner.get()};
+    ALSceneProducerDrainNative::drain(groups.begin(), groups.end(), nativeProducerPreparationPolicy(),
+        sNativeSceneSources, sNativeSceneSerial, gFrameCount, ALNativeFrameBudget::instance(),
+        [](LLSpatialGroup* value) { return LLPointer<LLSpatialGroup>(value); },
+        [](LLDrawInfo* info) { return LLPointer<LLDrawInfo>(info); },
+        ALSceneProducerDrainNative::ordinaryFlavor, true);
+}
+catch (const std::bad_alloc&) { ++ALSceneProducerDrainNative::statistics.allocation_failures; }
 
 void LLPipeline::postSort(LLCamera &camera)
 {
@@ -23018,35 +23094,16 @@ void LLPipeline::postSort(LLCamera &camera)
     }
 
     LLVertexBuffer::flushBuffers();
-    if (!sShadowRender && !sImpostorRender && !sRenderingHUDs && !gCubeSnapshot &&
-        isMainWorldPass() && mRT == &mMainRT)
+    if (!sImpostorRender && !sRenderingHUDs)
     {
-        static const bool producer_preparation = []
+        if (nativeProducerPreparationEnabled())
         {
-            const char* control = std::getenv("ALCHEMY_METAL_PRODUCER_PREPARATION");
-            return !control || std::strcmp(control, "0") != 0;
-        }();
-        if (producer_preparation)
-        {
-            static LLCachedControl<bool> resource_tables(gSavedSettings, "RenderMetalWorldResourceTables", false);
-            static LLCachedControl<bool> source_rows(gSavedSettings, "RenderMetalSourceRows", false);
-            static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
-            static LLCachedControl<bool> animated_sources(gSavedSettings, "RenderMetalAnimatedSources", false);
-            static LLCachedControl<bool> animated_gpu(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
-            ALSceneProducerDrainNative::Policy policy;
-            policy.native_visibility = native_visibility();
-            policy.native_resources = resource_tables();
-            policy.native_groups = native_group_sources();
-            policy.cohort_bounds = cohort_bounds;
-            policy.pass.source_rows_active = source_rows() || (source_banks() && !native_group_sources());
-            policy.pass.animated_sources_active = animated_sources() || animated_gpu();
-            policy.pass.animated_gpu_records_active = animated_gpu();
-            policy.pass.animated_direct_stability = true;
             ALSceneProducerDrainNative::drain(sCull->beginVisibleGroups(), sCull->endVisibleGroups(),
-                policy, sNativeSceneSources, sNativeSceneSerial, gFrameCount, ALNativeFrameBudget::instance(),
+                nativeProducerPreparationPolicy(), sNativeSceneSources, sNativeSceneSerial, gFrameCount, ALNativeFrameBudget::instance(),
                 [](LLSpatialGroup* group) { return LLPointer<LLSpatialGroup>(group); },
                 [](LLDrawInfo* info) { return LLPointer<LLDrawInfo>(info); },
-                ALSceneProducerDrainNative::ordinaryFlavor);
+                ALSceneProducerDrainNative::ordinaryFlavor,
+                sShadowRender || gCubeSnapshot || !isMainWorldPass() || mRT != &mMainRT);
         }
     }
     if (native_group_view)

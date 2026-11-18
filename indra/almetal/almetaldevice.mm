@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <mutex>
 #include <utility>
@@ -558,9 +559,22 @@ ALMetalPipelineCache& ALMetalDevice::pipelineCache() const noexcept
     return *mPipelineCache;
 }
 
+ALMetalResourcePlanMode ALMetalDevice::resourcePlanModeFromEnvironment(ALMetalResourcePlanMode fallback) noexcept
+{
+    if (fallback == ALMetalResourcePlanMode::automatic) fallback = ALMetalResourcePlanMode::disabled;
+    const char* value = std::getenv("ALCHEMY_METAL_RESOURCE_PLAN");
+    if (!value || !*value) return fallback;
+    if (std::strcmp(value, "1") == 0 || std::strcmp(value, "enabled") == 0) return ALMetalResourcePlanMode::enabled;
+    if (std::strcmp(value, "accounting_only") == 0) return ALMetalResourcePlanMode::accounting_only;
+    if (std::strcmp(value, "0") == 0 || std::strcmp(value, "disabled") == 0) return ALMetalResourcePlanMode::disabled;
+    return fallback;
+}
+
 std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error,
                                                   ALMetalResourcePlanMode resource_plan_mode)
 {
+    if (resource_plan_mode == ALMetalResourcePlanMode::automatic)
+        resource_plan_mode = resourcePlanModeFromEnvironment();
     if (resource_plan_mode != ALMetalResourcePlanMode::disabled &&
         resource_plan_mode != ALMetalResourcePlanMode::accounting_only &&
         resource_plan_mode != ALMetalResourcePlanMode::enabled)

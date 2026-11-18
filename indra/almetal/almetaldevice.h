@@ -31,7 +31,7 @@ class ALMetalVisibilityResultBatch;
 
 // Temporary private qualification controls. The complete operational mode
 // must pass correctness and whole-owner cost before it becomes the default.
-enum class ALMetalResourcePlanMode { disabled, accounting_only, enabled };
+enum class ALMetalResourcePlanMode { disabled, accounting_only, enabled, automatic };
 
 // Native submission-owner scope, used by an outer main/probe work group.
 // Each command created on this thread retains the current owner until actual
@@ -227,7 +227,11 @@ public:
     // Fails closed when the process is not native arm64 or the selected Metal
     // device is not a built-in unified-memory Apple GPU.
     static std::unique_ptr<ALMetalDevice> create(std::string* error = nullptr,
-        ALMetalResourcePlanMode resource_plan_mode = ALMetalResourcePlanMode::disabled);
+        ALMetalResourcePlanMode resource_plan_mode = ALMetalResourcePlanMode::automatic);
+    // Private qualification control, resolved once at device creation.
+    // Explicit per-device modes are never overridden by the environment.
+    static ALMetalResourcePlanMode resourcePlanModeFromEnvironment(
+        ALMetalResourcePlanMode fallback = ALMetalResourcePlanMode::disabled) noexcept;
 
     const ALMetalDeviceInfo& info() const noexcept;
     // Live driver-accounted bytes owned by this Metal device. Unlike the

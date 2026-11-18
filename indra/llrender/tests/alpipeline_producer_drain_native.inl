@@ -101,7 +101,7 @@ struct DrainFixture : Publication
         nextFrame();
     }
     void nextFrame() { ++inputs.frame; budget.beginFrame(inputs); }
-    void drain()
+    void drain(bool early = false)
     {
         const std::array groups{group.get()};
         Inputs::ALSceneProducerDrainNative::drain(groups.begin(), groups.end(), policy,
@@ -118,7 +118,7 @@ struct DrainFixture : Publication
                 const auto callback = during_selection;
                 if (callback) callback();
                 return ProducerRecipeFrontier::ALSceneProducerDrainNative::ordinaryFlavor(pass, source, actual);
-            });
+            }, early);
     }
 };
 }
@@ -198,9 +198,100 @@ TEST_CASE("Producer recipes preserve special maps and do not request unsupported
     auto legacy = ALSceneProducerDrainNative::ordinaryFlavor(LLRenderPass::PASS_NORMSPEC + 1, info, policy);
     REQUIRE(legacy); CHECK(legacy->normal_map); CHECK(legacy->specular_map);
     CHECK(legacy->rigged); CHECK_FALSE(legacy->cohort_source);
+    policy.pass.animated_sources_active = policy.pass.animated_gpu_records_active = true;
+    legacy = ALSceneProducerDrainNative::ordinaryFlavor(LLRenderPass::PASS_NORMSPEC + 1, info, policy);
+    REQUIRE(legacy); CHECK_FALSE(legacy->animated_source); CHECK_FALSE(legacy->animated_gpu_source);
+    auto capture_policy = policy.pass; capture_policy.rigged = true;
+    const auto captured = ALSceneSourcePolicyNative::select(info, 1, false, false, capture_policy,
+        policy.native_visibility, policy.native_resources, policy.native_groups);
+    CHECK(captured.flavor.animated_source); CHECK(captured.flavor.animated_gpu_source);
     CHECK_FALSE(ALSceneProducerDrainNative::ordinaryFlavor(999, info, policy));
     LLMatrix4 animated_uv;
     info.mTextureMatrix = &animated_uv;
     simple = ALSceneProducerDrainNative::ordinaryFlavor(LLRenderPass::PASS_SIMPLE, info, policy);
     REQUIRE(simple); CHECK_FALSE(simple->cohort_source);
+}
+
+TEST_CASE("Early producer preparation waits for published stores without forcing an unmap",
+          "[almetal][producer-drain][PPD-419]")
+{
+    DrainFixture f(1);
+    auto& info = *f.group->draws.front();
+    LLStrider<LLVector3> positions;
+    REQUIRE(info.mVertexBuffer->getVertexStrider(positions));
+    positions[0].set(-.9f, -.9f, 0.f);
+    REQUIRE_FALSE(info.mVertexBuffer->hasPublishedMetalVertexBuffer());
+    f.drain(true);
+    CHECK_FALSE(info.mVertexBuffer->hasPublishedMetalVertexBuffer());
+    CHECK(f.group->mMetalSourcePreparationCursor == 0);
+    CHECK(f.group->state->dirty());
+    CHECK(Inputs::ALSceneProducerDrainNative::statistics.resources_pending == 1);
+    CHECK(f.serial == 0);
+    // Actual producer/flush completion retries in the same outer frame; the
+    // failed readiness check did not consume the owner's compilation ticket.
+    info.mVertexBuffer->unmapBuffer();
+    REQUIRE(info.mVertexBuffer->hasPublishedMetalVertexBuffer());
+    f.drain(true);
+    CHECK_FALSE(f.group->state->dirty());
+    auto required = Inputs::ALScenePublicationNative::world(info, {}, Inputs::sNativeSceneSources,
+        f.serial, U32(f.inputs.frame));
+    REQUIRE(required); CHECK(required.reused);
+    CHECK(f.budget.snapshot().scene_publications_in_flight == 0);
+}
+
+TEST_CASE("Early producers share a frame allowance while preserving later main preparation",
+          "[almetal][producer-drain][PPD-419]")
+{
+    DrainFixture f(65);
+    f.drain(true);
+    CHECK(f.group->mMetalSourcePreparationCursor == 64);
+    CHECK(Inputs::ALSceneProducerDrainNative::statistics.rows == 64);
+    const auto early_group = f.group;
+    f.drain(true);
+    CHECK(Inputs::ALSceneProducerDrainNative::statistics.rows == 64);
+    auto geometry = f.group->draws.front()->mVertexBuffer;
+    f.group = std::make_shared<DrainGroup>();
+    for (unsigned i = 0; i < 193; ++i)
+    {
+        auto draw = std::make_shared<Inputs::LLDrawInfo>();
+        draw->mVertexBuffer = geometry; draw->mTexture.value = &f.image;
+        f.group->draws.push_back(std::move(draw));
+    }
+    f.group->rebuild();
+    f.drain();
+    CHECK(Inputs::ALSceneProducerDrainNative::statistics.rows == 256);
+    CHECK(f.group->mMetalSourcePreparationCursor == 192);
+    CHECK(f.group->state->dirty());
+    CHECK(early_group->mMetalSourcePreparationCursor == 64);
+    f.nextFrame(); f.drain();
+    CHECK_FALSE(f.group->state->dirty());
+    CHECK(f.group->mMetalSourcePreparationCursor == 193);
+}
+
+TEST_CASE("Producer base preparation never nests animated-capability tickets in a one-credit frame",
+          "[almetal][producer-drain][PPD-421]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    MaterialGroupPublication f(1);
+    auto& info = f.materialDraw();
+    ALNativeFrameBudget::Limits limits; limits.scene_publications_per_frame = 1;
+    ALNativeFrameBudget budget(limits);
+    ALNativeFrameBudget::FrameInputs frame; frame.frame = 1; budget.beginFrame(frame);
+    ALNativeCohortCompilationAdmission admission;
+    auto animated = f.flavor; animated.rigged = animated.animated_source = true;
+    const std::array combined{ProducerWorldRequest{producerSource(info), animated}};
+    const auto denied = prepareProducerSources(combined, {}, Inputs::sNativeSceneSources,
+        Inputs::sNativeSceneSerial, 1, admission, budget, 4096,
+        [] { return true; }, [](const auto&, auto&) { return false; });
+    CHECK_FALSE(denied); CHECK(denied.status == ProducerPreparationStatus::unsupported);
+    CHECK(budget.snapshot().scene_publications_this_frame == 0);
+    const std::array base{ProducerWorldRequest{producerSource(info), f.flavor}};
+    const auto prepared = prepareProducerSources(base, {}, Inputs::sNativeSceneSources,
+        Inputs::sNativeSceneSerial, 1, admission, budget, 4096,
+        [] { return true; }, [](const auto&, auto&) { return false; });
+    REQUIRE(prepared);
+    CHECK(budget.snapshot().scene_publications_this_frame == 1);
+    CHECK(budget.snapshot().scene_publications_in_flight == 0);
+    auto required = world(info, f.flavor, Inputs::sNativeSceneSources, Inputs::sNativeSceneSerial, 1);
+    REQUIRE(required); CHECK(required.reused);
 }

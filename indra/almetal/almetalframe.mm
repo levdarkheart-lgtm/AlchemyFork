@@ -289,7 +289,7 @@ bool ALMetalFrameScheduler::submit(ALMetalFrame& frame, std::string* error)
     std::shared_ptr<FrameState> state = mImpl->state;
     const std::uint32_t slot = frame.mImpl->slot;
     id<MTLCommandBuffer> native_command =
-        (__bridge id<MTLCommandBuffer>)frame.mImpl->command_buffer->nativeHandle();
+        (__bridge id<MTLCommandBuffer>)frame.mImpl->command_buffer->nativeIdentity();
     if (!native_command)
     {
         setError(error, "Metal frame has no command buffer");

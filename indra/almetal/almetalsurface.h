@@ -63,6 +63,10 @@ public:
     ALMetalDrawable(ALMetalDrawable&&) = delete;
     ALMetalDrawable& operator=(ALMetalDrawable&&) = delete;
     ~ALMetalDrawable();
+    // One imported identity per acquired drawable, shared by its color pass
+    // and presentation. Platform backing bytes remain explicitly unknown.
+    bool prepareResourceUse(const ALMetalDevice& device, std::string* error = nullptr);
+    const ALMetalResourcePlanning::View& resourceView() const noexcept;
 
     // Non-owning Objective-C handles, valid for this drawable's lifetime.
     void* nativeHandle() const noexcept;

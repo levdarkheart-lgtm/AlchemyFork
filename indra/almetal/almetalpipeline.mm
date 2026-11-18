@@ -549,6 +549,7 @@ struct ALMetalRenderPipeline::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLRenderPipelineState> state = nil;
+    int shader_validation = -1;
 };
 
 ALMetalRenderPipeline::ALMetalRenderPipeline(
@@ -741,6 +742,7 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->state = state;
+        if (@available(macOS 15.0, *)) impl->shader_validation = static_cast<int>(state.shaderValidation);
         return std::unique_ptr<ALMetalRenderPipeline>(
             new ALMetalRenderPipeline(std::move(impl), descriptor));
     }
@@ -751,6 +753,9 @@ void* ALMetalRenderPipeline::nativeHandle() const noexcept
     return mImpl ? (__bridge void*)mImpl->state : nullptr;
 }
 
+int ALMetalRenderPipeline::shaderValidationMode() const noexcept
+{ return mImpl ? mImpl->shader_validation : -1; }
+
 const ALMetalRenderPipelineDescriptor& ALMetalRenderPipeline::descriptor() const noexcept
 {
     return mDescriptor;
@@ -760,6 +765,7 @@ struct ALMetalComputePipeline::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLComputePipelineState> state = nil;
+    int shader_validation = -1;
     std::string function;
 };
 
@@ -816,6 +822,7 @@ std::unique_ptr<ALMetalComputePipeline> ALMetalComputePipeline::create(
         impl->device = native_device;
         impl->state = state;
         impl->function = descriptor.function;
+        if (@available(macOS 15.0, *)) impl->shader_validation = static_cast<int>(state.shaderValidation);
         return std::unique_ptr<ALMetalComputePipeline>(new ALMetalComputePipeline(std::move(impl)));
     }
 }
@@ -824,6 +831,9 @@ void* ALMetalComputePipeline::nativeHandle() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->state : nullptr;
 }
+
+int ALMetalComputePipeline::shaderValidationMode() const noexcept
+{ return mImpl ? mImpl->shader_validation : -1; }
 
 std::uint32_t ALMetalComputePipeline::threadExecutionWidth() const noexcept
 {

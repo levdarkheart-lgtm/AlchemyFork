@@ -2660,7 +2660,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         std::string* error)
     {
         return render_target_pool
-            ? render_target_pool->acquire(descriptor, error)
+            ? render_target_pool->acquire(descriptor, error,
+                command_batch ? command_batch->resourceUsePlan() : nullptr)
             : nullptr;
     }
 
@@ -21449,6 +21450,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::uint64_t candidate_avatar_batches=0;
     std::uint64_t candidate_shiny_batches=0;
     ALMetalWorldProbeCandidateActivity candidate_activity;
+    int last_probe_validation = -1, last_water_validation = -1;
 
     if (scene.far_plane_overlay_column_count != 0)
     {
@@ -22490,6 +22492,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
 
             const auto record_water_draw = [&](const ALMetalRenderPipeline& pipeline, bool waves)
             {
+                last_water_validation = pipeline.shaderValidationMode();
                 if (!selected_water_shadow_pso) return;
                 std::size_t constant_state = 0;
                 for (const auto& value : pipeline.descriptor().fragment_bool_constants)
@@ -23197,6 +23200,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
             if (encoded && candidate_material) ++candidate_material_batches;
             if (encoded && candidate_pbr) ++candidate_pbr_batches;
+            if (encoded && !batch.post_water_depth_only &&
+                (batch.pre_water_simple || batch.pre_water_material || batch.pre_water_pbr) &&
+                (batch.pre_water_alpha || batch.post_water_alpha || (batch.avatar_alpha && batch.avatar_color_write)))
+                last_probe_validation = alpha_pipeline->shaderValidationMode();
             if (encoded && batch.avatar_alpha && batch.avatar_color_write)
             {
                 ++candidate_activity.avatar_eligible_batches;
@@ -23601,6 +23608,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
         if (encoded && batch.impostor_shiny)
         {
+            last_probe_validation = pipeline->shaderValidationMode();
             ++candidate_activity.shiny_eligible_batches;
             if (candidate_shiny) ++candidate_activity.shiny_prepared_batches;
         }
@@ -25100,6 +25108,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     mImpl->opaque_diagnostics.probe_candidate_pbr_batches=candidate_pbr_batches;
     mImpl->opaque_diagnostics.probe_candidate_avatar_batches=candidate_avatar_batches;
     mImpl->opaque_diagnostics.probe_candidate_shiny_batches=candidate_shiny_batches;
+    mImpl->opaque_diagnostics.last_probe_consumer_shader_validation=last_probe_validation;
+    mImpl->opaque_diagnostics.last_water_consumer_shader_validation=last_water_validation;
     mImpl->opaque_diagnostics.probe_candidate_frame_index=scene.diagnostic_frame_index;
     mImpl->opaque_diagnostics.probe_candidate_view_kind=scene.diagnostic_view_kind;
     mImpl->opaque_diagnostics.probe_candidate_view_index=scene.diagnostic_view_index;
@@ -27337,8 +27347,10 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
 bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     ALMetalRenderTarget& target,
     const ALMetalWorldGBufferScene& scene,
-    std::string* error)
+    std::string* error,
+    std::shared_ptr<const ALMetalCommandCompletion>* completion_out)
 {
+    if (completion_out) completion_out->reset();
     if (!mImpl || !mImpl->device ||
         (scene.batch_count != 0 && !scene.batches) ||
         (scene.batch_count == 0 && !scene.stamp_opaque_coverage) ||
@@ -27735,6 +27747,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         impostor_candidate_constants.grid=impostor_candidates.grid;
     }
     std::array<std::uint64_t,2> candidate_eligible{},candidate_prepared{};
+    int last_impostor_validation = -1;
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world impostor post-deferred encoder",
         error);
@@ -28087,6 +28100,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
         if (encoded && (shiny_batch || material_probe_work))
         {
+            last_impostor_validation = pipeline->shaderValidationMode();
             const std::size_t owner=shiny_batch?0:1;
             ++candidate_eligible[owner];
             if (candidate_bound) ++candidate_prepared[owner];
@@ -28142,7 +28156,10 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             return false;
         }
     }
+    const auto completion = completion_out ? command->completionToken() : nullptr;
     if (!command->commit(error)) return false;
+    if (completion_out) *completion_out = completion;
+    mImpl->opaque_diagnostics.last_impostor_consumer_shader_validation=last_impostor_validation;
     ++mImpl->probe_candidate_activity.impostor_encoded_calls;
     for (std::size_t owner=0;owner<2;++owner)
     {

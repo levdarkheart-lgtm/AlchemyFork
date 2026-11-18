@@ -188,6 +188,8 @@ public:
         std::string* error = nullptr);
 
     void* nativeHandle() const noexcept;
+    // Effective immutable Metal enum, cached at creation; -1 unavailable.
+    int shaderValidationMode() const noexcept;
     const ALMetalRenderPipelineDescriptor& descriptor() const noexcept;
 
 private:
@@ -221,6 +223,7 @@ public:
         std::string* error = nullptr);
 
     void* nativeHandle() const noexcept;
+    int shaderValidationMode() const noexcept;
     std::uint32_t threadExecutionWidth() const noexcept;
     std::uint32_t maximumTotalThreadsPerThreadgroup() const noexcept;
 

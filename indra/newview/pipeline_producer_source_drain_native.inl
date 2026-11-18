@@ -9,12 +9,14 @@ struct Stats
 {
     U64 frames = 0, candidates = 0, rows = 0, requests = 0;
     U64 warm = 0, prepared = 0, completed = 0, deferred = 0;
-    U64 stale = 0, incomplete = 0, refreshed = 0, allocation_failures = 0;
+    U64 stale = 0, incomplete = 0, resources_pending = 0, refreshed = 0, allocation_failures = 0;
     U64 wall_ns = 0;
 };
 inline Stats statistics;
 inline std::optional<ALNativeFrameBudget::Frame> last_frame;
 inline std::size_t scan_cursor = 0;
+inline std::size_t rows_remaining = 0, producer_rows_remaining = 0;
+inline bool active = false;
 
 // Required serial rendering remains available on every declined/partial path.
 // The input is the current owner cull result, not a retained view or raw worker
@@ -22,13 +24,25 @@ inline std::size_t scan_cursor = 0;
 template<typename Iterator, typename Policy, typename PinGroup, typename PinDraw, typename SelectFlavor>
 void drain(Iterator begin, Iterator end, const Policy& policy,
     ALNativeSourceWorkingSet& working_set, U64& serial, U32 display_frame,
-    ALNativeFrameBudget& budget, PinGroup&& pin_group, PinDraw&& pin_draw, SelectFlavor&& select_flavor)
+    ALNativeFrameBudget& budget, PinGroup&& pin_group, PinDraw&& pin_draw, SelectFlavor&& select_flavor,
+    bool producer_completion = false)
 try
 {
-    const auto frame = budget.snapshot().frame;
-    if (last_frame && frame <= *last_frame) return;
-    last_frame = frame;
-    ++statistics.frames;
+    const auto observed = budget.snapshot();
+    const auto frame = observed.frame;
+    if (active || !observed.initialized || observed.draining || (last_frame && frame < *last_frame)) return;
+    if (!last_frame || frame != *last_frame)
+    {
+        last_frame = frame;
+        ++statistics.frames;
+        rows_remaining = 256;
+        // Earlier completed producers share the global allowance but cannot
+        // starve older pending groups considered by the later owner drain.
+        producer_rows_remaining = 64;
+    }
+    if (!rows_remaining || (producer_completion && !producer_rows_remaining)) return;
+    active = true;
+    struct ActiveScope { ~ActiveScope() { active = false; } } active_scope;
     const auto started = std::chrono::steady_clock::now();
     struct Timing
     {
@@ -41,11 +55,11 @@ try
         }
     } timing{started};
     if (begin == end || budget.snapshot().draining) return;
-    constexpr std::size_t maximum_candidates = 256, maximum_rows = 256;
+    constexpr std::size_t maximum_candidates = 256;
     const auto count = static_cast<std::size_t>(end - begin);
-    const auto first = scan_cursor % count;
+    const auto first = count > maximum_candidates ? scan_cursor % count : 0;
     const auto considered = std::min(count, maximum_candidates);
-    scan_cursor = (first + considered) % count;
+    if (count > maximum_candidates) scan_cursor = (first + considered) % count;
     using GroupOwner = decltype(pin_group(*begin));
     using DrawOwner = decltype(pin_draw(static_cast<LLDrawInfo*>(nullptr)));
     std::vector<GroupOwner> candidates;
@@ -73,7 +87,8 @@ try
             b->mMetalSourcePreparation.priority(b->metalSourceWorkState()->identity());
     });
     statistics.candidates += candidates.size();
-    std::size_t remaining = maximum_rows;
+    std::size_t remaining = producer_completion
+        ? std::min(rows_remaining, producer_rows_remaining) : rows_remaining;
     for (const auto& group : candidates)
     {
         if (!remaining) break;
@@ -99,10 +114,12 @@ try
         std::vector<DrawOwner> pins;
         std::vector<ALScenePublicationNative::ProducerWorldRequest> requests;
         pins.reserve(stop - cursor); requests.reserve(stop - cursor);
-        bool refresh = false;
+        bool refresh = false, resources_pending = false;
         for (; cursor < stop; ++cursor)
         {
-            --remaining; ++statistics.rows;
+            --remaining; --rows_remaining;
+            if (producer_completion) --producer_rows_remaining;
+            ++statistics.rows;
             if (!current()) break;
             const auto& row = rows[cursor];
             auto producer = row.producer.lock();
@@ -114,6 +131,12 @@ try
                 pin->metalSourcePublication() != producer) { refresh = true; break; }
             auto flavor = select_flavor(row.pass, *pin, policy);
             if (!flavor || !pin->mCount) continue;
+            // Optional producer preparation must not force an intentional
+            // pending map/upload to publish. The original flush boundary and
+            // generation notifications retry this cursor with complete stores.
+            const auto* geometry = pin->mVertexBuffer.get();
+            if (!geometry || !geometry->hasPublishedMetalVertexBuffer() || !geometry->hasPublishedMetalIndexBuffer())
+            { resources_pending = true; break; }
             requests.push_back({ALScenePublicationNative::producerSource(*pin), *flavor});
             pins.push_back(std::move(pin));
         }
@@ -129,6 +152,7 @@ try
             continue;
         }
         if (!current()) { ++statistics.stale; continue; }
+        if (resources_pending) { ++statistics.resources_pending; continue; }
         statistics.requests += requests.size();
         const auto logical_bytes = pins.size() * sizeof(pins.front()) +
             requests.size() * sizeof(requests.front());

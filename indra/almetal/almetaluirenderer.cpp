@@ -402,9 +402,10 @@ struct ALMetalUIRenderer::Impl
         }
 
         ALMetalRenderPassColorConfig color_config;
+        if (!drawable->prepareResourceUse(*device, error)) return false;
         auto drawable_pass = ALMetalRenderPass::createForColorAttachment(
             *device, drawable->nativeTexture(),
-            ALMetalPixelFormat::bgra8_unorm, color_config, error);
+            ALMetalPixelFormat::bgra8_unorm, color_config, drawable->resourceView(), error);
         if (!drawable_pass)
         {
             return false;
@@ -1482,9 +1483,10 @@ struct ALMetalUIRenderer::Impl
         color_config.clear = {0.0, 0.0, 0.0, 0.0};
         if (surface)
         {
+            if (!drawable->prepareResourceUse(*device, error)) return false;
             pass = ALMetalRenderPass::createForColorAttachment(
                 *device, drawable->nativeTexture(), ALMetalPixelFormat::bgra8_unorm,
-                color_config, error);
+                color_config, drawable->resourceView(), error);
         }
         else
         {

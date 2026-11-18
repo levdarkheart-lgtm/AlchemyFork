@@ -932,6 +932,8 @@ public:
     void stateSort(LLSpatialBridge* bridge, LLCamera& camera, bool fov_changed = false);
     void stateSort(LLDrawable* drawablep, LLCamera& camera);
     void postSort(LLCamera& camera);
+    // Completed producer hook; shares bounded preparation with later views.
+    void prepareMetalProducerSources(LLSpatialGroup& group) noexcept;
 
     void forAllVisibleDrawables(void (*func)(LLDrawable*));
 

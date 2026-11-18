@@ -266,8 +266,20 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
     state.stats.optional_views_this_frame = 0;
     state.ordinary_this_frame = state.hero_this_frame = 0;
     state.updateMainPressure();
+    state.stats.native_driver_allocated_bytes = inputs.native_allocated_bytes;
+    state.stats.native_owned_reported_bytes = inputs.native_owned_reported_bytes;
+    state.stats.native_owned_unknown_declared_bytes = inputs.native_owned_unknown_declared_bytes;
+    state.stats.native_owned_accounting = inputs.native_owned_accounting;
+    state.stats.native_registered_use_tracking =
+        inputs.native_owned_accounting && inputs.native_registered_use_tracking;
+    state.stats.native_allocation_estimate_saturated = false;
+    const auto owned = inputs.native_owned_accounting
+        ? saturatedSum(inputs.native_owned_reported_bytes, inputs.native_owned_unknown_declared_bytes,
+                       state.stats.native_allocation_estimate_saturated) : 0;
+    state.stats.native_admission_allocated_bytes = std::max(inputs.native_allocated_bytes, owned);
+    state.stats.native_budget_bytes = inputs.native_budget_bytes;
     state.stats.memory_pressure =
-        (inputs.native_budget_bytes != 0 && inputs.native_allocated_bytes >= inputs.native_budget_bytes) ||
+        (inputs.native_budget_bytes != 0 && state.stats.native_admission_allocated_bytes >= inputs.native_budget_bytes) ||
         (inputs.os_available_bytes != unknown_bytes && inputs.os_available_bytes < inputs.minimum_headroom_bytes) ||
         (inputs.process_headroom_bytes != unknown_bytes && inputs.process_headroom_bytes < inputs.minimum_headroom_bytes);
 }

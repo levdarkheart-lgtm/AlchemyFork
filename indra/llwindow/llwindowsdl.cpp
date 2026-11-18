@@ -161,7 +161,8 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
     // context; every application-owned GPU resource is derived from this
     // device and scheduler.
     std::string metal_error;
-    mMetalDevice = ALMetalDevice::create(&metal_error);
+    mMetalDevice = ALMetalDevice::create(&metal_error,
+        ALMetalDevice::resourcePlanModeFromEnvironment(ALMetalResourcePlanMode::disabled));
     if (!mMetalDevice)
     {
         LL_WARNS("Metal") << "Native Metal initialization failed: " << metal_error << LL_ENDL;

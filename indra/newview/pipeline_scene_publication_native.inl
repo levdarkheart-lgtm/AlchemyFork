@@ -1173,6 +1173,12 @@ ProducerPreparationResult prepareProducerSources(
     if (!owner_current()) return stale();
     for (const auto& request : worlds) if (!valid(request.source)) return stale();
     for (const auto& request : shadows) if (!valid(request.source)) return stale();
+    for (const auto& request : worlds)
+        if (producerFlavor(*request.source.info, request.flavor).animated_source)
+        {
+            result.failure = "Native animated capabilities require their separate source admission phase";
+            return result;
+        }
     try
     {
         for (const auto& request : worlds)

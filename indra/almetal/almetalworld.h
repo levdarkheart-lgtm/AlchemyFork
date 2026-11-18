@@ -3400,7 +3400,8 @@ public:
     bool compositeImpostorPostDeferred(
         ALMetalRenderTarget& target,
         const ALMetalWorldGBufferScene& scene,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::shared_ptr<const ALMetalCommandCompletion>* completion_out = nullptr);
 
 private:
     std::unique_ptr<ALMetalRenderTarget> renderInternal(

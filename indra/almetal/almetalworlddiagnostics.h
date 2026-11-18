@@ -185,6 +185,11 @@ struct ALMetalWorldPostDiagnostics
     std::uint64_t probe_candidate_pbr_batches = 0;
     std::uint64_t probe_candidate_avatar_batches = 0;
     std::uint64_t probe_candidate_shiny_batches = 0;
+    // Last actually encoded relevant consumer's effective native PSO enum;
+    // -1 means unavailable/no such consumer. Encoding is not GPU completion.
+    std::int32_t last_probe_consumer_shader_validation = -1;
+    std::int32_t last_water_consumer_shader_validation = -1;
+    std::int32_t last_impostor_consumer_shader_validation = -1;
     std::uint64_t probe_candidate_frame_index = 0;
     std::uint32_t probe_candidate_view_kind = 0, probe_candidate_view_index = 0;
     ALMetalWorldProbeCandidateActivity probe_candidate_activity;

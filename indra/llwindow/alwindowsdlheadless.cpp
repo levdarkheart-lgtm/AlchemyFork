@@ -52,7 +52,8 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
     // has no drawable CAMetalLayer, but it still owns the same native device
     // and ordered frame scheduler required by offscreen Metal captures.
     std::string metal_error;
-    mMetalDevice = ALMetalDevice::create(&metal_error);
+    mMetalDevice = ALMetalDevice::create(&metal_error,
+        ALMetalDevice::resourcePlanModeFromEnvironment(ALMetalResourcePlanMode::disabled));
     if (!mMetalDevice)
     {
         LL_WARNS("Metal") << "Hidden Metal device initialization failed: "

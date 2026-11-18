@@ -57,6 +57,16 @@ public:
         std::uint64_t frame_interval_ns = 0;
         std::uint64_t required_main_cpu_ns = 0;
         std::uint64_t native_allocated_bytes = 0;
+        // Unique viewer-owned backing leases: Metal-reported allocation sizes
+        // plus declared sizes ONLY for records without that reported size.
+        // This overlaps the driver total and must never be added to it.
+        std::uint64_t native_owned_reported_bytes = 0;
+        std::uint64_t native_owned_unknown_declared_bytes = 0;
+        bool native_owned_accounting = false;
+        // Registered typed-use tracking is enabled. Opaque/native-only uses
+        // and external allocations remain unknown; this is not exhaustive
+        // completion coverage or physical residency.
+        bool native_registered_use_tracking = false;
         std::uint64_t native_budget_bytes = 0; // zero: no supplied native bound
         std::uint64_t os_available_bytes = unknown_bytes;
         std::uint64_t process_headroom_bytes = unknown_bytes;
@@ -77,6 +87,13 @@ public:
         bool draining = false;
         bool main_busy = false;
         bool memory_pressure = false;
+        std::uint64_t native_driver_allocated_bytes = 0;
+        std::uint64_t native_owned_reported_bytes = 0;
+        std::uint64_t native_owned_unknown_declared_bytes = 0;
+        std::uint64_t native_admission_allocated_bytes = 0;
+        std::uint64_t native_budget_bytes = 0;
+        bool native_owned_accounting = false, native_registered_use_tracking = false;
+        bool native_allocation_estimate_saturated = false;
         // Current-frame admission operands, not GPU execution/busy time.
         // Wait CPU is already included in required_main_cpu_ns. Only the
         // measured non-CPU remainder is an additional pressure component.

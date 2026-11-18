@@ -91,6 +91,15 @@ ALNativeFramePlan::MainScope::MainScope(double interval_seconds, std::uint64_t m
     {
         inputs.native_allocated_bytes = device->currentAllocatedSize();
         inputs.native_budget_bytes = device->info().recommended_working_set_size;
+        const auto mode = device->resourcePlanningMode();
+        if (mode != ALMetalResourcePlanMode::disabled)
+        {
+            const auto owned = device->uniqueResourceStats();
+            inputs.native_owned_accounting = true;
+            inputs.native_registered_use_tracking = mode == ALMetalResourcePlanMode::enabled;
+            inputs.native_owned_reported_bytes = owned.owned_metal_reported_bytes;
+            inputs.native_owned_unknown_declared_bytes = owned.owned_unknown_declared_bytes;
+        }
     }
     begin(inputs);
 }

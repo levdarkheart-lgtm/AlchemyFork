@@ -101,6 +101,7 @@ struct ALMetalDrawable::Impl
     std::uint32_t height = 0;
     std::uint64_t generation = 0;
     bool presented = false;
+    ALMetalResourcePlanning::View resource_view;
 };
 
 struct ALMetalSurface::Impl
@@ -117,6 +118,35 @@ ALMetalDrawable::ALMetalDrawable(std::unique_ptr<Impl> impl)
 }
 
 ALMetalDrawable::~ALMetalDrawable() = default;
+
+const ALMetalResourcePlanning::View& ALMetalDrawable::resourceView() const noexcept
+{
+    static const ALMetalResourcePlanning::View empty;
+    return mImpl ? mImpl->resource_view : empty;
+}
+
+bool ALMetalDrawable::prepareResourceUse(const ALMetalDevice& device, std::string* error)
+{
+    if (!mImpl || !mImpl->texture || mImpl->presented ||
+        device.nativeHandle() != (__bridge void*)mImpl->texture.device)
+    {
+        setError(error, "Metal drawable resource use requires its current device and unpresented generation");
+        return false;
+    }
+    if (mImpl->resource_view)
+    {
+        const auto& registry = device.resourcePlan();
+        if (registry && registry->containsCurrent(mImpl->resource_view) &&
+            mImpl->resource_view.nativeIdentity() == (__bridge void*)mImpl->texture) return true;
+        setError(error, "Metal drawable backing belongs to another resource plan");
+        return false;
+    }
+    ALMetalResourcePlanning::Description description;
+    description.kind = ALMetalResourcePlanning::Kind::texture;
+    description.origin = ALMetalResourcePlanning::Origin::external_unknown;
+    return device.registerNativeBacking((__bridge void*)mImpl->texture,
+        description, mImpl->resource_view, error);
+}
 
 void* ALMetalDrawable::nativeHandle() const noexcept
 {
@@ -439,13 +469,28 @@ bool ALMetalSurface::present(
         return false;
     }
 
-    id<MTLCommandBuffer> native_command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+    // Older raw color-pass callers retain their explicit opaque scope. The
+    // ordinary UI producer imports once before rendering and shares this
+    // exact identity through the presentation read.
+    if (!drawable.mImpl->resource_view && !command_buffer.registerExternalBacking(
+            (__bridge void*)drawable.mImpl->texture, drawable.mImpl->resource_view, error)) return false;
+    std::uint64_t resource_pass = 0;
+    if (!command_buffer.beginResourcePass(ALMetalResourcePlanning::Pass::present, resource_pass, error)) return false;
+    if (!command_buffer.useResource(drawable.mImpl->resource_view, ALMetalResourcePlanning::Access::read, error))
+    {
+        command_buffer.endResourcePass(resource_pass, nullptr);
+        return false;
+    }
+    id<MTLCommandBuffer> native_command =
+        (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandleForDeclaredResources();
     if (!native_command)
     {
+        command_buffer.endResourcePass(resource_pass, nullptr);
         setError(error, "Metal command buffer has no native handle");
         return false;
     }
     [native_command presentDrawable:drawable.mImpl->drawable];
+    if (!command_buffer.endResourcePass(resource_pass, error)) return false;
     drawable.mImpl->presented = true;
     return true;
 }

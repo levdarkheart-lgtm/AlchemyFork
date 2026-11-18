@@ -79,3 +79,107 @@ small-view slab/ticket/job costs plus existing8192+owned shadow preparation and
 boundary. E3 old banks/native visibility remain OFF after adverse costs; a new
 source/capability applicability policy and realistic geometry complete-cost gate
 are being implemented in the publication worktree, no closure by renaming.
+
+## Observed intermediate build and native gates
+
+Root653d4eebe3 -> builderf810349bb8bb0109951281ddc3dbfd27e0ce01da,
+identical indra68c7813eaf20a76bb7fdc7bf7f853dd17f7d6dab. Build01
+uses tools/metal/build.sh build, Release4jobs/O3/ARM64/LTOOFF; CMake729tests,
+Metal3.1/fastmath/source-recording.1520steps/1598.583s exit0, version69265.
+App346ARM64/deepstrictsignature pass0, executable69d67f085131e8d375faf6484bf17403a17f1e0a3cdb31740005267c7b183a9c,
+metallib13dcf13d441282e1e2d4e06f82d34a60972998078b5f9e9a2ba9369c1c781a89.
+No viewer launch/staging/owner acceptance. Raw source/build/app receipts retained.
+
+checks/matched-native-01 fails preflight before execution(PPD422wrongbundle
+assumption).02 resolves exact CTest paths and passes all6processes under
+MetalAPI/GPUvalidation1/capture0: budget5725assertions/46cases;
+MainScope77/3; actualpresentation-completioncensus60/1; producer575/10;
+material/PBRtransparency2854280/14; frozenfae7library203466/1.
+Raw stdout/stderr contains0warning/errorlines; fae7before/after hashes equal.
+These are contained correctness claims, not FPS, cost, continuation or
+whole-viewer visual acceptance. All1stbuild binaries match that source tree.
+
+## Current integrated source after the intermediate gate
+
+E6continuation12134 ->399157 includes lazy avatar/body/cloth and shiny/legacy
+consumers; water stays generic with actual manual/default radiance old-library
+controls authored. Root supplies current projection at the two actual impostor
+compositor callers; no cached pose/view or single-scene adjustment. Optional
+compositor completion receipt observes its actual command, not a dummy outer
+batch. Cached native PSO validation metadata is source-authored for cost gates;
+unknown stays-1. Continuation correctness/cost remain pending fresh ABI build.
+
+E4 9a813 ->a75ce integrates actual backing identities, typed render/compute/
+blit/readback resource uses, same-command ended-pass pool reuse and actual
+completion/error/abandon retirement. Core CPU04 passes180assertions/10cases.
+Fresh native01 compiles11nativeobjects+Catch/Appleframeworks (NO oldalmetal/
+world/common archives), then passes2558assertions/10cases with API/GPUvalidation.
+Three actual selected native PSOs reportvalidation1; no warning/errorlines.
+Raw source/syntax/native receipts remain under admission resource-plan/.
+Root Surface/Drawable shares one external token across UI render+present;
+passive FrameScheduler identity does not mark an encoding escape. Root-owned
+hooks still require the final matching build/tests. Foreign backing bytes are
+unknown; unique owned native allocation is distinct from driver and CPU-wrapper
+scopes. OptionalMetal4shadow queue remains unselected: scene fields defaultfalse,
+no newviewassignments; original event/owner contract retained as opaque control.
+Selected normal production paths use the single legacy queue, no new queues.
+
+E3 8fdf ->381867 adds applicability, native direct ranges, checked compute-prefix
+failure, exact native closures and retained-asset charges under unchanged limits.
+FiveReleaseTUsyntax0/sourcepeer clear, actual native/cost unrun. New real grid
+fixtures preserve query/raster/fourMRT/depth/stencil and direct adverse controls.
+Actual renderer integration and separately admitted heavy-bounds capability
+phase are STILL REQUIRED; a mechanism comparison sharing SourcePages on both
+arms cannot prove benefit over current scalar bypass. No prototype activation.
+
+Root419 now prepares from actual completed group publication plus earlier
+shadow/probe postSort after the original flush. One global256row budget reserves
+at least192for later main by limiting earlier producers/views to64. Already
+published vertex/index stores are required; no forced pending unmap/warning.
+Reentrant drain returns safely; rootcursor/pin/epoch proofs remain explicit.
+421 separates base producer publication from per-source animated promotion:
+combined animated requests decline BEFORE outercredit; current required animated
+capture/admission remains intact. Integration syntax07 passes all12 actual Release translation units with4376
+tracked source/header inputs unchanged before/after; native tests remain pending.
+
+Unique allocation admission uses max(drivercurrent,saturating(reportedowned+
+unknown-size-owneddeclared)), never their sum or another logical-debt charge.
+Standalone redcontrol(oldimplementation/newheader) fails12assertions/2cases42;
+revised full48cases/5754assertions pass0. Nativealias/retirement accounting is
+qualified separately above. FramePlan actual device sampling is now authored.
+Registered-use tracking is explicit; this is not exhaustive native completion
+coverage. Opaque/native-only uses remain unknown and accounting-only does not
+claim GPU readers.
+
+Resource-planning automatic mode is a private qualification env resolver; explicit
+per-device disabled/accounting/enabled arms are not overridden. Current SDL and
+headless production fallbacks remain DISABLED pending whole-owner gates. Final
+activation must change those two bootstrap fallbacks only AFTER correctness/cost;
+no extra global header change should require another26minute rebuild.
+
+Next: finish actual E3renderer/producer integration, freeze all ABI inputs,
+run one fresh combined build, actual selected/disabled path correctness and
+old-library continuation gates; then bounded actual-owner cost with validation
+OFF and actual PSOenum2, all failed/adverse/order samples retained. Repair
+regressions, select useful operational paths, verify/stage one final app and
+pause for owner runtime feedback. Architecture, performance and product gates
+remain separate; no owner launch/login/profile/push is authorized in this phase.
+
+
+## Backend cost rejection and next integration
+
+PPD435 records the first qualified backend whole-owner controls:2400samples,
+4cells, exactpixels/ledger/actualPSOvalidation2/nonoverlap gates allpass.
+Enabled/disabled wall ratios1.00391/1.01896/1.02596/1.00858 and threadCPU
+1.03656/1.04170/1.08265/1.04524 for cached1/16/256draws and cold16pool.
+This demonstrates overhead, not a viewer FPS result. Preserve original controls
+and adverse/order rows under resource-plan/owner-primary-cost-summary-01.
+Tracking remains unselected. Admission agent implements bounded exact within-pass
+read bookkeeping, with cross-registry/generation/abandon and changing-index
+controls before retiming. Broader shared lifetime architecture remains required.
+
+Root syntax07 qualifies only its pinned source; subsequent rename of the misleading
+completion-coverage field to registered-use-tracking is a scope clarification.
+All six boundaries remain active. Commit root hooks and give the publication
+agent actual production renderer applicability/prefix/direct-range integration,
+not another mechanism-only stopping point. Final ABI build follows integration.
