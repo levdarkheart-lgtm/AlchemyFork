@@ -104,6 +104,26 @@ void alQuietDiagnosticsInitialize() noexcept
         value.automatic = mode && std::string_view(mode) == "auto";
         if (mode && *mode && !value.automatic && std::string_view(mode) != "off")
             warning("Unknown quiet capture mode; only command/frame telemetry is active");
+        if (const char* requested = std::getenv("ALCHEMY_METAL_QUIET_CAPTURE_LATE_SECONDS"))
+        {
+            const std::string_view seconds(requested);
+            std::uint32_t late_seconds = 0;
+            const auto parsed = std::from_chars(seconds.data(), seconds.data() + seconds.size(), late_seconds);
+            if (parsed.ec != std::errc{} || parsed.ptr != seconds.data() + seconds.size() ||
+                late_seconds < 60 || late_seconds > 240)
+            {
+                value.automatic = false;
+                warning("ALCHEMY_METAL_QUIET_CAPTURE_LATE_SECONDS must be an integer from 60 through 240; "
+                    "automatic captures disabled; command/frame telemetry remains active");
+            }
+            else
+            {
+                auto capture_config = value.policy.config();
+                capture_config.late_min_age_ns = capture_config.fallback_age_ns =
+                    std::uint64_t(late_seconds) * ALMetalQuietCapturePolicy::second;
+                value.policy = ALMetalQuietCapturePolicy(capture_config);
+            }
+        }
         const auto& policy = value.policy.config();
         D::recordMetrics({}, "quiet_policy_config", {policy.early_age_ns,
             policy.early_min_intervals, policy.late_min_age_ns,

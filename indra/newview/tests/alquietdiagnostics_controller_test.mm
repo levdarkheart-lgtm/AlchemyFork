@@ -32,13 +32,14 @@ namespace D = ALMetalDiagnosticTelemetry;
 
 struct Environment
 {
-    const char* names[5]{"ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY", "ALCHEMY_METAL_QUIET_CAPTURE",
+    const char* names[6]{"ALCHEMY_METAL_DIAGNOSTIC_DIRECTORY", "ALCHEMY_METAL_QUIET_CAPTURE",
         "ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB",
+        "ALCHEMY_METAL_QUIET_CAPTURE_LATE_SECONDS",
         ALMetalFrameCapture::directory_environment, ALMetalFrameCapture::mode_environment};
-    std::optional<std::string> previous[5];
+    std::optional<std::string> previous[6];
     Environment()
     {
-        for (unsigned i = 0; i < 5; ++i)
+        for (unsigned i = 0; i < 6; ++i)
         {
             if (const char* value = std::getenv(names[i])) previous[i] = value;
             REQUIRE(unsetenv(names[i]) == 0);
@@ -46,7 +47,7 @@ struct Environment
     }
     ~Environment()
     {
-        for (unsigned i = 0; i < 5; ++i)
+        for (unsigned i = 0; i < 6; ++i)
             if (previous[i]) setenv(names[i], previous[i]->c_str(), 1);
             else unsetenv(names[i]);
     }
@@ -200,6 +201,46 @@ TEST_CASE("quiet controller: unset directory leaves the actual controller disabl
     CHECK_FALSE(stats.capture_failed);
     CHECK(stats.attempts == 0);
     CHECK_FALSE(D::enabled());
+}
+
+TEST_CASE("quiet controller: late capture override is bounded without disabling telemetry",
+          "[.][quiet-controller-late-seconds]")
+{
+    Environment environment;
+    Directory directory;
+    Shutdown shutdown;
+    const char* requested = std::getenv("ALCHEMY_METAL_TEST_QUIET_CAPTURE_LATE_SECONDS");
+    if (requested)
+        REQUIRE(setenv("ALCHEMY_METAL_QUIET_CAPTURE_LATE_SECONDS", requested, 1) == 0);
+    // Each selector invocation is a fresh process with one explicit oracle
+    // value. Do not mirror the production numeric parser in this test.
+    const bool accepted = !requested ||
+        std::strcmp(requested, "60") == 0 || std::strcmp(requested, "00060") == 0 ||
+        std::strcmp(requested, "180") == 0 || std::strcmp(requested, "240") == 0;
+    alQuietDiagnosticsInitialize();
+    REQUIRE(D::enabled());
+    CHECK(alQuietDiagnosticsStatistics().automatic == accepted);
+    CHECK_FALSE(alQuietDiagnosticsStatistics().capture_active);
+    CHECK(alQuietDiagnosticsStatistics().attempts == 0);
+    CHECK(alQuietDiagnosticsStatistics().total_attempts == 0);
+    CHECK(alQuietDiagnosticsStatistics().scene_generation == 1);
+    // No Metal device, capture request, GPU commands, real-time sleep or
+    // synthetic policy clock is needed to inspect startup configuration.
+    D::recordMarker("quiet_late_seconds_test", {shutdown.frame, D::ViewKind::main, -1}, 17);
+    alQuietDiagnosticsShutdown(shutdown.frame);
+    CHECK_FALSE(D::enabled());
+    const auto text = readText(directory.path / "diagnostic.jsonl");
+    const std::uint64_t second = 1'000'000'000ull;
+    const auto minimum = accepted && requested ? std::stoull(requested) * second : 60 * second;
+    const auto fallback = accepted && requested ? minimum : 90 * second;
+    const auto metric = "\"name\":\"quiet_policy_config\",\"values\":[2000000000,4," +
+        std::to_string(minimum) + ",10000000000,1350," + std::to_string(fallback) +
+        ",300000000000," + (accepted ? "1" : "0") + "]";
+    CHECK(text.find(metric) != std::string::npos);
+    CHECK(text.find("\"name\":\"quiet_policy_stability\",\"values\":[100,2,") != std::string::npos);
+    CHECK(text.find("\"name\":\"quiet_late_seconds_test\",\"reason\":17") != std::string::npos);
+    CHECK(text.find("\"event\":\"header\"") != std::string::npos);
+    CHECK(text.find("\"event\":\"footer\"") != std::string::npos);
 }
 
 TEST_CASE("quiet controller: actual early capture stops then heartbeat invalidates between captures",
