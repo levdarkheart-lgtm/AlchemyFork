@@ -82,9 +82,11 @@ struct Driver
         output.resize(count);
     }
     U64 observations()const{U64 total=0;for(const auto& info:infos)total+=info->observation_calls;return total;}
-    void begin(bool dirty,bool denied,bool child_only=false)
+    void begin(bool dirty,bool denied,bool child_only=false,bool publication_busy=false)
     {
-        ++frame;Inputs::gFrameCount=U32(frame);budget.beginFrame({.frame=frame});residency.trim(U32(frame));
+        ++frame;Inputs::gFrameCount=U32(frame);ALNativeFrameBudget::FrameInputs inputs;inputs.frame=frame;
+        if(publication_busy){inputs.frame_interval_ns=100;inputs.required_main_cpu_ns=90;}
+        budget.beginFrame(inputs);residency.trim(U32(frame));
         avatar.palette.mGLMp[0]=.017f*F32(frame%7);
         if(dirty)
         {
@@ -250,13 +252,31 @@ TEST_CASE("Shadow membership frontier preserves actual admission across small ra
     }
 }
 
+TEST_CASE("Shadow membership frontier bounds first admission denials without skipping current output", "[almetal][pipeline-buffer-publication][shadow-membership-frontier]")
+{
+    using namespace ShadowMembershipFrontier;
+    SourceRecipes::Policy policy;Publication f;
+    for(U32 rows:{4u,64u})
+    {
+        const auto geometry=f.buffer(true);Driver old(f,rows,Coverage::opaque,geometry),now(f,rows,Coverage::opaque,geometry);Handoff a,b;
+        for(unsigned iteration=0;iteration<8;++iteration)
+        {
+            old.begin(false,false,false,true);now.begin(false,false,false,true);
+            for(U32 view=0;view<7;++view){REQUIRE(old.capture(false,view,false,a));REQUIRE(now.capture(true,view,false,b));equal(old,now);a.reset();b.reset();}
+            CHECK(now.factories==old.factories);CHECK(now.memberships.stats().resource_unions==0);
+        }
+        CHECK(now.memberships.stats().entries==3);CHECK(now.preparation_deferrals==28);
+        CHECK(now.budget.snapshot().deferred==21);CHECK(now.budget.snapshot().admitted==0);
+    }
+}
+
 TEST_CASE("Shadow source factory frontier retains cold changing cull and denied small-range costs", "[.][almetal][shadow-membership-frontier-cost]")
 {
     using namespace ShadowMembershipFrontier;
     struct Cell{U32 rows;Coverage coverage;bool rigged=false;};
     constexpr std::array cells{Cell{1,Coverage::opaque},Cell{2,Coverage::opaque},Cell{4,Coverage::opaque},Cell{8,Coverage::opaque},Cell{16,Coverage::opaque},Cell{64,Coverage::opaque},Cell{256,Coverage::opaque},Cell{1,Coverage::texture_mask},Cell{64,Coverage::texture_mask,true}};
     std::cout.precision(17);
-    for(unsigned cell=0;cell<cells.size();++cell)for(unsigned mode=0;mode<6;++mode)
+    for(unsigned cell=0;cell<cells.size();++cell)for(unsigned mode=0;mode<7;++mode)
     {
         SourceRecipes::Policy policy;Publication f;const auto geometry=f.buffer(true,cells[cell].rigged?LLVertexBuffer::MAP_WEIGHT4:0);Driver old(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged),now(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged);
         Handoff owner;
@@ -264,10 +284,10 @@ TEST_CASE("Shadow source factory frontier retains cold changing cull and denied 
         // owner matrices/UVs and three group identities in seven-view order.
         for(unsigned iteration=0;iteration<3;++iteration)
         {
-            const bool dirty=(mode==2||mode==4)&&iteration>0;old.begin(dirty,false,mode==4);now.begin(dirty,mode==3,mode==4);
+            const bool dirty=(mode==2||mode==4)&&iteration>0;old.begin(dirty,false,mode==4,mode==6);now.begin(dirty,mode==3,mode==4,mode==6);
             for(U32 view=0;view<7;++view){REQUIRE(old.capture(false,view,mode==1,owner));owner.reset();REQUIRE(now.capture(true,view,mode==1,owner));owner.reset();equal(old,now);}
         }
-        constexpr unsigned warm=8,blocks=20;const unsigned iterations=mode==5?8:10;
+        constexpr unsigned warm=8,blocks=20;const unsigned iterations=mode>=5?8:10;
         for(unsigned block=0;block<warm+blocks;++block)
         {
             const std::array<unsigned,4> order=block%2?std::array<unsigned,4>{1,0,0,1}:std::array<unsigned,4>{0,1,1,0};
@@ -276,12 +296,12 @@ TEST_CASE("Shadow source factory frontier retains cold changing cull and denied 
                 // Fresh producer window: first cold frame plus seven later
                 // frames, with independent source/cache ownership per arm.
                 // Construction is setup; final teardown is measured separately.
-                auto fresh=mode==5?std::make_unique<Driver>(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged):nullptr;
+                auto fresh=mode>=5?std::make_unique<Driver>(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged):nullptr;
                 auto& driver=fresh?*fresh:(order[position]?now:old);const auto factories=driver.factories,observations=driver.observations(),unions=driver.memberships.stats().resource_unions,raw=driver.raw_rows,positive=driver.positive_rows,spans=driver.stamped_spans,deferrals=driver.preparation_deferrals;
                 std::int64_t nanos=0,retirement=0;bool complete=true;
                 for(unsigned iteration=0;iteration<iterations;++iteration)
                 {
-                    auto start=std::chrono::steady_clock::now();driver.begin(mode==2||mode==4,mode==3,mode==4);auto stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();
+                    auto start=std::chrono::steady_clock::now();driver.begin(mode==2||mode==4,mode==3,mode==4,mode==6);auto stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();
                     for(U32 view=0;view<7;++view){start=std::chrono::steady_clock::now();complete=driver.capture(order[position]!=0,view,mode==1,owner)&&complete;stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();start=std::chrono::steady_clock::now();owner.reset();stop=std::chrono::steady_clock::now();retirement+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();}
                 }
                 REQUIRE(complete);REQUIRE(!driver.output.empty());REQUIRE(driver.output[0].vertices);
