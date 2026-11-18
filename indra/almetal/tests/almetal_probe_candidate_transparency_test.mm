@@ -425,7 +425,45 @@ ImpostorPlanes readImpostor(Fixture& f,const ALMetalRenderTarget& target)
     return result;
 }
 struct ImpostorResult {ImpostorPlanes before,after;ALMetalWorldProbeCandidateActivity activity;};
-ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared)
+void retainImpostorControl(const Inputs& input,const char* label,const ImpostorResult& value)
+{
+    const char* directory=std::getenv("ALCHEMY_E6_LEGACY_CONTROL_ARTIFACT_DIR");
+    if(!label || !directory || !*directory)return;
+    const bool material=input.batches.front().pre_water_material;
+    const auto cell="material-"+std::to_string(material)+"-skinned-"+std::to_string(input.cell.skinned)+
+        "-reverse-"+std::to_string(input.cell.reverse);
+    const auto out=std::filesystem::path(directory)/cell/label;
+    REQUIRE_FALSE(std::filesystem::exists(out));REQUIRE(std::filesystem::create_directories(out));
+    std::filesystem::permissions(out,std::filesystem::perms::owner_all);
+    const auto save=[&](const std::string& name,const void* bytes,std::size_t size)
+    {
+        std::ofstream file(out/name,std::ios::binary);REQUIRE(file.good());
+        file.write(static_cast<const char*>(bytes),std::streamsize(size));REQUIRE(file.good());
+    };
+    for(const auto* phase:{"before","after"})
+    {
+        const auto& planes=std::strcmp(phase,"before")==0?value.before:value.after;
+        for(unsigned i=0;i<4;++i)save(std::string(phase)+"-mrt"+std::to_string(i)+".raw",
+            planes.colors[i].data(),planes.colors[i].size());
+        save(std::string(phase)+"-depth.raw",planes.planes.depth.data(),planes.planes.depth.size()*sizeof(std::uint32_t));
+        save(std::string(phase)+"-stencil.raw",planes.planes.stencil.data(),planes.planes.stencil.size());
+    }
+    save("probe-constants.raw",&input.probes.constants,sizeof(input.probes.constants));
+    save("legacy-lighting.raw",&input.lighting,sizeof(input.lighting));
+    save("shadow-constants.raw",&input.shadows.constants,sizeof(input.shadows.constants));
+    save("forward-projection.raw",input.scene.forward_probe_projection,sizeof(input.scene.forward_probe_projection));
+    std::ofstream parameters(out/"parameters.txt");REQUIRE(parameters.good());
+    parameters<<"width="<<input.cell.width<<" height="<<input.cell.height
+        <<" shadow="<<input.cell.shadow<<" hdr="<<input.cell.hdr
+        <<" material="<<material<<" skinned="<<input.cell.skinned<<" reverse="<<input.cell.reverse
+        <<" diffuse_alpha_slot0_byte="<<(material?16:224)
+        <<" diffuse_alpha_slot1_byte="<<(material?16:208)<<" specular_texture_alpha_byte=192\n";
+    if(material)for(unsigned i=0;i<2;++i)
+        parameters<<"slot="<<i<<" env_intensity="<<input.batches.front().materialSlots()[i].env_intensity
+            <<" glossiness="<<input.batches.front().materialSlots()[i].specular_color[3]<<'\n';
+    REQUIRE(parameters.good());
+}
+ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared,const char* evidence_label=nullptr)
 {
     ALMetalRenderTargetDescriptor descriptor;descriptor.width=input.cell.width;descriptor.height=input.cell.height;
     descriptor.color_attachment_count=4;descriptor.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
@@ -450,6 +488,7 @@ ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared)
     scene.forward_probe_projection_valid=prepared;
     REQUIRE(f.renderer->compositeImpostorPostDeferred(*target,scene,&f.error));INFO(f.error);
     result.after=readImpostor(f,*target);result.activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+    retainImpostorControl(input,evidence_label,result);
     CHECK(result.after.colors[0]!=result.before.colors[0]);
     for(unsigned i=1;i<4;++i)CHECK(result.after.colors[i]==result.before.colors[i]);
     CHECK(result.after.planes.stencil==result.before.planes.stencil);
@@ -471,27 +510,37 @@ TEST_CASE("Prepared legacy walks preserve main shiny and impostor material owner
             {
                 input.family(1);
                 for(auto& batch:input.batches)batch.pre_water_alpha=false;
+                // Standalone legacy alpha keeps flat diffuse RGB. Probe glare
+                // changes only max(diffuse alpha, glare), so author a low
+                // diffuse-alpha floor to make the valid glare observable.
+                auto upload=f.device->makeCommandBuffer("Legacy material glare coverage control",&f.error);REQUIRE(upload);
+                const std::array<std::array<std::uint8_t,4>,2> colors{{{{224,128,64,16}},{{80,184,240,16}}}};
+                for(unsigned i=0;i<2;++i)REQUIRE(input.diffuse[i]->upload(*upload,0,0,{},colors[i].data(),4,&f.error));
+                REQUIRE(upload->commitAndWait(&f.error));
             }
             else input.shiny();
             const std::size_t owner=material?1:0;
             const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            auto generic=renderImpostor(f,input,false);auto prepared=renderImpostor(f,input,true);
+            const auto original_probes=input.probes.constants;
+            auto generic=renderImpostor(f,input,false,"generic");auto prepared=renderImpostor(f,input,true,"prepared");
             CHECK(prepared.after==generic.after);
             CHECK(prepared.activity.impostor_eligible_batches[owner]==before.impostor_eligible_batches[owner]+4);
             CHECK(prepared.activity.impostor_prepared_batches[owner]==before.impostor_prepared_batches[owner]+2);
             input.probes.constants.ref_sphere[1][0]=1000.f;
-            auto changed=renderImpostor(f,input,false);CHECK(changed.after.colors[0]!=generic.after.colors[0]);
-            auto changed_prepared=renderImpostor(f,input,true);CHECK(changed_prepared.after==changed.after);
-            input.probes.constants.ref_sphere[1][0]=-2.4f;
+            auto changed=renderImpostor(f,input,false,"changed-generic");CHECK(changed.after.colors[0]!=generic.after.colors[0]);
+            auto changed_prepared=renderImpostor(f,input,true,"changed-prepared");CHECK(changed_prepared.after==changed.after);
+            input.probes.constants=original_probes;
+            auto restored=renderImpostor(f,input,false,"restored-generic");CHECK(restored.after==generic.after);
+            auto restored_prepared=renderImpostor(f,input,true,"restored-prepared");CHECK(restored_prepared.after==generic.after);
             input.probes.constants.ref_index[1][3]=1;
             input.probes.constants.ref_index[2][3]=-1;identity(input.probes.constants.ref_box[2]);input.probes.constants.ref_box[2][14]=4.f;
             input.probes.constants.ref_index[1][1]=0;input.probes.constants.ref_index[1][2]=64;
             for(unsigned i=0;i<64;++i)input.probes.constants.ref_neighbor[i]=i<60?-1:static_cast<int>(i-59);
-            auto manual=renderImpostor(f,input,false);auto manual_prepared=renderImpostor(f,input,true);CHECK(manual_prepared.after==manual.after);
+            auto manual=renderImpostor(f,input,false,"manual-generic");auto manual_prepared=renderImpostor(f,input,true,"manual-prepared");CHECK(manual_prepared.after==manual.after);
             // This projection is unsupported by the proof; no guessed matrix
             // reconstruction may remove an otherwise valid probe.
             input.scene.forward_probe_projection[0]=1e10f;
-            const auto stats=f.data->stats();auto unsupported=renderImpostor(f,input,true);
+            const auto stats=f.data->stats();auto unsupported=renderImpostor(f,input,true,"unsupported");
             CHECK(unsupported.after==manual.after);CHECK(f.data->stats().candidate_preparations==stats.candidate_preparations);
             CHECK(unsupported.activity.impostor_prepared_batches==manual_prepared.activity.impostor_prepared_batches);
         }
