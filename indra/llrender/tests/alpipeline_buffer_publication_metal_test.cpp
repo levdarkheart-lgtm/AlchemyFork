@@ -16,6 +16,7 @@
 #include "../../almetal/almetalworldsourceview.h"
 #include "../../newview/alnativeregionmodel.h"
 #include "../../almetal/almetalshadowprepare.h"
+#include "../../almetal/almetalshadowpublication.h"
 #include "../../almetal/almetalworldvisibility.h"
 #include "alnativesourceworkingset.h"
 #include "alnativeframebudget.h"
@@ -4388,6 +4389,7 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_animated_gpu_records_native.inl"
 
 #include "alpipeline_dependency_topology_native.inl"
+#include "alpipeline_shadow_membership_native.inl"
 
 #include "alpipeline_early_visibility_native.inl"
 
