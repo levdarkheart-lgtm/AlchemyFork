@@ -53,7 +53,7 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
     // and ordered frame scheduler required by offscreen Metal captures.
     std::string metal_error;
     mMetalDevice = ALMetalDevice::create(&metal_error,
-        ALMetalDevice::resourcePlanModeFromEnvironment(ALMetalResourcePlanMode::disabled));
+        ALMetalDevice::resourcePlanModeFromEnvironment(ALMetalResourcePlanMode::enabled));
     if (!mMetalDevice)
     {
         LL_WARNS("Metal") << "Hidden Metal device initialization failed: "

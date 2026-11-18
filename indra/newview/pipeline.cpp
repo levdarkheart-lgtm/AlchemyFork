@@ -446,12 +446,12 @@ struct ALViewerMetalShadowSourceCache
 #include "pipeline_cohort_compilation_native.inl"
 namespace
 {
-// Private qualification controls. Explicit old prototypes remain independent;
-// defaults are selected only after complete-owner correctness and cost gates.
+// The cost-qualified CPU/scalar route is the default. Hardware visibility and
+// the independently rejected old prototypes retain explicit opt-in controls.
 bool nativeSourceRoutingEnabled() noexcept
 {
     static const bool enabled=[] { const char* value=std::getenv("ALCHEMY_METAL_SOURCE_ROUTING");
-        return value && std::strcmp(value,"1")==0; }();
+        return !value || std::strcmp(value,"1")==0; }();
     return enabled;
 }
 bool nativeSourceVisibilityEnabled() noexcept

@@ -130,6 +130,77 @@ TEST_CASE("Native execution factories share one same-mode owner concurrently",
     }
 }
 
+TEST_CASE("Native factory resolves automatic resource modes and preserves explicit precedence",
+          "[metal-resource-plan-native][resource-plan-default]")
+{
+    // Keep this after the concurrent factory case so its first accounting-only
+    // owner is not prewarmed by the environment table.
+    constexpr const char* variable = "ALCHEMY_METAL_RESOURCE_PLAN";
+    struct RAIIEnvRestore
+    {
+        const char* name;
+        bool was_set = false;
+        std::string previous;
+        explicit RAIIEnvRestore(const char* variable_name) : name(variable_name)
+        {
+            if (const char* value = std::getenv(name))
+            {
+                was_set = true;
+                previous = value;
+            }
+        }
+        ~RAIIEnvRestore()
+        {
+            if (was_set) setenv(name, previous.c_str(), 1);
+            else unsetenv(name);
+        }
+    } restore(variable);
+
+    struct Row
+    {
+        const char* environment;
+        ALMetalResourcePlanMode requested;
+        ALMetalResourcePlanMode expected;
+    };
+    using Mode = ALMetalResourcePlanMode;
+    const std::array<Row, 11> rows{{
+        {nullptr, Mode::automatic, Mode::enabled},
+        {"", Mode::automatic, Mode::enabled},
+        {"invalid-resource-plan-mode", Mode::automatic, Mode::enabled},
+        {"0", Mode::automatic, Mode::disabled},
+        {"disabled", Mode::automatic, Mode::disabled},
+        {"accounting_only", Mode::automatic, Mode::accounting_only},
+        {"1", Mode::automatic, Mode::enabled},
+        {"enabled", Mode::automatic, Mode::enabled},
+        {"enabled", Mode::disabled, Mode::disabled},
+        {"disabled", Mode::accounting_only, Mode::accounting_only},
+        {"accounting_only", Mode::enabled, Mode::enabled},
+    }};
+    for (const auto& row : rows)
+    {
+        @autoreleasepool
+        {
+            INFO("environment=" << (row.environment ? row.environment : "<unset>"));
+            INFO("requested=" << static_cast<unsigned>(row.requested));
+            REQUIRE((row.environment ? setenv(variable, row.environment, 1) : unsetenv(variable)) == 0);
+            std::string error;
+            auto device = ALMetalDevice::create(&error, row.requested);
+            INFO(error);
+            REQUIRE(device);
+            const auto actual = device->resourcePlanningMode();
+            std::cout << "resource_plan_factory env="
+                      << (row.environment ? (*row.environment ? row.environment : "<empty>") : "<unset>")
+                      << " requested=" << static_cast<unsigned>(row.requested)
+                      << " actual=" << static_cast<unsigned>(actual) << '\n';
+            CHECK(actual == row.expected);
+            auto command = device->makeCommandBuffer("Factory resource mode precedence", &error);
+            INFO(error);
+            REQUIRE(command);
+            CHECK(static_cast<bool>(command->resourceUsePlan()) == (row.expected == Mode::enabled));
+        }
+    }
+}
+
 TEST_CASE("Native same-mode wrappers share allocation accounting and ordered pixels",
           "[metal-resource-plan-native][PPD-459]")
 {

@@ -651,7 +651,7 @@ std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error,
                                                   ALMetalResourcePlanMode resource_plan_mode)
 {
     if (resource_plan_mode == ALMetalResourcePlanMode::automatic)
-        resource_plan_mode = resourcePlanModeFromEnvironment();
+        resource_plan_mode = resourcePlanModeFromEnvironment(ALMetalResourcePlanMode::enabled);
     if (resource_plan_mode != ALMetalResourcePlanMode::disabled &&
         resource_plan_mode != ALMetalResourcePlanMode::accounting_only &&
         resource_plan_mode != ALMetalResourcePlanMode::enabled)
