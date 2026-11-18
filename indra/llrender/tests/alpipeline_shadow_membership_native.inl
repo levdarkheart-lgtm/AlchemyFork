@@ -65,6 +65,8 @@ struct Driver
     std::vector<LLPointer<Info>> admitted;
     std::vector<Bridge::AdmittedSpan> raw_spans,admitted_spans;
     std::array<std::shared_ptr<ALNativePublication::State>,3> groups;
+    // Separate producer heuristic, never main compilation state/tryAcquire.
+    std::array<ALNativeCohortCompilationAdmission,3> stability;
     ALNativeSourceWorkingSet residency{8192,64ULL*1024*1024,2};
     ALNativeFrameBudget budget;
     ALMetalShadowMembershipCache memberships;
@@ -80,42 +82,51 @@ struct Driver
         output.resize(count);
     }
     U64 observations()const{U64 total=0;for(const auto& info:infos)total+=info->observation_calls;return total;}
-    void begin(bool dirty,bool denied)
+    void begin(bool dirty,bool denied,bool child_only=false)
     {
         ++frame;Inputs::gFrameCount=U32(frame);budget.beginFrame({.frame=frame});residency.trim(U32(frame));
         avatar.palette.mGLMp[0]=.017f*F32(frame%7);
         if(dirty)
         {
-            for(auto& group:groups)group->invalidate();
+            if(!child_only)for(auto& group:groups)group->invalidate();
             for(auto& info:infos)info->state->invalidate();
             // Authoritative source/group mutation: reorder and change the
             // positive-count subset, not a camera-keyed cache fiction.
-            if(infos.size()>1){std::rotate(infos.begin(),infos.begin()+1,infos.end());for(auto& info:infos)info->mCount=3;infos[frame%infos.size()]->mCount=0;}
+            if(!child_only&&infos.size()>1){std::rotate(infos.begin(),infos.begin()+1,infos.end());for(auto& info:infos)info->mCount=3;infos[frame%infos.size()]->mCount=0;}
         }
         if(denied)budget.beginDrain();
     }
     bool capture(bool cached,U32 view,bool cold,Handoff& lease)
     {
-        const auto group=groups[view%groups.size()];if(cold)group->invalidate();
+        const auto group_index=view%groups.size();const auto& group=groups[group_index];if(cold)group->invalidate();
         const U32 pass=coverage==Coverage::opaque?7:9;
         // Same authored group/pass admission and positive-count translation
         // operations as postSort/admitMetalShadowSources. No cull traversal,
         // scene queries, sorting, merging or GPU encoding is simulated here.
         raw_map.clear();
-        if(cached){raw_spans.clear();admitted_spans.clear();raw_spans.push_back(Bridge::admit(group,pass,Coverage::opaque,0,infos.size(),true));}
+        if(cached)
+        {
+            raw_spans.clear();admitted_spans.clear();
+            const auto snapshot=budget.snapshot();
+            // Exact integrated guard order: global drain, raw size, separate
+            // group stamp heuristic; positive-size qualification occurs below.
+            if(!snapshot.draining&&infos.size()>=Bridge::minimum_members&&
+                Bridge::candidateReady(stability[group_index],group,snapshot.frame,infos.size()))
+                raw_spans.push_back(Bridge::admit(group,pass,Coverage::opaque,0,infos.size(),true));
+        }
         for(const auto& info:infos)raw_map.push_back(info.get());
         raw_rows+=raw_map.size();
         admitted.clear();
-        std::size_t raw_index=0,span_index=0,positive_first=0;
+        std::size_t raw_index=0,span_index=0,positive_first=0;const bool optional_spans=cached&&!raw_spans.empty();
         for(auto* info:raw_map)
         {
-            if(cached&&span_index<raw_spans.size()&&raw_spans[span_index].first==raw_index)positive_first=admitted.size();
+            if(optional_spans&&span_index<raw_spans.size()&&raw_spans[span_index].first==raw_index)positive_first=admitted.size();
             if(info&&info->mCount)admitted.emplace_back(info);
             ++raw_index;
-            if(cached&&span_index<raw_spans.size()&&raw_index==raw_spans[span_index].first+raw_spans[span_index].count)
+            if(optional_spans&&span_index<raw_spans.size()&&raw_index==raw_spans[span_index].first+raw_spans[span_index].count)
             {
                 auto span=raw_spans[span_index++];span.first=positive_first;span.count=admitted.size()-positive_first;
-                if(span.count)admitted_spans.push_back(std::move(span));
+                if(span.count>=Bridge::minimum_members)admitted_spans.push_back(std::move(span));
             }
         }
         const std::size_t count=admitted.size();positive_rows+=count;stamped_spans+=admitted_spans.size();output.resize(count);
@@ -183,7 +194,7 @@ TEST_CASE("Shadow producer membership skips actual warm source factories without
     using namespace ShadowMembershipFrontier;SourceRecipes::Policy policy;Publication f;
     for(auto coverage:{Coverage::opaque,Coverage::texture_mask})for(bool rigged:{false,true})
     {
-        const auto geometry=f.buffer(true,rigged?LLVertexBuffer::MAP_WEIGHT4:0);Driver old(f,4,coverage,geometry,rigged),now(f,4,coverage,geometry,rigged);Handoff old_lease,new_lease;
+        const auto geometry=f.buffer(true,rigged?LLVertexBuffer::MAP_WEIGHT4:0);Driver old(f,8,coverage,geometry,rigged),now(f,8,coverage,geometry,rigged);Handoff old_lease,new_lease;
         for(unsigned iteration=0;iteration<5;++iteration)
         {
             old.begin(iteration==3,false);now.begin(iteration==3,false);
@@ -198,23 +209,29 @@ TEST_CASE("Shadow membership frontier preserves actual admission across small ra
 {
     using namespace ShadowMembershipFrontier;
     SourceRecipes::Policy policy;Publication f;
-    for(U32 rows:{1u,2u,4u,8u,16u,64u,256u})for(unsigned mode=0;mode<4;++mode)
+    for(U32 rows:{1u,2u,4u,8u,16u,64u,256u})for(unsigned mode=0;mode<5;++mode)
     {
         const auto geometry=f.buffer(true);Driver old(f,rows,Coverage::opaque,geometry),now(f,rows,Coverage::opaque,geometry);Handoff a,b;
         for(unsigned iteration=0;iteration<3;++iteration)
         {
-            const bool dirty=mode==2&&iteration>0;old.begin(dirty,false);now.begin(dirty,mode==3);
+            const bool dirty=(mode==2||mode==4)&&iteration>0;old.begin(dirty,false,mode==4);now.begin(dirty,mode==3,mode==4);
             for(U32 view=0;view<7;++view)
             {
                 REQUIRE(old.capture(false,view,mode==1,a));REQUIRE(now.capture(true,view,mode==1,b));equal(old,now);
-                CHECK(old.admitted.size()==now.admitted.size());CHECK(now.admitted_spans.size()==1);
-                CHECK(now.admitted_spans[0].count==now.output.size());CHECK(now.admitted_spans[0].whole_group);
+                CHECK(old.admitted.size()==now.admitted.size());
+                const bool eligible=rows>=Bridge::minimum_members&&iteration>0&&(mode==0||mode==4);
+                CHECK(now.admitted_spans.size()==std::size_t(eligible));
+                if(eligible){CHECK(now.admitted_spans[0].count==now.output.size());CHECK(now.admitted_spans[0].whole_group);}
                 CHECK(a.cpu==nullptr);
                 if(b.cpu){CHECK(b.cpu->memberships.size()==1);CHECK(b.native->resource_set.size()==1);CHECK(b.native->sources.empty());}
                 a.reset();b.reset();
             }
         }
-        if(mode==3){CHECK(now.memberships.stats().resource_unions==0);CHECK(now.memberships.stats().hits==0);CHECK(old.factories==now.factories);}
+        if(mode==3||mode==1||mode==2||rows<Bridge::minimum_members)
+        {CHECK(now.memberships.stats().resource_unions==0);CHECK(now.memberships.stats().hits==0);CHECK(old.factories==now.factories);CHECK(now.memberships.stats().entries==0);}
+        if(mode==3||rows<Bridge::minimum_members)for(const auto& value:now.stability){CHECK_FALSE(value.pendingSince());CHECK_FALSE(value.lastConsideredFrame());}
+        if(mode==0&&rows>=Bridge::minimum_members){CHECK(now.memberships.stats().resource_unions==3);CHECK(now.factories<old.factories);}
+        if(mode==4&&rows>=Bridge::minimum_members){CHECK(now.memberships.stats().resource_unions==6);CHECK(now.factories<old.factories);}
     }
 }
 
@@ -224,29 +241,38 @@ TEST_CASE("Shadow source factory frontier retains cold changing cull and denied 
     struct Cell{U32 rows;Coverage coverage;bool rigged=false;};
     constexpr std::array cells{Cell{1,Coverage::opaque},Cell{2,Coverage::opaque},Cell{4,Coverage::opaque},Cell{8,Coverage::opaque},Cell{16,Coverage::opaque},Cell{64,Coverage::opaque},Cell{256,Coverage::opaque},Cell{1,Coverage::texture_mask},Cell{64,Coverage::texture_mask,true}};
     std::cout.precision(17);
-    for(unsigned cell=0;cell<cells.size();++cell)for(unsigned mode=0;mode<4;++mode)
+    for(unsigned cell=0;cell<cells.size();++cell)for(unsigned mode=0;mode<6;++mode)
     {
         SourceRecipes::Policy policy;Publication f;const auto geometry=f.buffer(true,cells[cell].rigged?LLVertexBuffer::MAP_WEIGHT4:0);Driver old(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged),now(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged);
         Handoff owner;
         // Correctness precheck on the exact timed topology, including fresh
         // owner matrices/UVs and three group identities in seven-view order.
-        old.begin(false,false);now.begin(false,mode==3);
-        for(U32 view=0;view<7;++view){REQUIRE(old.capture(false,view,mode==1,owner));owner.reset();REQUIRE(now.capture(true,view,mode==1,owner));owner.reset();equal(old,now);}
-        constexpr unsigned warm=8,blocks=20,iterations=10;
+        for(unsigned iteration=0;iteration<3;++iteration)
+        {
+            const bool dirty=(mode==2||mode==4)&&iteration>0;old.begin(dirty,false,mode==4);now.begin(dirty,mode==3,mode==4);
+            for(U32 view=0;view<7;++view){REQUIRE(old.capture(false,view,mode==1,owner));owner.reset();REQUIRE(now.capture(true,view,mode==1,owner));owner.reset();equal(old,now);}
+        }
+        constexpr unsigned warm=8,blocks=20;const unsigned iterations=mode==5?8:10;
         for(unsigned block=0;block<warm+blocks;++block)
         {
             const std::array<unsigned,4> order=block%2?std::array<unsigned,4>{1,0,0,1}:std::array<unsigned,4>{0,1,1,0};
             for(unsigned position=0;position<order.size();++position)
             {
-                auto& driver=order[position]?now:old;const auto factories=driver.factories,observations=driver.observations(),unions=driver.memberships.stats().resource_unions,raw=driver.raw_rows,positive=driver.positive_rows,spans=driver.stamped_spans;
+                // Fresh producer window: first cold frame plus seven later
+                // frames, with independent source/cache ownership per arm.
+                // Construction is setup; final teardown is measured separately.
+                auto fresh=mode==5?std::make_unique<Driver>(f,cells[cell].rows,cells[cell].coverage,geometry,cells[cell].rigged):nullptr;
+                auto& driver=fresh?*fresh:(order[position]?now:old);const auto factories=driver.factories,observations=driver.observations(),unions=driver.memberships.stats().resource_unions,raw=driver.raw_rows,positive=driver.positive_rows,spans=driver.stamped_spans;
                 std::int64_t nanos=0,retirement=0;bool complete=true;
                 for(unsigned iteration=0;iteration<iterations;++iteration)
                 {
-                    auto start=std::chrono::steady_clock::now();driver.begin(mode==2,mode==3);auto stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();
+                    auto start=std::chrono::steady_clock::now();driver.begin(mode==2||mode==4,mode==3,mode==4);auto stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();
                     for(U32 view=0;view<7;++view){start=std::chrono::steady_clock::now();complete=driver.capture(order[position]!=0,view,mode==1,owner)&&complete;stop=std::chrono::steady_clock::now();nanos+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();start=std::chrono::steady_clock::now();owner.reset();stop=std::chrono::steady_clock::now();retirement+=std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();}
                 }
                 REQUIRE(complete);REQUIRE(!driver.output.empty());REQUIRE(driver.output[0].vertices);
-                if(block>=warm)std::cout<<"shadow_frontier_cost cell="<<cell<<" rows="<<cells[cell].rows<<" coverage="<<U32(cells[cell].coverage)<<" mode="<<mode<<" block="<<block-warm<<" position="<<position<<" arm="<<order[position]<<" seven_view_iterations="<<iterations<<" handoff_ns="<<nanos<<" owner_retirement_ns="<<retirement<<" factories="<<driver.factories-factories<<" observation_calls="<<driver.observations()-observations<<" successful_unions="<<driver.memberships.stats().resource_unions-unions<<" raw_rows="<<driver.raw_rows-raw<<" positive_rows="<<driver.positive_rows-positive<<" stamped_spans="<<driver.stamped_spans-spans<<" cpu_debt="<<driver.memberships.stats().metadata_bytes<<std::endl;
+                const auto factory_delta=driver.factories-factories,observation_delta=driver.observations()-observations,union_delta=driver.memberships.stats().resource_unions-unions,raw_delta=driver.raw_rows-raw,positive_delta=driver.positive_rows-positive,span_delta=driver.stamped_spans-spans,debt=driver.memberships.stats().metadata_bytes;
+                const auto teardown_start=std::chrono::steady_clock::now();fresh.reset();const auto teardown=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-teardown_start).count();
+                if(block>=warm)std::cout<<"shadow_frontier_cost cell="<<cell<<" rows="<<cells[cell].rows<<" coverage="<<U32(cells[cell].coverage)<<" mode="<<mode<<" block="<<block-warm<<" position="<<position<<" arm="<<order[position]<<" seven_view_iterations="<<iterations<<" handoff_ns="<<nanos<<" owner_retirement_ns="<<retirement<<" producer_teardown_ns="<<teardown<<" factories="<<factory_delta<<" observation_calls="<<observation_delta<<" successful_unions="<<union_delta<<" raw_rows="<<raw_delta<<" positive_rows="<<positive_delta<<" stamped_spans="<<span_delta<<" cpu_debt="<<debt<<std::endl;
             }
         }
     }
