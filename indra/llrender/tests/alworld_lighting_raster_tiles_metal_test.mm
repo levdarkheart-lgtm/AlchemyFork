@@ -499,6 +499,9 @@ struct Inputs
         {
             batch.pre_water_simple=kind==0;batch.pre_water_material=kind==1;batch.pre_water_pbr=kind==2;
             batch.material_slot_count=kind==1?2:0;batch.pbr_slot_count=kind==2?2:0;
+            batch.material_alpha_mode = kind == 1 ? 1u : 0u;
+            batch.texcoord1_offset = batch.texcoord_offset;
+            batch.texcoord2_offset = batch.texcoord_offset;
             for(unsigned slot=0;slot<2;++slot)
             {
                 if(kind==1)
