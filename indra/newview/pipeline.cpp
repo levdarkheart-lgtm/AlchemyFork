@@ -3450,6 +3450,16 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << prepared.probe_candidate_activity.eligible_batches[1]
                     << ", cumulative_prepared(pre/post)=" << prepared.probe_candidate_activity.prepared_batches[0]
                     << '/' << prepared.probe_candidate_activity.prepared_batches[1]
+                    << ", last_encoded_material/pbr=" << prepared.probe_candidate_material_batches
+                    << '/' << prepared.probe_candidate_pbr_batches
+                    << ", cumulative_material_eligible(pre/post)=" << prepared.probe_candidate_activity.material_eligible_batches[0]
+                    << '/' << prepared.probe_candidate_activity.material_eligible_batches[1]
+                    << ", cumulative_material_prepared(pre/post)=" << prepared.probe_candidate_activity.material_prepared_batches[0]
+                    << '/' << prepared.probe_candidate_activity.material_prepared_batches[1]
+                    << ", cumulative_pbr_eligible(pre/post)=" << prepared.probe_candidate_activity.pbr_eligible_batches[0]
+                    << '/' << prepared.probe_candidate_activity.pbr_eligible_batches[1]
+                    << ", cumulative_pbr_prepared(pre/post)=" << prepared.probe_candidate_activity.pbr_prepared_batches[0]
+                    << '/' << prepared.probe_candidate_activity.pbr_prepared_batches[1]
                     << ", unavailable_calls=" << reasons(prepared.probe_candidate_activity.unavailable_calls)
                     << ", missing_variant_batches=" << prepared.probe_candidate_activity.pipeline_fallback_batches
                     << ", scope=renderer_lifetime_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
