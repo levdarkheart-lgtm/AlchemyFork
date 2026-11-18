@@ -383,6 +383,11 @@ public:
         const std::string& label,
         std::string* error = nullptr);
 
+    // Observed native raster geometry, without flushing or changing state.
+    // Zero denotes an unavailable or ended encoder.
+    std::uint32_t rasterTileWidth() const noexcept;
+    std::uint32_t rasterTileHeight() const noexcept;
+
     bool setPipeline(const ALMetalRenderPipeline& pipeline, std::string* error = nullptr);
     bool setDepthStencilState(const ALMetalDepthStencilState* state, std::string* error = nullptr);
     bool setStencilReferenceValue(std::uint32_t value,

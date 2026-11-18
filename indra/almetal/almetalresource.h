@@ -577,6 +577,14 @@ struct ALMetalRenderPassColorConfig
     bool linear_storage_view = false;
 };
 
+// Native raster tile geometry only. This does not reserve threadgroup memory
+// or change any attachment, shader, draw, or visibility contract.
+enum class ALMetalRasterTileSize
+{
+    automatic,
+    tile16,
+};
+
 struct ALMetalRenderPassConfig
 {
     std::array<ALMetalRenderPassColorConfig, AL_METAL_MAX_COLOR_ATTACHMENTS> colors{};
@@ -594,6 +602,9 @@ struct ALMetalRenderPassConfig
     // retains this buffer and the producing command independently of the
     // descriptor wrapper.
     const ALMetalVisibilityResultBatch* visibility_results = nullptr;
+    // Automatic preserves Metal's descriptor defaults. An explicit size is
+    // admitted only by makeRenderPass on a supporting native target device.
+    ALMetalRasterTileSize raster_tile_size = ALMetalRasterTileSize::automatic;
 };
 
 class ALMetalRenderPass final

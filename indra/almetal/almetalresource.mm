@@ -2956,6 +2956,15 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
             setError(error, "Metal render target is unavailable");
             return nullptr;
         }
+        switch (config.raster_tile_size)
+        {
+            case ALMetalRasterTileSize::automatic:
+            case ALMetalRasterTileSize::tile16:
+                break;
+            default:
+                setError(error, "Metal raster tile size is invalid");
+                return nullptr;
+        }
         MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
         id<MTLDevice> target_device = nil;
         for (std::uint32_t index = 0; index < mDescriptor.color_attachment_count; ++index)
@@ -3048,6 +3057,17 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                 descriptor.stencilAttachment.storeAction = storeAction(config.stencil_store);
                 descriptor.stencilAttachment.clearStencil = config.clear_stencil;
             }
+        }
+
+        if (config.raster_tile_size == ALMetalRasterTileSize::tile16)
+        {
+            if (!target_device || ![target_device supportsFamily:MTLGPUFamilyApple4])
+            {
+                setError(error, "Metal 16-pixel raster tiles require an Apple4-or-later target device");
+                return nullptr;
+            }
+            descriptor.tileWidth = 16;
+            descriptor.tileHeight = 16;
         }
 
         if (config.visibility_results)

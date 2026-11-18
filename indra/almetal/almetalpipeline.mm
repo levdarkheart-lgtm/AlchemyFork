@@ -1136,6 +1136,18 @@ std::unique_ptr<ALMetalRenderEncoder> ALMetalRenderEncoder::begin(
     }
 }
 
+std::uint32_t ALMetalRenderEncoder::rasterTileWidth() const noexcept
+{
+    return mImpl && !mImpl->ended && mImpl->encoder
+        ? static_cast<std::uint32_t>(mImpl->encoder.tileWidth) : 0u;
+}
+
+std::uint32_t ALMetalRenderEncoder::rasterTileHeight() const noexcept
+{
+    return mImpl && !mImpl->ended && mImpl->encoder
+        ? static_cast<std::uint32_t>(mImpl->encoder.tileHeight) : 0u;
+}
+
 bool ALMetalRenderEncoder::setPipeline(const ALMetalRenderPipeline& pipeline, std::string* error)
 {
     if (!mImpl || mImpl->ended || !pipeline.mImpl || pipeline.mImpl->device != mImpl->device)
