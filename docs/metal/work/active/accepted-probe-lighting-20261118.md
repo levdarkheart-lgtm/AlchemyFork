@@ -149,3 +149,94 @@ Next: review full tile-consumer host/actual130-row control, compile then strict
 A/A+A/B; only if strict passes, run exclusive initialization+consumercost. Reject
 failed/lost candidates without shipping them. Build/test/stage the coherent
 selected source group for owner checkpoint; no viewer action or push yet.
+
+## Qualified packed consumer and first cost cells
+
+Private full-helper source9990/d8b1 and host3a79 compile/link5/5; binary2ebee1c4,
+libraries1f2c67ea/58a3d15b. Strict43/43 and release precheck29/29 pass exact half
+components, depth, finite/write guards under actual validation1/2 respectively.
+Historical130-row coefficients, finite-half edge/padding, zero/default/manual/
+neighbor/mask/PBR/classic/water and sparse/7-layer controls are represented.
+These are helper fixtures, not actual production PSO or current47-scene parity.
+
+Exclusive quiet cost cells1/3/4 retain300 observations/arm each,150 counterbalanced
+blocks,10warmups/arm and immediate A/A+A/B parity. GPU paired medians B/A are
+0.936286 (ambient47),0.575758 (sparse47),0.923889 (7layers54); adverse blocks34/4/7
+of150 retained. Full tile init/attachments/draw cost included, no readback in
+measured commands. Primary cells analytically have32accepted SH calls/covered
+fragment,224across7layers, not47/54taps; cache loads all47/54positive rows. Current
+47-scene per-probe positive-SHscale distribution is unavailable, not inferred
+from sampler counters. Baseline hardware tiles32x32 versus candidate16x16 is a
+material confound: no cache-only or viewer/FPS gain claim. Report24b41183 and
+receipt4c1ba560 under tile-sh-consumer-pilot-01 retain all source/results/warnings.
+PPD394 wrong invocation index fails beforedevice/GPU, retained; named-value retry
+passes without host/shader change. New source-only matched controls separate
+same-original-PSO geometry from same-library initialized-original versus cached
+loads; fresh strict/precheck gates required, no old PASS reuse.
+
+Integrated125+241 now mirrored to builder c9a87ba62d, fullindra cc04a93c equals
+canonical3756119688; production MSL239144/libfae7 stillunchanged. PrescribedRelease
+build01 PID87718/session61446 is live at this update; no completion/stage claim.
+Other agents prepare source only while build runs; no timedGPU overlap. Next
+finish build/relevanttests then release matched-control qualification/cost only
+after all competing work ends. Probe-cache production integration remains
+unselected pending these results and actual-caller/pass-lifetime qualification.
+
+## Matched controls and integrated native tile experiment
+
+Matched controls host32bdaab/binary9fa7b55f passes87 strict/59 release comparisons.
+Six exclusive300-observations/arm runs retain3600 samples/all adverse blocks.
+Same original PSO geometry gives paired B/A0.939018/0.576672/0.936291 for cells1/3/4;
+matched16+sameinit originalB versus cache gives0.992072/1.000609/0.994188. The packed
+cache remains UNSELECTED. Reporta36b8188/receiptae3d078c retain the full matrix;
+no additive/cache-only/whole-viewer attribution. Absolute sparse process shift
+is unexplained; no cross-process initializer-time subtraction is permitted.
+
+The combined125+241 control source3756119688/builderc9a87ba62d built69259 in240.747s,
+passesdoctor/focused960assertions30cases pluslayout853/13, API/GPUvalidation seen.
+App514ffdf3/libfae7 passes346ARM64/0invalid anddeepstrictsignature; source3617zero.
+All6 build warnings mapped (1Catch2holder gap398,5duplicatearchives); no suppression.
+This app is a verified control in the builder, NOT a separately staged new tile
+candidate and NOT newer native-experiment source. No viewer launched.
+
+Native API source-only3e2e45c cherry-picked as6ad2ada19a: typed automatic/tile16,
+actualtargetApple4 check and two read-only encoder dimension getters. Root owns
+world.h/cpp,pipeline/settings/CMake integration: immutable BASE/opaque-forward
+inputs carry request, all5forward begins and BASE observe actual dimensions,
+continuations retain policy, unsupported family keepsautomatic. Hidden Boolean
+RenderMetalSmallLightingTiles defaultsOFF/nonpersistent; production caller
+restricts requests to ordinarymain, excludesprobe/hero/snapshot/HUD/cutout.
+No shader/source math, SH cache, newpass/TG/queue or lighting cap is introduced.
+Backend tests (2cases/four3MRT+depth/stencil cells) are SOURCEONLY, CMake registered.
+Rootsource placement error400 caughtbeforebuild, correctedColorGrade→OpaqueScene;
+sourceguard-history retains a separate prewrite ambiguous-indent edit guard.
+
+Architecture agent exclusively authors newactualworld caller .mm tests in
+/private/tmp/alchemy-world-lighting-raster-tiles-20261118, sourceonly. GPUagent
+reviewsrootdiff; backendAPI files committed/clean in its isolatedtree. Root owns
+all shared integration. DO NOT link old objects against new pass-config ABI.
+Next: finish rootreview +worldtest integration/CMake, freeze coherent source,
+mirror fullindra into builder and run prescribed fullRelease rebuild, strict
+actualbackend/BASE/alpha/depth-stencil/restart parity then exclusivecompletepass
+cost; select only measured quality-preserving changes. Separatelystage combined
+viewer and pause forowner Home/club checkpoint. No push.
+
+PPD393 independent conversion proof PASS qualifies languageRNE versus nativeRTZ
+for10normal inputs oncurrentM1Max; auxiliary sameformat reference repair remains
+SOURCEONLY. PPD399 reservedforincomingwearable warning report; noappearance or
+antirollback codechanged. All compiler/native/timing jobs are terminal now;
+awakeguard55971 remains active per existing receipt, stop atcheckpoint only.
+
+Root peer review source fixes401/402 now preserve the full lighting census through
+commitShaderReload and distinguish original request, effective capability policy
+and actual dimensions per pass. New requested/effective16 counters and last BASE/
+forward sizes use0automatic/16explicit. All5forward begins andBASE carry both
+policies; log reports them separately. Source peer515b659e follow-up clears both;
+actual whole-world qualification remains pending. API3e2e45c/isolatedsourcepeer
+clear is integrated as6ad2ada19a. No old-ABI objects have run against these changes.
+
+Incoming appearance documentation453c0f14 copied after root source/hash review;
+PPD399 sourceconfirmed with exact-body17check limits, noappearance codechanged.
+Canonical nextfree403; no outbound task message required to reserve shared ID.
+Latest corrected source/docs diff and harness33 pass; full native experiment
+build/test/cost/stage remain pending. Verified69259control stays untouched.

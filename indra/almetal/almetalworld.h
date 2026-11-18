@@ -1802,6 +1802,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::uint64_t diagnostic_frame_index = 0;
     std::uint32_t diagnostic_view_kind = 0;
     std::uint32_t diagnostic_view_index = 0;
+    // Immutable per-view experiment; automatic preserves Metal's tile choice.
+    ALMetalRasterTileSize lighting_raster_tile_size = ALMetalRasterTileSize::automatic;
 };
 
 // The display-transfer base of colorCorrectF.glsl. This owner
@@ -2645,6 +2647,8 @@ struct ALMetalWorldBaseLightingScene
     bool hdr = false;
     // Optional private diagnostic identity. Kind0 keeps standalone callers out.
     ALMetalProbeWorkloadView diagnostic_view;
+    // Lighting pass geometry is independent of probe selection and shader math.
+    ALMetalRasterTileSize lighting_raster_tile_size = ALMetalRasterTileSize::automatic;
 };
 
 // PPD-308: acceptance is separate from a safe pre-prefix serial decline.
@@ -2820,6 +2824,19 @@ private:
 struct ALMetalShadowIndirectStats;
 enum class ALMetalShadowPrepareFailure : std::uint8_t;
 
+// Owner-thread census of begun native BASE/forward encoders. These counts
+// observe actual hardware tile dimensions, not command completion or FPS.
+struct ALMetalWorldLightingTileStats
+{
+    std::uint64_t base_passes = 0, forward_passes = 0;
+    std::uint64_t tile16_passes = 0, tile32_passes = 0, other_passes = 0;
+    std::uint64_t requested_tile16_passes = 0, effective_tile16_passes = 0;
+    std::uint32_t last_base_requested_size = 0, last_base_effective_size = 0;
+    std::uint32_t last_forward_requested_size = 0, last_forward_effective_size = 0;
+    std::uint32_t last_base_width = 0, last_base_height = 0;
+    std::uint32_t last_forward_width = 0, last_forward_height = 0;
+};
+
 struct ALMetalWorldMainFrameStats
 {
     std::uint64_t committed = 0, completed = 0, failed = 0, canceled = 0;
@@ -2908,6 +2925,7 @@ public:
     bool beginMainFrameBatch(std::uint64_t group, const std::string& label,
                              std::string* error = nullptr);
     ALMetalWorldMainFrameStats mainFrameStats() const noexcept;
+    ALMetalWorldLightingTileStats lightingTileStats() const noexcept;
     // The identity is a monotonic logical shadow-view GROUP serial, which
     // need not equal the simulation/presentation gFrameCount. Production
     // streams up to six view commands per group with two pending groups,

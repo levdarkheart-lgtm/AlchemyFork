@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-394 -->
+<!-- next-defect-id: PPD-403 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7730,6 +7730,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 owner resumes active goal and directs proceeding with the measured next target. New group accepted-probe-lighting-20261118 starts atb34d82d38e; no prior visual/performance acceptance is inferred. Source audit excludes complete per-probe irradiance caching because receiver position/normal/parallax remain dynamic. Current strict scoped-clone qualification and controlled saved-frame accepted-tap/traversal/SH/shadow separation precede a production change; old C112/H56/scalar/ambient/noinline failures remain retained and unselected. [Work](work/active/accepted-probe-lighting-20261118.md).
 
+- 2026-11-18 accepted-probe investigation: matched real-Metal helper controls pass87 strict/59 release checks and3600 observations. Same original PSO with16x16 tiles reproduces paired−6.10%ambient/−42.33%sparse/−6.37%7layers; packed-SH consumption atmatchedtiles changes−0.79%/+0.061%/−0.58%, so packedcache remainsunselected. Sourceaudit current native BASE/forward passes leaves Metal hardware geometry automatic; this is not proof of a driver/engine defect or current47scene gain. Before a native experiment, original1eb44 full-screen BASE and ordered alpha preserve exact attachments/blend/depth/stencil; GL has no equivalent explicit tile-size mechanism. Add a bounded typed default/16 choice in current Metal pass owner, immutable per-view inputs, runtimecapability check and original automatic control. Qualify actual BASE/alpha output and completepass costs before selecting for owner combinedviewer. No shader/arithmetic/lighting cap or contribution reduction, no newpass/queue/cache framework.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -9235,3 +9237,179 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before any reference change. PPD392 hash repair is separate; classic expected relation remains failed.
 
 - 2026-11-18 fullcharacterization completes while this auxiliary relation remains5120component failures; A/Bclassic images themselves exact. All numeric CHECKs remainedactive and overall nativeexit42 is retained. No oracle, comparator or shader change; conversion mechanism remainsunqualified.
+
+
+- 2026-11-18 independent reference source4483/MSLc44c qualifies on M1Max/currentMetal3.1Fast/default options: rawF32 and explicitlanguage-halfRNE0mismatch; buffer/literal RGBA16F stores RTZ0mismatch (RNE76/128),384written pixels/all3actualPSOvalidation1. This proves the auxiliary oracle domain mismatch for these inputs without changing shaders/flags. Reportd094c806/summary4a4d91b5 retain rawfirst outputs. Source-only auxiliary repair now uses a separate same-device/same-format passthrough reference, never candidate output or universalRTZ; uncompiled/unrun. Two real scoped helper A/B differences remain unchanged.
+
+## PPD-394 — Private cost invocation replaces the strict gate argument
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex tile-consumer pilot command wrapper
+- Discovered: 2026-11-18
+- Original reference: Cost runs must consume exact same-source strict/precheck receipts before device creation; command construction may not replace a gate with an output directory or reuse prior results.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); private tile-sh-consumer-pilot-01/cost-cell1-01-run-receipt.json records PID87471 exit1 at09:30:43UTC and stderr gate-file-unavailable. The inline wrapper changes argv5 (strict receipt) instead of argv4 (output). Host rejects before Pilot/device creation; no output directory or GPU observations are produced. Host/shaders and passed43/29 receipts remain unchanged.
+- Next action: Preserve failed argv/receipt; construct the complete invocation from named executable/library/output/strict/precheck/cell values and assert gate files plus new output before launch. Retry in a fresh cost-cell1-02 tag under the same quiet window; no compilation or comparator change.
+- Verification: Actual preflight failure retained; no cost or production result. Corrected invocation pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private wrapper correction. The host's fail-closed gate worked; no old or partial measurements can supply the retry.
+
+- 2026-11-18 corrected named-argument cost-cell1-02 exits0 with immediate A/A+A/B passes and600 observations (300/arm); original01 failure remains. Following cells3/4 also complete600 each. Host/source/library and gate identities unchanged; no false result was reused. Runtime wrapper repair demonstrated, ownerverification remains pending.
+
+
+## PPD-395 — Private conversion-proof runner has invalid compressed ternaries
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex independent half-conversion reference fixture
+- Discovered: 2026-11-18
+- Original reference: A private evidence runner must parse before preparing commands or executing a source-pinned compiler/native binary; draft syntax failure cannot supply test evidence.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); ppd393-conversion-reference-01/pre-AST-draft/receipt.json retains source94538feb6c and AST SyntaxError at line36. The timeout and exit expressions contain else60/else0 rather than separated Python tokens. No planning/compile/GPU or production/oracle mutation occurred.
+- Next action: Retain draft/error; correct both token boundaries with normal readable Python formatting, rerun AST and source-only planning, then submit frozen reference sources for root review before compilation. No PPD393 expected-value correction before independent proof.
+- Verification: Source/AST failure observed before execution; native conversion mechanism still unqualified.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private syntax correction. Canonical source and all shader parity gates remain unchanged.
+
+
+- 2026-11-18 readable corrected runner passes AST and source-only plan; later exactsource4483 proof compiles withWall/Werror0 and runs0. Original94538draft and SyntaxError retained. No private stale binary or shader/oracle change supplied results.
+
+## PPD-396 — Private matched-control CLI accepts an unsupported cost selector
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex tile-consumer matched controls
+- Discovered: 2026-11-18
+- Original reference: Unsupported cost selectors must fail before device creation; the all-policy correctness label is not a measured comparison mode.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); source-only host-controls-02.mm05021 main accepts all-policies in cost mode, while selected() only accepts geometry/cache-loads. That invalid argument could reach initial device/A-A work before rejection. Valid proposed invocations are unaffected; no compiler/GPU run or numerical failure occurred.
+- Next action: Preserve draft, tighten only the mode-dependent selector check before device creation and re-pin source/plan; valid strict/precheck/cost behavior and numeric criteria remain unchanged. Review correction before compile.
+- Verification: Caught by source review before execution. Unsupported invocation has not run and no result is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private guard correction. New source cannot reuse old strict/precheck gates.
+
+
+- 2026-11-18 corrected32bdaab guard is reviewed and hostcompiled0; fresh strict87/precheck59 and six matched cost processes allpass with newbinary9fa7b55f. Unsupported selector remains excluded beforedevice by source; no oldgate reuse or weakenedcomparison.
+
+## PPD-397 — Private conversion reference uses a deprecated sample-count property
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex independent half-conversion reference fixture
+- Discovered: 2026-11-18
+- Original reference: Fresh Metal fixtures must use the installed supported descriptor API and retain compiler warnings; do not weaken warning flags to pass an obsolete API call.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); conversion-proof.mm0448fbe6 sets d.sampleCount under the proposed -Wall/-Werror command. Installed Xcode26.6 MTLRenderPipeline.h190 marks this property deprecated since macOS13 with rasterSampleCount as its replacement. Source review caught it before compile/native run; no actual compiler failure is claimed.
+- Next action: Preserve draft, change only the descriptor property to rasterSampleCount=1, re-pin source-only plan and retain -Wall/-Werror. Numerical inputs/oracles, output formats and rounding flags remain unchanged.
+- Verification: Installed SDK/source mismatch observed before execution; independent conversion proof still pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private API correction. No production changes or shader/GPU result.
+
+
+- 2026-11-18 onlysampleCount→rasterSampleCount correction source4483 then compiles withWall/Werror0; native independent proof0 with actual3PSOvalidation1. Originalsource/SDKdeprecation proof and stale prepared01 plan remain retained. No production setting/rounding change.
+
+## PPD-398 — Catch2 attribution generation lacks a copyright-holder identity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex build attribution metadata
+- Discovered: 2026-11-18
+- Original reference: Preserve complete dependency notices and investigate warning causes separately from runtime/FPS attribution; never invent a copyright-holder identity or suppress missing metadata.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); combined-build-warning-review-01/receipt.json retains all6 current warnings (one Catch2 holder,5 duplicate static-archive rows). Attribution.cmake250 emits the holder warning because installed Catch2 copyright contains Boost license text without a holder line and no table override supplies it. Build succeeds; license text remains available. Prior frozen-build warning audit already identified the category; this record preserves the outstanding metadata gap explicitly.
+- Next action: Verify holder/notice metadata from the exact primary Catch2 source/license package before any table correction; retain warning/history. Keep this separate from live renderer timing and do not infer complete legal compliance from the build.
+- Verification: Source and installed copyright text inspected; no runtime emitter or evidence explaining Home FPS. No attribution repair or legal-compliance closure claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 recorded during complete current build-warning audit. Repeated archive warnings map to duplicate transitive link inputs, not repeated runtime work; exact object-selection limits remain in prior audit. No suppression, new runtime experiment or push.
+
+
+## PPD-399 — Wearable insertion can emit a misleading invalid-type diagnostic
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex isolated appearance warning investigation
+- Discovered: 2026-11-18
+- Original reference: Preserve wearable/appearance behavior and duplicate/rollback guards; distinguish misleading diagnostics from avatar rendering defects or active network work.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); incoming isolated codex/appearance-warning-investigation-20261118 handoff reports that first valid wearable insertion can warn before creating its type bucket. It also reports equal-version24621 stale duplicates and redundant bake returning before POST. Exact source/report remains pending integration review; no canonical source repair or avatar/FPS attribution is established.
+- Next action: Review the isolated warning report/raw evidence and emitting source, retain duplicate/rollback/bake safeguards, and allocate399 consistently because389 is already occupied. Keep code unchanged until any diagnosis/repair is qualified.
+- Verification: Incoming investigation only; root source verification and any repair/runtime retest pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 reserved399 before isolated report integration; prior IDs through398 retained. Canonical files remain root-owned, no duplicate warning fix or guard change.
+
+
+- 2026-11-18 root reviews and imports documentation-only453c0f14 report; source-proof355beff9/timeline88af1aea/fixture-receiptd35e28a4 hashes verified, currentwearabledata fullfile matches source proof. First valid type insertion warns then inserts/notifies; isolated exact-body17checks compile/run0 supports this diagnostic defect, not fullavatar propagation. All3 redundant version24621 bake attempts return beforePOST and7 stale drops are equal-version duplicates; guard/recovery distinctions retained. No source fix/appearance policy/network request/viewer action/FPS claim. [Qualified warning investigation](research/appearance-warning-investigation-69258-20261118.md).
+
+## PPD-400 — Root tile-policy field is placed in the adjacent color-grade type
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native lighting tile integration
+- Discovered: 2026-11-18
+- Original reference: Tile geometry must belong to immutable BASE/forward view inputs; color grading is unrelated and must retain its layout/behavior.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); root diff review finds the new forward lighting_raster_tile_size member after tone_curve_amount in ALMetalWorldColorGrade, rather than ALMetalWorldOpaquePostDeferredScene. Root-geometry-integration-01/before-forward-field-placement.h retains the exact unbuilt source. Forward consumers refer to a missing member; no compile/viewer run or runtime defect occurred.
+- Next action: Remove only the misplaced member and place it at the actual opaque-post-deferred scene boundary, preserving color-grade source. Re-review the full source and include actual world qualification in the next ABI-consistent build.
+- Verification: Source integration error caught before compilation; no successful native result attributed to this draft.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correction. The previously verified69259 app/source remains unchanged in the builder; the new experiment is unbuilt and defaultOFF.
+
+- 2026-11-18 corrected forward member now belongs to ALMetalWorldOpaquePostDeferredScene; ColorGrade is restored. Exact before/after hashes and source retained in root-geometry-integration-01. DefaultOFF native experiment, full ABI build/caller qualification still pending.
+
+
+## PPD-401 — New lighting tile census is dropped by shader reload
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native lighting tile integration
+- Discovered: 2026-11-18
+- Original reference: Cumulative renderer telemetry must survive a successful same-owner shader reload alongside its other lifetime counters.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); Read-only peer review515b659e confirms commitShaderReload copies other cumulative stats but omits the new lighting_tile_stats before swapping Impl. The unbuilt experiment would reset these counters after reload; rendering is unchanged.
+- Next action: Copy the new census alongside existing statistics before swap and include source/caller qualification; retain prior source review.
+- Verification: Source review before new ABI build or runtime. No shader/output regression or accepted performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correction; original peer findings/source retained privately.
+
+
+## PPD-402 — Lighting tile telemetry omits each pass requested and effective policy
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native lighting tile integration
+- Discovered: 2026-11-18
+- Original reference: Actual16 dimensions alone cannot prove explicit selection because automatic hardware choice may also be16; runtime evidence must distinguish request, capability fallback and actual dimensions.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); Read-only peer review515b659e confirms the new stats record actual dimensions only and the log prints the current global control, which can differ from earlier passes. No runtime activation or performance result was inferred from this source-only telemetry.
+- Next action: Record original request and effective policy for each successfully begun BASE/forward pass, preserve it through reload, and use those values in real-caller assertions/census. Keep actual dimensions independent.
+- Verification: Source review before new ABI build or runtime. No shader/output regression or accepted performance claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correction; original peer findings/source retained privately.

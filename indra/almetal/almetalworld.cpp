@@ -3014,6 +3014,37 @@ struct ALMetalWorldGBufferRenderer::Impl
     ALMetalWorldAnimatedStats animated_stats;
     std::shared_ptr<ALMetalWorldSourcePages> source_pages;
     std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
+    ALMetalWorldLightingTileStats lighting_tile_stats;
+    void noteLightingTiles(bool base, ALMetalRasterTileSize requested,
+        ALMetalRasterTileSize effective, const ALMetalRenderEncoder& encoder) noexcept
+    {
+        const std::uint32_t requested_size = requested == ALMetalRasterTileSize::tile16 ? 16 : 0;
+        const std::uint32_t effective_size = effective == ALMetalRasterTileSize::tile16 ? 16 : 0;
+        lighting_tile_stats.requested_tile16_passes += requested_size != 0;
+        lighting_tile_stats.effective_tile16_passes += effective_size != 0;
+        const auto width = encoder.rasterTileWidth();
+        const auto height = encoder.rasterTileHeight();
+        if (base)
+        {
+            ++lighting_tile_stats.base_passes;
+            lighting_tile_stats.last_base_requested_size = requested_size;
+            lighting_tile_stats.last_base_effective_size = effective_size;
+            lighting_tile_stats.last_base_width = width;
+            lighting_tile_stats.last_base_height = height;
+        }
+        else
+        {
+            ++lighting_tile_stats.forward_passes;
+            lighting_tile_stats.last_forward_requested_size = requested_size;
+            lighting_tile_stats.last_forward_effective_size = effective_size;
+            lighting_tile_stats.last_forward_width = width;
+            lighting_tile_stats.last_forward_height = height;
+        }
+        if (width == 16 && height == 16) ++lighting_tile_stats.tile16_passes;
+        else if (width == 32 && height == 32) ++lighting_tile_stats.tile32_passes;
+        else ++lighting_tile_stats.other_passes;
+    }
+
     ALMetalWorldSourceDrawStats source_draw_stats;
     ALMetalWorldSourceCommandDrawStats source_command_stats;
     ALMetalWorldCohortStats cohort_stats;
@@ -4032,6 +4063,7 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.opaque_diagnostic_calls = mImpl->opaque_diagnostic_calls;
     next.opaque_diagnostics = mImpl->opaque_diagnostics;
     next.probe_candidate_activity = mImpl->probe_candidate_activity;
+    next.lighting_tile_stats = mImpl->lighting_tile_stats;
     next.simple_shadow_pso_observations = mImpl->simple_shadow_pso_observations;
     next.simple_shadow_pso_metric_ns = mImpl->simple_shadow_pso_metric_ns;
     next.simple_shadow_pso_diagnostics = mImpl->simple_shadow_pso_diagnostics;
@@ -4201,6 +4233,11 @@ ALMetalWorldConstantStats
 ALMetalWorldGBufferRenderer::constantStats() const noexcept
 {
     return mImpl ? mImpl->constant_stats : ALMetalWorldConstantStats{};
+}
+
+ALMetalWorldLightingTileStats ALMetalWorldGBufferRenderer::lightingTileStats() const noexcept
+{
+    return mImpl ? mImpl->lighting_tile_stats : ALMetalWorldLightingTileStats{};
 }
 
 ALMetalWorldResourceStats ALMetalWorldGBufferRenderer::worldResourceStats() const noexcept
@@ -21441,7 +21478,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     if (split_initial_families) initial_encoder_label = family_label(0);
     std::uint64_t diagnostic_initial_family_encoders = split_initial_families ? 1u : 0u;
 
+    const auto lighting_raster_tile_size =
+        scene.lighting_raster_tile_size == ALMetalRasterTileSize::tile16 &&
+        mImpl->device->info().highest_apple_family < 4
+            ? ALMetalRasterTileSize::automatic : scene.lighting_raster_tile_size;
     ALMetalRenderPassConfig pass_config;
+    pass_config.raster_tile_size = lighting_raster_tile_size;
     pass_config.colors[0].load = ALMetalLoadAction::load;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.depth_load = ALMetalLoadAction::load;
@@ -21457,6 +21499,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         return fail_command();
     }
+    mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
+        lighting_raster_tile_size, *encoder);
 
     const ALMetalViewport viewport{
         0.0, 0.0, static_cast<double>(scene.width),
@@ -21685,6 +21729,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder = continuation_pass ? ALMetalRenderEncoder::begin(
                 *command, *continuation_pass, family_label(index), error) : nullptr;
             if (!encoder) return fail_command();
+            mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
+                lighting_raster_tile_size, *encoder);
             encoded = encoder->setViewport(viewport, error) &&
                 encoder->setScissor(scissor, error) &&
                 encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
@@ -21705,6 +21751,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 return fail_command();
             }
             ALMetalRenderPassConfig haze_pass_config;
+            haze_pass_config.raster_tile_size = lighting_raster_tile_size;
             haze_pass_config.colors[0].load = ALMetalLoadAction::load;
             haze_pass_config.colors[0].store = ALMetalStoreAction::store;
             haze_pass_config.depth_load = ALMetalLoadAction::load;
@@ -21720,6 +21767,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 return fail_command();
             }
+            mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
+                lighting_raster_tile_size, *encoder);
             encoded =
                 encoder->setViewport(viewport, error) &&
                 encoder->setScissor(scissor, error) &&
@@ -21820,6 +21869,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
 
             ALMetalRenderPassConfig haze_pass_config;
+            haze_pass_config.raster_tile_size = lighting_raster_tile_size;
             haze_pass_config.colors[0].load = ALMetalLoadAction::load;
             haze_pass_config.colors[0].store = ALMetalStoreAction::store;
             haze_pass_config.depth_load = ALMetalLoadAction::load;
@@ -21836,6 +21886,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 return fail_command();
             }
+            mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
+                lighting_raster_tile_size, *encoder);
 
             WorldAtmosphericHazeConstants constants{};
             std::memcpy(constants.inverse_projection,
@@ -22042,6 +22094,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
 
             ALMetalRenderPassConfig water_pass_config;
+            water_pass_config.raster_tile_size = lighting_raster_tile_size;
             water_pass_config.colors[0].load = ALMetalLoadAction::load;
             water_pass_config.colors[0].store = ALMetalStoreAction::store;
             water_pass_config.depth_load = ALMetalLoadAction::load;
@@ -22061,6 +22114,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 return fail_command();
             }
+            mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
+                lighting_raster_tile_size, *encoder);
 
             WorldWaterHazeConstants field_constants{};
             std::memcpy(field_constants.modelview_projection,
@@ -26810,6 +26865,10 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     }
 
     ALMetalRenderPassConfig pass_config;
+    pass_config.raster_tile_size =
+        scene.lighting_raster_tile_size == ALMetalRasterTileSize::tile16 &&
+        mImpl->device->info().highest_apple_family < 4
+            ? ALMetalRasterTileSize::automatic : scene.lighting_raster_tile_size;
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
@@ -26854,6 +26913,8 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
     {
         return nullptr;
     }
+    mImpl->noteLightingTiles(true, scene.lighting_raster_tile_size,
+        pass_config.raster_tile_size, *encoder);
 
     const ALMetalViewport viewport{
         0.0, 0.0, static_cast<double>(input.width),

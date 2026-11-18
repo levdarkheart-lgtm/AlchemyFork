@@ -8042,6 +8042,13 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
+  <key>RenderMetalSmallLightingTiles</key>
+  <map>
+    <key>Comment</key><string>Diagnostic 16 by 16 hardware tiles for ordinary main-view BASE and forward lighting. Automatic hardware tiles remain the comparison control. Disabled pending actual-pass cost and owner runtime evaluation.</string>
+    <key>Persist</key><integer>0</integer>
+    <key>Type</key><string>Boolean</string>
+    <key>Value</key><integer>0</integer>
+  </map>
   <key>RenderMetalMainLightOverlap</key>
   <map>
     <key>Comment</key><string>Diagnostic exclusive native main G-buffer encoding while its owner prepares point-light values. Original admission, query settlement, deferred constants and projector resources remain authoritative. Disabled pending complete-path costs.</string>

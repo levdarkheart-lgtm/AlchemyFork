@@ -3537,6 +3537,32 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << lighting_pass.reasons[static_cast<std::size_t>(ALMetalWorldLightingChainReason::preflight)]
                 << ", points/projectors=" << lighting_pass.points << '/' << lighting_pass.projectors
                 << ", scope=cumulative_owner_acceptance_not_gpu_completion_or_fps" << LL_ENDL;
+            static LLCachedControl<bool> small_lighting_tiles(
+                gSavedSettings, "RenderMetalSmallLightingTiles", false);
+            const auto log_lighting_tiles = [&](const char* owner,
+                const ALMetalWorldGBufferRenderer* renderer)
+            {
+                if (!renderer) return;
+                const auto tiles = renderer->lightingTileStats();
+                LL_INFOS("Metal") << "Native lighting raster tiles: owner=" << owner
+                    << ", main_only_control=" << static_cast<bool>(small_lighting_tiles)
+                    << ", begun_base/forward=" << tiles.base_passes << '/' << tiles.forward_passes
+                    << ", requested/effective16=" << tiles.requested_tile16_passes << '/'
+                    << tiles.effective_tile16_passes
+                    << ", actual16/32/other=" << tiles.tile16_passes << '/'
+                    << tiles.tile32_passes << '/' << tiles.other_passes
+                    << ", last_base_request/effective=" << tiles.last_base_requested_size << '/'
+                    << tiles.last_base_effective_size
+                    << ", last_forward_request/effective=" << tiles.last_forward_requested_size << '/'
+                    << tiles.last_forward_effective_size
+                    << ", last_base/forward=" << tiles.last_base_width << 'x'
+                    << tiles.last_base_height << '/' << tiles.last_forward_width << 'x'
+                    << tiles.last_forward_height
+                    << ", scope=begun_encoders_not_completion_or_fps" << LL_ENDL;
+            };
+            log_lighting_tiles("main", capture.renderer.get());
+            log_lighting_tiles("probe_or_hero", mMetalProbeWorldSimpleCapture
+                ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
             const auto frame_plan = ALNativeFrameBudget::instance().snapshot();
             LL_INFOS("MetalFramePlan") << "Shared native admission: frame=" << frame_plan.frame
                 << ", main_busy/pressure/draining=" << frame_plan.main_busy << '/' << frame_plan.memory_pressure << '/' << frame_plan.draining
@@ -8773,6 +8799,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.diagnostic_frame_index = gFrameCount;
         scene.diagnostic_view_kind = capture.hero_probe_face_capture ? 2
             : capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0;
+        static LLCachedControl<bool> small_lighting_tiles(
+            gSavedSettings, "RenderMetalSmallLightingTiles", false);
+        const bool main_lighting_tile_owner = scene.diagnostic_view_kind == 1 &&
+            mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
+            !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
+            !gSnapshot && !gCubeSnapshot && !sRenderingHUDs;
+        scene.lighting_raster_tile_size = small_lighting_tiles && main_lighting_tile_owner
+            ? ALMetalRasterTileSize::tile16 : ALMetalRasterTileSize::automatic;
         scene.diagnostic_view_index = capture.hero_probe_face_capture
             ? capture.hero_probe_face : capture.reflection_probe_face_capture
             ? capture.reflection_probe_face : 0;
@@ -18523,6 +18557,14 @@ void LLPipeline::renderMetalWorldBaseLighting(
     scene.diagnostic_view.frame_index = gFrameCount;
     scene.diagnostic_view.view_kind = capture.hero_probe_face_capture ? 2
         : capture.reflection_probe_face_capture ? 3 : isMainWorldPass() ? 1 : 0;
+    static LLCachedControl<bool> small_lighting_tiles(
+        gSavedSettings, "RenderMetalSmallLightingTiles", false);
+    const bool main_lighting_tile_owner = scene.diagnostic_view.view_kind == 1 &&
+        mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
+        !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
+        !gSnapshot && !gCubeSnapshot && !sRenderingHUDs;
+    scene.lighting_raster_tile_size = small_lighting_tiles && main_lighting_tile_owner
+        ? ALMetalRasterTileSize::tile16 : ALMetalRasterTileSize::automatic;
     scene.diagnostic_view.face_index = capture.hero_probe_face_capture
         ? capture.hero_probe_face : capture.reflection_probe_face_capture
         ? capture.reflection_probe_face : 0;
