@@ -3,6 +3,7 @@
 #include "almetalworld.h"
 #include "almetalworldvisibilitysource.h"
 #include "almetalworldcohort.h"
+#include "almetalworldsourcepages.h"
 #import <Metal/Metal.h>
 #include <algorithm>
 #include <bit>
@@ -924,4 +925,40 @@ ALMetalWorldVisibilityStats ALMetalWorldVisibility::stats() const noexcept
     value.cohort_descriptor_limit_bytes=maximum_cohort_descriptor_bytes;
     for(const auto& [owner,entry]:mImpl->cohort_cache)value.cached_cohort_rows+=entry.rows->count;
     return value;
+}
+
+ALMetalWorldCohortVisibilityWork alMetalInspectWorldCohortVisibilityWork(
+    const ALMetalWorldSourceCohortView& view) noexcept
+{
+    ALMetalWorldCohortVisibilityWork result;
+    if(!view.cohort||!view.cohort->matchesOwners(view.cpu_owner,view.native_owner)||
+       !ALMetalWorldSourceCohort::validView(view.view)||view.cohort->size()==0||
+       view.cohort->size()>alMetalWorldSourceMaximumRows||
+       (view.cohort->family()!=1&&view.cohort->family()!=2))return result;
+    result.draws=view.cohort->size();
+    result.coarse=alMetalClassifyWorldBoundsCPU(view.cohort->qualifiedBoundsUnion(),view.view.modelview_projection);
+    for(std::size_t row=0;row<result.draws;++row)
+    {
+        const auto count=view.cohort->source(row).index_count;
+        if(!count)return {};
+        result.indexed_elements+=count;
+        const auto& bounds=view.cohort->bounds(row);
+        if(!bounds.qualified)continue;
+        ++result.qualified_draws;result.qualified_indexed_elements+=count;
+        double center[4]{0,0,0,1},clip[4]{};
+        for(unsigned axis=0;axis<3;++axis)
+        {
+            if(!std::isfinite(bounds.minimum[axis])||!std::isfinite(bounds.maximum[axis])||
+               bounds.minimum[axis]>bounds.maximum[axis])return {};
+            center[axis]=(double(bounds.minimum[axis])+double(bounds.maximum[axis]))*.5;
+        }
+        for(unsigned component=0;component<4;++component)
+            for(unsigned column=0;column<4;++column)
+                clip[component]+=double(view.view.modelview_projection[column*4+component])*center[column];
+        // Applicability hint only. Unlike the conservative box classifier,
+        // this center test is NEVER a predicate for suppressing geometry.
+        if(clip[3]<=0||std::abs(clip[0])>clip[3]||std::abs(clip[1])>clip[3]||std::abs(clip[2])>clip[3])
+            result.outside_center_indexed_elements+=count;
+    }
+    result.valid=true;return result;
 }

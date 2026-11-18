@@ -6,6 +6,7 @@
 #pragma once
 #include "almetalworldresources.h"
 #include "almetalworlddraws.h"
+#include "almetalresourceplan.h"
 #include <span>
 #include <functional>
 
@@ -106,6 +107,7 @@ public:
     bool currentGeneration() const noexcept;
     bool matchesNativeLease(const std::shared_ptr<const void>&) const noexcept;
     bool declareResources(ALMetalRenderEncoder&,ALMetalCommandBuffer&,std::string* error=nullptr) const;
+    bool declareResourceUses(ALMetalComputeEncoder&,std::string* error=nullptr) const;
 private:
     struct Impl;
     explicit ALMetalWorldAnimatedGpuSource(std::unique_ptr<Impl>);
@@ -128,6 +130,7 @@ class ALMetalWorldSourceDirectSlot final
 public:
     ~ALMetalWorldSourceDirectSlot();
     void* nativeBuffer() const noexcept;
+    const ALMetalResourcePlanning::View& resourceView() const noexcept;
     std::size_t regionOffset(std::uint32_t) const noexcept;
     std::size_t globalsOffset() const noexcept;
 private:
@@ -144,6 +147,8 @@ class ALMetalWorldSourceCommandMembership final
 public:
     ~ALMetalWorldSourceCommandMembership();
     std::span<const ALMetalWorldSourceIndexedCall> calls() const noexcept;
+    std::span<const ALMetalResourcePlanning::View> indexResourceViews() const noexcept;
+    bool indexResourcesComplete() const noexcept;
     std::span<const ALMetalWorldSourceCommandRun> runs() const noexcept;
     void* nativeDevice() const noexcept;
     std::span<const ALMetalWorldSourceDirectBinding> directBindings() const noexcept;
@@ -202,7 +207,7 @@ struct ALMetalWorldSourcePageStats
     std::size_t device_proof_entries=0;
     std::uint64_t cohort_requests=0,cohort_hits=0,cohort_builds=0,cohort_failures=0;
     std::size_t cached_compositions=0,cached_cohorts=0,cached_cohort_rows=0,cached_cohort_metadata_bytes=0;
-    // Gross unique root texture allocations held by this idle cache; overlaps
+    // Gross unique root texture/geometry/index/numeric allocations held by this idle cache; overlaps
     // other active owners and must not be added to a physical memory total.
     std::uint64_t cached_cohort_native_asset_bytes=0,cached_cohort_native_asset_limit=0;
     std::uint64_t direct_policy_bytes=0,direct_slot_allocations=0,direct_slot_hits=0,direct_view_bytes=0;
@@ -248,6 +253,20 @@ public:
     // Binds bank0 VS/FS, regions1 VS, globals2 VS/FS and source_regions3 VS.
     // Retains this native-only view before exposing any indirect resource.
     bool bind(ALMetalRenderEncoder&, ALMetalCommandBuffer&, std::string* error=nullptr) const;
+    struct DirectExecution
+    {
+        bool success=false,native_prefix=false;
+        std::size_t draws_encoded=0;
+        explicit operator bool() const noexcept {return success;}
+        bool mayFallback() const noexcept {return !success&&!native_prefix;}
+    };
+    // Consume the same immutable direct bindings without allocating an ICB.
+    // Caller selects the matching direct-bound pipeline and original raster /
+    // query state; one range may not cross a published cull-mode boundary.
+    // No CPU producer records or geometry wrapper aliases are rediscovered.
+    DirectExecution drawDirectRange(ALMetalRenderEncoder&,ALMetalCommandBuffer&,
+        std::size_t first,std::size_t count,std::string* error=nullptr) const;
+    void failDirectRangeAfterForTesting(std::size_t successful_draws) const noexcept;
 private:
     struct Impl;
     explicit ALMetalWorldSourceFrameView(std::unique_ptr<Impl>);

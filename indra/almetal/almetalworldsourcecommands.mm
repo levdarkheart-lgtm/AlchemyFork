@@ -5,6 +5,8 @@
  */
 #include "almetalworldsourcecommands.h"
 #include "almetalworld.h"
+#include "almetalworldanimated.h"
+#include "almetalworldvisibility.h"
 #include <cstddef>
 #include <cstring>
 #include <Metal/Metal.h>
@@ -25,6 +27,8 @@ const char* alMetalWorldSourceCommandFailureName(ALMetalWorldSourceCommandFailur
 }
 namespace
 {
+namespace RP=ALMetalResourcePlanning;
+
 struct Accounting
 {
     std::atomic<std::uint64_t> icb_bytes{0},index_bytes{0},binding_bytes{0};
@@ -79,6 +83,7 @@ static_assert(offsetof(StaticVisibilityRow,index16)==32 && offsetof(StaticVisibi
 struct Bank
 {
     id<MTLIndirectCommandBuffer> native=nil;
+    RP::View plan_view;
     std::vector<Key> keys;
     // Generic banks retain their exact key values. Cohort banks instead use
     // one private immutable membership identity; neither cache form owns a
@@ -144,7 +149,8 @@ struct ALMetalWorldSourceCommands::Impl
     id<MTLLibrary> static_visibility_library=nil;
     id<MTLArgumentEncoder> static_visibility_root_encoder=nil;
     std::unique_ptr<ALMetalComputePipeline> static_visibility_pipeline;
-    bool supported=false,force_failure=false,preparing=false;
+    bool supported=false,force_failure=false,preparing=false,fail_visibility_after_begin=false;
+    const ALMetalDevice* wrapper=nullptr;
     std::optional<std::size_t> execution_failure_after;
     std::uint64_t epoch=1;
     std::uint64_t binding_limit=0;
@@ -237,11 +243,76 @@ std::shared_ptr<ALMetalWorldSourceCommands> ALMetalWorldSourceCommands::create(
     const ALMetalDevice& device,ALMetalWorldSourceCommandLimits limits,std::string* error)
 {
     if(!device.nativeHandle()){if(error)*error="Source command banks require a native device";return {};}
-    auto impl=std::make_unique<Impl>();impl->device=(__bridge id<MTLDevice>)device.nativeHandle();impl->limits=limits;
+    auto impl=std::make_unique<Impl>();impl->device=(__bridge id<MTLDevice>)device.nativeHandle();impl->wrapper=&device;impl->limits=limits;
     impl->supported=[impl->device supportsFamily:MTLGPUFamilyApple7];
     return std::shared_ptr<ALMetalWorldSourceCommands>(new ALMetalWorldSourceCommands(std::move(impl)));
 }
 bool ALMetalWorldSourceCommands::supported()const noexcept{return mImpl->supported;}
+
+ALMetalWorldSourceCommandDecision ALMetalWorldSourceCommands::applicability(
+    const ALMetalWorldSourceCohortView& view,const ALMetalWorldSourceCommandContext& context,
+    ALMetalWorldSourceCommandPolicy policy)const noexcept
+{
+    using Route=ALMetalWorldSourceCommandRoute;using Reason=ALMetalWorldSourceCommandReason;
+    ALMetalWorldSourceCommandDecision result;
+    if(context.wireframe||context.depth_clamp||context.opaque_coverage_stamp)
+    {result.reason=Reason::raster_policy;return result;}
+    const auto work=alMetalInspectWorldCohortVisibilityWork(view);
+    result.draws=work.draws;result.indexed_elements=work.indexed_elements;
+    result.qualified_indexed_elements=work.qualified_indexed_elements;
+    if(!work.valid||!context.ordered_ranges)return result;
+    if(work.coarse==ALMetalWorldCpuVisibilityResult::inside)
+    {result.reason=Reason::inside;return result;}
+    if(work.coarse==ALMetalWorldCpuVisibilityResult::outside)
+    {
+        // A cheap coarse proof already exists. The caller's ordered direct
+        // path keeps unknown rows and query boundaries; no GPU setup needed.
+        result.route=Route::cpu_visibility;result.reason=Reason::outside;return result;
+    }
+    if(work.coarse==ALMetalWorldCpuVisibilityResult::unknown||!work.qualified_draws)
+    {result.reason=Reason::unknown_bounds;return result;}
+    if(context.ordered_ranges>policy.maximum_ordered_ranges)
+    {result.reason=Reason::fragmented;return result;}
+    if(work.qualified_indexed_elements<policy.minimum_qualified_indices||
+       work.outside_center_indexed_elements<policy.minimum_qualified_indices/4)
+    {result.reason=Reason::small_work;return result;}
+    if(!supported()||!context.pipeline_supports_indirect)
+    {result.reason=Reason::unsupported;return result;}
+    result.route=Route::gpu_visibility;result.reason=Reason::heavy_partial;return result;
+}
+
+ALMetalWorldSourceCommandDecision ALMetalWorldSourceCommands::applicability(
+    std::span<const ALMetalWorldSourceReference* const> sources,
+    const ALMetalWorldSourceCommandContext& context,ALMetalWorldSourceCommandPolicy policy)const noexcept
+{
+    using Route=ALMetalWorldSourceCommandRoute;using Reason=ALMetalWorldSourceCommandReason;
+    ALMetalWorldSourceCommandDecision result;result.draws=sources.size();
+    if(sources.empty()||sources.size()>alMetalWorldSourceMaximumRows||!context.ordered_ranges)return result;
+    if(context.wireframe||context.depth_clamp||context.opaque_coverage_stamp)
+    {result.reason=Reason::raster_policy;return result;}
+    for(const auto* reference:sources)
+    {
+        if(!reference||!reference->animated_source||!reference->animated_palette||!reference->source||
+           reference->source!=&reference->animated_source->prototype()||
+           !ALMetalWorldSourceCohort::validView(reference->view)||
+           std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,sizeof(reference->view.texture_matrix)))
+            return result;
+        const auto count=reference->source->index_count;
+        if(!count)return result;
+        result.indexed_elements+=count;
+        if(reference->animated_source->gpuReady()&&reference->animated_source->boundsQualified())
+            result.qualified_indexed_elements+=count;
+    }
+    if(context.ordered_ranges>policy.maximum_ordered_ranges)
+    {result.reason=Reason::fragmented;return result;}
+    if(result.qualified_indexed_elements<policy.minimum_qualified_indices)
+    {result.reason=Reason::small_work;return result;}
+    if(result.qualified_indexed_elements<result.indexed_elements-result.indexed_elements/4)
+    {result.reason=Reason::unknown_bounds;return result;}
+    if(!supported()||!context.pipeline_supports_indirect)
+    {result.reason=Reason::unsupported;return result;}
+    result.route=Route::gpu_visibility;result.reason=Reason::heavy_animated;return result;
+}
 void ALMetalWorldSourceCommands::setPublicationAdmission(ALMetalWorldSourcePages::PublicationAdmission admission)
 {
     auto holder=admission
@@ -263,6 +334,8 @@ void ALMetalWorldSourceCommands::trimUnusedBanks()noexcept
 void ALMetalWorldSourceCommands::failNextPublicationForTesting()noexcept{mImpl->force_failure=true;}
 void ALMetalWorldSourceCommands::failExecutionAfterForTesting(std::size_t successful_ranges)noexcept
 {mImpl->execution_failure_after=successful_ranges;}
+void ALMetalWorldSourceCommands::failVisibilityAfterBeginForTesting()noexcept
+{mImpl->fail_visibility_after_begin=true;}
 ALMetalWorldSourceCommandStats ALMetalWorldSourceCommands::stats()const noexcept
 {
     auto result=mImpl->statistics;result.cached_banks=mImpl->cache.size();
@@ -326,6 +399,10 @@ try
         descriptor.maxVertexBufferBindCount=0;descriptor.maxFragmentBufferBindCount=0;
         bank->native=[state.device newIndirectCommandBufferWithDescriptor:descriptor maxCommandCount:draws.size() options:MTLResourceStorageModeShared];
         if(!bank->native)return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Could not allocate a native source command bank");
+        RP::Description backing;backing.kind=RP::Kind::indirect_commands;
+        backing.declared_bytes=bank->native.allocatedSize;
+        if(!state.wrapper->registerNativeBacking((__bridge void*)bank->native,backing,bank->plan_view,error))
+            return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Native command backing registration failed");
         bank->bytes=bank->native.allocatedSize;bank->accounting=state.accounting;
         state.accounting->icb_bytes.fetch_add(bank->bytes,std::memory_order_relaxed);
         state.accounting->banks.fetch_add(1,std::memory_order_relaxed);
@@ -381,7 +458,7 @@ try
             return reject(ALMetalWorldSourceCommandFailure::capacity,"Native source command live/retired storage is full");
     }
     auto impl=std::make_unique<Batch::Impl>();impl->bank=std::move(selected);impl->frame=std::move(frame);
-    impl->command=(__bridge id<MTLCommandBuffer>)command.nativeHandle();impl->device=state.device;
+    impl->command=(__bridge id<MTLCommandBuffer>)const_cast<void*>(command.nativeIdentity());impl->device=state.device;
     auto result=std::shared_ptr<const Batch>(new Batch(std::move(impl)));
     if(!retainPublication(command,result,std::move(publication_credit),error))return reject(ALMetalWorldSourceCommandFailure::retention,"Native source command lease retention failed");
     if(publication){state.commitPublication(*publication);state.statistics.charged_logical_argument_bytes+=charged_arguments;}
@@ -395,19 +472,30 @@ catch(...)
 std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareCohortForCommand(
     ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
     std::string* error,ALMetalWorldSourceCommandFailure* failure)
-{return prepareCohortForCommandImpl(command,std::move(frame),nullptr,nullptr,error,failure);}
+{return prepareCohortForCommandImpl(command,std::move(frame),nullptr,nullptr,error,failure,nullptr);}
 
 std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareVisibleCohortForCommand(
     ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
     const ALMetalDevice& device,const ALMetalShaderLibrary& library,std::string* error,ALMetalWorldSourceCommandFailure* failure)
-{return prepareCohortForCommandImpl(command,std::move(frame),&device,&library,error,failure);}
+{return prepareCohortForCommandImpl(command,std::move(frame),&device,&library,error,failure,nullptr);}
+
+ALMetalWorldSourceCommands::Preparation ALMetalWorldSourceCommands::prepareVisibleCohortChecked(
+    ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
+    const ALMetalDevice& device,const ALMetalShaderLibrary& library,std::string* error,
+    ALMetalWorldSourceCommandFailure* failure)
+{
+    Preparation result;
+    result.batch=prepareCohortForCommandImpl(command,std::move(frame),&device,&library,error,failure,&result.native_prefix);
+    return result;
+}
 
 std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareCohortForCommandImpl(
     ALMetalCommandBuffer& command,std::shared_ptr<const ALMetalWorldSourceFrameView> frame,
     const ALMetalDevice* visibility_device,const ALMetalShaderLibrary* visibility_library,
-    std::string* error,ALMetalWorldSourceCommandFailure* failure)
+    std::string* error,ALMetalWorldSourceCommandFailure* failure,bool* native_prefix)
 try
 {
+    if(native_prefix)*native_prefix=false;
     auto& state=*mImpl;++state.statistics.requests;if(failure)*failure=ALMetalWorldSourceCommandFailure::none;
     const auto reject=[&](auto reason,const char* message)->std::shared_ptr<const Batch>{state.fail(reason,failure,error,message);return {};};
     if(state.preparing)return reject(ALMetalWorldSourceCommandFailure::validation,"Native source command preparation is reentrant");
@@ -483,6 +571,10 @@ try
         descriptor.maxVertexBufferBindCount=direct?12:0;descriptor.maxFragmentBufferBindCount=direct?2:0;
         bank->native=[state.device newIndirectCommandBufferWithDescriptor:descriptor maxCommandCount:bank->count options:MTLResourceStorageModeShared];
         if(!bank->native)return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Could not allocate a native cohort command bank");
+        RP::Description backing;backing.kind=RP::Kind::indirect_commands;
+        backing.declared_bytes=bank->native.allocatedSize;
+        if(!state.wrapper->registerNativeBacking((__bridge void*)bank->native,backing,bank->plan_view,error))
+            return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Native command backing registration failed");
         bank->bytes=bank->native.allocatedSize;bank->accounting=state.accounting;
         state.accounting->icb_bytes.fetch_add(bank->bytes,std::memory_order_relaxed);
         state.accounting->banks.fetch_add(1,std::memory_order_relaxed);
@@ -645,18 +737,31 @@ try
             return reject(ALMetalWorldSourceCommandFailure::capacity,"Native source command live/retired storage is full");
     }
     auto impl=std::make_unique<Batch::Impl>();impl->bank=std::move(selected);impl->frame=std::move(frame);
-    impl->command=(__bridge id<MTLCommandBuffer>)command.nativeHandle();impl->device=state.device;
+    impl->command=(__bridge id<MTLCommandBuffer>)const_cast<void*>(command.nativeIdentity());impl->device=state.device;
     auto result=std::shared_ptr<const Batch>(new Batch(std::move(impl)));
     if(!retainPublication(command,result,std::move(publication_credit),error))return reject(ALMetalWorldSourceCommandFailure::retention,"Native source command lease retention failed");
     if(visibility_library)
     {
         const auto& bank=*result->mImpl->bank;
+        if(native_prefix)*native_prefix=true;
         auto compute=ALMetalComputeEncoder::begin(command,"Alchemy static GPU command visibility",error);
+        if(std::exchange(state.fail_visibility_after_begin,false))
+            return reject(ALMetalWorldSourceCommandFailure::execution,"Forced static visibility failure after begin");
         if(!compute||!compute->setPipeline(*state.static_visibility_pipeline,error)||
            !compute->setBuffer(0,*bank.static_visibility_rows,0,error)||
            !compute->setBuffer(2,*bank.static_visibility_root,0,error))
             return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility compute setup failed");
-        auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForResources();
+        if(!compute->declareResourceUse(bank.plan_view,RP::Access::write,error)||
+           !compute->declareResourceUse(slot->resourceView(),RP::Access::read,error))
+            return reject(ALMetalWorldSourceCommandFailure::execution,"Static visibility resource declaration failed");
+        if(membership->indexResourcesComplete())
+        {
+            for(const auto& resource:membership->indexResourceViews())
+                if(!compute->declareResourceUse(resource,RP::Access::read,error))
+                    return reject(ALMetalWorldSourceCommandFailure::execution,"Static visibility index declaration failed");
+        }
+        else (void)compute->nativeHandleForOpaqueResources(); // Opaque legacy certificate.
+        auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForDeclaredResources();
         if(!native)return reject(ALMetalWorldSourceCommandFailure::execution,"Static GPU visibility compute encoder is unavailable");
         [native setBuffer:(__bridge id<MTLBuffer>)slot->nativeBuffer() offset:0 atIndex:1];
         // The slot is fixed-address immutable while this exact FrameView owns
@@ -691,9 +796,9 @@ ALMetalWorldSourceCommands::DeclarationScope ALMetalWorldSourceCommands::makeDec
     ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,std::string* error)
 try
 {
-    if(!encoder.nativeHandleForResources() || command.isCommitted() ||
+    if(!encoder.nativeHandleForDeclaredResources() || command.isCommitted() ||
        encoder.nativeDeviceForIndirect()!=command.nativeDevice() ||
-       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
+       encoder.nativeCommandBufferIdentity()!=const_cast<void*>(command.nativeIdentity()))
     {if(error)*error="Native declaration scope requires its active command encoder";return {};}
     return DeclarationScope(encoder.declarationIdentity(true));
 }
@@ -713,7 +818,7 @@ bool ALMetalWorldSourceCommands::executeRangeImpl(ALMetalRenderEncoder& encoder,
     const auto& prepared=*batch.mImpl;
     if(!count||first>prepared.bank->count||count>prepared.bank->count-first||
         !encoder.canExecuteIndirect()||encoder.nativeDeviceForIndirect()!=(__bridge void*)prepared.device||
-        encoder.nativeCommandBufferForIndirect()!=(__bridge void*)prepared.command||command.nativeHandle()!=(__bridge void*)prepared.command||command.isCommitted())
+        encoder.nativeCommandBufferIdentity()!=(__bridge void*)prepared.command||const_cast<void*>(command.nativeIdentity())!=(__bridge void*)prepared.command||command.isCommitted())
     {mImpl->fail(ALMetalWorldSourceCommandFailure::execution,nullptr,error,"Native source bank requires its prepared command and compatible pipeline");return false;}
     std::shared_ptr<const void> identity;
     if(scope)
@@ -739,7 +844,10 @@ bool ALMetalWorldSourceCommands::executeRangeImpl(ALMetalRenderEncoder& encoder,
             ++mImpl->statistics.declaration_calls;
             for(const auto& source:prepared.bank->animated->sources)
                 if(!source->declareResources(encoder,command,error))return false;
-            auto declarations=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+            if(!encoder.declareResourceUse(prepared.bank->animated->views->resourceView(),RP::Access::read,error))return false;
+            for(const auto& slice:prepared.animated_palettes)
+                if(!encoder.declareResourceUse(slice.buffer->resourceView(),RP::Access::read,error))return false;
+            auto declarations=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForDeclaredResources();
             if(!declarations)return false;
             for(const auto& lease:prepared.bank->indices)
                 [declarations useResource:lease->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex|MTLRenderStageFragment];
@@ -752,7 +860,9 @@ bool ALMetalWorldSourceCommands::executeRangeImpl(ALMetalRenderEncoder& encoder,
             if(scope)batch.mImpl->declared_encoder_identity=identity;
         }
     }
-    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForIndirect();
+    if(!encoder.declareResourceUse(prepared.bank->plan_view,RP::Access::read,error))return false;
+    encoder.invalidateIndirectBufferBindings();
+    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForDeclaredResources();
     if(!native)return false;
     if(!prepared.bank->animated)
         [native useResource:prepared.bank->native usage:MTLResourceUsageRead stages:MTLRenderStageVertex];
@@ -789,8 +899,29 @@ std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceComma
     ALMetalCommandBuffer& command,const ALMetalDevice& device,const ALMetalShaderLibrary& library,
     std::vector<ALMetalWorldAnimatedGpuView>&& views,const ALMetalWorldSourceGlobals& borrowed_globals,
     ALMetalWorldFrameData& frame_data,std::string* error,bool gpu_visibility)
+{
+    return prepareAnimatedForCommandImpl(command,device,library,std::move(views),borrowed_globals,
+        frame_data,error,gpu_visibility,nullptr);
+}
+
+ALMetalWorldSourceCommands::Preparation ALMetalWorldSourceCommands::prepareAnimatedChecked(
+    ALMetalCommandBuffer& command,const ALMetalDevice& device,const ALMetalShaderLibrary& library,
+    std::vector<ALMetalWorldAnimatedGpuView>&& views,const ALMetalWorldSourceGlobals& globals,
+    ALMetalWorldFrameData& frame_data,std::string* error,bool gpu_visibility)
+{
+    Preparation result;
+    result.batch=prepareAnimatedForCommandImpl(command,device,library,std::move(views),globals,
+        frame_data,error,gpu_visibility,&result.native_prefix);
+    return result;
+}
+
+std::shared_ptr<const ALMetalWorldSourceCommands::Batch> ALMetalWorldSourceCommands::prepareAnimatedForCommandImpl(
+    ALMetalCommandBuffer& command,const ALMetalDevice& device,const ALMetalShaderLibrary& library,
+    std::vector<ALMetalWorldAnimatedGpuView>&& views,const ALMetalWorldSourceGlobals& borrowed_globals,
+    ALMetalWorldFrameData& frame_data,std::string* error,bool gpu_visibility,bool* native_prefix)
 try
 {
+    if(native_prefix)*native_prefix=false;
     // Consume ownership immediately. The renderer has already produced this
     // vector privately; no second matrix/lease copy or allocation is needed.
     auto inputs=std::move(views);
@@ -884,6 +1015,10 @@ try
         descriptor.maxVertexBufferBindCount=13;descriptor.maxFragmentBufferBindCount=2;
         bank->native=[state.device newIndirectCommandBufferWithDescriptor:descriptor maxCommandCount:bank->count options:MTLResourceStorageModeShared];
         if(!bank->native)return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Animated command bank allocation failed");
+        RP::Description backing;backing.kind=RP::Kind::indirect_commands;
+        backing.declared_bytes=bank->native.allocatedSize;
+        if(!state.wrapper->registerNativeBacking((__bridge void*)bank->native,backing,bank->plan_view,error))
+            return reject(ALMetalWorldSourceCommandFailure::native_allocation,"Native command backing registration failed");
         bank->bytes=bank->native.allocatedSize;bank->accounting=state.accounting;
         state.accounting->icb_bytes.fetch_add(bank->bytes,std::memory_order_relaxed);state.accounting->banks.fetch_add(1,std::memory_order_relaxed);
         bank->binding_limit=std::clamp<std::uint64_t>(device.info().recommended_working_set_size/16,256ULL*1024*1024,4ULL*1024*1024*1024);
@@ -939,7 +1074,7 @@ try
         selected=std::move(bank);publication.emplace();
         if(!state.planPublication(selected,*publication))return reject(ALMetalWorldSourceCommandFailure::capacity,"Animated live command/asset budget is full");
     }
-    auto impl=std::make_unique<Batch::Impl>();impl->bank=selected;impl->command=(__bridge id<MTLCommandBuffer>)command.nativeHandle();impl->device=state.device;
+    auto impl=std::make_unique<Batch::Impl>();impl->bank=selected;impl->command=(__bridge id<MTLCommandBuffer>)const_cast<void*>(command.nativeIdentity());impl->device=state.device;
     impl->animated_reader=std::make_shared<const std::uint8_t>(0);
     impl->animated_native.reserve(inputs.size());impl->animated_palettes.reserve(inputs.size());
     for(const auto& input:inputs)
@@ -970,10 +1105,18 @@ try
     }
     if(gpu_visibility)
     {
+        if(native_prefix)*native_prefix=true;
         auto compute=ALMetalComputeEncoder::begin(command,"Alchemy retained animated current-pose visibility",error);
+        if(std::exchange(state.fail_visibility_after_begin,false))
+            return reject(ALMetalWorldSourceCommandFailure::execution,"Forced animated visibility failure after begin");
         if(!compute||!compute->setPipeline(*state.animated_pipeline,error)||!compute->setBuffer(0,*slot.root,0,error)||
            !compute->setBuffer(1,*slot.visible,0,error))return {};
-        auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForResources();if(!native)return {};
+        if(!compute->declareResourceUse(selected->plan_view,RP::Access::write,error)||
+           !compute->declareResourceUse(slot.views->resourceView(),RP::Access::read,error))return {};
+        for(const auto& source:slot.sources)if(!source->declareResourceUses(*compute,error))return {};
+        for(const auto& palette:result->mImpl->animated_palettes)
+            if(!compute->declareResourceUse(palette.buffer->resourceView(),RP::Access::read,error))return {};
+        auto native=(__bridge id<MTLComputeCommandEncoder>)compute->nativeHandleForDeclaredResources();if(!native)return {};
         for(const auto& lease:selected->indices)[native useResource:lease->native usage:MTLResourceUsageRead];
         for(const auto& palette:result->mImpl->animated_palettes)[native useResource:(__bridge id<MTLBuffer>)palette.buffer->nativeHandle() usage:MTLResourceUsageRead];
         [native useResource:selected->native usage:MTLResourceUsageWrite];

@@ -32,6 +32,19 @@ enum class ALMetalWorldCpuVisibilityResult : std::uint8_t
 };
 ALMetalWorldCpuVisibilityResult alMetalClassifyWorldBoundsCPU(
     const ALMetalWorldConservativeBounds&, const float* modelview_projection) noexcept;
+// Applicability facts from an already-owned immutable cohort. The center
+// hint is NOT a visibility test and must never remove a draw: the CPU/GPU
+// conservative classifiers remain authoritative. No source/native allocation.
+struct ALMetalWorldCohortVisibilityWork
+{
+    std::uint64_t indexed_elements=0,qualified_indexed_elements=0;
+    std::uint64_t outside_center_indexed_elements=0;
+    std::size_t draws=0,qualified_draws=0;
+    ALMetalWorldCpuVisibilityResult coarse=ALMetalWorldCpuVisibilityResult::unknown;
+    bool valid=false;
+};
+ALMetalWorldCohortVisibilityWork alMetalInspectWorldCohortVisibilityWork(
+    const ALMetalWorldSourceCohortView&) noexcept;
 struct ALMetalWorldCpuVisibilityStats
 {
     // Accepted G-buffer encoding only, not final GPU completion. When selected,

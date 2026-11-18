@@ -6,6 +6,7 @@
  */
 #include "almetalworldresources.h"
 #include "almetalworld.h"
+#include "almetalresourceplan.h"
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #include <algorithm>
@@ -18,6 +19,13 @@
 
 namespace
 {
+namespace RP=ALMetalResourcePlanning;
+void appendPlanView(std::vector<RP::View>& views,const RP::View& view)
+{
+    if(view&&std::none_of(views.begin(),views.end(),[&](const auto& known)
+        {return known.identity()==view.identity()&&known.generation()==view.generation();}))views.push_back(view);
+}
+
 void fail(std::string* error,const char* text) { if(error)*error=text; }
 void reason(ALMetalWorldResourceFallback* output,ALMetalWorldResourceFallback value) noexcept {if(output)*output=value;}
 struct Key
@@ -94,6 +102,8 @@ struct ALMetalWorldResourceSource::Impl
     Key key;
     std::array<id<MTLTexture>,32> views{};
     std::vector<std::shared_ptr<const ALMetalTexture>> leases;
+    std::vector<RP::View> plan_views;
+    bool plan_complete=true;
     // Small sampler/library working set, never an owner of a context.
     mutable std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
 };
@@ -106,6 +116,8 @@ struct ALMetalWorldResourceTable::Impl
     std::array<id<MTLTexture>,32> textures{};
     id<MTLSamplerState> sampler=nil;
     std::vector<void*> resources;
+    std::vector<RP::View> plan_views;
+    bool plan_complete=true;
     std::weak_ptr<const void> declared_encoder;
     std::shared_ptr<Budget> budget;
     std::size_t charged=0;
@@ -119,13 +131,15 @@ struct ALMetalWorldResourceDeclaration::Impl
     std::weak_ptr<State> context;
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
     std::vector<void*> resources;
+    std::vector<RP::View> plan_views;
+    bool plan_complete=true;
 };
 ALMetalWorldResourceDeclaration::ALMetalWorldResourceDeclaration(std::unique_ptr<Impl> impl)
     :mImpl(std::move(impl)){}
 ALMetalWorldResourceDeclaration::~ALMetalWorldResourceDeclaration()=default;
 std::size_t ALMetalWorldResourceDeclaration::metadataBytes()const noexcept
 {return sizeof(*this)+sizeof(Impl)+mImpl->tables.capacity()*sizeof(mImpl->tables[0])+
-    mImpl->resources.capacity()*sizeof(mImpl->resources[0]);}
+    mImpl->resources.capacity()*sizeof(mImpl->resources[0])+mImpl->plan_views.capacity()*sizeof(RP::View);}
 std::size_t ALMetalWorldResourceDeclaration::resourceCount()const noexcept{return mImpl->resources.size();}
 struct ALMetalWorldResources::Impl
 {
@@ -190,7 +204,8 @@ try
         if(!native){reason(failure,ALMetalWorldResourceFallback::native_allocation);return false;}
         if(native.device!=(__bridge id<MTLDevice>)device.nativeHandle() ||native.textureType!=MTLTextureType2D ||native.sampleCount!=1)
         {reason(failure,ALMetalWorldResourceFallback::validation);return false;}
-        impl->views[index]=native;impl->key.views[index]=(__bridge void*)native;return true;
+        impl->views[index]=native;impl->key.views[index]=(__bridge void*)native;
+        const auto& plan=texture->resourceView();impl->plan_complete&=bool(plan);appendPlanView(impl->plan_views,plan);return true;
     };
     for(std::size_t slot=0;slot<8;++slot)
     {
@@ -344,6 +359,9 @@ try
     if(!buffer){rejected(*state,ALMetalWorldResourceFallback::native_allocation,failure);return {};}
     auto value=std::make_unique<ALMetalWorldResourceTable::Impl>();value->key=key;value->context=state;value->epoch=state->epoch;
     value->buffer=buffer;value->textures=source->mImpl->views;value->sampler=native;
+    value->plan_views=source->mImpl->plan_views;
+    value->plan_complete=source->mImpl->plan_complete&&bool(buffer->resourceView());
+    appendPlanView(value->plan_views,buffer->resourceView());
     const std::size_t count=key.pbr?32:24;
     value->resources.reserve(count);
     for(std::size_t slot=0;slot<count;++slot)
@@ -410,11 +428,18 @@ try
     const auto& state=mImpl->state;
     if(!table || !sameContext(table->mImpl->context,state) ||
        encoder.nativeDeviceForIndirect()!=(__bridge void*)state->device ||
-       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle() || command.isCommitted())
+       encoder.nativeCommandBufferIdentity()!=command.nativeIdentity() || command.isCommitted())
     {rejected(*state,ALMetalWorldResourceFallback::validation,failure);return false;}
     if(!command.retainUntilCompletion(table,error))
     {rejected(*state,ALMetalWorldResourceFallback::retention,failure);return false;}
-    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+    // Exact publication-time generations; graph declaration does not
+    // replace the Metal residency declarations below. An incomplete legacy
+    // certificate deliberately retains the conservative opaque bridge.
+    if(table->mImpl->plan_complete)
+        for(const auto& view:table->mImpl->plan_views)
+            if(!encoder.declareResourceUse(view,RP::Access::read,error))return false;
+    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)
+        (table->mImpl->plan_complete?encoder.nativeHandleForDeclaredResources():encoder.nativeHandleForOpaqueResources());
     if(!native){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
     const auto identity=encoder.declarationIdentity(true);
     if(!identity){rejected(*state,ALMetalWorldResourceFallback::declaration,failure);return false;}
@@ -448,13 +473,16 @@ try
         {fail(error,"Cohort declaration requires exact resource context tables");return {};}
         if(!unique_tables.insert(table.get()).second)continue;
         impl->tables.push_back(table);
+        impl->plan_complete&=table->mImpl->plan_complete;
+        for(const auto& view:table->mImpl->plan_views)appendPlanView(impl->plan_views,view);
         const auto append=[&](void* resource)
         {if(resource&&unique_resources.insert(resource).second)impl->resources.push_back(resource);};
         append(table->mImpl->buffer->nativeHandle());
         for(auto resource:table->mImpl->resources)append(resource);
         // Check actual retained capacity, not only the number of unique handles.
         const auto bytes=sizeof(ALMetalWorldResourceDeclaration)+sizeof(ALMetalWorldResourceDeclaration::Impl)+
-            impl->tables.capacity()*sizeof(impl->tables[0])+impl->resources.capacity()*sizeof(impl->resources[0]);
+            impl->tables.capacity()*sizeof(impl->tables[0])+impl->resources.capacity()*sizeof(impl->resources[0])+
+            impl->plan_views.capacity()*sizeof(RP::View);
         if(bytes>maximum_metadata_bytes)
         {fail(error,"Cohort declaration metadata capacity is exhausted");return {};}
     }
@@ -468,9 +496,16 @@ bool ALMetalWorldResources::declareCertifiedResources(ALMetalRenderEncoder& enco
     const auto& state=mImpl->state;
     if(!sameContext(declaration.mImpl->context,state)||command.isCommitted()||
        encoder.nativeDeviceForIndirect()!=(__bridge void*)state->device||
-       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
+       encoder.nativeCommandBufferIdentity()!=command.nativeIdentity())
     {fail(error,"Cohort declaration requires its exact context and active command");return false;}
-    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+    // Exact publication-time generations; graph declaration does not
+    // replace the Metal residency declarations below. An incomplete legacy
+    // certificate deliberately retains the conservative opaque bridge.
+    if(declaration.mImpl->plan_complete)
+        for(const auto& view:declaration.mImpl->plan_views)
+            if(!encoder.declareResourceUse(view,RP::Access::read,error))return false;
+    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)
+        (declaration.mImpl->plan_complete?encoder.nativeHandleForDeclaredResources():encoder.nativeHandleForOpaqueResources());
     if(!native){fail(error,"Cohort declaration requires a live render encoder");return false;}
     const auto* resources=reinterpret_cast<id<MTLResource> __unsafe_unretained const*>(declaration.mImpl->resources.data());
     [native useResources:resources count:declaration.mImpl->resources.size()

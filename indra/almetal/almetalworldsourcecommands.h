@@ -56,6 +56,34 @@ struct ALMetalWorldSourceCommandStats
     ALMetalWorldSourceCommandFailure last_failure=ALMetalWorldSourceCommandFailure::none;
 };
 
+enum class ALMetalWorldSourceCommandRoute : std::uint8_t { direct, cpu_visibility, gpu_visibility };
+enum class ALMetalWorldSourceCommandReason : std::uint8_t
+{
+    unsupported, invalid_input, raster_policy, fragmented, small_work,
+    unknown_bounds, inside, outside, heavy_partial, heavy_animated
+};
+struct ALMetalWorldSourceCommandContext
+{
+    // Copied from the actual selected native pipeline descriptor and pass.
+    bool pipeline_supports_indirect=false;
+    bool wireframe=false,depth_clamp=false,opaque_coverage_stamp=false;
+    std::size_t ordered_ranges=1;
+};
+struct ALMetalWorldSourceCommandPolicy
+{
+    // Initial applicability bounds, to be qualified by complete producer-to-
+    // completion costs. They count actual indexed input, not GPU invocations.
+    std::uint64_t minimum_qualified_indices=196608;
+    std::size_t maximum_ordered_ranges=128;
+};
+struct ALMetalWorldSourceCommandDecision
+{
+    ALMetalWorldSourceCommandRoute route=ALMetalWorldSourceCommandRoute::direct;
+    ALMetalWorldSourceCommandReason reason=ALMetalWorldSourceCommandReason::invalid_input;
+    std::uint64_t indexed_elements=0,qualified_indexed_elements=0;
+    std::size_t draws=0;
+};
+
 // Submission owner only; completion threads retire native-accounting leases.
 // The idle cache owns no CPU source graph or strong C++ geometry generation.
 class ALMetalWorldSourceCommands final
@@ -71,6 +99,16 @@ public:
         explicit Batch(std::unique_ptr<Impl>);
         std::unique_ptr<Impl> mImpl;
         friend class ALMetalWorldSourceCommands;
+    };
+    // Null before a native prefix permits the required direct path. Null
+    // after a compute begin attempt requires cancellation of this command;
+    // callers must not hide an unknown/failed optional prefix with fallback.
+    struct Preparation
+    {
+        std::shared_ptr<const Batch> batch;
+        bool native_prefix = false;
+        explicit operator bool() const noexcept { return bool(batch); }
+        bool mayFallback() const noexcept { return !batch && !native_prefix; }
     };
     class DeclarationScope final
     {
@@ -90,6 +128,13 @@ public:
         ALMetalWorldSourceCommandLimits={},std::string* error=nullptr);
     ~ALMetalWorldSourceCommands();
     bool supported() const noexcept;
+    // Call BEFORE SourcePages/native-bank allocation. Small/unqualified views
+    // keep the existing scalar route; this never forces indirect machinery.
+    ALMetalWorldSourceCommandDecision applicability(const ALMetalWorldSourceCohortView&,
+        const ALMetalWorldSourceCommandContext&,ALMetalWorldSourceCommandPolicy={}) const noexcept;
+    ALMetalWorldSourceCommandDecision applicability(
+        std::span<const ALMetalWorldSourceReference* const>,const ALMetalWorldSourceCommandContext&,
+        ALMetalWorldSourceCommandPolicy={}) const noexcept;
     void setPublicationAdmission(ALMetalWorldSourcePages::PublicationAdmission);
     // Pins native Bank+exact FrameView on the actual command before emission.
     // Warm hits use no publication credit. Draw descriptors are not retained.
@@ -110,12 +155,19 @@ public:
     std::shared_ptr<const Batch> prepareVisibleCohortForCommand(ALMetalCommandBuffer&,
         std::shared_ptr<const ALMetalWorldSourceFrameView>,const ALMetalDevice&,const ALMetalShaderLibrary&,
         std::string* error=nullptr,ALMetalWorldSourceCommandFailure* failure=nullptr);
+    Preparation prepareVisibleCohortChecked(ALMetalCommandBuffer&,
+        std::shared_ptr<const ALMetalWorldSourceFrameView>,const ALMetalDevice&,const ALMetalShaderLibrary&,
+        std::string* error=nullptr,ALMetalWorldSourceCommandFailure* failure=nullptr);
     // Current pose/view updates only; immutable native bindings and indexed
     // calls are encoded once per reusable completion-qualified slot. The
     // returned Batch and command own native generations, never CPU records.
     std::shared_ptr<const Batch> prepareAnimatedForCommand(ALMetalCommandBuffer&,
         const ALMetalDevice&,const ALMetalShaderLibrary&,
         std::span<const ALMetalWorldAnimatedGpuView>,const ALMetalWorldSourceGlobals&,
+        ALMetalWorldFrameData&,std::string* error=nullptr,bool gpu_visibility=true);
+    Preparation prepareAnimatedChecked(ALMetalCommandBuffer&,
+        const ALMetalDevice&,const ALMetalShaderLibrary&,
+        std::vector<ALMetalWorldAnimatedGpuView>&&,const ALMetalWorldSourceGlobals&,
         ALMetalWorldFrameData&,std::string* error=nullptr,bool gpu_visibility=true);
     // Transfers the completed late-view vector before callbacks. Callers must
     // surrender all mutable aliases, as with immutable input adoption. Public
@@ -139,10 +191,17 @@ public:
     // One-shot CPU-owner fault seam; disabled unless explicitly armed. Fail
     // before emitting the range after this many successful range submissions.
     void failExecutionAfterForTesting(std::size_t successful_ranges) noexcept;
+    // One-shot correctness seam after compute begin, before dispatch. Native
+    // prefix propagation is observable without committing a failing command.
+    void failVisibilityAfterBeginForTesting() noexcept;
 private:
     std::shared_ptr<const Batch> prepareCohortForCommandImpl(ALMetalCommandBuffer&,
         std::shared_ptr<const ALMetalWorldSourceFrameView>,const ALMetalDevice*,const ALMetalShaderLibrary*,
-        std::string*,ALMetalWorldSourceCommandFailure*);
+        std::string*,ALMetalWorldSourceCommandFailure*,bool* native_prefix);
+    std::shared_ptr<const Batch> prepareAnimatedForCommandImpl(ALMetalCommandBuffer&,
+        const ALMetalDevice&,const ALMetalShaderLibrary&,
+        std::vector<ALMetalWorldAnimatedGpuView>&&,const ALMetalWorldSourceGlobals&,
+        ALMetalWorldFrameData&,std::string*,bool gpu_visibility,bool* native_prefix);
     bool executeRangeImpl(ALMetalRenderEncoder&,ALMetalCommandBuffer&,const Batch&,
         std::size_t first,std::size_t count,const DeclarationScope*,std::string* error);
     struct Impl;

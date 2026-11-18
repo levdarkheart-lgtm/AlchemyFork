@@ -18,12 +18,20 @@
 #include <iterator>
 #include <list>
 #include <new>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace
 {
+namespace RP=ALMetalResourcePlanning;
+void appendPlanView(std::vector<RP::View>& views,const RP::View& view)
+{
+    if(view&&std::none_of(views.begin(),views.end(),[&](const auto& known)
+        {return known.identity()==view.identity()&&known.generation()==view.generation();}))views.push_back(view);
+}
+
 void fail(std::string* error,const char* message){if(error)*error=message;}
 struct Budget {std::atomic<std::size_t> bytes{0};std::size_t limit=0;};
 struct DeclarationMetadata
@@ -212,6 +220,8 @@ struct ALMetalWorldSourceCommandMembership::Impl
 {
     void* device=nullptr;
     std::vector<ALMetalWorldSourceIndexedCall> calls;
+    std::vector<RP::View> index_views;
+    bool index_complete=true;
     std::vector<ALMetalWorldSourceCommandRun> runs;
     std::vector<ALMetalWorldSourceDirectBinding> bindings;
     std::vector<ALMetalWorldSourceNativeFootprint> assets;
@@ -220,6 +230,8 @@ struct ALMetalWorldSourceCommandMembership::Impl
 ALMetalWorldSourceCommandMembership::ALMetalWorldSourceCommandMembership(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceCommandMembership::~ALMetalWorldSourceCommandMembership()=default;
 std::span<const ALMetalWorldSourceIndexedCall> ALMetalWorldSourceCommandMembership::calls()const noexcept{return mImpl->calls;}
+std::span<const RP::View> ALMetalWorldSourceCommandMembership::indexResourceViews()const noexcept{return mImpl->index_views;}
+bool ALMetalWorldSourceCommandMembership::indexResourcesComplete()const noexcept{return mImpl->index_complete;}
 std::span<const ALMetalWorldSourceCommandRun> ALMetalWorldSourceCommandMembership::runs()const noexcept{return mImpl->runs;}
 void* ALMetalWorldSourceCommandMembership::nativeDevice()const noexcept{return mImpl->device;}
 std::span<const ALMetalWorldSourceDirectBinding> ALMetalWorldSourceCommandMembership::directBindings()const noexcept{return mImpl->bindings;}
@@ -237,6 +249,7 @@ struct ALMetalWorldSourceDirectSlot::Impl
 ALMetalWorldSourceDirectSlot::ALMetalWorldSourceDirectSlot(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceDirectSlot::~ALMetalWorldSourceDirectSlot()=default;
 void* ALMetalWorldSourceDirectSlot::nativeBuffer()const noexcept{return mImpl->buffer->value->nativeHandle();}
+const RP::View& ALMetalWorldSourceDirectSlot::resourceView()const noexcept{return mImpl->buffer->value->resourceView();}
 std::size_t ALMetalWorldSourceDirectSlot::regionOffset(std::uint32_t index)const noexcept{return std::size_t(index)*256;}
 std::size_t ALMetalWorldSourceDirectSlot::globalsOffset()const noexcept{return mImpl->regions*256;}
 namespace
@@ -250,6 +263,8 @@ struct CohortBinding
     std::shared_ptr<const ALMetalWorldSourceCommandMembership> membership;
     std::vector<PageProof> pages;
     std::vector<void*> geometry,numeric;
+    std::vector<RP::View> plan_views;
+    bool plan_complete=true;
     std::vector<std::uint32_t> native_owner_indices;
     std::vector<Asset> assets;
     bool asset_footprint_known=true;
@@ -273,6 +288,9 @@ struct ALMetalWorldAnimatedGpuSource::Impl
     std::shared_ptr<Buffer> policy,bones;
     std::shared_ptr<const ALMetalWorldResourceTable> table;
     std::vector<ALMetalWorldSourceNativeFootprint> assets;
+    std::vector<RP::View> plan_views;
+    bool plan_complete=true;
+    std::shared_ptr<const DeclarationMetadata> graph_metadata;
 };
 ALMetalWorldAnimatedGpuSource::ALMetalWorldAnimatedGpuSource(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldAnimatedGpuSource::~ALMetalWorldAnimatedGpuSource()=default;
@@ -281,7 +299,20 @@ bool ALMetalWorldAnimatedGpuSource::currentGeneration()const noexcept
 bool ALMetalWorldAnimatedGpuSource::matchesNativeLease(const std::shared_ptr<const void>& native)const noexcept
 {return native && native.get()==mImpl->native_pointer && !mImpl->native.owner_before(native) && !native.owner_before(mImpl->native);}
 bool ALMetalWorldAnimatedGpuSource::declareResources(ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,std::string* error)const
-{return mImpl->resources->declareResources(encoder,command,mImpl->table,error);}
+{
+    if(mImpl->plan_complete)
+    {
+        for(const auto& view:mImpl->plan_views)if(!encoder.declareResourceUse(view,RP::Access::read,error))return false;
+    }
+    else (void)encoder.nativeHandleForOpaqueResources(); // Conservative legacy closure.
+    return mImpl->resources->declareResources(encoder,command,mImpl->table,error);
+}
+bool ALMetalWorldAnimatedGpuSource::declareResourceUses(ALMetalComputeEncoder& encoder,std::string* error)const
+{
+    if(!mImpl->plan_complete){(void)encoder.nativeHandleForOpaqueResources();return true;}
+    for(const auto& view:mImpl->plan_views)if(!encoder.declareResourceUse(view,RP::Access::read,error))return false;
+    return encoder.declareResourceUse(mImpl->table->argumentLease()->resourceView(),RP::Access::read,error);
+}
 
 const ALMetalWorldAnimatedNativeBinding& ALMetalWorldAnimatedGpuSource::binding()const noexcept{return mImpl->binding;}
 std::shared_ptr<const ALMetalWorldResourceTable> ALMetalWorldAnimatedGpuSource::table()const noexcept{return mImpl->table;}
@@ -306,6 +337,9 @@ struct ALMetalWorldSourceFrameView::Impl
     // Retain only the native resource. FrameData owns/recycles its C++ wrapper
     // and may die independently; no raw slice pointer escapes publication.
     id<MTLBuffer> arena_buffer=nil;
+    RP::View arena_plan;
+    std::vector<RP::View> plan_views;
+    bool plan_complete=true;
     std::size_t arena_region_offset=0,arena_globals_offset=0;
     std::weak_ptr<const ALMetalCommandCompletion> arena_command;
     bool publishView(ALMetalCommandBuffer* command,ALMetalWorldFrameData* frame_data,
@@ -329,6 +363,7 @@ struct ALMetalWorldSourceFrameView::Impl
                slice.offset>slice.buffer->length() || length>slice.buffer->length()-slice.offset)
             {fail(error,"Native cohort arena publication returned an invalid range");return false;}
             arena_buffer=(__bridge id<MTLBuffer>)slice.buffer->nativeHandle();
+            arena_plan=slice.buffer->resourceView();
             if(!arena_buffer){fail(error,"Native cohort arena publication has no native buffer");return false;}
             arena_region_offset=slice.offset;arena_globals_offset=slice.offset+globals_offset;arena_command=origin;
             return true;
@@ -348,6 +383,7 @@ struct ALMetalWorldSourceFrameView::Impl
     std::vector<std::shared_ptr<const ALMetalWorldResourceTable>> tables;
     std::vector<void*> geometry;
     std::weak_ptr<const void> declared_encoder;
+    std::optional<std::size_t> direct_failure_after;
 };
 ALMetalWorldSourceFrameView::ALMetalWorldSourceFrameView(std::unique_ptr<Impl> impl):mImpl(std::move(impl)){}
 ALMetalWorldSourceFrameView::~ALMetalWorldSourceFrameView()=default;
@@ -361,7 +397,7 @@ bool ALMetalWorldSourceFrameView::matchesDirectCommand(const ALMetalCommandBuffe
 {
     if(!mImpl->direct_reader)return true;
     auto origin=mImpl->arena_command.lock();
-    return origin&&!origin->isComplete()&&!command.isCommitted()&&command.nativeHandle()==mImpl->direct_command;
+    return origin&&!origin->isComplete()&&!command.isCommitted()&&command.nativeIdentity()==mImpl->direct_command;
 }
 std::shared_ptr<const ALMetalWorldSourceDirectSlot> ALMetalWorldSourceFrameView::directBindingSlot()const noexcept
 {return mImpl->direct_reader?mImpl->direct_reader->slot:nullptr;}
@@ -398,7 +434,7 @@ try
 {
     auto& view=*mImpl;
     if(command.isCommitted()||command.nativeDevice()!=(__bridge void*)view.context->native ||
-       encoder.nativeCommandBufferForIndirect()!=command.nativeHandle())
+       encoder.nativeCommandBufferIdentity()!=command.nativeIdentity())
     {fail(error,"Native source view requires its exact uncommitted device command");return false;}
     if(view.arena_buffer||view.direct_reader)
     {
@@ -407,13 +443,33 @@ try
            origin.owner_before(current)||current.owner_before(origin))
         {fail(error,"Native cohort arena view requires its exact incomplete publication command");return false;}
     }
-    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForResources();
+    const auto identity=encoder.declarationIdentity(true);
+    if(!identity){fail(error,"Native source view requires an active encoder identity");return false;}
+    const bool new_declaration=view.declared_encoder.owner_before(identity)||identity.owner_before(view.declared_encoder);
+    const auto& captured=view.cohort?view.cohort->plan_views:view.plan_views;
+    bool complete=view.cohort?view.cohort->plan_complete:view.plan_complete;
+    const auto use=[&](const RP::View& resource)
+    {if(!resource){complete=false;return true;}return encoder.declareResourceUse(resource,RP::Access::read,error);};
+    if(complete&&new_declaration)
+    {
+        for(const auto& resource:captured)if(!use(resource))return false;
+        if(view.direct_reader)
+        {if(!use(view.direct_reader->slot->resourceView())||!use(view.cohort->direct_policy->value->resourceView()))return false;}
+        else
+        {
+            if(!use(view.bank->bank->buffer->value->resourceView()))return false;
+            for(const auto& page:view.pages)if(!use(page->page->buffer->value->resourceView()))return false;
+            if(view.arena_buffer){if(!use(view.arena_plan))return false;}
+            else if(!use(view.regions->value->resourceView())||!use(view.globals->value->resourceView()))return false;
+            if(!use(view.mapping->value->resourceView()))return false;
+        }
+    }
+    id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)
+        (complete?encoder.nativeHandleForDeclaredResources():encoder.nativeHandleForOpaqueResources());
     if(!native){fail(error,"Native source view requires a live render encoder");return false;}
     const auto declare=[&](const ALMetalBuffer& buffer,MTLRenderStages stages)
     {[native useResource:(__bridge id<MTLBuffer>)buffer.nativeHandle() usage:MTLResourceUsageRead stages:stages];};
-    const auto identity=encoder.declarationIdentity(true);
-    if(!identity){fail(error,"Native source view requires an active encoder identity");return false;}
-    if(view.declared_encoder.owner_before(identity)||identity.owner_before(view.declared_encoder))
+    if(new_declaration)
     {
         if(!command.retainUntilCompletion(shared_from_this(),error))return false;
         if(!view.direct_reader)
@@ -469,6 +525,88 @@ try
     return bound;
 }
 catch(const std::bad_alloc&){if(error)error->clear();return false;}
+
+void ALMetalWorldSourceFrameView::failDirectRangeAfterForTesting(std::size_t draws)const noexcept
+{mImpl->direct_failure_after=draws;}
+
+ALMetalWorldSourceFrameView::DirectExecution ALMetalWorldSourceFrameView::drawDirectRange(
+    ALMetalRenderEncoder& encoder,ALMetalCommandBuffer& command,
+    std::size_t first,std::size_t count,std::string* error)const
+{
+    DirectExecution result;
+    std::uint64_t elements=0;
+    const auto reject=[&](const char* message)
+    {
+        fail(error,message);
+        if(result.draws_encoded)encoder.recordPrevalidatedDraws(static_cast<std::uint32_t>(result.draws_encoded),elements);
+        return result;
+    };
+    try
+    {
+        if(!mImpl->cohort||!mImpl->direct_reader||!count||first>size()||count>size()-first||
+           !matchesDirectCommand(command)||command.isCommitted()||!encoder.canExecuteStaticDraws()||
+           encoder.nativeDeviceForIndirect()!=command.nativeDevice()||
+           encoder.nativeCommandBufferIdentity()!=command.nativeIdentity())
+            return reject("Direct source range requires its exact active command and native pipeline");
+        const auto& membership=*mImpl->cohort->membership;
+        const auto calls=membership.calls();const auto bindings=membership.directBindings();
+        const auto slot=directBindingSlot();
+        if(bindings.size()!=calls.size()||!slot||!slot->nativeBuffer()||!membership.directPolicyBuffer())
+            return reject("Direct source range has incomplete published bindings");
+        const bool one_raster_run=std::any_of(membership.runs().begin(),membership.runs().end(),[&](const auto& run)
+            {return first>=run.first&&first-run.first<=run.count&&count<=run.count-(first-run.first);});
+        if(!one_raster_run)return reject("Direct source range crosses a published raster-state boundary");
+        for(std::size_t at=first;at<first+count;++at)
+        {
+            const auto& call=calls[at];const auto& binding=bindings[at];
+            if(!call.native_indices||!call.index_count||!binding.geometry[0]||!binding.resource_table||
+               !(binding.legacy_numeric||(directNormalHDR()?binding.pbr_hdr:binding.pbr_ldr)))
+                return reject("Direct source range contains an invalid published indexed call");
+        }
+        // Retain and declare the complete native-only closure before changing
+        // draw state. The exact FrameView owns the overwrite-prevention token.
+        if(!bind(encoder,command,error))return result;
+        encoder.invalidateIndirectBufferBindings();
+        id<MTLRenderCommandEncoder> native=(__bridge id<MTLRenderCommandEncoder>)encoder.nativeHandleForDeclaredResources();
+        if(!native)return reject("Direct source range encoder ended before emission");
+        result.native_prefix=true;
+        for(std::size_t at=first;at<first+count;++at)
+        {
+            if(mImpl->direct_failure_after&&*mImpl->direct_failure_after==0)
+            {
+                mImpl->direct_failure_after.reset();
+                return reject("Forced direct source failure after a native prefix");
+            }
+            const auto& call=calls[at];const auto& binding=bindings[at];
+            constexpr unsigned slots[]{0,1,2,3,8,9,10};
+            for(unsigned attribute=0;attribute<7;++attribute)
+                [native setVertexBuffer:(__bridge id<MTLBuffer>)binding.geometry[attribute]
+                    offset:binding.offsets[attribute] atIndex:slots[attribute]];
+            id<MTLBuffer> view=(__bridge id<MTLBuffer>)slot->nativeBuffer();
+            [native setVertexBuffer:view offset:slot->regionOffset(binding.region) atIndex:4];
+            [native setVertexBuffer:view offset:slot->globalsOffset() atIndex:5];
+            [native setVertexBuffer:(__bridge id<MTLBuffer>)membership.directPolicyBuffer() offset:binding.policy_offset atIndex:6];
+            void* numeric=binding.legacy_numeric?binding.legacy_numeric:(directNormalHDR()?binding.pbr_hdr:binding.pbr_ldr);
+            if(!binding.legacy_numeric)[native setVertexBuffer:(__bridge id<MTLBuffer>)numeric offset:0 atIndex:11];
+            [native setFragmentBuffer:(__bridge id<MTLBuffer>)numeric offset:0 atIndex:0];
+            [native setFragmentBuffer:(__bridge id<MTLBuffer>)binding.resource_table offset:0 atIndex:1];
+            [native drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:call.index_count
+                indexType:call.index_type==ALMetalIndexType::uint16?MTLIndexTypeUInt16:MTLIndexTypeUInt32
+                indexBuffer:(__bridge id<MTLBuffer>)call.native_indices indexBufferOffset:call.index_offset
+                instanceCount:1 baseVertex:0 baseInstance:call.row_id];
+            ++result.draws_encoded;elements+=call.index_count;
+            if(mImpl->direct_failure_after)--*mImpl->direct_failure_after;
+        }
+        encoder.recordPrevalidatedDraws(static_cast<std::uint32_t>(result.draws_encoded),elements);
+        result.success=true;return result;
+    }
+    catch(const std::bad_alloc&)
+    {
+        if(error)error->clear();
+        if(result.draws_encoded)encoder.recordPrevalidatedDraws(static_cast<std::uint32_t>(result.draws_encoded),elements);
+        return result;
+    }
+}
 
 struct ALMetalWorldSourcePages::Impl
 {
@@ -811,7 +949,7 @@ try
             std::memcpy(mapped+slot->regionOffset(static_cast<std::uint32_t>(region)),&regions[region],sizeof(regions[region]));
         std::memcpy(mapped+slot->globalsOffset(),&globals,sizeof(globals));
         slot->mImpl->reader=reader;view.direct_reader=std::move(reader);view.direct_normal_hdr=globals.flags[2];view.arena_command=origin;
-        view.direct_command=command.nativeHandle();
+        view.direct_command=const_cast<void*>(command.nativeIdentity());
         state.statistics.direct_view_bytes+=regions.size()*sizeof(ALMetalWorldSourceRegion)+sizeof(globals);return true;
     };
     // Exact weak control blocks follow the cheap hash. A warm composition
@@ -915,6 +1053,8 @@ try
     {
         const auto& source=*requests[index].source;
         if(source.index_count>std::numeric_limits<std::uint32_t>::max())return reject("Native cohort indexed count overflows");
+        membership->index_complete&=bool(source.indices->resourceView());
+        appendPlanView(membership->index_views,source.indices->resourceView());
         membership->calls.push_back({requests[index].key,source.indices->nativeHandle(),source.index_offset,
             static_cast<std::uint32_t>(source.index_count),source.index_type,frozen->rowId(index),frozen->allocationGeneration(index)});
         if(membership->runs.empty()||membership->runs.back().double_sided!=source.double_sided)
@@ -951,6 +1091,7 @@ try
     for(std::size_t owner=0;owner<selections.size();++owner)
         if(unique_native_owners.insert(selections[owner].native).second)binding->native_owner_indices.push_back(static_cast<std::uint32_t>(owner));
     auto& view=*frozen->mImpl;binding->mapping=view.mapping;binding->tables=std::move(view.tables);binding->geometry=std::move(view.geometry);
+    binding->plan_views=std::move(view.plan_views);binding->plan_complete=view.plan_complete;
     binding->declaration=state.context->resources->prepareDeclaration(binding->tables,
         state.limits.maximum_metadata_bytes,error);
     if(!binding->declaration)return reject("Native cohort resource declaration publication failed");
@@ -980,6 +1121,20 @@ try
         void* identity=(__bridge void*)root;
         if(allocations.insert(identity).second)binding->assets.push_back({identity,root.allocatedSize});
     }
+    // PPD425: captured graph Views keep exact native geometry/numeric
+    // allocations alive in the idle cache. Include them in this same gross
+    // cached-asset scope; aliases and repeated rows count one root allocation.
+    const auto append_buffer_asset=[&](const ALMetalBuffer& buffer)
+    {
+        id<MTLBuffer> native=(__bridge id<MTLBuffer>)buffer.nativeHandle();
+        if(!native||native.device!=state.context->native||!native.allocatedSize)
+        {binding->asset_footprint_known=false;return;}
+        void* root=(__bridge void*)native;
+        if(allocations.insert(root).second)binding->assets.push_back({root,native.allocatedSize});
+    };
+    for(const auto& request:requests)
+    {append_buffer_asset(*request.source->vertices);append_buffer_asset(*request.source->indices);}
+    for(const auto& buffer:view.buffers)append_buffer_asset(*buffer);
     if(direct_bindings)
     {
         auto& direct=*binding->membership->mImpl;
@@ -989,6 +1144,7 @@ try
         view.arena_buffer=nil;view.regions.reset();view.globals.reset();view.pages.clear();view.bank.reset();
     }
     binding->metadata=sizeof(CohortBinding)+sizeof(ALMetalWorldSourceCommandMembership)+sizeof(ALMetalWorldSourceCommandMembership::Impl)+
+        binding->membership->mImpl->index_views.capacity()*sizeof(RP::View)+binding->plan_views.capacity()*sizeof(RP::View)+
         binding->membership->mImpl->calls.capacity()*sizeof(ALMetalWorldSourceIndexedCall)+binding->membership->mImpl->runs.capacity()*sizeof(ALMetalWorldSourceCommandRun)+
         binding->pages.capacity()*sizeof(CohortBinding::PageProof)+(binding->geometry.capacity()+binding->numeric.capacity())*sizeof(void*)+
         binding->tables.capacity()*sizeof(binding->tables[0])+sizeof(Impl::CohortEntry)+2*sizeof(void*)+
@@ -1357,6 +1513,10 @@ try
         view->rows.push_back(planned.slot);view->generations.push_back(planned.generation);
         view->commands.push_back({request.key,planned.input.indices,planned.input.indices->nativeHandle()});
         if(owners.insert(request.native.owner).second)view->native_owners.push_back(request.native.owner);
+        for(const auto* buffer:{planned.input.vertices,planned.input.indices})
+        {view->plan_complete&=bool(buffer->resourceView());appendPlanView(view->plan_views,buffer->resourceView());}
+        for(const auto& buffer:planned.input.numeric)if(buffer)
+        {view->plan_complete&=bool(buffer->resourceView());appendPlanView(view->plan_views,buffer->resourceView());}
         for(auto handle:{planned.input.vertices->nativeHandle(),planned.input.indices->nativeHandle()})
             if(geometry.insert(handle).second)view->geometry.push_back(handle);
         for(const auto& buffer:{request.native.vertices,request.native.indices})if(buffer&&buffers.insert(buffer.get()).second)view->buffers.push_back(buffer);
@@ -1431,6 +1591,14 @@ try
             const auto bytes=96+std::max<std::size_t>(1,task.source->boneBounds().size())*48;
             work.encoded_row_bytes+=bytes;work.allocation_bytes+=(bytes+4095)&~std::uint64_t(4095);
             std::unordered_set<void*> seen;
+            for(const auto* buffer:buffers)if(buffer)
+            {
+                id<MTLBuffer> native=(__bridge id<MTLBuffer>)buffer->nativeHandle();
+                if(!native||native.device!=state.context->native||!native.allocatedSize)return false;
+                void* allocation=(__bridge void*)native;
+                if(seen.insert(allocation).second)task.assets.push_back({allocation,native.allocatedSize});
+                if(!state.cohort_assets.contains(allocation))new_assets.emplace(allocation,native.allocatedSize);
+            }
             for(const auto& texture:batch.native_resource_source->generationLeases())
             {
                 id<MTLTexture> root=(__bridge id<MTLTexture>)texture->nativeHandle();unsigned depth=0;
@@ -1488,6 +1656,18 @@ try
                 for(unsigned at=0;at<3;++at)binding.numeric[at]=numeric[at]?numeric[at]->nativeHandle():nullptr;
                 binding.indices=batch.indices->nativeHandle();binding.index_offset=batch.index_offset;binding.index_count=batch.index_count;binding.index_type=batch.index_type;
                 binding.policy=buffer->value.get();binding.bones=buffer->value.get();binding.bone_offset=96;binding.bone_count=bones.size();binding.qualified=task.source->boundsQualified();
+                // Capture each graph generation while the exact immutable
+                // native tuple is pinned; later binds never query live wrappers.
+                for(const auto* item:{batch.vertices,batch.indices,source.materialLease().get(),
+                    source.pbrLease(false).get(),source.pbrLease(true).get(),buffer->value.get()})if(item)
+                {gpu->plan_complete&=bool(item->resourceView());appendPlanView(gpu->plan_views,item->resourceView());}
+                const auto graph_bytes=gpu->plan_views.capacity()*sizeof(RP::View)+
+                    gpu->assets.capacity()*sizeof(ALMetalWorldSourceNativeFootprint)+sizeof(DeclarationMetadata)+2*sizeof(void*);
+                const auto live_metadata=state.context->budget->bytes.load(std::memory_order_relaxed);
+                if(live_metadata>state.context->budget->limit||graph_bytes>state.context->budget->limit-live_metadata)return false;
+                auto graph_metadata=std::make_shared<DeclarationMetadata>();graph_metadata->budget=state.context->budget;
+                graph_metadata->bytes=graph_bytes;state.context->budget->bytes.fetch_add(graph_bytes,std::memory_order_relaxed);
+                gpu->graph_metadata=std::move(graph_metadata);
                 task.gpu=std::shared_ptr<const ALMetalWorldAnimatedGpuSource>(new ALMetalWorldAnimatedGpuSource(std::move(gpu)));
                 // All allocating nodes are staged before the cache entry or
                 // asset reference ledger changes. Failed optional publication
