@@ -49,11 +49,12 @@ inline std::shared_ptr<ALNativePublication::State> currentOwner(const AdmittedSp
         ? owner : nullptr;
 }
 inline ALMetalShadowMembershipPublisher::Result current(ALMetalShadowMembershipCache& cache,
-    const AdmittedSpan& span, ALNativeSourceWorkingSet& residency, std::uint32_t frame)
+    const AdmittedSpan& span, ALNativeSourceWorkingSet& residency, std::uint32_t frame,
+    std::optional<ALNativeFrameBudget::Frame> preparation_frame = std::nullopt)
 {
     const auto owner=currentOwner(span);
     if(!owner)return {{},{},ALMetalShadowMembershipPublisher::Failure::changed_source};
-    auto result=cache.current(owner,flavor(span),residency,frame);
+    auto result=cache.current(owner,flavor(span),residency,frame,preparation_frame);
     if(result && (result.membership->members().size()!=span.count || result.membership->ranges().size()!=1 ||
         result.membership->ranges()[0]!=ALMetalShadowMembershipRange{span.pass,span.coverage,0,span.count}))
         return {{},{},ALMetalShadowMembershipPublisher::Failure::invalid_ranges};

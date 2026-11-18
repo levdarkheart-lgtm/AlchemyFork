@@ -501,7 +501,7 @@ struct LLPipeline::MetalWorldSimpleCapture
         U64 source_pins = 0, palette_pins = 0, failed_views = 0;
         U64 capture_wall_ns = 0, max_view_wall_ns = 0;
         U64 group_hits = 0, group_rows = 0, group_sealed = 0, group_unions = 0, group_declined = 0;
-        U64 group_retained = 0, group_transient = 0;
+        U64 group_retained = 0, group_transient = 0, group_preparation_deferrals = 0;
         std::array<U64, static_cast<std::size_t>(ALMetalShadowMembershipPublisher::Failure::publication) + 1>
             group_failures{};
         void groupFailure(ALMetalShadowMembershipPublisher::Failure failure) noexcept
@@ -523,6 +523,7 @@ struct LLPipeline::MetalWorldSimpleCapture
             group_sealed += value.group_sealed; group_unions += value.group_unions;
             group_declined += value.group_declined;
             group_retained += value.group_retained; group_transient += value.group_transient;
+            group_preparation_deferrals += value.group_preparation_deferrals;
             for (std::size_t i = 0; i < group_failures.size(); ++i) group_failures[i] += value.group_failures[i];
             views += value.views; admitted_inputs += value.admitted_inputs;
             visited_inputs += value.visited_inputs; key_builds += value.key_builds;
@@ -3348,6 +3349,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", group_hits/rows/sealed/unions/declined=" << d.group_hits << '/' << d.group_rows
                     << '/' << d.group_sealed << '/' << d.group_unions << '/' << d.group_declined
                     << ", group_retained/transient=" << d.group_retained << '/' << d.group_transient
+                    << ", group_preparation_deferrals=" << d.group_preparation_deferrals
                     << ", group_failures(none/ranges/source/changed/bounds/admission/cpu/union/allocation/publication)="
                     << d.group_failures[0] << '/' << d.group_failures[1] << '/' << d.group_failures[2]
                     << '/' << d.group_failures[3] << '/' << d.group_failures[4] << '/' << d.group_failures[5]
@@ -13761,6 +13763,8 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
         };
         const auto& spans = owner.shadow_admitted_spans[type];
         auto* membership_cache = spans.empty() ? nullptr : shadowMembershipCache();
+        const auto preparation_frame = membership_cache
+            ? ALNativeFrameBudget::instance().snapshot().frame : ALNativeFrameBudget::Frame{};
         std::size_t span_index = 0;
         const ALSceneShadowMembershipNative::AdmittedSpan* active_span = nullptr;
         std::shared_ptr<const ALMetalShadowMembership> membership;
@@ -13780,7 +13784,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                     try
                     {
                         auto current = ALSceneShadowMembershipNative::current(
-                            *membership_cache, stamped, sNativeSceneSources, gFrameCount);
+                            *membership_cache, stamped, sNativeSceneSources, gFrameCount, preparation_frame);
                         if (current)
                         {
                             if (!owner.shadow_cpu_owners)
@@ -13791,6 +13795,8 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                             ++source_diagnostics.group_hits;
                             source_diagnostics.group_rows += stamped.count;
                         }
+                        else if (current.defer_preparation)
+                            ++source_diagnostics.group_preparation_deferrals;
                         else if (stamped.count <= 131072 && ALSceneShadowMembershipNative::currentOwner(stamped))
                         {
                             pending_members.reserve(stamped.count);
@@ -13845,7 +13851,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                         publication.owner->producer_revision, *publication.record});
                 }
             }
-            if (!membership && active_span && membership_cache &&
+            if (collect_members && !membership && active_span && membership_cache &&
                 index + 1 == active_span->first + active_span->count &&
                 pending_members.size() == active_span->count)
             {
