@@ -501,6 +501,14 @@ struct LLPipeline::MetalWorldSimpleCapture
         U64 source_pins = 0, palette_pins = 0, failed_views = 0;
         U64 capture_wall_ns = 0, max_view_wall_ns = 0;
         U64 group_hits = 0, group_rows = 0, group_sealed = 0, group_unions = 0, group_declined = 0;
+        U64 group_retained = 0, group_transient = 0;
+        std::array<U64, static_cast<std::size_t>(ALMetalShadowMembershipPublisher::Failure::publication) + 1>
+            group_failures{};
+        void groupFailure(ALMetalShadowMembershipPublisher::Failure failure) noexcept
+        {
+            ++group_declined;
+            ++group_failures[static_cast<std::size_t>(failure)];
+        }
         // PPD241: CPU capture exit stages only, before reconciliation/GPU.
         enum class FailureStage : U8
         { admission, source_lease, publication, palette, matrices, output_admission, detached_prepare, pool_hook, count };
@@ -514,6 +522,8 @@ struct LLPipeline::MetalWorldSimpleCapture
             group_hits += value.group_hits; group_rows += value.group_rows;
             group_sealed += value.group_sealed; group_unions += value.group_unions;
             group_declined += value.group_declined;
+            group_retained += value.group_retained; group_transient += value.group_transient;
+            for (std::size_t i = 0; i < group_failures.size(); ++i) group_failures[i] += value.group_failures[i];
             views += value.views; admitted_inputs += value.admitted_inputs;
             visited_inputs += value.visited_inputs; key_builds += value.key_builds;
             retained_hits += value.retained_hits; transient_hits += value.transient_hits;
@@ -3337,6 +3347,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", cache_declined=" << d.cache_declined
                     << ", group_hits/rows/sealed/unions/declined=" << d.group_hits << '/' << d.group_rows
                     << '/' << d.group_sealed << '/' << d.group_unions << '/' << d.group_declined
+                    << ", group_retained/transient=" << d.group_retained << '/' << d.group_transient
+                    << ", group_failures(none/ranges/source/changed/bounds/admission/cpu/union/allocation/publication)="
+                    << d.group_failures[0] << '/' << d.group_failures[1] << '/' << d.group_failures[2]
+                    << '/' << d.group_failures[3] << '/' << d.group_failures[4] << '/' << d.group_failures[5]
+                    << '/' << d.group_failures[6] << '/' << d.group_failures[7] << '/' << d.group_failures[8]
+                    << '/' << d.group_failures[9]
                     << ", families=" << d.families << ", max_family_inputs=" << d.max_family_inputs
                     << ", detached_eligible/calls/completed=" << d.detached_eligible << '/'
                     << d.detached_calls << '/' << d.detached_completed
@@ -13777,7 +13793,7 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                         else if (stamped.count <= 131072)
                             pending_members.reserve(stamped.count);
                     }
-                    catch (const std::bad_alloc&) { ++source_diagnostics.group_declined; }
+                    catch (const std::bad_alloc&) { source_diagnostics.groupFailure(ALMetalShadowMembershipPublisher::Failure::allocation); }
                 }
             }
             ++source_diagnostics.visited_inputs;
@@ -13838,9 +13854,12 @@ void LLPipeline::captureMetalShadowScene(LLCamera* shadow_camera, S32 occlusion)
                         ALNativeFrameBudget::instance().snapshot().frame);
                     source_diagnostics.group_sealed += bool(sealed);
                     source_diagnostics.group_unions += sealed.sealed_resource_union;
-                    source_diagnostics.group_declined += !sealed;
+                    if (!sealed) source_diagnostics.groupFailure(sealed.failure);
+                    else if (sealed.outcome == ALMetalShadowMembershipPublisher::Outcome::transient)
+                        ++source_diagnostics.group_transient;
+                    else ++source_diagnostics.group_retained;
                 }
-                catch (const std::bad_alloc&) { ++source_diagnostics.group_declined; }
+                catch (const std::bad_alloc&) { source_diagnostics.groupFailure(ALMetalShadowMembershipPublisher::Failure::allocation); }
                 pending_members.clear();
             }
             const ALMetalAttachmentPaletteRecord* palette = nullptr;
