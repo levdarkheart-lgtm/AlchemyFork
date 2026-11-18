@@ -237,6 +237,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_resource_plan_test.cpp
             tests/almetal_resource_plan_native_test.mm
             tests/almetal_source_applicability_test.mm
+            tests/almetal_surface_resource_native_test.mm
             tests/almetal_retained_background_test.mm
             tests/almetal_scene_monitor_test.mm
             tests/almetal_render_info_test.mm
@@ -329,6 +330,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_source_applicability_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_retained_background_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_scene_monitor_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_render_info_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

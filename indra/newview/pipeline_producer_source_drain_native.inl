@@ -22,7 +22,7 @@ inline bool active = false;
 // The input is the current owner cull result, not a retained view or raw worker
 // packet. Only the bounded LLPointer pins below cross a factory callback.
 template<typename Iterator, typename Policy, typename PinGroup, typename PinDraw, typename SelectFlavor>
-void drain(Iterator begin, Iterator end, const Policy& policy,
+void drainBase(Iterator begin, Iterator end, const Policy& policy,
     ALNativeSourceWorkingSet& working_set, U64& serial, U32 display_frame,
     ALNativeFrameBudget& budget, PinGroup&& pin_group, PinDraw&& pin_draw, SelectFlavor&& select_flavor,
     bool producer_completion = false)
@@ -63,7 +63,6 @@ try
     using GroupOwner = decltype(pin_group(*begin));
     using DrawOwner = decltype(pin_draw(static_cast<LLDrawInfo*>(nullptr)));
     std::vector<GroupOwner> candidates;
-    candidates.reserve(considered);
     const auto signature = policy.signature();
     for (std::size_t n = 0; n < considered; ++n)
     {
@@ -79,6 +78,7 @@ try
         }
         if (!state->dirty()) continue;
         group->mMetalSourcePreparation.notePending(frame);
+        if (candidates.empty()) candidates.reserve(considered);
         candidates.push_back(pin_group(group));
     }
     std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b)
@@ -107,6 +107,7 @@ try
             group->mMetalSourcePreparationIdentity = state->identity();
             group->mMetalSourcePreparationRevision = revision;
             group->mMetalSourcePreparationCursor = 0;
+            group->mMetalSourceCapabilitySummary = {};
         }
         const auto rows = work->rows();
         auto cursor = std::min(group->mMetalSourcePreparationCursor, rows.size());
@@ -114,6 +115,7 @@ try
         std::vector<DrawOwner> pins;
         std::vector<ALScenePublicationNative::ProducerWorldRequest> requests;
         pins.reserve(stop - cursor); requests.reserve(stop - cursor);
+        auto capability_summary = group->mMetalSourceCapabilitySummary;
         bool refresh = false, resources_pending = false;
         for (; cursor < stop; ++cursor)
         {
@@ -137,6 +139,8 @@ try
             const auto* geometry = pin->mVertexBuffer.get();
             if (!geometry || !geometry->hasPublishedMetalVertexBuffer() || !geometry->hasPublishedMetalIndexBuffer())
             { resources_pending = true; break; }
+            if (!flavor->rigged && !pin->mTextureMatrix && flavor->hasResourceConsumer())
+                capability_summary.add(row.pass, pin->mCount);
             requests.push_back({ALScenePublicationNative::producerSource(*pin), *flavor});
             pins.push_back(std::move(pin));
         }
@@ -169,8 +173,11 @@ try
         }
         if (!current()) { ++statistics.stale; continue; }
         group->mMetalSourcePreparationCursor = cursor;
+        group->mMetalSourceCapabilitySummary = capability_summary;
         if (cursor == rows.size() && state->publish(revision, work)) ++statistics.completed;
     }
 }
 catch (const std::bad_alloc&) { ++statistics.allocation_failures; }
 }
+
+#include "pipeline_producer_capability_native.inl"

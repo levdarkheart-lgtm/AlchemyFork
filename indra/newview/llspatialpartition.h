@@ -44,6 +44,7 @@
 #include "llfetchedgltfmaterial.h"
 #include "alnativeregionmodel.h"
 #include "alnativeframebudget.h"
+#include "almetalworldsourcepolicy.h"
 
 #include <boost/unordered_map.hpp>
 #include <array>
@@ -457,6 +458,13 @@ public:
     std::size_t mMetalSourcePreparationCursor = 0;
     U64 mMetalSourcePreparationIdentity = 0, mMetalSourcePreparationRevision = 0;
     U64 mMetalSourcePreparationPolicy = 0;
+    ALMetalWorldSourceCapabilitySummary mMetalSourceCapabilitySummary;
+    ALNativeCohortCompilationAdmission mMetalSourceCapabilityPreparation;
+    std::size_t mMetalSourceCapabilityCursor = 0;
+    U64 mMetalSourceCapabilityIdentity = 0, mMetalSourceCapabilityRevision = 0;
+    U64 mMetalSourceCapabilityPolicy = 0;
+    bool mMetalSourceCapabilityComplete = false;
+
 
     bridge_list_t mBridgeList;
     buffer_map_t mBufferMap; //used by volume buffers to attempt to reuse vertex buffers

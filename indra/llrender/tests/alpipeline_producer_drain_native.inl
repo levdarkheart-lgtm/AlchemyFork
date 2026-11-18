@@ -59,6 +59,12 @@ struct DrainGroup : std::enable_shared_from_this<DrainGroup>
     ALNativeCohortCompilationAdmission mMetalSourcePreparation;
     std::size_t mMetalSourcePreparationCursor = 0;
     U64 mMetalSourcePreparationIdentity = 0, mMetalSourcePreparationRevision = 0, mMetalSourcePreparationPolicy = 0;
+    ALMetalWorldSourceCapabilitySummary mMetalSourceCapabilitySummary;
+    ALNativeCohortCompilationAdmission mMetalSourceCapabilityPreparation;
+    std::size_t mMetalSourceCapabilityCursor = 0;
+    U64 mMetalSourceCapabilityIdentity = 0, mMetalSourceCapabilityRevision = 0;
+    U64 mMetalSourceCapabilityPolicy = 0;
+    bool mMetalSourceCapabilityComplete = false;
     bool dead = false;
     bool isDead() const { return dead; }
     const auto& metalSourceWork() const { return work; }
@@ -85,7 +91,7 @@ struct DrainFixture : Publication
     U64 serial = 0;
     std::size_t selections = 0;
     std::function<void()> during_selection;
-    DrainFixture(std::size_t count)
+    DrainFixture(std::size_t count, ALNativeFrameBudget::Limits limits = {}) : budget(limits)
     {
         Inputs::ALSceneProducerDrainNative::statistics = {};
         Inputs::ALSceneProducerDrainNative::last_frame.reset();
@@ -294,4 +300,66 @@ TEST_CASE("Producer base preparation never nests animated-capability tickets in 
     CHECK(budget.snapshot().scene_publications_in_flight == 0);
     auto required = world(info, f.flavor, Inputs::sNativeSceneSources, Inputs::sNativeSceneSerial, 1);
     REQUIRE(required); CHECK(required.reused);
+}
+
+
+TEST_CASE("Heavy capability summary never combines different actual material passes",
+          "[almetal][producer-drain][producer-policy]")
+{
+    ALMetalWorldSourceCapabilitySummary summary;
+    summary.add(8,100000);summary.add(8,100000);
+    summary.add(10,120000);
+    CHECK(summary.pass==8);CHECK(summary.indexed_elements==200000);CHECK(summary.rows==2);
+    CHECK(alMetalWorldNeedsHeavySourceBounds(summary.input()));
+    summary.add(10,100001);
+    CHECK(summary.pass==10);CHECK(summary.indexed_elements==220001);CHECK(summary.rows==2);
+    ALMetalWorldSourceCapabilitySummary small;
+    small.add(8,100000);small.add(10,120000);
+    CHECK_FALSE(alMetalWorldNeedsHeavySourceBounds(small.input()));
+    summary.add(12,std::numeric_limits<U64>::max());summary.add(12,1);
+    CHECK(summary.indexed_elements==std::numeric_limits<U64>::max());
+    CHECK(summary.pass==12);CHECK(summary.rows==2);
+}
+
+TEST_CASE("Heavy source bounds have separate admission and warm preparation remains scan free",
+          "[almetal][producer-drain][producer-capability]")
+{
+    using namespace Inputs::ALScenePublicationNative;
+    ALNativeFrameBudget::Limits limits;limits.scene_publications_per_frame=1;
+    DrainFixture f(1,limits);
+    f.policy.heavy_bounds=true;
+    auto& info=*f.group->draws.front();
+    LLPointer<LLVertexBuffer> geometry=new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX |
+        LLVertexBuffer::MAP_NORMAL | LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR);
+    constexpr U32 indices=196608;
+    REQUIRE(geometry->allocateBuffer(3,indices));
+    std::memset(geometry->getMappedData(),0,geometry->getSize());
+    f.positions(*geometry,false);
+    LLStrider<LLVector3> normal;REQUIRE(geometry->getNormalStrider(normal));
+    LLStrider<LLColor4U> colors;REQUIRE(geometry->getColorStrider(colors));
+    for(U32 i=0;i<3;++i){normal[i].set(0,0,1);colors[i].set(255,0,0,255);}
+    std::vector<U16> elements(indices);for(U32 i=0;i<indices;++i)elements[i]=i%3;
+    geometry->setIndexData(elements.data());geometry->unmapBuffer();
+    info.mVertexBuffer=geometry;info.mCount=indices;
+    f.group->rebuild();
+    f.group->work->values[0].pass=ProducerRecipeFrontier::LLRenderPass::PASS_MATERIAL;
+    f.drain();
+    REQUIRE_FALSE(f.group->state->dirty());
+    CHECK(f.group->mMetalSourceCapabilitySummary.indexed_elements==indices);
+    CHECK_FALSE(f.group->mMetalSourceCapabilityComplete);
+    CHECK(f.budget.snapshot().scene_publications_this_frame==1);
+    CHECK(f.budget.snapshot().scene_publications_in_flight==0);
+    f.nextFrame();f.drain();
+    REQUIRE(f.group->mMetalSourceCapabilityComplete);
+    CHECK(f.budget.snapshot().scene_publications_this_frame==1);
+    CHECK(f.budget.snapshot().scene_publications_in_flight==0);
+    auto flavor=ProducerRecipeFrontier::ALSceneProducerDrainNative::ordinaryFlavor(
+        ProducerRecipeFrontier::LLRenderPass::PASS_MATERIAL,info,f.policy);
+    REQUIRE(flavor);flavor->cohort_source=flavor->cohort_bounds=true;
+    const auto required=world(info,*flavor,Inputs::sNativeSceneSources,f.serial,U32(f.inputs.frame));
+    REQUIRE(required);CHECK(required.reused);
+    const auto selections=f.selections;
+    f.nextFrame();f.drain();
+    CHECK(f.selections==selections);
+    CHECK(f.budget.snapshot().scene_publications_this_frame==0);
 }

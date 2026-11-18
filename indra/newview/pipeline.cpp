@@ -446,6 +446,20 @@ struct ALViewerMetalShadowSourceCache
 #include "pipeline_cohort_compilation_native.inl"
 namespace
 {
+// Private qualification controls. Explicit old prototypes remain independent;
+// defaults are selected only after complete-owner correctness and cost gates.
+bool nativeSourceRoutingEnabled() noexcept
+{
+    static const bool enabled=[] { const char* value=std::getenv("ALCHEMY_METAL_SOURCE_ROUTING");
+        return value && std::strcmp(value,"1")==0; }();
+    return enabled;
+}
+bool nativeSourceVisibilityEnabled() noexcept
+{
+    static const bool enabled=[] { const char* value=std::getenv("ALCHEMY_METAL_SOURCE_NATIVE_VISIBILITY");
+        return value && std::strcmp(value,"1")==0; }();
+    return enabled;
+}
 ALNativeSourceWorkingSet sNativeSceneSources;
 bool shadowMembershipEnabled() noexcept
 {
@@ -17340,6 +17354,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.cpu_source_owner = capture.cpu_sources;
     scene.source_rows = capture.source_rows;
     scene.animated_gpu_records = capture.animated_gpu_records_active && !impostor_bake;
+    scene.source_routing = nativeSourceRoutingEnabled() && !impostor_bake;
+    scene.source_native_visibility = scene.source_routing && nativeSourceVisibilityEnabled();
     static LLCachedControl<bool> animated_gpu_visibility(gSavedSettings, "RenderMetalAnimatedGpuVisibility", false);
     scene.animated_gpu_visibility = animated_gpu_visibility();
     static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
@@ -22663,6 +22679,24 @@ bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& 
     return false;
 }
 
+// Only the completed, separately admitted dominant material pass is adopted.
+// Other passes, partial eligibility, changing resources and unknown bounds keep
+// the original raw path; this never enables the all-group diagnostic prototype.
+bool nativeHeavyMaterialPass(const LLSpatialGroup& group, U32 type) noexcept
+{
+    const auto& state=group.mMetalSourceWorkState;
+    const auto& work=group.metalSourceWork();
+    const auto& summary=group.mMetalSourceCapabilitySummary;
+    if(!nativeSourceRoutingEnabled() || !state || state->dirty() || !work ||
+       !group.sourceWorkCurrent(*work) || !group.mMetalSourceCapabilityComplete ||
+       group.mMetalSourceCapabilityIdentity!=state->identity() ||
+       group.mMetalSourceCapabilityRevision!=state->revision() ||
+       group.mMetalSourceCapabilityPolicy!=group.mMetalSourcePreparationPolicy ||
+       summary.pass!=type || !alMetalWorldNeedsHeavySourceBounds(summary.input())) return false;
+    const auto found=group.mDrawMap.find(type);
+    return found!=group.mDrawMap.end() && found->second.size()==summary.rows;
+}
+
 bool nativeProducerPreparationEnabled() noexcept
 {
     static const bool enabled = []
@@ -22689,6 +22723,7 @@ ALSceneProducerDrainNative::Policy nativeProducerPreparationPolicy()
     policy.native_visibility = native_visibility();
     policy.native_resources = resources();
     policy.native_groups = groups();
+    policy.heavy_bounds = nativeSourceRoutingEnabled();
     policy.cohort_bounds = native_visibility() || cpu_bounds() || early_bounds() || command_bounds();
     policy.pass.source_rows_active = rows() || (banks() && !groups());
     policy.pass.animated_sources_active = animated() || animated_gpu();
@@ -22744,14 +22779,14 @@ void LLPipeline::postSort(LLCamera &camera)
     static LLCachedControl<bool> cpu_cohort_visibility(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
     static LLCachedControl<bool> early_visibility(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
     static LLCachedControl<bool> command_visibility(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
-    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility() || early_visibility() || command_visibility();
+    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility() || early_visibility() || command_visibility() || nativeSourceRoutingEnabled();
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
-    const bool native_group_view = native_group_sources() &&
+    const bool native_group_view = (native_group_sources() || nativeSourceRoutingEnabled()) &&
         !depth_prepass() &&
         !sShadowRender && !sImpostorRender && !sRenderingHUDs && !mRenderDebugMask &&
         !cullingToCutoutSubject() &&
         ((isMainWorldPass() && mRT == &mMainRT) || isMetalProbeFaceCaptureActive());
-    const bool native_groups = native_group_view && hasRenderType(LLRenderPass::PASS_SIMPLE);
+    const bool native_groups = native_group_view && native_group_sources() && hasRenderType(LLRenderPass::PASS_SIMPLE);
     struct PendingGroupRange { U32 type, raw_begin, count; };
     // Owner-only indices survive cull-vector growth. A cold publication may
     // replace only this exact admitted span after deferred mesh publication.
@@ -22830,7 +22865,7 @@ void LLPipeline::postSort(LLCamera &camera)
                     }
                 }
             }
-            if (native_group_view)
+            if (native_group_view && (native_group_sources() || nativeHeavyMaterialPass(*group,j->first)))
             {
                 ALScenePublicationNative::WorldFlavor flavor;
                 const auto cohort = group->mMetalMaterialCohorts.find(j->first);
@@ -22839,6 +22874,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 {
                     if (nativeSimpleGroupModel(*group))
                     {
+                        flavor.cohort_bounds = cohort_bounds;
                         const auto region = group->getSpatialPartition()->mRegionp->nativeModelSnapshot();
                         try
                         {
@@ -22895,7 +22931,8 @@ void LLPipeline::postSort(LLCamera &camera)
             ALScenePublicationNative::WorldFlavor pending_flavor;
             const bool pending_group = native_group_view && !src_vec.empty() &&
                 src_vec.size() <= std::numeric_limits<U32>::max() &&
-                ((native_groups && j->first == LLRenderPass::PASS_SIMPLE) || nativeMaterialGroupFlavor(j->first, pending_flavor));
+                ((native_groups && j->first == LLRenderPass::PASS_SIMPLE) ||
+                 ((native_group_sources() || nativeHeavyMaterialPass(*group,j->first)) && nativeMaterialGroupFlavor(j->first, pending_flavor)));
             const auto raw_begin = pending_group
                 ? static_cast<U32>(sCull->endRenderMap(j->first) - sCull->beginRenderMap(j->first)) : 0;
             for (LLSpatialGroup::drawmap_elem_t::iterator k = src_vec.begin(); k != src_vec.end(); ++k)
@@ -23188,7 +23225,9 @@ void LLPipeline::postSort(LLCamera &camera)
                 for(const auto& [type,sources]:group->mDrawMap)
                 {
                     ALScenePublicationNative::WorldFlavor flavor;
-                    if(sources.empty() || !hasRenderType(type) || !nativeMaterialGroupFlavor(type,flavor))continue;
+                    if(sources.empty() || !hasRenderType(type) ||
+                       (!native_group_sources() && !nativeHeavyMaterialPass(*group,type)) ||
+                       !nativeMaterialGroupFlavor(type,flavor))continue;
                     flavor.cohort_bounds = cohort_bounds;
                     auto& owner=group->mMetalMaterialCohorts[type];
                     if(!owner.state)owner.state=std::make_shared<ALNativePublication::State>();

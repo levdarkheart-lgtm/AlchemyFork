@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-436 -->
+<!-- next-defect-id: PPD-440 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10077,3 +10077,75 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before any cache correction. Retain original9a/native2558/10 and all four cost cells unchanged; optimize the operational shared tracking boundary rather than abandoning it.
+
+
+## PPD-436 — Contained surface fixture can leave SDL initialized on constructor skip
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native Surface qualification
+- Discovered: 2026-11-18
+- Original reference: Existing SDL/CAMetalLayer test uses a contained platform owner; early constructor failure must release already-acquired SDL video state. This is a new test fixture, not viewer behavior.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); lighting agent self-review of the new uncompiled surface-resource draft finds SKIP after SDL video initialization but before Platform constructor completion, preventing its destructor from running. No test/native execution or product failure is claimed.
+- Next action: Preserve draft; use a small member RAII video guard whose destructor runs on constructor exit, then compile and run actual contained native surface cases.
+- Verification: Source-only fixture cleanup defect; actual presentation qualification pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before fixture cleanup. Preserve source draft and subsequent attempts.
+
+
+## PPD-437 — Private producer edit driver assumes an absent header include
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex producer integration
+- Discovered: 2026-11-18
+- Original reference: Source inspection must determine actual includes; a private edit driver must not assume an indirectly included class has a direct header line.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); initial streaming capability-summary edit wrote only worldsourcepolicy.h before StopIteration looking for a nonexistent alnativecohort include in llspatialpartition.h. Git diff inspected: only helper and earlier register change were present. No compile/native/cost execution occurred.
+- Next action: Add alongside actual alnativeframebudget include; apply remaining edits individually and verify full source/syntax rather than treating driver exit as successful integration.
+- Verification: Private edit driver failure retained in tool history; no viewer behavior or performance attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 recorded partial edit before retry; no successful aggregate edit claimed.
+
+
+## PPD-438 — New routed CPU culling is omitted from cumulative visibility telemetry
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual source routing integration
+- Discovered: 2026-11-18
+- Original reference: Existing CPU visibility accumulators describe actual conservative coarse/fine classification and culled draws. New integrated callers must publish the same actual work under accurately scoped counters.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); peer review of fresh routing draft finds routed_cpu performs classification nearworld12544 while final cpu_visibility_stats accumulation near13344 is gated solely on scene.cpu_cohort_visibility, excluded when source_routing is selected. Intent counters do not replace actual results. No native execution or FPS attribution is claimed.
+- Next action: Include actual routed CPU execution in existing cumulative result publication; test with actual-renderer outside/partial/unknown cases and preserve query/order parity.
+- Verification: Source-only telemetry omission; no culling correctness failure observed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before author correction. Source syntax passed at draft, which is not native routing qualification.
+
+
+## PPD-439 — Root source-routing scene hook targeted the wrong scene type
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined source integration
+- Discovered: 2026-11-18
+- Original reference: Source command routing belongs exclusively to the G-buffer scene; opaque post-deferred lighting owns a different scene contract.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); integration-syntax-09 retains five compiler errors after root generic text insertion matched the earlier OpaquePostDeferredScene source_owner assignment near8865 instead of the actual G-buffer builder near17350. Complete pinned inputs unchanged during failure. Spatial/producer fixture syntax08 had passed; no native run/build result is assigned to failed root hook.
+- Next action: Remove misplaced fields and insert under the exact ALMetalWorldGBufferScene construction; repeat production pipeline syntax with pinned inputs before full build.
+- Verification: Compile failure retained, no runtime/performance effect claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before relocating the two assignments.

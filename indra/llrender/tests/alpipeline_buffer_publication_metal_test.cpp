@@ -14,6 +14,7 @@
 #include "../../almetal/almetalworldmaterialdata.h"
 #include "../../almetal/almetalworldresources.h"
 #include "../../almetal/almetalworldsourceview.h"
+#include "../../almetal/almetalworldsourcepolicy.h"
 #include "../../newview/alnativeregionmodel.h"
 #include "../../almetal/almetalshadowprepare.h"
 #include "../../almetal/almetalshadowpublication.h"

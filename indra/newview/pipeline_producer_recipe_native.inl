@@ -8,7 +8,7 @@ namespace ALSceneProducerDrainNative
 struct Policy
 {
     bool native_visibility = false, native_resources = false, native_groups = false;
-    bool cohort_bounds = false;
+    bool cohort_bounds = false, heavy_bounds = false;
     ALSceneSourcePolicyNative::OrdinaryPass pass;
     U64 signature() const noexcept
     {
@@ -16,7 +16,7 @@ struct Policy
             (U64(native_groups) << 3) | (U64(cohort_bounds) << 4) |
             (U64(pass.source_rows_active) << 5) | (U64(pass.animated_sources_active) << 6) |
             (U64(pass.animated_gpu_records_active) << 7) |
-            (U64(pass.animated_direct_stability) << 8);
+            (U64(pass.animated_direct_stability) << 8) | (U64(heavy_bounds) << 9);
     }
 };
 

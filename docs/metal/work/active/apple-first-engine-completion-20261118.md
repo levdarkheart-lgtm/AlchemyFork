@@ -183,3 +183,53 @@ completion-coverage field to registered-use-tracking is a scope clarification.
 All six boundaries remain active. Commit root hooks and give the publication
 agent actual production renderer applicability/prefix/direct-range integration,
 not another mechanism-only stopping point. Final ABI build follows integration.
+
+
+## Integrated group2 source freeze for the matching ABI build
+
+Root4b178 integrates typed Surface/UI/frame usage, completion receipts/current
+compositor projection, exact allocation-admission scope, early producer419/421
+and actual PSO-validation metadata. Cost-only3e/fb22 are31057/b4bc; PRECHECK_ONLY
+32328 isf272, allowing all strict controls before timing. Actual E3Worldc735
+is870bb: pre-setup applicability and checked static/animated prefix failures
+poison the original G-buffer transaction;438actual CPU counts are corrected.
+
+Cache96665 is363e and native-testbdc is82b97. Core495assertions/13cases pass;
+Release syntax0, actual native/cost correction still pending. A weak registry
+and command epoch identify the exact already-retained allocation ticket, without
+another idle native lease or mutex on repeated within-pass index reads. Epoch
+changes invalidate pass/submit/abandon proofs; cross-plan numeric collisions and
+changing-index controls are retained. Original measured435 controls remain intact.
+
+Surface test e0c5 isfd950. Actual contained tiny CAMetalLayer/UI/FrameScheduler
+execution passes25067assertions/4cases,0skips, API/GPUvalidationON,4selectedtest
+PSOs actualvalidation1, no warning/error diagnostics. Exact drawable readback,
+shared color/blit/present identity, nonopaque scheduling, completion, abandonment,
+resize and fused UI pixels are covered. Source/receipt under private sibling
+engine-completion-20261118/surface-resource-native; no viewer launch/cost claim.
+PPD436 earlyconstructor SDL cleanup draft and fix remain retained.
+
+Root heavy capability integration uses one streaming dominant actual material
+pass, never sums mutually exclusive passes or allocates per-group buckets. Exact
+summary commits with successful base chunks only. A distinct bounded capability
+cursor/ticket scans that pass after base completion, sharing256rows/early64 and
+preserving main192. Animation remains independently admitted, no nested421credit.
+Small/warm groups allocate no optional candidate vector. Only a current complete
+heavy pass with exact original row count is selectively adopted at original
+postSort/capture; old all-group/table/row/bank diagnostics remain OFF. Threshold
+196608indices is provisional until complete-owner cost. Private routing controls
+remain defaultOFF pending qualification. Other passes keep required scalar paths.
+
+Root syntax08 spatial+actualproducerfixture pass unchangedinputs; syntax09 fails
+misplaced G-buffer routing assignments(PPD439), preserved. Corrected syntax10
+passes all5actualRelease TUs (pipeline,spatial,producerfixture,world,pipeline.mm),
+4375source/header inputs unchanged. PPD437 private edit-driver failure retained.
+New heavy fixture covers separate one-credit admission, actual published large
+index stores, capability reuse and zero warm source selection; native unrun.
+
+Next commands: mirror committed canonical indra into initialized f810builder,
+verify exacttreeequality, tools/metal/build.sh build Release4jobs with pinned
+receipt; no partial ABI archive reuse. Then allaffected actual caller/native
+correctness, all E6oldfae7continuation controls and strict validationOFFprechecks
+before contained cost windows. New architecture gates remain incomplete; no
+owner FPS/visual/runtime acceptance or push is inferred from these source gates.
