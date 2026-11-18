@@ -1602,6 +1602,13 @@ TEST_CASE("E6 complete prepared-lighting owner costs retain construction and fal
             positive(first[0],selected!=0,false);
             REQUIRE(first[0]==first[1]);REQUIRE(first[0]==first[2]);
         }
+        if(e6_cost::enabled("ALCHEMY_E6_COST_PRECHECK_ONLY"))
+        {
+            std::cout<<"e6_terminal cell="<<selected
+                <<" precheck_only=1 measured=0 warm=0 first_use=3 thermal_end="
+                <<[[NSProcessInfo processInfo] thermalState]<<'\n';
+            return;
+        }
         const auto observe=[&](const char* kind,unsigned block,unsigned slot,unsigned arm)
         {
             auto value=e6_cost::measure(*owners[arm],input,*gbuffer[arm],*composed[arm],targets[arm].get(),frame++,arm==2,false);

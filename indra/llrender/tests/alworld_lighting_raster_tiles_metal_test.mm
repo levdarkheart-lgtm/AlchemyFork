@@ -1626,6 +1626,12 @@ TEST_CASE("E6 generic water complete owner cost retains its manual-only alternat
         probes.constants.ref_sphere[2][0]=1000000.f;
         auto fallback=measure("positive_control",0,1,0,true);REQUIRE(f.read(*fallback)!=removed_pixels);
         removed.reset();fallback.reset();probes.constants.ref_sphere[1][0]=probes.constants.ref_sphere[2][0]=0.f;
+        if(lighting_tiles_check::enabled("ALCHEMY_E6_COST_PRECHECK_ONLY"))
+        {
+            std::cout<<"e6_terminal cell=8 precheck_only=1 measured=0 warm=0 first_use=3 positive_controls=2 thermal_end="
+                <<[[NSProcessInfo processInfo] thermalState]<<'\n';
+            return;
+        }
         for(unsigned warm=0;warm<5;++warm)for(unsigned arm=0;arm<3;++arm)(void)measure("warm",warm,arm,arm,false);
         constexpr unsigned orders[3][6]={{0,1,2,2,1,0},{1,2,0,0,2,1},{2,0,1,1,0,2}};
         for(unsigned block=0;block<60;++block)
