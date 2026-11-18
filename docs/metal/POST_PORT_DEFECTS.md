@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-445 -->
+<!-- next-defect-id: PPD-453 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10243,3 +10243,155 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before guards/negative controls. Counts and balanced mode-order math were source-reviewed separately.
+
+
+## PPD-445 — Combined build reports repeated static archive paths at link time
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined build/link validation
+- Discovered: 2026-11-18
+- Original reference: Existing Alchemy/CMake transitive target link dependencies generate native ld archive lists. Native source architecture must not hide compiler/linker diagnostics or attribute them to runtime frame work.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); successful build03/69267 retains all28 diagnostic rows, exact target steps and full ignored library lists in diagnostics.json; native Apple ld emits `warning: ignoring duplicate libraries` for repeated static archive paths. These lists include vcpkg font/compression and main executable Abseil libraries; exact source link-graph audit/previous-build comparison is retained separately. No compile errors; app verification/signatures/346ARM64 pass.
+- Next action: Trace repeated paths through generated per-target link rules and original CMake/vcpkg dependencies; preserve diagnostics and assess behavior with matching correctness gates. Do not silence warnings to claim a clean build or treat them as measured GPU/FPS stalls.
+- Verification: Build-time link-list diagnostics confirmed; no runtime FPS/functional defect demonstrated. Owner runtime acceptance remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered all28 occurrences before any link-graph repair; complete raw text and target grouping retained. This register does not declare the warnings irrelevant merely from their location.
+
+
+## PPD-446 — Exact CLI test bytes fail an inapplicable app-envelope staging gate
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex producer cost native fixture staging
+- Discovered: 2026-11-18
+- Original reference: llrender_tests is a bare linker-signed Mach-O. A private resource wrapper for NSBundle library discovery does not turn its unchanged signature into a sealed app resource envelope. Production viewer bundle verification remains a separate required gate.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); producer-owner-runner/stage-04 retains exact copied exe/library hashes/modes, ARM64/import passes, then codesign strict-context failure `code has no resources but signature indicates they must be present`. Original bare executable strict verification succeeds; staged CDHash/executable bytes match exactly, both signatures have Info.plist not bound/SealedResources none. No native/GPU/cost executed.
+- Next action: Verify original bare Mach-O signature and exact staged byte/mode identity; explicitly record the private wrapper has no app resource seal and execute only the unchanged contained test binary. Do not re-sign/alter measured instructions or claim a verified production app from this fixture. Keep final viewer strict bundle checks unchanged.
+- Verification: Private staging verification-context mismatch confirmed; no corrupted executable, engine correctness or performance result attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before the context-specific private runner correction; original failed staging receipts retained. Production69267/69268 strict app verification already passes independently.
+
+
+## PPD-447 — Private producer cost runner inherits diagnostic environment overrides
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex producer owner qualification
+- Discovered: 2026-11-18
+- Original reference: Controlled native costs require explicit capture/HUD/validation/resource modes and removal of inherited tool/interposer overrides; parent environment intent is not a verified selected PSO state.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); peer review before runtime finds new private producer runner strips producer/quiet prefixes only, allowing MTL_, METAL_, GPUTOOLS_, DYLD_, other ALCHEMY_ and AL_METAL_ overrides to survive. Staging has run, no producer native/precheck/cost execution.
+- Next action: Use established full prefix sanitation followed by explicit enabled-resource/validation/capture/HUD flags; add a CPU negative inherited-override control. Record explicit controlled deltas only, never dump ambient credentials. Preserve predecessor script and findings.
+- Verification: Source-only measurement-environment gap; no actual wrong-mode measurement or viewer behavior attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before runtime environment correction. Exact staged executable/metallib bytes and signature context qualification remain independently valid.
+
+- 2026-11-18 PPD447 also covers unrun E3-production-routing-01/run-owner-cost.py with the same partial prefix sanitation. Apply one explicit policy to both private runners; no native execution by either occurred.
+
+
+## PPD-448 — First enabled-graph lighting gate fails a legacy probe-change positive control
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined prepared-lighting correctness
+- Discovered: 2026-11-18
+- Original reference: Valid probe contributions must be preserved; strict generic/prepared equality alone cannot prove a fixture actually exercises changed lighting. A failed positive control must be explained before cost/activation.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); final04 db26410e/b8d8 library, enabledresourceplanning/API+GPUvalidation1, process22273 exits42 after2840successes/1failure in first executed case `Prepared legacy walks preserve main shiny and impostor material ownership`. Line483 CHECK changed.after.colors[0]!=generic.after.colors[0] fails for material=true/skinned=false/reverse=false. Full XML/argv/environment/stderr retained under lighting/final04-correctness-execution-01/run/quality. No validation warnings/errors, oldlibrary phase was not started, no precheck/cost observations.
+- Next action: Trace the exact changed probe input and production generic/prepared lighting path and target/readback ownership; separate invalid fixture attribution from real lost contribution or resource regression through unchanged/restored controls. Repair only demonstrated cause, repeat failed case before broader lighting gates.
+- Verification: Positive-control failure reproduced. Engine cause versus fixture setup unknown; no FPS or shader-spill attribution, no new path activation.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered immediately after runner stopped; preserve all output bytes and failure. Shared architecture stays required; correctness/cost/default selection are incomplete.
+
+- 2026-11-18 Fixture-only repaired control is natively qualified at06c46/b8d8: current16cases3275466assertions plus oldfae7 threecases240705assertions pass0,0skips. Original high-alpha parity is retained alongside separate low-alpha changed-probe response and full restoration. Receipt90dd7d0398a7b2a3a1d388144a43f22532d83a30bfdf27122a82c3e97fe600e8; no production/MSL or FPS claim, owner pending.
+
+## PPD-449 — Private source-owner runner accepts a partial precheck set before cost
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex source routing cost qualification
+- Discovered: 2026-11-18
+- Original reference: The agreed seven-cell producer-independent renderer qualification requires all strict controls before any timing. A subset matching only requested timed cells is insufficient.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); author source audit of unrun E3 run-owner-cost.py finds --measure gate checks a subset receipt rather than exact set(range(7)). No native/precheck/cost execution occurred. Environment-policy-v1 change447 is independently retained.
+- Next action: Require all seven qualified precheck cells in the exact matching environment/source gate and add negative CPU checks rejecting every partial set. Preserve prior script and receipts.
+- Verification: Private qualification gate gap, not engine output/performance failure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before one-gate correction. All costs remain held after independent lighting failure448.
+
+- 2026-11-18 Exact all-seven precheck guard and negative subset controls pass CPU qualification; native prechecks/timings remain unrun. No engine behavior or cost acceptance inferred.
+
+## PPD-450 — Private combined-test inventory requests an unsupported Catch CLI option
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex combined native qualification
+- Discovered: 2026-11-18
+- Original reference: Test runner capabilities are defined by the actual built Catch executable and source, not remembered flags from another version. Inventory must succeed before claiming selected test coverage.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); root-requested --list-test-names-only is rejected with exit1 by final06c46b9 executable. Source/library hashes match; no test/native GPU execution occurred. Exact argv/stdout/stderr/script and failure-receipt6cc3aa29 retained under checks/combined-native-enabled-01.
+- Next action: Inspect actual --help and use supported --list-tests output; retain the unchanged filter and independently qualify nonhidden source/cost/capture coverage before executing the broader suite in its coordinated window.
+- Verification: Private preflight CLI mismatch, no engine/test correctness result attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before inventory retry. Preserve initial failure rather than reuse its empty output as a test list.
+
+- 2026-11-18 Actual supported --list-tests --verbosity quiet inventory succeeds and retains exact547case selection; initial unsupported-option failure remains. Broad native execution subsequently stops on451 then452, so inventory success is not a full suite pass.
+
+## PPD-451 — New source applicability fixture rejects its authored batch before sealing
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrated source visibility qualification
+- Discovered: 2026-11-18
+- Original reference: Producer certificates require aligned real native vertex streams and complete valid ordinary batch inputs. Invalid test geometry cannot qualify visibility or command preparation, and production validation must remain intact.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); final06c46b/b8d8, enabledGraph/API+GPU1, broad547 gate process24272 stops42 after29passed/1failed (3855successes/1failure); remaining517 are unreached. almetal_source_applicability_test.mm147 REQUIRE(proof) reports `Metal world simple batch is invalid` at ALMetalWorldCohortSource::seal before draw. Exact executable/library/source/logs preserved; failure receipt13c18a11d212724515314cf76ac3540ada70393d253e8d7a68e62106982c9a93. Source review points to large-grid tangent stream:4225vertices give185900byte tangent offset, not16aligned, after unpadded4byte color stream; normal-mapped Legacy/PBR validation requires16alignment. Exact failure condition still requires author verification.
+- Next action: Inspect actual batch/predicate and correct fixture stream packing only if confirmed; keep real unique geometry, offsets, both index types and strict output/query/capability gates. Repeat failed case then broader combined gate; no production validation relaxation or cost/activation.
+- Verification: Reproduced certificate-construction rejection; engine versus fixture cause not yet natively isolated. No rendering/FPS regression claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before corrective edits. Original30-case partial result and remaining517unreached status retained; all costs held.
+
+- 2026-11-18 Author confirms185900byte tangent offset violates16alignment. Test-only source commit40a1 aligns every stream without changing payload/index topology. Build07 targeted real native case passes1562assertions/1case under enabled resource planning and API/GPUvalidation,0skips. Receipt471f4a695585fc97b18599d3efa8b3788962b276bf27ebe22f9b5d1193a5cc35; broad rerun advances to123passed before independent452, not all547. Production validators unchanged, owner pending.
+
+## PPD-452 — Broad enabled native gate reports an incorrect nonfinite exposure reset
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native HDR correctness qualification
+- Discovered: 2026-11-18
+- Original reference: Preserve existing HDR finite-value repairs and actual production exposure work/dispatch semantics. A stale direct-kernel fixture cannot qualify a newer cooperative kernel; do not weaken finite-state expectations.
+- Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); build07/3202faf3/b8d8 enabledGraph/API+GPU1, process24920 stops42 at hdr_finite_test.mm431 after123pass/1fail, 2668912success/1failure;423selected cases unreached. For evNaN, meter{4,0,0,1}, history{1,NaN,0,1}, constants{0,-16,16,.1,0,1,1,1,1,0,0,0}, actualnow{.49999994,1,1,1} vs expectedresetEV2; unsafeold control is nonfinite as expected. Full source/binary/library/logs retained, receipt695fd0574b3d1764823b57365eec6e4cd5195f7ba299919f25042072980d849e. Source hypothesis: PPD345 cooperative histogram requires exactly64threads/onegroup while old generic direct-kernel fixture may dispatch1thread, leaving histogram owners absent. Production dispatch must be audited separately.
+- Next action: Verify exact test and production dispatches and unchanged/restored controls; repair demonstrated fixture or engine cause, retain finite-reset/old-negative/finite-parity criteria, then targeted native retest before broader gate. No shader policy change or performance attribution without evidence.
+- Verification: Reproduced output mismatch. Source cause still under investigation; no cost/new-path activation and no FPS/spill claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before correction. Prior451fixture policy case now passes; broader547 remains partial with423unreached.
+
+- 2026-11-18 Source confirms old fixture dispatch1 versus required64-thread cooperative kernel; actual productionworld dispatch already64. Canonical6b5de test-only fix explicitly dispatches one64-thread group for both current and unsafe-control history kernels, retains all finite/NaN/parity criteria, checks pipeline capacity. Source receipt52c1235d4a8f0682e8ae7f51645fb830c2475c6feb82a832bb01244b2755971b. Build08 succeeds; targeted native retest pending. No production/MSL change.

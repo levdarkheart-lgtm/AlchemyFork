@@ -278,3 +278,52 @@ UNRUN pending finalmatchingllrender_tests incremental build and all strict
 prechecks before timing. PPD441E3newcost lifecycle/Catch/retirement draft and
 PPD444privateE6wrong-cell/emptyplane guards retained; finalscripts CPUqualified,
 no new timing/FPS result. No source/API expansion anticipated after e65ee freeze.
+
+
+## Matched builds and retained qualification failures
+
+Build03 completed: canonicale65ee -> builderd1737ebb /indra07011dd,
+1322steps/1407.340s, version69267. Build04 test changes ->1c615ed6/indra21c36d,
+21steps/53.873s, version69268. Both Release/O3/ARM64/LTOOFF,346MachO and
+deep strict app signature pass. Build03 app retained by exact hash copy. Final
+MSL library b8d8baa62c16ef0a9e23f10c1eee533b19bd8d15db44abeca434b7f46d5d3e83.
+Build04 viewer c0df12cc17726a448aab5188b674a6cd8b13d2cc188ba262275d1a8343c63147
+is intermediate, NOT the final staged candidate. All28 duplicate archive link
+warnings retained under445, same warning multiset asbuild01. Prior398 source
+attribution remains applicable; no runtime/FPS inference. Source strictGL0,
+compiler actualCPU O3/NDEBUG with no -ffast-math; Metal3.1/fastmath retained.
+
+Current04 CPU budget5754assertions/48cases, MainScope77/3, completion60/1 pass.
+Actual producer shared owner/drain698/18 pass; wrapper446 qualification preserves
+byte-identical bare linker signature and explicitly does not claim sealed app.
+Producer/E3 private runner environment447 and all-cell gate449 repairs pass
+CPU negative controls; ALL6producer/ALL7E3 prechecks still required before cost.
+
+E6 legacy positive control448 initially failed because the authored high-alpha
+control masked its required changed-probe response. High-alpha parity is retained;
+a separate low-alpha response/restoration control passes. Current06 exact16cases
+3275466assertions plus oldfae7 continuation3cases240705assertions pass with
+0skips/0failures (3516171total assertions). Evidence qualification06 receipt
+90dd7d0398a7b2a3a1d388144a43f22532d83a30bfdf27122a82c3e97fe600e8.
+No production/MSL change from448. Do not relabel06 native execution as08.
+
+Broad native selector547 excludes only hidden/profile/benchmark work and E6
+file separately qualified above. Retain450 unsupported Catch inventory flag
+failure; actual Catch3.16.1 supports --list-tests --verbosity quiet. Run03 at06
+stops42 after29pass/1fail,3855success/1failure,517unreached:451grid tangent
+stream not16aligned. Fixture-only aligned packing preserves payload/topology;
+build07 target policy passes1562/1 with API/GPUvalidation,0skips. Run04 at07
+then stops42 after123pass/1fail,2668912success/1failure,423unreached:452 HDR
+fixture dispatches1thread for a64-owner cooperative histogram kernel. Actual
+production world dispatch already64. Test-only fix preserves finite-reset, old
+NaN-negative and finite-parity criteria. Canonical6b5de -> builder947921da /
+indra7cdaa553, build08target6.381s pass. Exe91c98d3038be99f928a679affc00bb13ba0d78452b8ba50ff2e8111b3ed8ab90;
+metallib unchangedb8d8. Targeted and broad retests still pending. All raw prior
+failures/source/executables preserved, no cost qualification inferred.
+
+All build/test commands, source trees and hashes live under private
+apple-first-engine-completion-20261118/build-03 through08 and checks. Test-only
+05–08 changes did not rebuild the viewer. Backend reuse source audit confirms
+generation is a same-queue GPU target-pool operation, with submitted native uses
+retained to completion; CPU mutation authority is separate. No defect inferred
+merely from the absence of a submitted-use prohibition. No new runtime or gain.
