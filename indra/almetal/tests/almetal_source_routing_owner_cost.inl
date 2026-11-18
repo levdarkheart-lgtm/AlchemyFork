@@ -14,13 +14,29 @@ TEST_CASE("almetal: E3 actual owner scalar versus applicable native visibility c
     REQUIRE(std::string(std::getenv("MTL_CAPTURE_ENABLED")?std::getenv("MTL_CAPTURE_ENABLED"):"")=="0");
     @autoreleasepool
     {
-        E3Fixture f;const unsigned count=cell==0?6:(cell==3?64:32),grid=cell==0?1:(cell==3?32:64);
+        E3Fixture f;const unsigned count=cell==0?6:(cell==3?64:32),grid=cell==0?1:64;
         f.make(cell==3?2:1,false,false,count,grid,cell==6?2:(cell==2?1:0));f.extent=128;
         std::uint64_t total_indices=0,total_qualified=0;
         for(const auto& view:f.views)
         {
             const auto work=alMetalInspectWorldCohortVisibilityWork(view);REQUIRE(work.valid);
             total_indices+=work.indexed_elements;total_qualified+=work.qualified_indexed_elements;
+            if(cell==3)
+            {
+                const auto minimum=ALMetalWorldSourceCommandPolicy{}.minimum_qualified_indices;
+                REQUIRE(work.qualified_indexed_elements>=minimum);
+                REQUIRE(work.outside_center_indexed_elements>=minimum/4);
+            }
+        }
+        if(cell==3)
+        {
+            // Genuinely heavy mixed-unknown PBR input, not the retained failed
+            // grid32 control whose qualified rows were below policy admission.
+            REQUIRE(total_indices==64u*24576u);REQUIRE(total_qualified==55u*24576u);
+            std::ofstream scope(std::string(output_path)+".scope.json");REQUIRE(scope);
+            scope<<"{\"label\":\"heavy-PBR-mixed-unknown\",\"sources\":64,\"grid\":64,"
+                "\"unique_vertices_per_source\":4225,\"indices_per_source\":24576,"
+                "\"qualified_sources\":55,\"qualified_indices\":"<<total_qualified<<"}";REQUIRE(scope.good());
         }
         std::uint64_t next_frame=2;
         const auto demand=[&](bool accepted,const char* why)
