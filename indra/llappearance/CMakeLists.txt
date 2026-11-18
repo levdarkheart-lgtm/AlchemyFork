@@ -78,10 +78,11 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     llappearance_tests
     PROJECT llappearance
-    SOURCES tests/llavatarappearancedefines_test.cpp tests/llwearabletype_test.cpp
+    SOURCES tests/llavatarappearancedefines_test.cpp tests/llwearabletype_test.cpp tests/llwearabledata_test.cpp
     # The dictionary lookups LLVOAvatar::updateTextures makes for every texture entry.
     BENCH_SOURCES tests/llavatarappearancedefines_bench.cpp
     LIBRARIES llappearance
+    SUPPORT llappearance_test_fakes
   )
 
   # What llappearance asks the viewer for, defined once.

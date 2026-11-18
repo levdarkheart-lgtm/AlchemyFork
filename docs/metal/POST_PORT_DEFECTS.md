@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-403 -->
+<!-- next-defect-id: PPD-404 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -9359,6 +9359,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 root reviews and imports documentation-only453c0f14 report; source-proof355beff9/timeline88af1aea/fixture-receiptd35e28a4 hashes verified, currentwearabledata fullfile matches source proof. First valid type insertion warns then inserts/notifies; isolated exact-body17checks compile/run0 supports this diagnostic defect, not fullavatar propagation. All3 redundant version24621 bake attempts return beforePOST and7 stale drops are equal-version duplicates; guard/recovery distinctions retained. No source fix/appearance policy/network request/viewer action/FPS claim. [Qualified warning investigation](research/appearance-warning-investigation-69258-20261118.md).
 
+- 2026-11-18 owner explicitly authorizes the isolated diagnostic repair and inclusion in the combined source. Root reviews the enum range/absent-bucket guard and test-only SUPPORT wiring; insertion, capacity, update, appearance-version/bake/rollback guards remain unchanged. Selective3file integration from328fe89d01 is authorized; combined qualification pending, ownerverification remains pending.
+
 ## PPD-400 — Root tile-policy field is placed in the adjacent color-grade type
 
 - Status: investigating
@@ -9413,3 +9415,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before correction; original peer findings/source retained privately.
+
+
+## PPD-403 — New atmospheric-restart fixture can discard its post-restart alpha draw
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex actual-world raster tile qualification fixture
+- Discovered: 2026-11-18
+- Original reference: A renderer restart parity test must prove the post-restart draw contributes; matching pixels and begun-encoder counts from an earlier draw cannot establish later alpha coverage.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); peer review of unrun newworld fixture4812b69 confirms atmospheric marker places ordered2 after-water, while inherited water-plane(0,0,1,-100)/sign−1 causes that draw to discard after the original post-water sign flip. The earlier pre-water draw can satisfy positive-output and actual-tile counters. No production change or native test failure is attributed.
+- Next action: Preserve4812 draft, author visible pre/post geometry and plane consistent with existing shader sides, and require an omission/change control proving the post-restart draw changes output. Keep production shader/thresholds unchanged; source review then fresh build required.
+- Verification: Caught before compilation/GPU execution; initial draft cannot qualify post-restart contribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before isolated fixture correction. Root engine ABI build at0ad is independent and does not yet contain this new file.
+
+- 2026-11-18 corrected fixture source43cee806 (720+6fd isolated commits) now uses plane3.875 and requires a color difference when the post-restart draw is omitted. Peer delta review clear before compilation. Actual world fixture is registered in existing almetal_tests bundle with the real production metallib; no compileSource fallback. Runtime qualification still pending.

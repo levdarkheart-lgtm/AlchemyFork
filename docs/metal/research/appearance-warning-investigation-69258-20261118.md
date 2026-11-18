@@ -24,10 +24,11 @@ wearable diagnostic; canonical388–398 remain separate and are not copied or
 renumbered in this older isolated branch. The private reservation snapshot
 records the actual canonical entry.
 
-Only documentation and private contained evidence are produced here. No viewer
-source modification, app build, launch, network request, settings change or GPU
-work occurs. Earlier mirror and terrain fixes remain separate. The concurrent
-performance worktree and its existing evidence are not modified.
+The initial investigation produced only documentation and private contained
+evidence, without viewer source modification, app build, launch, network request,
+settings change or GPU work. The subsequent owner-authorized repair and its
+qualification are described below. Earlier mirror and terrain fixes remain
+separate. The concurrent performance worktree and its evidence are not modified.
 
 Private evidence root:
 `/Users/dekstroza/Programming/AI/Secondlife/Alchemy/artifacts/metal/appearance-warning-investigation-20261118`.
@@ -95,7 +96,7 @@ A proper diagnostic correction would distinguish a valid unregistered type from
 an invalid enum and retain duplicate-pointer checks, type/capacity rules and
 wearable update behavior. Broad warning suppression or pre-filling every bucket
 without checking the other map consumers would hide rather than resolve the
-semantic mistake. No such correction is implemented in this investigation.
+semantic mistake. No such correction was implemented during the initial investigation.
 
 ## The redundant request never reaches HTTP
 
@@ -197,3 +198,94 @@ functional repair, performance improvement or push is claimed here.
   discarding evidence/history, then qualification was repeated.
   Private scripts and raw command output are
   retained alongside their receipts; no user avatar identities are exported.
+
+## Owner-authorized PPD-399 repair, 2026-11-18
+
+After reviewing the investigation, the owner requested implementation and
+notification to the performance integrator. Repair branch:
+`codex/ppd399-wearable-diagnostic-fix-20261118`, based on investigation453c0f1402.
+The canonical register already retains PPD-399 as source_confirmed; its integrator
+owns updates there. This older isolated branch retains the cross-worktree ID
+reference rather than allocating a conflicting new number.
+
+`LLWearableData::getWearableIndex()` now validates the wearable's actual enum
+against contiguous valid types `[WT_SHAPE, WT_COUNT)` before consulting the map.
+Invalid values return false and retain a warning with their numeric value,
+including if malformed data happens to have created a matching invalid bucket.
+A valid type without a bucket returns false silently. Null lookup remains quiet,
+and every false result preserves the caller's output index. Lookup still does
+not allocate or mutate the map.
+
+No changes are made to insertion, duplicate-pointer checks, real body-part or
+clothing capacity rules, notification/driver propagation, bake requests or
+appearance-version guards. The repair addresses diagnostic classification,
+without claiming to repair a demonstrated rendered-avatar defect.
+
+The prescribed doctor passes on M1 Max/64GiB, macOS26.5.2/Xcode26.6. Before any
+rebuild, the exact prior69283 app is preserved via APFS clone, with matching
+executable SHA256 `3a02a1ebae785c6c986c68e0c383e2bdb3dc39c8e6349c8af73ff91e5d8ebc46`
+and successful deep strict signature verification. Focused test source and
+build/qualification receipts follow under the private `repair/` directory.
+Owner runtime confirmation and push approval remain pending; no viewer launch,
+profile or network operation is part of this repair.
+
+### Repair source qualification
+
+The new production-container tests compile against the original implementation,
+then fail as expected:5cases,105assertions,21failures, exit42. Both the false
+valid-type warnings and invalid/corrupt-bucket behavior are detected. The exact
+candidate bytes are then restored. With the repair, the same focused suite
+passes117assertions/5cases, exit0; the full appearance binary passes883/18,
+exit0. Real `pushWearable()`, lookup, erasure and capacity logic run. Only avatar
+notification propagation is replaced with a recording override; a minimal
+wearable subclass supplies type/default-image behavior without parameter cloning.
+Warnings are captured using scoped saved/restored production logger settings.
+
+`scope-proof.json` confirms every byte outside `getWearableIndex()` in its source
+file is unchanged from453c0f1402. Appearance manager, avatar source and wearable
+header are byte-identical. Production insertion, duplicate/assert behavior,
+layer limits and update callbacks are not rewritten. Tests cover valid first
+shape and two shirts, absent/existing/null lookup index preservation, invalid
+−1/17/254/255 with and without a corrupt bucket, numeric diagnostics, total-layer
+limits and erase recovery, and duplicate-pointer storage preservation.
+
+Baseline and candidate test links retain the existing duplicate static-archive
+linker warning; compile exits0, with no new source compiler warning. No warning
+flags or logger thresholds are relaxed in production. Exact build/test argv,
+exit codes, hashes and outputs are retained in `repair/*receipt.json`. Fresh full
+Release build and static app qualification are recorded below when complete.
+
+Independent source/test review finds no material issue: enum bounds, output-index
+preservation, unchanged valid insertion/capacity semantics, scoped logger state
+and existing fake-symbol support are checked before integration.
+
+### Frozen repair and full qualification
+
+Source commit `328fe89d01d23382a7b04b727bbebd57c858c93c` is locally committed
+and independently reviewed. Prescribed doctor/configure/full Release build all
+exit0; the full build takes38.456s from the isolated cache,4jobs, LTO OFF.
+App build69286 (`CFBundleVersion`26.4.0d69286, build-data26.4.0.69286) passes
+`tools/metal/verify_app.sh`:346Mach-O ARM64 slices,0invalid. Deep strict
+signature verification exits0. Executable SHA256:
+`fd61ff1d4623e64197073e872efdd748c6b793e67948e9599827fb33df2efbf3`.
+The exact prior69283 app remains preserved under `repair/baseline-69283/`.
+
+Strict source audit exits0:3617first-party files,915informational inventory rows,
+0blocking,0scan errors. The full build retains18 warning rows:17duplicate static
+archive linker rows and the known Catch2 copyright-holder attribution warning
+tracked separately as canonical PPD-398. Their full text is retained; no warning
+suppression, source compiler warning or new runtime/FPS attribution is claimed.
+The new test linkage reuses existing fake viewer symbols only in the test binary.
+
+`repair/final-qualification.json` collects exact command/exit receipts, frozen
+source hashes, old/new executable identity, test binary and final documentation
+qualification. `scope-proof.json` preserves unchanged production methods and
+appearance guards. The final documentation harness is rerun after these updates;
+no application code changes occur after the frozen source build.
+
+The performance session receives source328fe89d01 and the qualification update
+for selective integration into its commit, keeping its canonical PPD-399 record,
+CURRENT and ledger history. State is ready_for_owner for the isolated repair,
+with combined-build integration and owner runtime confirmation still pending.
+No viewer launch, GPU draw test, network operation or push occurred. Static and
+unit success do not establish complete avatar visual parity or FPS benefit.

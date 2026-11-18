@@ -247,6 +247,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_probe_candidate_publication_test.mm
             tests/almetal_probe_candidate_lighting_test.mm
             tests/almetal_probe_candidate_transparency_test.mm
+            ../llrender/tests/alworld_lighting_raster_tiles_metal_test.mm
             tests/almetal_finalize_admission_test.mm
             tests/almetal_ssr_isolation_test.mm
             tests/almetal_reference_format_test.mm
@@ -384,6 +385,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_shadow_gather_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_gbuffer_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_probe_workload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(../llrender/tests/alworld_lighting_raster_tiles_metal_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_frame_capture_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_diagnostic_telemetry_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_function_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

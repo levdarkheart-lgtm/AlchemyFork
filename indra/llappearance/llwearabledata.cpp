@@ -220,10 +220,16 @@ bool LLWearableData::getWearableIndex(const LLWearable *wearable, U32& index_fou
     }
 
     const LLWearableType::EType type = wearable->getType();
+    if (type < LLWearableType::WT_SHAPE || type >= LLWearableType::WT_COUNT)
+    {
+        LL_WARNS() << "Cannot get wearable index for invalid type " << static_cast<S32>(type) << LL_ENDL;
+        return false;
+    }
+
     wearableentry_map_t::const_iterator wearable_iter = mWearableDatas.find(type);
     if (wearable_iter == mWearableDatas.end())
     {
-        LL_WARNS() << "tried to get wearable index with an invalid type!" << LL_ENDL;
+        // The first wearable of a valid type has no bucket until it is inserted.
         return false;
     }
     const wearableentry_vec_t& wearable_vec = wearable_iter->second;

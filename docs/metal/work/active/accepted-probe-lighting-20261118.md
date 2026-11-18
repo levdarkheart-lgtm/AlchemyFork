@@ -240,3 +240,30 @@ PPD399 sourceconfirmed with exact-body17check limits, noappearance codechanged.
 Canonical nextfree403; no outbound task message required to reserve shared ID.
 Latest corrected source/docs diff and harness33 pass; full native experiment
 build/test/cost/stage remain pending. Verified69259control stays untouched.
+
+Fresh ABI engine build02 completes0 in358.047s: canonical0ad5b408a8,
+builderca915615a1, indra d2255681. New real native raster API test passes697483
+assertions/2cases withAPI+GPUvalidation1 (four observable3MRT/D32S8 cells,
+odd/sparse/restart/default/16). This is API proof, not actual world acceptance.
+Readiness69259control is now separatelystaged and verified8272nonrootnodes,
+346ARM64/signature/imports, binary514ffdf3/libfae7 under readiness-control-69259;
+sourcebuilder outputs canchange without losing that control.
+
+World fixture720+6fd integrated, newsource43cee806: exact actualworld parity,
+atmosphere403correctedpostdrawcontribution, prepared47primarycost0/1 andalpha2/3,
+optionalgeneric47negatives4/5, optionalgeneric1 earlycontrols6/7. Each requested
+cost process stays300/arm and requires explicit opt-in; no automatic matrix.
+Existingalmetal_tests bundledmetallib target owns the newfile; source-onlyfresh
+rootbuild03 stillpending. Samefactory offlineasset validator sentinel will
+reportactual1/2 (not exhaustive privatePSOinspection), no stale sourcegates.
+
+Owner explicitly authorizes PPD399repair inclusion: qualified328fe89d01 exact3
+sourcefiles applied, report updatedfrom358ac411. Isolated117/5 and883/18inclusive
+CPUtests pass after retained baseline21failures; doctor/fullRelease38.456s,
+346ARM64/signature/strict3617zero. No avatar/network/FPS claim; combinedsource
+retetest needed. No overlappingexternalwarning build remains. Rootreceipt
+ppd399-integration-01 pins every importedSHA and existingguardlimits.
+Nextfreezecombinedsourceandmirrorfullindra, build03with actualworld+appearance
+tests, run exactparity then exclusivecost0..3; inspectnegative6/7 beforeselection
+andgeneric4/5ifprimarysignal warrants. Retainallfailures, then build/test/stage
+one selected combinedviewer andownercheckpoint. No viewerlaunch/push.
