@@ -5,6 +5,7 @@
  */
 #include "../almetaldevice.h"
 #include "../almetalpipeline.h"
+#include "../almetalpipelinecache.h"
 #include "../almetalresource.h"
 #include "../almetalshadowindirect.h"
 #include <catch2/catch_test_macros.hpp>
@@ -15,7 +16,10 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
+#include <stdexcept>
+#include <time.h>
 #include <thread>
 #include <vector>
 
@@ -488,4 +492,269 @@ fragment float4 resource_plan_shadow_fragment() { return float4(1,0,1,1); }
         CHECK(shadow->stats().visibility_dispatches == 1);
         CHECK(eventually([&] { const auto s=f.device->uniqueResourceStats(); return s.uncommitted_uses==0 && s.submitted_uses==0; }));
     }
+}
+
+namespace resource_plan_owner_cost
+{
+struct Stamp
+{
+    std::uint64_t wall = 0, cpu = 0;
+};
+Stamp stamp()
+{
+    timespec cpu{};
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpu) != 0)
+        throw std::runtime_error("Resource owner thread CPU clock is unavailable");
+    return {std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count()),
+        std::uint64_t(cpu.tv_sec) * 1'000'000'000ull + std::uint64_t(cpu.tv_nsec)};
+}
+struct Row
+{
+    std::uint64_t encode_wall = 0, encode_cpu = 0, submit_wall = 0, submit_cpu = 0;
+    std::uint64_t wait_wall = 0, wait_cpu = 0, observe_wall = 0, observe_cpu = 0, retire_wall = 0, retire_cpu = 0;
+    std::uint64_t total_wall = 0, total_cpu = 0, resources = 0, passes = 0;
+    std::uint64_t live_backings = 0, live_declared = 0, live_reported = 0;
+    std::uint64_t native_commit_delta = 0, pool_reuses = 0, cached_targets = 0;
+    double gpu_start = 0, gpu_end = 0;
+};
+struct Owner
+{
+    std::string error;
+    ALMetalResourcePlanMode mode;
+    std::unique_ptr<ALMetalDevice> device;
+    std::unique_ptr<ALMetalShaderLibrary> library;
+    std::unique_ptr<ALMetalRenderPipeline> render;
+    std::unique_ptr<ALMetalComputePipeline> compute;
+    std::unique_ptr<ALMetalBuffer> indices;
+    std::shared_ptr<ALMetalRenderTargetPool> pool;
+    static constexpr unsigned width = 128, height = 128;
+    explicit Owner(ALMetalResourcePlanMode value) : mode(value)
+    {
+        device = ALMetalDevice::create(&error, mode); INFO(error); REQUIRE(device);
+        REQUIRE(device->resourcePlanningMode() == mode);
+        REQUIRE_FALSE(device->pipelineCache().stats().enabled);
+        const std::string source = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+vertex float4 resource_owner_vertex(uint v [[vertex_id]])
+{
+    const float2 p[3] = {float2(-1,-1),float2(3,-1),float2(-1,3)};
+    return float4(p[v],0,1);
+}
+fragment float4 resource_owner_fragment(constant float4& color [[buffer(0)]]) { return color; }
+kernel void resource_owner_compute(texture2d<float,access::read> input [[texture(0)]],
+    texture2d<float,access::write> output [[texture(1)]], device const uint* pattern [[buffer(0)]],
+    uint2 p [[thread_position_in_grid]])
+{
+    if (p.x >= output.get_width() || p.y >= output.get_height()) return;
+    output.write(float4(input.read(p).r, float(pattern[0] != 0x875421abu), 1, 1), p);
+}
+)MSL";
+        library = ALMetalShaderLibrary::compileSource(*device, source, "Resource owner cost exact authored flow", &error);
+        INFO(error); REQUIRE(library);
+        ALMetalRenderPipelineDescriptor rd; rd.library = library.get();
+        rd.vertex_function = "resource_owner_vertex"; rd.fragment_function = "resource_owner_fragment";
+        rd.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        render = ALMetalRenderPipeline::create(*device, rd, &error); INFO(error); REQUIRE(render);
+        ALMetalComputePipelineDescriptor cd; cd.library = library.get(); cd.function = "resource_owner_compute";
+        compute = ALMetalComputePipeline::create(*device, cd, &error); INFO(error); REQUIRE(compute);
+        const auto rv = [(__bridge id<MTLRenderPipelineState>)render->nativeHandle() shaderValidation];
+        const auto cv = [(__bridge id<MTLComputePipelineState>)compute->nativeHandle() shaderValidation];
+        std::cout << "resource_owner_validation mode=" << unsigned(mode) << " render=" << unsigned(rv)
+                  << " compute=" << unsigned(cv) << '\n';
+        REQUIRE(rv == MTLShaderValidationDisabled); REQUIRE(cv == MTLShaderValidationDisabled);
+        ALMetalBufferDescriptor bd; bd.length = 6; bd.storage = ALMetalStorageMode::shared;
+        indices = ALMetalBuffer::create(*device, bd, &error); INFO(error); REQUIRE(indices);
+        const std::array<std::uint16_t,3> data{0,1,2};
+        std::memcpy(indices->mappedBytes(), data.data(), sizeof(data));
+        pool = ALMetalRenderTargetPool::create(*device, 1 << 20); REQUIRE(pool);
+    }
+    ALMetalRenderTargetDescriptor targetDescriptor() const
+    {
+        ALMetalRenderTargetDescriptor d; d.width = width; d.height = height;
+        d.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        d.colors[0].shader_read = true; d.colors[0].shader_write = true;
+        return d;
+    }
+};
+
+Row frame(Owner& owner, unsigned cell, bool verify)
+{
+    Row row;
+    const auto check = [&](bool ok, const char* stage) {
+        if (!ok) throw std::runtime_error(std::string("Resource owner ") + stage + ": " + owner.error);
+    };
+    const auto begin = stamp();
+    Stamp before_retire;
+    @autoreleasepool
+    {
+        // Cell3 measures a cold transient pool and all backing creation/retirement
+        // each frame. Other cells retain only the ordinary idle target pool.
+        auto pool = cell == 3 ? ALMetalRenderTargetPool::create(*owner.device, 1 << 20) : owner.pool;
+        check(bool(pool), "pool-create");
+        const auto reuse_before = pool->stats().reuses;
+        const auto committed_before = ALMetalDevice::committedCommandBufferCount();
+        auto command = owner.device->makeCommandBuffer("Resource owner complete native flow", &owner.error); check(bool(command), "command-create");
+        ALMetalBufferDescriptor bd; bd.length = 64; bd.storage = ALMetalStorageMode::private_gpu;
+        auto color = ALMetalBuffer::create(*owner.device, bd, &owner.error); check(bool(color), "color-create");
+        auto pattern = ALMetalBuffer::create(*owner.device, bd, &owner.error); check(bool(pattern), "pattern-create");
+        const std::array<float,16> red{1,0,0,1};
+        check(bool(color->upload(*command, 0, red.data(), sizeof(red), &owner.error)), "color-upload");
+        check(bool(pattern->fillWords(*command, 0, bd.length, 0x875421abu, &owner.error)), "pattern-fill");
+        auto source = pool->acquire(owner.targetDescriptor(), &owner.error, command->resourceUsePlan()); check(bool(source), "source-acquire");
+        auto output = pool->acquire(owner.targetDescriptor(), &owner.error, command->resourceUsePlan()); check(bool(output), "output-acquire");
+        void* source_native = source->colorTexture(0)->nativeHandle();
+        ALMetalRenderPassConfig config; config.colors[0].load = ALMetalLoadAction::clear;
+        config.colors[0].clear = {0,0,0,1}; config.colors[0].store = ALMetalStoreAction::store;
+        auto pass = source->makeRenderPass(config, &owner.error); check(bool(pass), "render-pass");
+        auto render = ALMetalRenderEncoder::begin(*command, *pass, "Resource owner indexed render", &owner.error); check(bool(render), "render-encoder");
+        check(bool(render->setPipeline(*owner.render, &owner.error)), "render-pipeline");
+        check(bool(render->setViewport({0,0,Owner::width,Owner::height,0,1}, &owner.error)), "viewport");
+        check(bool(render->setCullMode(ALMetalCullMode::none, &owner.error)), "cull-mode");
+        check(bool(render->setFragmentBuffer(0, *color, 0, &owner.error)), "color-bind");
+        const unsigned draws = cell == 0 ? 1 : (cell == 2 ? 256 : 16);
+        for (unsigned i = 0; i != draws; ++i)
+            check(bool(render->drawIndexed(ALMetalPrimitiveType::triangle, 3, ALMetalIndexType::uint16,
+                *owner.indices, 0, 1, &owner.error)), "indexed-draw");
+        check(bool(render->end(&owner.error)), "render-end"); render.reset(); pass.reset();
+        auto compute = ALMetalComputeEncoder::begin(*command, "Resource owner sampled compute", &owner.error); check(bool(compute), "compute-encoder");
+        check(bool(compute->setPipeline(*owner.compute, &owner.error)), "compute-pipeline");
+        check(bool(compute->setBuffer(0, *pattern, 0, &owner.error)), "compute-pattern");
+        check(bool(compute->setTexture(0, source->colorTexture(0), &owner.error)), "compute-source");
+        check(bool(compute->setTexture(1, output->colorTexture(0), &owner.error)), "compute-output");
+        check(bool(compute->dispatch(Owner::width,Owner::height,1,8,8,1,&owner.error)), "compute-dispatch");
+        check(bool(compute->end(&owner.error)), "compute-end"); compute.reset();
+        source.reset();
+        auto final = pool->acquire(owner.targetDescriptor(), &owner.error, command->resourceUsePlan()); check(bool(final), "final-acquire");
+        check(bool(final->colorTexture(0)->nativeHandle() == source_native), "same-command-reuse");
+        check(bool(final->copyColorFrom(*command, 0, *output->colorTexture(0), {}, &owner.error)), "final-copy");
+        const auto encoded = stamp();
+        check(bool(command->commit(&owner.error)), "commit");
+        const auto submitted = stamp();
+        check(bool(command->waitUntilCompleted(&owner.error)), "wait-complete");
+        const auto completed = stamp();
+        id<MTLCommandBuffer> native = (__bridge id<MTLCommandBuffer>)command->nativeIdentity();
+        row.gpu_start = native.GPUStartTime; row.gpu_end = native.GPUEndTime;
+        check(bool(row.gpu_start > 0), "gpu-start"); check(bool(row.gpu_end > row.gpu_start), "gpu-end");
+        if (const auto& graph = command->resourceUsePlan())
+        {
+            const auto state = graph->stats();
+            check(bool(state.valid), "graph-valid"); check(bool(state.retired), "graph-retired"); check(bool(!(state.opaque)), "graph-not-opaque");
+            check(bool(state.resources >= 8), "graph-use-count"); check(bool(state.passes == 5), "graph-pass-count");
+            row.resources = state.resources; row.passes = state.passes;
+        }
+        if (verify)
+        {
+            std::vector<std::uint8_t> pixels(Owner::width * Owner::height * 4);
+            check(bool(final->colorTexture(0)->readback(*owner.device, 0, 0, {}, pixels.data(), Owner::width * 4, &owner.error)), "pixel-readback");
+            for (std::size_t i=0; i<pixels.size(); i+=4)
+            {
+                check(bool(pixels[i] == 255), "pixel-red"); check(bool(pixels[i+1] == 0), "pixel-green");
+                check(bool(pixels[i+2] == 255), "pixel-blue"); check(bool(pixels[i+3] == 255), "pixel-alpha");
+            }
+            std::uint32_t value = 0;
+            check(bool(pattern->readback(*owner.device, 0, &value, sizeof(value), &owner.error)), "pattern-readback");
+            check(bool(value == 0x875421abu), "pattern-value");
+        }
+        row.native_commit_delta = ALMetalDevice::committedCommandBufferCount() - committed_before;
+        check(bool(row.native_commit_delta == (verify ? 3 : 1)), "commit-count");
+        row.encode_wall = encoded.wall - begin.wall; row.encode_cpu = encoded.cpu - begin.cpu;
+        row.submit_wall = submitted.wall - encoded.wall; row.submit_cpu = submitted.cpu - encoded.cpu;
+        row.wait_wall = completed.wall - submitted.wall; row.wait_cpu = completed.cpu - submitted.cpu;
+        before_retire = stamp();
+        row.observe_wall = before_retire.wall - completed.wall;
+        row.observe_cpu = before_retire.cpu - completed.cpu;
+        command.reset(); color.reset(); pattern.reset(); output.reset(); final.reset();
+        row.pool_reuses = pool->stats().reuses - reuse_before;
+        check(bool(row.pool_reuses >= 1), "pool-reuse-count");
+        row.cached_targets = pool->cachedTargetCount(); check(bool(row.cached_targets == 2), "cached-target-count");
+        if (cell == 3) { pool->purge(); check(bool(pool->cachedTargetCount() == 0), "transient-purge"); }
+        pool.reset();
+    }
+    const auto end = stamp(); // Includes the frame-local Objective-C autorelease pool.
+    row.retire_wall = end.wall - before_retire.wall; row.retire_cpu = end.cpu - before_retire.cpu;
+    row.total_wall = end.wall - begin.wall; row.total_cpu = end.cpu - begin.cpu;
+    check(row.total_wall == row.encode_wall + row.submit_wall + row.wait_wall + row.observe_wall + row.retire_wall, "wall-partition");
+    check(row.total_cpu == row.encode_cpu + row.submit_cpu + row.wait_cpu + row.observe_cpu + row.retire_cpu, "thread-cpu-partition");
+    const auto stats = owner.device->uniqueResourceStats();
+    check(bool(stats.active_commands == 0), "active-command-retirement"); check(bool(stats.uncommitted_uses == 0), "uncommitted-use-retirement"); check(bool(stats.submitted_uses == 0), "submitted-use-retirement");
+    check(bool(stats.opaque_uncommitted_commands == 0), "opaque-owner-retirement");
+    const auto expected = owner.mode == ALMetalResourcePlanMode::disabled ? 0u : (cell == 3 ? 1u : 3u);
+    check(bool(stats.owned_backings == expected), "unique-backing-conservation");
+    row.live_backings = stats.owned_backings; row.live_declared = stats.owned_declared_bytes;
+    row.live_reported = stats.owned_metal_reported_bytes;
+    return row;
+}
+}
+
+TEST_CASE("Complete native resource allocation use and retirement owner cost",
+          "[.][metal-resource-plan-owner-cost]")
+{
+#if !defined(NDEBUG)
+    SKIP("Native resource owner costs require an optimized build");
+#endif
+    const auto setting = [](const char* name) { const char* value=std::getenv(name); return value ? std::string(value) : std::string(); };
+    REQUIRE(setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_COST") == "1");
+    REQUIRE(setting("MTL_SHADER_VALIDATION") == "0"); REQUIRE(setting("MTL_DEBUG_LAYER") == "0");
+    for (const char* name : {"MTL_CAPTURE_ENABLED", "MTL_HUD_ENABLED"})
+        REQUIRE((setting(name).empty() || setting(name)=="0"));
+    const auto cell_text = setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_COST_CELL");
+    const auto pair_text = setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_COST_PAIR");
+    REQUIRE(cell_text.size()==1); REQUIRE(cell_text[0]>='0'); REQUIRE(cell_text[0]<='3');
+    REQUIRE(pair_text.size()==1); REQUIRE(pair_text[0]>='0'); REQUIRE(pair_text[0]<='2');
+    const auto precheck_text = setting("ALCHEMY_METAL_RESOURCE_PLAN_OWNER_PRECHECK_ONLY");
+    REQUIRE((precheck_text.empty() || precheck_text=="0" || precheck_text=="1"));
+    const bool precheck_only = precheck_text=="1";
+    const unsigned cell=unsigned(cell_text[0]-'0'), pair=unsigned(pair_text[0]-'0');
+    const std::array<ALMetalResourcePlanMode,3> modes{ALMetalResourcePlanMode::disabled,
+        ALMetalResourcePlanMode::accounting_only, ALMetalResourcePlanMode::enabled};
+    const unsigned ai = pair==2 ? 1 : 0, bi = pair==1 ? 1 : 2;
+    resource_plan_owner_cost::Owner a(modes[ai]), b(modes[bi]);
+    const auto check_a=resource_plan_owner_cost::frame(a,cell,true);
+    const auto check_b=resource_plan_owner_cost::frame(b,cell,true);
+    REQUIRE(check_a.native_commit_delta == check_b.native_commit_delta);
+    const auto drain = [](resource_plan_owner_cost::Owner& owner) {
+        owner.pool->purge(); owner.indices.reset();
+        const auto state=owner.device->uniqueResourceStats();
+        REQUIRE(state.active_commands==0); REQUIRE(state.uncommitted_uses==0); REQUIRE(state.submitted_uses==0);
+        REQUIRE(state.owned_backings==0); REQUIRE(state.owned_declared_bytes==0); REQUIRE(state.owned_metal_reported_bytes==0);
+        REQUIRE(state.backing_creations==state.backing_retirements);
+    };
+    std::cout << "resource_owner_precheck cell=" << cell << " pair=" << pair
+              << " exact_pixels=1 exact_pattern=1 live_a=" << check_a.live_backings << " live_b=" << check_b.live_backings << '\n';
+    if (precheck_only) { drain(a); drain(b); return; }
+    // Warmups and every timed observation perform the same native work. Only
+    // these two immediate prechecks copy pixels/words back to the CPU.
+    for (unsigned i=0;i!=10;++i)
+    {
+        resource_plan_owner_cost::frame(i%2 ? b:a,cell,false);
+        resource_plan_owner_cost::frame(i%2 ? a:b,cell,false);
+    }
+    std::cout << "resource_owner_cost_scope cell=" << cell << " pair=" << pair << " mode_a=" << ai << " mode_b=" << bi
+              << " configured_draws=" << (cell==0?1:(cell==2?256:16))
+              << " extent=128x128 passes=5 main_commands=1 thread_cpu_not_all_process_cpu=1"
+              << " compile_device_pso_long_lived_index_setup_excluded=1 timer_and_postwait_observer_overhead_retained=1 cold_pool=" << (cell==3)
+              << " pixel_prechecks=2 readback_in_measurement=0 retirement_in_total=1\n";
+    std::cout << "resource_owner_cost_header,cell,pair,block,position,arm,mode,encode_wall_ns,encode_thread_cpu_ns,submit_wall_ns,submit_thread_cpu_ns,wait_wall_ns,wait_thread_cpu_ns,post_wait_observation_wall_ns,post_wait_observation_thread_cpu_ns,retire_wall_ns,retire_thread_cpu_ns,total_wall_ns,total_thread_cpu_ns,gpu_start_s,gpu_end_s,gpu_envelope_ms,resources,passes,live_backings,live_declared_bytes,live_reported_bytes,native_commit_delta,pool_reuses,cached_targets\n";
+    double previous_gpu_end=0;
+    for (unsigned block=0;block!=150;++block)
+    {
+        const std::array<unsigned,4> order = block%2 ? std::array<unsigned,4>{1,0,0,1} : std::array<unsigned,4>{0,1,1,0};
+        for (unsigned position=0;position!=4;++position)
+        {
+            const auto arm=order[position];
+            const auto row=resource_plan_owner_cost::frame(arm?b:a,cell,false);
+            REQUIRE(row.gpu_start >= previous_gpu_end); previous_gpu_end=row.gpu_end;
+            std::cout << std::setprecision(17) << "resource_owner_cost," << cell << ',' << pair << ',' << block << ',' << position << ',' << arm << ',' << (arm?bi:ai)
+                      << ',' << row.encode_wall << ',' << row.encode_cpu << ',' << row.submit_wall << ',' << row.submit_cpu
+                      << ',' << row.wait_wall << ',' << row.wait_cpu << ',' << row.observe_wall << ',' << row.observe_cpu << ',' << row.retire_wall << ',' << row.retire_cpu
+                      << ',' << row.total_wall << ',' << row.total_cpu << ',' << row.gpu_start << ',' << row.gpu_end
+                      << ',' << (row.gpu_end-row.gpu_start)*1000.0 << ',' << row.resources << ',' << row.passes
+                      << ',' << row.live_backings << ',' << row.live_declared << ',' << row.live_reported
+                      << ',' << row.native_commit_delta << ',' << row.pool_reuses << ',' << row.cached_targets << '\n';
+            std::cout.flush();
+        }
+    }
+    drain(a); drain(b);
 }
