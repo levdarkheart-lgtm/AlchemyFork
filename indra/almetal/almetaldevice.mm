@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -35,6 +36,63 @@ namespace
         std::mutex mutex;
         std::uint64_t next_serial = 1;
     };
+    struct NativeExecutionOwner
+    {
+        id<MTLDevice> device = nil;
+        id<MTLCommandQueue> queue = nil;
+        std::shared_ptr<ALMetalResourcePlanning::Plan> registry;
+        std::shared_ptr<QueueSubmission> submission;
+    };
+    struct NativeExecutionOwners
+    {
+        std::mutex mutex;
+        std::map<std::pair<std::uint64_t, unsigned>,
+                 std::shared_ptr<NativeExecutionOwner>> by_gpu_mode;
+    };
+    NativeExecutionOwners& nativeExecutionOwners()
+    {
+        // Only the factory's validated built-in GPU identities enter this
+        // process owner: at most three mode owners per physical GPU. Keeping
+        // queue, registry and serial together also covers commands whose C++
+        // device facade has retired. Plan owns counters, not allocations, so
+        // this does not retain GPU backings or bypass completion retirement.
+        // Native callbacks can outlive C++ static destruction at shutdown.
+        static auto* owners = new NativeExecutionOwners();
+        return *owners;
+    }
+    std::shared_ptr<NativeExecutionOwner> nativeExecutionOwner(
+        id<MTLDevice> device, ALMetalResourcePlanMode mode)
+    {
+        auto& owners = nativeExecutionOwners();
+        const auto key = std::make_pair(static_cast<std::uint64_t>(device.registryID),
+                                        static_cast<unsigned>(mode));
+        {
+            std::lock_guard lock(owners.mutex);
+            if (const auto found = owners.by_gpu_mode.find(key);
+                found != owners.by_gpu_mode.end()) return found->second;
+        }
+        // Construct before publication and outside the owner lock. A racing
+        // factory may win; any unused native queue is destroyed after unlock.
+        auto candidate = std::make_shared<NativeExecutionOwner>();
+        candidate->device = device;
+        candidate->queue = [device newCommandQueueWithMaxCommandBufferCount:64];
+        if (candidate->queue)
+        {
+            candidate->queue.label = @"Alchemy viewer command queue";
+            candidate->registry = std::make_shared<ALMetalResourcePlanning::Plan>();
+            candidate->submission = std::make_shared<QueueSubmission>();
+        }
+        std::shared_ptr<NativeExecutionOwner> selected;
+        {
+            std::lock_guard lock(owners.mutex);
+            if (const auto found = owners.by_gpu_mode.find(key);
+                found != owners.by_gpu_mode.end()) selected = found->second;
+            else if (candidate->queue)
+                selected = owners.by_gpu_mode.emplace(key, candidate).first->second;
+        }
+        // A failed queue is never cached, and can use a concurrent winner.
+        return selected;
+    }
     struct NativeBackingOwner
     {
         explicit NativeBackingOwner(id<MTLResource> value) : resource(value) {}
@@ -256,9 +314,8 @@ struct ALMetalDevice::Impl
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> command_queue = nil;
     ALMetalResourcePlanMode resource_plan_mode = ALMetalResourcePlanMode::disabled;
-    std::shared_ptr<ALMetalResourcePlanning::Plan> resource_plan =
-        std::make_shared<ALMetalResourcePlanning::Plan>();
-    std::shared_ptr<QueueSubmission> submission_order = std::make_shared<QueueSubmission>();
+    std::shared_ptr<ALMetalResourcePlanning::Plan> resource_plan;
+    std::shared_ptr<QueueSubmission> submission_order;
 };
 
 ALMetalCommandBuffer::ALMetalCommandBuffer(std::unique_ptr<Impl> impl)
@@ -617,13 +674,22 @@ std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error,
             return nullptr;
         }
 
-        id<MTLCommandQueue> queue = [device newCommandQueueWithMaxCommandBufferCount:64];
-        if (!queue)
+        std::shared_ptr<NativeExecutionOwner> execution;
+        try { execution = nativeExecutionOwner(device, resource_plan_mode); }
+        catch (...)
+        {
+            setError(error, "Metal could not retain the native execution owner");
+            return nullptr;
+        }
+        if (!execution)
         {
             setError(error, "Metal could not create the viewer command queue");
             return nullptr;
         }
-        queue.label = @"Alchemy viewer command queue";
+        // Wrappers of one native GPU and mode use the same canonical device,
+        // actual queue, allocation registry and commit serialization domain.
+        // Different modes deliberately retain independent queues and graphs.
+        device = execution->device;
 
         ALMetalDeviceInfo info;
         info.name = fromNSString(device.name);
@@ -663,8 +729,10 @@ std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error,
 
         auto impl = std::make_unique<Impl>();
         impl->device = device;
-        impl->command_queue = queue;
+        impl->command_queue = execution->queue;
         impl->resource_plan_mode = resource_plan_mode;
+        impl->resource_plan = execution->registry;
+        impl->submission_order = execution->submission;
         return std::unique_ptr<ALMetalDevice>(new ALMetalDevice(std::move(impl), std::move(info)));
     }
 }

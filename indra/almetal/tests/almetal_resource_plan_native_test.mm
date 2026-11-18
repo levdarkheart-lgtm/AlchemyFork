@@ -13,6 +13,7 @@
 #import <Metal/Metal.h>
 #include <array>
 #include <atomic>
+#include <barrier>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -95,6 +96,120 @@ void magenta(const std::array<std::uint8_t, side * side * 4>& pixels)
         CHECK(pixels[i + 2] == 255); CHECK(pixels[i + 3] == 255);
     }
 }
+}
+
+TEST_CASE("Native execution factories share one same-mode owner concurrently",
+          "[metal-resource-plan-native][PPD-459]")
+{
+    @autoreleasepool
+    {
+        constexpr unsigned count = 8;
+        std::array<std::unique_ptr<ALMetalDevice>, count> devices;
+        std::array<std::string, count> errors;
+        std::array<std::thread, count> workers;
+        std::barrier<> start(count);
+        for (unsigned i = 0; i < count; ++i)
+            workers[i] = std::thread([&, i]
+            {
+                @autoreleasepool
+                {
+                    start.arrive_and_wait();
+                    devices[i] = ALMetalDevice::create(&errors[i], ALMetalResourcePlanMode::accounting_only);
+                }
+            });
+        for (auto& worker : workers) worker.join();
+        for (unsigned i = 0; i < count; ++i)
+        {
+            INFO(errors[i]); REQUIRE(devices[i]);
+            CHECK(devices[i]->nativeHandle() == devices[0]->nativeHandle());
+            CHECK(devices[i]->nativeCommandQueue() == devices[0]->nativeCommandQueue());
+            CHECK(devices[i]->resourcePlan().get() == devices[0]->resourcePlan().get());
+        }
+        auto command = devices[0]->makeCommandBuffer("Accounting session remains untracked", &errors[0]);
+        REQUIRE(command); CHECK_FALSE(command->resourceUsePlan());
+    }
+}
+
+TEST_CASE("Native same-mode wrappers share allocation accounting and ordered pixels",
+          "[metal-resource-plan-native][PPD-459]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        auto other = ALMetalDevice::create(&f.error, ALMetalResourcePlanMode::enabled); REQUIRE(other);
+        CHECK(other->nativeHandle() == f.device->nativeHandle());
+        CHECK(other->nativeCommandQueue() == f.device->nativeCommandQueue());
+        CHECK(other->resourcePlan().get() == f.device->resourcePlan().get());
+        const auto before = f.device->uniqueResourceStats();
+        auto texture = ALMetalTexture::create(*other, f.textureDescriptor(ALMetalStorageMode::private_gpu), &f.error);
+        REQUIRE(texture);
+        auto alias = ALMetalTexture::retainSharedBacking(*texture, &f.error); REQUIRE(alias);
+        CHECK(f.device->uniqueResourceStats().owned_backings == before.owned_backings + 1);
+        CHECK(other->uniqueResourceStats().owned_backings == before.owned_backings + 1);
+        CHECK(other->uniqueResourceStats().owned_declared_bytes == before.owned_declared_bytes + side * side * 4);
+        auto descriptor = f.targetDescriptor(); descriptor.colors[0].texture = texture.get();
+        auto target = ALMetalRenderTarget::create(*f.device, descriptor, &f.error); REQUIRE(target);
+        auto command = f.device->makeCommandBuffer("Cross-wrapper same-session clear", &f.error); REQUIRE(command);
+        f.clear(*target, *command, {1, 0, 1, 1});
+        REQUIRE(command->commitAndWait(&f.error));
+        std::array<std::uint8_t, side * side * 4> pixels{};
+        REQUIRE(alias->readback(*other, 0, 0, {}, pixels.data(), side * 4, &f.error));
+        magenta(pixels);
+        target.reset(); texture.reset();
+        CHECK(other->uniqueResourceStats().owned_backings == before.owned_backings + 1);
+        alias.reset();
+        CHECK(other->uniqueResourceStats().owned_backings == before.owned_backings);
+        CHECK(f.device->uniqueResourceStats().owned_declared_bytes == before.owned_declared_bytes);
+    }
+}
+
+TEST_CASE("Native execution owner survives facades while an old GPU command retains backing",
+          "[metal-resource-plan-native][PPD-459]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        std::weak_ptr<RP::Plan> registry;
+        std::shared_ptr<const ALMetalCommandCompletion> completion;
+        std::unique_ptr<Gate> gate;
+        __weak id<MTLBuffer> backing = nil;
+        const void* queue = nullptr;
+        RP::Stats before;
+        {
+            @autoreleasepool
+            {
+                auto device = ALMetalDevice::create(&error, ALMetalResourcePlanMode::enabled); REQUIRE(device);
+                before = device->uniqueResourceStats();
+                registry = device->resourcePlan(); queue = device->nativeCommandQueue();
+                gate = std::make_unique<Gate>(*device);
+                ALMetalBufferDescriptor bd; bd.length = 64; bd.storage = ALMetalStorageMode::private_gpu;
+                auto buffer = ALMetalBuffer::create(*device, bd, &error); REQUIRE(buffer);
+                backing = (__bridge id<MTLBuffer>)buffer->nativeHandle();
+                auto command = device->makeCommandBuffer("Session outlives device and command facades", &error); REQUIRE(command);
+                gate->encode(*command);
+                REQUIRE(buffer->fillWords(*command, 0, bd.length, 0xa5a5a5a5u, &error));
+                completion = command->completionToken(); REQUIRE(completion);
+                REQUIRE(command->commit(&error));
+                buffer.reset(); command.reset(); device.reset();
+            }
+        }
+        auto replacement = ALMetalDevice::create(&error, ALMetalResourcePlanMode::enabled); REQUIRE(replacement);
+        CHECK(replacement->nativeCommandQueue() == queue);
+        CHECK_FALSE(registry.expired());
+        CHECK(backing != nil);
+        CHECK(replacement->uniqueResourceStats().owned_backings == before.owned_backings + 1);
+        CHECK(replacement->uniqueResourceStats().submitted_uses == before.submitted_uses + 1);
+        const auto commits = ALMetalDevice::committedCommandBufferCount();
+        gate->release();
+        REQUIRE(completion->waitUntilCompleted(&error));
+        CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
+        CHECK(eventually([&]
+        {
+            const auto now = replacement->uniqueResourceStats();
+            return now.owned_backings == before.owned_backings && now.submitted_uses == before.submitted_uses;
+        }));
+        CHECK(replacement->uniqueResourceStats().backing_retirements == before.backing_retirements + 1);
+    }
 }
 
 TEST_CASE("Native resource plan shares backing identity across shader views and independent wrappers",
@@ -776,18 +891,21 @@ TEST_CASE("Complete native resource allocation use and retirement owner cost",
     drain(a); drain(b);
 }
 
-TEST_CASE("Native index reads reject a colliding registry on the same Metal device and recover only in a new encoder",
+TEST_CASE("Native index reads reject an isolated mode registry on the same Metal device and recover only in a new encoder",
           "[metal-resource-plan-native][PPD-435]")
 {
     @autoreleasepool
     {
         Fixture f;
-        auto other=ALMetalDevice::create(&f.error,ALMetalResourcePlanMode::enabled); REQUIRE(other);
-        REQUIRE(other->nativeHandle()==f.device->nativeHandle()); // Actual SAME MTLDevice, separate use registries.
+        auto other=ALMetalDevice::create(&f.error,ALMetalResourcePlanMode::accounting_only); REQUIRE(other);
+        REQUIRE(other->nativeHandle()==f.device->nativeHandle()); // Actual SAME MTLDevice, deliberately isolated modes.
+        REQUIRE(other->nativeCommandQueue()!=f.device->nativeCommandQueue());
+        REQUIRE(other->resourcePlan().get()!=f.device->resourcePlan().get());
         ALMetalBufferDescriptor bd; bd.length=6; bd.storage=ALMetalStorageMode::shared;
         auto index=ALMetalBuffer::create(*f.device,bd,&f.error); REQUIRE(index);
         auto foreign=ALMetalBuffer::create(*other,bd,&f.error); REQUIRE(foreign);
-        REQUIRE(index->resourceView().identity()==foreign->resourceView().identity());
+        // Process-shared domains need not have equal counters. The pure Plan
+        // tests independently retain the colliding-numeric-ID negative.
         REQUIRE(index->resourceView().generation()==foreign->resourceView().generation());
         const std::array<std::uint16_t,3> values{0,1,2};
         std::memcpy(index->mappedBytes(),values.data(),sizeof(values));
