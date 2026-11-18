@@ -36,6 +36,7 @@ class LLVOAvatar;
 class LLMeshSkinInfo;
 class LLVolumeFace;
 class LLJointRiggingInfoTab;
+class LLSD;
 
 namespace LLSkinningUtil
 {
@@ -70,6 +71,8 @@ namespace LLSkinningUtil
     U32 getMeshJointCount(const LLMeshSkinInfo *skin);
     void scrubInvalidJoints(LLVOAvatar *avatar, LLMeshSkinInfo* skin);
     void initSkinningMatrixPalette(LLMatrix4a* mat, S32 count, const LLMeshSkinInfo* skin, LLVOAvatar *avatar);
+    void diagnoseDecodedSkin(const LLMeshSkinInfo& skin, const LLSD& decoded,
+                             const U8* encoded, S32 encoded_size);
     void checkSkinWeights(LLVector4a* weights, U32 num_vertices, const LLMeshSkinInfo* skin);
     void scrubSkinWeights(LLVector4a* weights, U32 num_vertices, const LLMeshSkinInfo* skin);
     void getPerVertexSkinMatrix(F32* weights, const LLMatrix4a* mat, bool handle_bad_scale, LLMatrix4a& final_mat, U32 max_joints);

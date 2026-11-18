@@ -2896,6 +2896,24 @@ if(AL_BUILD_TESTS)
     INCLUDES ${llui_headers}
   )
   if(DARWIN AND Python3_Interpreter_FOUND)
+    find_package(Threads REQUIRED)
+    add_library(alwarningdiagnostics_test_peer OBJECT tests/alwarningdiagnostics_test.cpp)
+    target_link_libraries(alwarningdiagnostics_test_peer PRIVATE al::flags)
+    target_compile_definitions(alwarningdiagnostics_test_peer PRIVATE AL_WARNING_DIAGNOSTICS_SECOND_TU=1)
+    add_executable(alwarningdiagnostics_test tests/alwarningdiagnostics_test.cpp
+      $<TARGET_OBJECTS:alwarningdiagnostics_test_peer>)
+    target_link_libraries(alwarningdiagnostics_test PRIVATE al::flags Threads::Threads)
+    foreach(mode IN ITEMS disabled not-one enabled)
+      add_test(NAME "newview/warning_diagnostics_${mode}"
+        COMMAND alwarningdiagnostics_test "${mode}")
+      set_tests_properties("newview/warning_diagnostics_${mode}"
+        PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    endforeach()
+    add_test(NAME "newview/warning_asset_inputs"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/asset_warning_inputs_test.py")
+    set_tests_properties("newview/warning_asset_inputs"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     # Execute the real upload/publication control bodies with failed queue and
     # storage outcomes; these tests need neither a viewer login nor a GPU.
     foreach(thread_check IN ITEMS 0 1)

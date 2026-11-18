@@ -34,6 +34,7 @@
 #include "llmeshrepository.h"
 #include "llvolume.h"
 #include "llrigginginfo.h"
+#include "alwarningdiagnostics.h"
 
 #include <boost/unordered/unordered_flat_map.hpp>
 
@@ -41,8 +42,90 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <thread>
+#include <optional>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define DEBUG_SKINNING  LL_DEBUG
+
+namespace
+{
+std::string matrix_input_bits(const LLMatrix4a& matrix)
+{
+    std::ostringstream text;
+    text << std::hex << std::setfill('0');
+    for (U32 row = 0; row < 4; ++row)
+    {
+        for (U32 lane = 0; lane < 4; ++lane)
+        {
+            U32 bits;
+            std::memcpy(&bits, matrix.mMatrix[row].getF32ptr() + lane, sizeof(bits));
+            if (row || lane) text << ',';
+            text << std::setw(8) << bits;
+        }
+    }
+    return text.str();
+}
+}
+
+void LLSkinningUtil::diagnoseDecodedSkin(const LLMeshSkinInfo& info, const LLSD& decoded,
+                                       const U8* encoded, S32 encoded_size)
+{
+    if (!ALWarningDiagnostics::enabled()) return;
+    try
+    {
+        for (size_t joint = 0; joint < info.mInvBindMatrix.size(); ++joint)
+        {
+            if (isFiniteSkinningMatrix(info.mInvBindMatrix[joint])) continue;
+            const std::string key = info.mMeshID.asString() + ':' + std::to_string(joint);
+            if (!ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::skin_decode, key)) continue;
+            std::ostringstream original;
+            original << std::hex << std::setfill('0');
+            const LLSD& values = decoded["inverse_bind_matrix"][static_cast<S32>(joint)];
+            for (S32 lane = 0; lane < 16; ++lane)
+            {
+                const F64 value = values[lane].asReal();
+                U64 bits;
+                std::memcpy(&bits, &value, sizeof(bits));
+                if (lane) original << ',';
+                original << std::setw(16) << bits;
+            }
+            bool saved = false;
+            const char* directory = std::getenv("ALCHEMY_WARNING_INPUT_DIR");
+            // The launcher creates a private, empty run directory. Preserve a
+            // bounded compressed skin input once per asset without replacing it.
+            if (directory && *directory && encoded && encoded_size > 0 && encoded_size <= 1024 * 1024)
+            {
+                const auto path = std::filesystem::path(directory) / (info.mMeshID.asString() + ".skin.z");
+                const int descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+                if (descriptor >= 0)
+                {
+                    if (FILE* stream = ::fdopen(descriptor, "wb"))
+                    {
+                        saved = ::fwrite(encoded, 1, encoded_size, stream) == static_cast<size_t>(encoded_size);
+                        saved = ::fclose(stream) == 0 && saved;
+                    }
+                    else ::close(descriptor);
+                }
+            }
+            LL_INFOS("WarningInputs") << "kind=skin_decode asset=" << info.mMeshID
+                << " skin_ptr=" << &info << " skin_hash=" << info.mHash
+                << " joint_index=" << joint << " inverse_count=" << info.mInvBindMatrix.size()
+                << " joint_name_count=" << info.mJointNames.size()
+                << " encoded_bytes=" << encoded_size << " encoded_saved=" << saved
+                << " llsd_real64_bits=" << original.str()
+                << " inverse_float32_bits=" << matrix_input_bits(info.mInvBindMatrix[joint])
+                << " thread=" << std::this_thread::get_id() << LL_ENDL;
+        }
+    }
+    catch (...) { /* Observation must not change skin publication. */ }
+}
 
 void dump_avatar_and_skin_state(const std::string& reason, LLVOAvatar *avatar, const LLMeshSkinInfo *skin)
 {
@@ -173,6 +256,15 @@ void LLSkinningUtil::initSkinningMatrixPalette(
         S32 joint_num = skin->mJointNums[j];
         LLJoint *joint = avatar->getJoint(joint_num);
         const LLMatrix4a* world_matrix = joint ? &joint->getWorldMatrix() : nullptr;
+        std::optional<LLMatrix4a> inverse_before;
+        std::optional<LLMatrix4a> world_before;
+        if (ALWarningDiagnostics::enabled())
+        {
+            // Observe both sides of the unchanged multiply. Agreement narrows
+            // mutation timing; these snapshots do not assert atomic consumption.
+            inverse_before = skin->mInvBindMatrix[j];
+            if (world_matrix) world_before = *world_matrix;
+        }
 
         if (world_matrix)
         {
@@ -199,6 +291,38 @@ void LLSkinningUtil::initSkinningMatrixPalette(
 
         if (!isFiniteSkinningMatrix(mat[j]))
         {
+            if (ALWarningDiagnostics::enabled())
+            {
+                try
+                {
+                    const std::string key = skin->mMeshID.asString() + ':' + std::to_string(j);
+                    if (ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::skin, key))
+                    {
+                        // Snapshot at the existing failure boundary, before
+                        // stabilization. The multiply and its inputs are unchanged.
+                        const LLMatrix4a inverse = skin->mInvBindMatrix[j];
+                        const LLMatrix4a world = world_matrix ? *world_matrix : LLMatrix4a::translation(0, 0, 0);
+                        LL_INFOS("WarningInputs") << "kind=skin_product asset=" << skin->mMeshID
+                            << " avatar=" << avatar->getID() << " skin_ptr=" << skin
+                            << " output_ptr=" << &mat[j] << " inverse_ptr=" << &skin->mInvBindMatrix[j]
+                            << " world_ptr=" << world_matrix
+                            << " skin_hash=" << skin->mHash << " frozen=" << skin->mFrozen
+                            << " frame=" << gFrameCount << " joint_index=" << j << " joint_number=" << joint_num
+                            << " palette_count=" << count << " inverse_count=" << skin->mInvBindMatrix.size()
+                            << " joint_number_count=" << skin->mJointNums.size()
+                            << " has_world=" << (world_matrix != nullptr)
+                            << " pose_revision=" << (avatar->getRootJoint() ? avatar->getRootJoint()->getPoseRevision() : 0)
+                            << " lifecycle_revision=" << avatar->nativeBodyPoseLifecycleRevision()
+                            << " inverse_before_float32_bits=" << matrix_input_bits(*inverse_before)
+                            << " world_before_float32_bits=" << (world_before ? matrix_input_bits(*world_before) : "none")
+                            << " inverse_float32_bits=" << matrix_input_bits(inverse)
+                            << " world_float32_bits=" << matrix_input_bits(world)
+                            << " product_float32_bits=" << matrix_input_bits(mat[j])
+                            << " thread=" << std::this_thread::get_id() << LL_ENDL;
+                    }
+                }
+                catch (...) { /* Preserve the existing fallback on observation failure. */ }
+            }
             // Preserve the first failing operands before stabilization erases
             // them. Do not expose avatar/asset IDs, matrices or positions.
             static std::atomic<U32> diagnosed{0};

@@ -32,6 +32,7 @@
 #include <atomic>
 
 #include "lltexturefetch.h"
+#include "alwarningdiagnostics.h"
 #include "llappviewer.h"
 
 #include "lldir.h"
@@ -2127,6 +2128,40 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
     bool success = true;
     bool partial = false;
     LLCore::HttpStatus status(response->getStatus());
+    // Failure-only private context links the policy layer's recyclable request
+    // handle to this asset without recording its capability or delivery URL.
+    const auto log_warning_inputs = [&](const char* retry_action, F32 retry_delay)
+    {
+        if (!ALWarningDiagnostics::enabled()) return;
+        try
+        {
+            const std::string key = mID.asString() + ":" + llformat("%p", handle)
+                + ":" + status.toTerseString();
+            if (!ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::texture, key)) return;
+            LL_INFOS("WarningInputs") << "texture_http_failure asset=" << mID
+                << " request_handle=" << handle << " worker_handle=" << mHttpHandle
+                << " status=" << status.toTerseString()
+                << " status_type=" << status.getType() << " status_value=" << status.getStatus()
+                << " fetch_type=" << static_cast<S32>(mFTType)
+                << " worker_state=" << static_cast<S32>(mState.load(std::memory_order_relaxed))
+                << " http_policy=" << mHttpPolicyClass
+                << " requested_offset=" << mRequestedOffset << " requested_bytes=" << mRequestedSize
+                << " requested_discard=" << mRequestedDiscard
+                << " desired_discard=" << mDesiredDiscard << " loaded_discard=" << mLoadedDiscard
+                << " decoded_discard=" << mDecodedDiscard
+                << " cached_bytes=" << mCachedSize << " file_bytes=" << mFileSize
+                << " formatted_bytes=" << (mFormattedImage.notNull() ? mFormattedImage->getDataSize() : 0)
+                << " cache_present=" << mInCache << " local_cache_present=" << mInLocalCache
+                << " have_all_data=" << mHaveAllData << " fetch_failed=" << mFetchFailed
+                << " retry_attempt=" << mRetryAttempt << " region_retry_attempt=" << mRegionRetryAttempt
+                << " retry_action=" << retry_action << " retry_delay_seconds=" << retry_delay
+                << LL_ENDL;
+        }
+        catch (...)
+        {
+            // Optional evidence must not change fetch or retry failure handling.
+        }
+    };
     if (!status && (mFTType == FTT_SERVER_BAKE))
     {
         LL_INFOS(LOG_TXT) << mID << " state " << e_state_name[mState] << LL_ENDL;
@@ -2134,6 +2169,7 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
         F32 retry_after;
         if (mFetchRetryPolicy.shouldRetry(retry_after))
         {
+            log_warning_inputs("server_bake_retry", retry_after);
             LL_INFOS(LOG_TXT) << mID << " will retry after " << retry_after << " seconds, resetting state to LOAD_FROM_NETWORK" << LL_ENDL;
             mFetcher->removeFromHTTPQueue(mID, S32Bytes(0));
             std::string reason(status.toString());
@@ -2144,12 +2180,14 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
         }
         else
         {
+            log_warning_inputs("server_bake_retry_exhausted", -1.f);
             LL_INFOS(LOG_TXT) << mID << " will not retry" << LL_ENDL;
         }
     }
     else
     {
         mFetchRetryPolicy.onSuccess();
+        if (!status) log_warning_inputs("complete_failed", -1.f);
     }
 
     std::string reason(status.toString());
@@ -2497,6 +2535,45 @@ void LLTextureFetchWorker::callbackDecoded(bool success, const std::string &erro
         return;
     }
     llassert_always(mFormattedImage.notNull());
+
+    // Observe successful bake/aux decodes before their metadata reaches fetched
+    // textures. A later morph callback may ask for aux after this request did not.
+    if (success && (mNeedsAux || mFTType == FTT_SERVER_BAKE) && ALWarningDiagnostics::enabled())
+    {
+        try
+        {
+            const S32 aux_components = aux ? aux->getComponents() : 0;
+            const std::string key = mID.asString() + ":" + std::to_string(decode_id)
+                + ":" + std::to_string(mNeedsAux) + ":" + std::to_string(aux_components);
+            if (ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::bake_decode, key))
+            {
+                LL_INFOS("WarningInputs") << "bake_decode_result asset=" << mID
+                    << " decode_id=" << decode_id << " active_decode_id=" << mDecodeHandle
+                    << " needs_aux=" << mNeedsAux << " fetch_type=" << static_cast<S32>(mFTType)
+                    << " worker_state=" << static_cast<S32>(mState.load(std::memory_order_relaxed))
+                    << " formatted_components=" << mFormattedImage->getComponents()
+                    << " formatted_discard=" << static_cast<S32>(mFormattedImage->getDiscardLevel())
+                    << " formatted_bytes=" << mFormattedImage->getDataSize()
+                    << " raw_present=" << static_cast<bool>(raw)
+                    << " raw_width=" << (raw ? raw->getWidth() : 0)
+                    << " raw_height=" << (raw ? raw->getHeight() : 0)
+                    << " raw_components=" << (raw ? raw->getComponents() : 0)
+                    << " raw_bytes=" << (raw ? raw->getDataSize() : 0)
+                    << " aux_present=" << static_cast<bool>(aux)
+                    << " aux_width=" << (aux ? aux->getWidth() : 0)
+                    << " aux_height=" << (aux ? aux->getHeight() : 0)
+                    << " aux_components=" << aux_components
+                    << " aux_bytes=" << (aux ? aux->getDataSize() : 0)
+                    << " loaded_discard=" << mLoadedDiscard << " requested_discard=" << mRequestedDiscard
+                    << " desired_discard=" << mDesiredDiscard << " previous_decoded_discard=" << mDecodedDiscard
+                    << " callback_action=publish_raw_and_aux" << LL_ENDL;
+            }
+        }
+        catch (...)
+        {
+            // Decode publication must survive optional evidence allocation failure.
+        }
+    }
 
     mDecodeHandle = 0;
     if (success)

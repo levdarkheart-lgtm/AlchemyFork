@@ -1,8 +1,8 @@
-# Pinned CPU decoder experiment. A CI build must carry a matching build receipt;
+# Required pinned CPU texture decoder. A CI build must carry a matching build receipt;
 # the original local experiment keeps its exact prebuilt-archive guard.
-option(AL_EXPERIMENTAL_OPENHTJ2K "Use the local OpenHTJ2K texture decoder experiment" OFF)
+option(AL_EXPERIMENTAL_OPENHTJ2K "Use the required OpenHTJ2K texture pixel decoder" ON)
 if(NOT AL_EXPERIMENTAL_OPENHTJ2K)
-  return()
+  message(FATAL_ERROR "This viewer requires OpenHTJ2K texture pixel decoding; AL_EXPERIMENTAL_OPENHTJ2K cannot be OFF")
 endif()
 if(AL_USE_KDU)
   message(FATAL_ERROR "OpenHTJ2K experiment requires the open-source JPEG2000 implementation")
@@ -69,4 +69,4 @@ set_target_properties(ll::openhtj2k PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${AL_OPENHTJ2K_SOURCE_DIR}/source/core/interface;${AL_OPENHTJ2K_SOURCE_DIR}/source/core/common"
   INTERFACE_COMPILE_DEFINITIONS OHTJ2K_STATIC
   INTERFACE_LINK_LIBRARIES Threads::Threads)
-message(STATUS "Experimental JPEG2000 decode: OpenHTJ2K 0.27.0 (${openht_revision}); encoder/header: OpenJPEG")
+message(STATUS "Required JPEG2000 pixel decode: OpenHTJ2K 0.27.0 (${openht_revision}); encoder/header: OpenJPEG")

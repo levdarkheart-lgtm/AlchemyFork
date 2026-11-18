@@ -123,6 +123,7 @@
 #include "llscenemonitor.h"
 #include "llsdserialize.h"
 #include "llskinningutil.h"
+#include "alwarningdiagnostics.h"
 
 #include "llperfstats.h"
 
@@ -11051,6 +11052,74 @@ void LLVOAvatar::onBakedTextureMasksLoaded( bool success, LLViewerFetchedTexture
             // this can happen when someone uses an old baked texture possibly provided by
             // viewer-side baked texture caching
             LL_WARNS() << "Masks loaded callback but NO aux source, id " << id << LL_ENDL;
+            if (ALWarningDiagnostics::enabled())
+            {
+                try
+                {
+                    struct RawInfo
+                    {
+                        S32 width = 0, height = 0, components = 0, bytes = 0;
+                        bool present = false, data = false;
+                    };
+                    const auto inspect = [](LLImageRaw* image)
+                    {
+                        RawInfo info;
+                        if (image)
+                        {
+                            LLImageDataSharedLock lock(image);
+                            info.present = true;
+                            info.width = image->getWidth();
+                            info.height = image->getHeight();
+                            info.components = image->getComponents();
+                            info.bytes = image->getDataSize();
+                            info.data = image->getData() != nullptr;
+                        }
+                        return info;
+                    };
+                    const RawInfo auxiliary = inspect(aux_src);
+                    const RawInfo primary = inspect(src);
+                    const std::string key = id.asString() + ":" + maskData->mAvatarID.asString()
+                        + ":" + std::to_string(auxiliary.present ? auxiliary.components : -1);
+                    if (ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::bake, key))
+                    {
+                        S32 baked_slot = -1;
+                        for (const auto& entry : LLAvatarAppearance::getDictionary()->getTextures())
+                        {
+                            if (entry.mIsUsedByBakedTexture)
+                            {
+                                const LLViewerTexture* image = self->getImage(entry.mIndex, 0);
+                                if (image && image->getID() == id)
+                                {
+                                    baked_slot = entry.mBakedTextureIndex;
+                                    break;
+                                }
+                            }
+                        }
+                        LL_INFOS("WarningInputs") << "bake_mask texture=" << id
+                            << " avatar=" << maskData->mAvatarID
+                            << " needs_aux=" << src_vi->needsAux()
+                            << " stored_aux_same=" << (src_vi->getAuxRawImage() == aux_src)
+                            << " stored_raw_discard=" << src_vi->getRawImageLevel()
+                            << " aux_present=" << auxiliary.present
+                            << " aux_components=" << auxiliary.components
+                            << " aux_data=" << auxiliary.data
+                            << " aux_width=" << auxiliary.width << " aux_height=" << auxiliary.height
+                            << " aux_bytes=" << auxiliary.bytes
+                            << " src_present=" << primary.present
+                            << " src_components=" << primary.components
+                            << " src_data=" << primary.data
+                            << " src_width=" << primary.width << " src_height=" << primary.height
+                            << " src_bytes=" << primary.bytes
+                            << " discard=" << discard_level << " last_discard=" << maskData->mLastDiscardLevel
+                            << " final=" << final << " success=" << success
+                            << " baked_slot=" << baked_slot << LL_ENDL;
+                    }
+                }
+                catch (...)
+                {
+                    // Optional input observation must not change the mask callback.
+                }
+            }
         }
     }
 

@@ -26,6 +26,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llgltfmateriallist.h"
+#include "alwarningdiagnostics.h"
 #include "llappviewer.h"
 #include "pipeline.h"
 
@@ -555,6 +556,32 @@ void LLGLTFMaterialList::onAssetLoadComplete(const LLUUID& id, LLAssetType::ETyp
     if (status != LL_ERR_NOERR)
     {
         LL_WARNS("GLTF") << "Error getting material asset data: " << LLAssetStorage::getErrorString(status) << " (" << status << ") for asset " << id << LL_ENDL;
+        if (ALWarningDiagnostics::enabled())
+        {
+            try
+            {
+                const auto extended = static_cast<U32>(ext_status);
+                const std::string key = id.asString() + ":" + std::to_string(status)
+                    + ":" + std::to_string(extended);
+                if (ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::material, key))
+                {
+                    const LLFetchedGLTFMaterial* material = asset_data ? asset_data->mMaterial.get() : nullptr;
+                    LL_INFOS("WarningInputs") << "material_asset_failure asset=" << id
+                        << " asset_type=" << static_cast<S32>(asset_type) << " status=" << status
+                        << " extended_status=" << extended
+                        << " callback_data_present=" << static_cast<bool>(asset_data)
+                        << " material_present=" << static_cast<bool>(material)
+                        << " fetching=" << (material && material->mFetching)
+                        << " previous_fetch_success=" << (material && material->mFetchSuccess)
+                        << " waiting_callbacks=" << (material ? material->materialCompleteCallbacks.size() : 0)
+                        << " completion_action=failed" << LL_ENDL;
+                }
+            }
+            catch (...)
+            {
+                // Optional evidence must not skip material failure completion.
+            }
+        }
         asset_data->mMaterial->materialComplete(false);
         delete asset_data;
     }

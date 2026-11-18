@@ -8,7 +8,7 @@ Captured source `e426d7956f48268833513cae78894e92ce30a61e`; restored checkpoint 
 
 Raw log8,524,293bytes/20,896lines, SHA256 `f570cd43804df1b6d1d5e9bde5a8442b6a7376a889d19ec3b0985999745d8bb1`. Independent scan finds317WARNING/0ERROR/0FATAL/37sites and matches every saved row hash/site; no unparsed severity row. Site groups: assets/network180rows/8sites, rigging/appearance90/5, lifecycle41/21, alpha/local images6/3. Several warnings describe the same failure chain; do not count them as317independent failures.
 
-Private evidence: `/Users/dekstroza/Alchemy-home-69277-rqs_6lzz/analysis/warning-port-audit-03/`. It retains full source-comparison hashes/excerpts, per-site JSON, original-log census, red/green controls, and independent review. Prior audits/raw logs are unchanged. The [portable site index](log-warning-port-audit-20261118.json) contains no asset/user identities. Table line numbers name the **captured** emitter; JSON also maps current source lines after local repairs.
+Private evidence: `/Users/dekstroza/Alchemy-home-69277-rqs_6lzz/analysis/warning-port-audit-03/`. It retains full source-comparison hashes/excerpts, per-site JSON, original-log census, red/green controls, and independent review. Prior audits/raw logs are unchanged. The [portable site index](log-warning-port-audit-20261118.json) contains no asset/user identities. Table line numbers name the **captured** emitter; JSON maps source lines at repair revision103043ba16; subsequent diagnostic instrumentation can shift them.
 
 ## Full site accounting
 

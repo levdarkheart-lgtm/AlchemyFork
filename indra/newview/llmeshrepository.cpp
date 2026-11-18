@@ -2558,6 +2558,7 @@ bool LLMeshRepoThread::skinInfoReceived(const LLUUID& mesh_id, U8* data, S32 dat
     {
         LLPointer<LLMeshSkinInfo> info = nullptr;
         info = new LLMeshSkinInfo(mesh_id, skin);
+        LLSkinningUtil::diagnoseDecodedSkin(*info, skin, data, data_size);
 
         // joint numbers are consistent inside LLVOAvatar and animations, but inconsistent inside meshes,
         // generate a map of mesh joint numbers to LLVOAvatar joint numbers: from the numbers the

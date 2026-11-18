@@ -218,11 +218,7 @@ function(al_configuration_report)
     _al_report_row("Spellcheck" "Hunspell")
   endif()
 
-  if(AL_USE_KDU)
-    _al_report_row("JPEG2000" "Kakadu")
-  else()
-    _al_report_row("JPEG2000" "OpenJPEG")
-  endif()
+  _al_report_row("JPEG2000" "OpenHTJ2K pixel decode; OpenJPEG header/encode")
 
   if(AL_USE_TRACY)
     set(tracy)

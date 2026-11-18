@@ -5,7 +5,7 @@ This document is an **engineering hypothesis grounded in upstream source**, not 
 ## Retain from Alchemy
 - `indra/llcommon`, `indra/llmath`: data types, threading, math, shared foundations.
 - `indra/llcorehttp`, `indra/llmessage`: networking/Second Life protocol.
-- `indra/llfilesystem`, `indra/llimage`: asset cache and CPU decode; OpenJPEG remains usable.
+- `indra/llfilesystem`, `indra/llimage`: asset cache and CPU decode; OpenHTJ2K is the sole texture pixel decoder. OpenJPEG supplies existing header parsing and encoding support.
 - `indra/newview` scene, camera, avatar, appearance, editing and viewer lifecycle logic **where not GPU-coupled**.
 - `indra/llui`: UI model/event logic; change rendering integration only.
 - existing audio, media, WebRTC, V-HACD and SDL3 input code, subject to tested boundaries.

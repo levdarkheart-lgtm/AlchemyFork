@@ -1,6 +1,6 @@
 /**
  * @file llimagej2coj.cpp
- * @brief This is an implementation of JPEG2000 encode/decode using OpenJPEG.
+ * @brief OpenHTJ2K pixel decoding with OpenJPEG header and encoding support.
  *
  * $LicenseInfo:firstyear=2006&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -23,6 +23,10 @@
  * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
  * $/LicenseInfo$
  */
+
+#if !defined(AL_EXPERIMENTAL_OPENHTJ2K) || !AL_EXPERIMENTAL_OPENHTJ2K
+#error "Alchemy requires OpenHTJ2K for JPEG2000 texture pixel decoding"
+#endif
 
 #include "linden_common.h"
 #include "llimagej2coj.h"

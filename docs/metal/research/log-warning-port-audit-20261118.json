@@ -339,5 +339,6 @@
       "port_verdict": "Original callback/consumer identical; producer unresolved",
       "explanation": "29 successful bake callbacks lack required1-channel auxiliary mask, skip CPU morph application. Disjoint from22missing textureIDs; actual mask content unknown."
     }
-  ]
+  ],
+  "line_mapping_revision": "103043ba1645fcc445f8ff9155d63fdd259e2e41"
 }

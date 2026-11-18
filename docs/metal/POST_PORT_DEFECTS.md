@@ -284,6 +284,9 @@ as a Metal-introduced regression or a cause of PPD-002.
 
 - 2026-11-15 integrated69122 profile evidence: Owner-authorized busy-club teleport trace300.725s records one Texture WARNING: OpenHTJ2K SOT marker expected but3FEE found. Asset bytes/cause and retry/fallback outcome unproved; no codec source change, decoder regression or new renderer error inferred. See [two-scene report](research/integrated-build-69122-quiet-club-20261115.md); raw asset identifiers remain private. Existing accepted experiment/history retained.
 
+- 2026-11-18 Warning-input preparation detects that fresh69328/69329audit build used defaultOpenJPEG2.5.4 while captured69277usedacceptedOpenHTJ2K0.27.0. No new viewer was launched. Source ancestry did not establish decoder build identity. Preserve failed decoder guard(exit42/zero asset decodes), restore accepted pinned decoder configuration before runtime comparison and qualify actual decoder string. This is a configuration mismatch in the new audit candidate, not a demonstrated cause of the prior warnings.
+
+
 ## PPD-006 — Legacy avatar alpha loses the original water-clipping exception
 
 - Status: open
@@ -7522,6 +7525,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 warning port review compares original/captured multiply, inverse numeric decode and world-matrix formula; no changed arithmetic identified. All11bounded appearance/decode/consumer functions compared are identical. Exact live operand values/skin identity remain absent, so malformed input, overflow, ownership/race or another numeric defect are not distinguished. PPD313 bind shape feeds a different bind-pose vector and is not a proved nonfinite-inverse cause. [Full source audit](research/log-warning-port-audit-20261118.md).
 
+- 2026-11-18 Owner offers Home then Club login to collect missing evidence. Prepare opt-in bounded exact matrix/skin/pose provenance before launch; existing finite-only diagnostics cannot reconstruct operands. Preserve current deformation/fallback behavior and capture original decoder/producer boundaries without treating PPD313 as causal.
+
+
 ## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
 
 - Status: investigating
@@ -10719,6 +10725,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-18 registered before any repair or causal attribution. No settings, asset handling, shader or source change was made during this checkpoint analysis. Related PPD311/463/464 remain independent open records.
+
+- 2026-11-18 Owner offers a targeted Home/Club reproduction. First preserve retained cache bytes by known bake/texture/material IDs; add bounded opt-in request/asset/callback diagnostics so a new run can identify first incorrect input/state. No cache clearing, automatic refetch, fetch-policy change or general GPU profiling is required for this collection.
+
+- 2026-11-18 All29warned bake inputs recovered complete from retainedAlchemyNextcache with five encoded components. Before decoder execution a runtime-identity guard finds audit libraries OpenJPEG2.5.4 rather than capturedOpenHTJ2K0.27.0 and refuses42withzero decodes. Preserve that failure; compare both actual implementations offline and restore captured configuration before launch.22HTTP403textures have no active cache entries; no original raw cache data was changed.
 
 
 ## PPD-467 — Fetched worker upload finalizes failed native texture publication
