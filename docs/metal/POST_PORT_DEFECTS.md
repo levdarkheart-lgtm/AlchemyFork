@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-384 -->
+<!-- next-defect-id: PPD-388 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7704,6 +7704,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 fresh69241 owner Home→club checkpoint closes normally with all four frame archives stopped. Owner Home29–31→16FPS/club31→18–20. Home80–120 main wait38.770ms/period63.946 with35.38%mainCPU versus club4.027/55.869 with79.63%mainCPU and continued decoding; capture-armed diagnostics, no matched gain. Exact Home1472 CPU16/16prepared and actual draw30764 candidateHigh2pair/buffers8/9 confirm current activation. Both normal5sGPU-gap qualifications stayfailed; capture-stop overlap and partial native600s/300contention losses retained. All238warnings/44sites+3PNG mapped/0ERROR-FATAL;49storedcontrols match69238 but effective region lighting differs. Four unchanged GPU profiles and bound-input assessment are in progress. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
 
+- 2026-11-18 PPD319 actual capture-disabled69258 control uphzzchc still falls32.657→16.249FPS, main wait9.166→42.802ms; decoder effectively0 late, main runningCPU falls. Four saved controls replay67.91→110.26 and66.80→131.43ms. Main probes1→22/47, stable points/projector rectangles, both late actual prepared masks8/9; ALU/inv nearly doubles fused and~5× alpha while fragments stay fixed/fall. This supports a growing required per-fragment-lighting burden, not a full isolated SH/spill attribution or old/new gain. Full source/evidence/limits retained in research/shared-shadow-main-admission-checkpoint-69258-20261118.md. Home symptom and broader acceptance remain OPEN pending owner feedback.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -8205,6 +8207,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 fresh69241 unchanged Home late working-copy profile reports prepared simple222GPR and prepared BASE226GPR with blank Spilled Bytes; early generic rows214/214 also remain distinct. Medium/Overlapping66.93→129.43ms is different-workload replay growth, not proof of spill traffic or a preparation regression. Actual current main draw30764 confirms prepared entry/buffers8/9; retain exact Cost heading and aggregated PSO scope. Club controls and final evidence receipt are pending. [Fresh checkpoint](research/home-club-replay-checkpoint-69241-20261117.md).
 
 - 2026-11-17 subsequent fresh69241Home comment-only Reload/profile control128.10ms explicitly reports0SpilledBytes for preparedsimple222GPR/BASE226GPR/inspectedprojector188GPR. Full rawAX and completed Reload/profile evidence are retained. This qualifies those recompiled control rows; original captured blank cells stayunknown and no precise metadata-absence explanation, originalbinaryzero or whole-run allshaderzero claim follows. Initial profile controls and earlier comment-reload214GPRstillblank history remain separate. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
+
+- 2026-11-18 PPD343 four current frames actually Profile-after-Replay Medium/Overlapping. All hot simple/BASE/PBR spill fields remain blank/unknown, while SSAO/lightmap explicitly0;109/95/115/133shader rows retain blank/zero distinctions. Observed fused buffer writes0 and alpha~818KiB across growth do not establish zero private stack traffic. No new source Reload/recompiled control, no retroactive0claim. GPU report913f9bf6 preserves the actual fields; previous recompiled allocations remain separate historical evidence.
 
 ## PPD-344 — Bounded native additive lights lack original volume-depth rejection
 
@@ -8970,6 +8974,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 controller native02 passes all16fresh processes/384assertions atbuildere3a6ad0f95, actual config/header/footer/marker checks and all11env-named rejection warnings observed with explicit LOGTEST=WARN. Binary/source stable; no Metal device/capture/GPU/sleep in selector. MainScope native target separately passes125assertions/3cases with API/GPUvalidation on, capture off. Full viewer build02 passes145nodes/version69255; source-only performance guard is still pending, so no launch/stage acceptance follows.
 
+- 2026-11-18 actual late180 runtime sowsq5_l captures3625→3626 at180s with47main probes, versus54inlater native tail; this is a later FPS-plateau sample, not proof of the final populated configuration. Earlier228→229 has1probe. All traces replay/profile successfully on independent copies; original default timing preserved in77ib0k3e. Both replay runs keep normal GPU-gap failures, while separate normal control passes. Coverage improvement is verified at the actual retained phase; final/owner club acceptance remains partial.
+
 ## PPD-382 — Unguarded shadow group caching regresses tiny, changing and denied owner workloads
 
 - Status: investigating
@@ -9009,3 +9015,83 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before repair. Source-sensitive PPD382 gating must not introduce an uncharged long-lived watcher; retain previous scalar/metadata/native-only completion qualifications.
 
 - 2026-11-18 repaired core0d067/canonicalee990 accounts SourceWatch+observer/subscription capacity through an independent RAII ticket under the existing global32MiB logical domain. Native eviction/no-row active watcher debt, denied retries, removed-child and nested newer-witness controls pass478/17 isolated and978792/44 integrated native. Source-only peer receipts4f314167 andbd4653ee retained. This verifies the bounded logical metadata mechanism; no physical whole-process/UMA total, viewer memory improvement or owner closure is claimed.
+
+## PPD-384 — First unattended Home control never leaves Login after CUA input
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex runtime checkpoint orchestration
+- Discovered: 2026-11-18
+- Original reference: Saved Login must occur only after recorder readiness, and retained world coverage must be observed. A launch/hover/CLI-success is not login evidence. Owner explicitly permits saved Home login while asleep.
+- Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); staged69258 normal-control /Users/dekstroza/Alchemy-home-yna82l0q starts recording02:50:18UTC and emits owner_cue_ready. CUA exactapp selection, Login-coordinate clicks, Return and Raise do not trigger startup beyond STATE_LOGIN_WAIT; helper records login_timeout at02:52:20 with action_sentfalse. Screenshots show the correct saved SpareTime105/21/24 destination; no error/credential entry or world arrival is observed. Existing LEAP helper intentionally has automatic saved Login disabled by ifFalse, so it cannot repair failed input. Raw trace/logs retained; this is not a Home FPS/engine-regression comparison.
+- Next action: Preserve and normally close the failed control. Add explicit one-shot request-saved-login flag to the existing supported LLPanelLogin.onClickConnect controller, still requiring recorder-ready, available API, Login state, timeout and no quit conflict. Default remains manual. Test it offline, record helper/source authorization, then start a fresh control and request that exact saved-button API after readiness. Do not infer CUA failure cause or mutate graphics/credentials/viewer source.
+- Verification: Actual startup/log/CUA evidence confirms no login. Cause of input non-delivery is unknown. The staged app's build/native/static qualification remains independent; live performance acceptance is pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before orchestration repair. Keep failed run and previous helper versions; no force quit, teleport, settings change or new viewer-code repair is authorized by this symptom.
+
+- 2026-11-18 failed control recorder exits0; normal LLAppViewer.requestQuit is sent02:58:43, Goodbye02:58:44 and originalPID38797 exits. HelperEOF remains failed-login qualified (timeout), not a world comparison. A post-close CUA getAXState observation unexpectedly launches barePID41023 at02:59:30; preserve operational history, close its native AXwindow once and verify no viewer via process inventory, with no further app-bound reads. Private helper7c59f03b explicitly gates saved-button API on request-saved-login AND recorder-ready, all previous guards retained;27offline tests and3actual staged dryruns pass, root source peer clear. Source/app/graphics/credentials remain unchanged; new real API-login retest pending.
+
+- 2026-11-18 API-login retest /Users/dekstroza/Alchemy-home-uphzzchc requests saved Login only after owner_cue_ready and both explicit flags; STATE_STARTED/login_started_world03:07:48.979995UTC. All49 read-only controls complete at2s/100s/prequit; Overview360s exits0, coverage verified_target_timestamp_ranges. Normal requestQuit03:14:22 is observed and CLI inventory confirms process absent. PPD384 orchestration repair now has actual login/world/normal-shutdown evidence; CUA input cause remains unknown and owner feedback is pending. Default replay retest /Users/dekstroza/Alchemy-home-77ib0k3e starts03:18:55/world03:19:16.430218 with first retained capture directory; coverage/profiling not yet qualified. No graphics/source/credentials changed.
+
+- 2026-11-18 acquisition completes default77ib0k3e and explicit-late180sowsq5_l: actual world starts03:19:16/03:26:27, four stopped/error0 GPU intervals retained; normal quits03:25:50/03:33:01 and CLI process absence observed. Both raw recorders/exporters succeed, but GPU Overview timestamp-gap qualification fails5.123/5.226s, with full360s CPU coverage. Preserve qualification1 outcomes and capture pauses; normal-control uphzzchc passes coverage. No club, settings change, performance acceptance or push.
+
+## PPD-385 — Private Overview adapter assumes the wrong native footer event name
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex checkpoint analysis qualification
+- Discovered: 2026-11-18
+- Original reference: Actual metadata schemas and native clock anchors must qualify retained CPU/GPU exports before phase attribution; private analysis failures must be retained separately from viewer outcomes.
+- Evidence: [69258 checkpoint](research/shared-shadow-main-admission-checkpoint-69258-20261118.md); checks/runtime-overview-analysis-01 under the shared-shadow-and-main-gpu-admission-20261117 private evidence group. Prepared Overview adapter expects metadata event==stopped and raises StopIteration before any CPU/XML parsing. Current sidecar schema differs. Draft source/output is retained; no result or viewer failure is inferred. Native reductions by the independent evidence agent already complete successfully and are unaffected.
+- Next action: Inspect the actual footer keys and shared anchors; correct only the private selector, retain failed draft/output and rerun actual exported XML reductions. Do not rerun the viewer, alter source/render settings or invent missing boundaries.
+- Verification: Preparation failure observed before CPU/XML parsing; corrected adapter/reduction pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private adapter correction. No engine/source/app/recording change or lost raw evidence.
+
+- 2026-11-18 PPD385 corrected selector status==stopped retains failed01source8f8f6df3/failuref34dd938. Qualified02 all3cachedCPU XML parses and GPU reduction/range checks exit0, no raw record/re-export. Exact executed fixed helperbc026d35 is separately retained; an initial archival instruction copied the old helper into prepare-adapter.py, so that historical wrong copy and explicit archive erratum are preserved rather than overwritten. Actual generated analyzers/results were unchanged. Overview report9fe63d72/receipt7bf98287 maps actual commands/source/PIDs. This qualifies private analysis, not viewer performance acceptance.
+
+## PPD-386 — Saved-frame reflection-buffer inspection times out through CUA
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex GPU checkpoint tooling
+- Discovered: 2026-11-18
+- Original reference: GPU replay coverage and actual shader bindings must be retained without changing original frames or confusing tool/UI failure with renderer failure.
+- Evidence: [69258 checkpoint](research/shared-shadow-main-admission-checkpoint-69258-20261118.md); GPU agent actual default-late69258 frame1588 original-control profile completes110.26ms and records prepared main draw42772/buffers8,9. A subsequent typed reflection-buffer double-click/AX read reaches30s CUA timeout and resets its kernel. Both completed frames' counter categories remain saved. No source Reload, new timing result, app crash or viewer defect is established. Exact UI/transcript paths will be added with final GPU receipt.
+- Next action: Retain failed inspection and boundedly reacquire Xcode UI; prioritize remaining two control profiles. Mark inaccessible uniforms unknown; do not re-record the viewer or invent missing buffer values.
+- Verification: Two completed control profiles and saved counter snapshots precede the inspection timeout; remaining coverage/recovery pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered on observed UI failure; original capture/source bytes remain unchanged and no shader experiment was selected.
+
+- 2026-11-18 PPD386 bounded UI reacquisition recovers existing Xcode/profile without restarting Xcode or launching a viewer. All four unchanged controls complete67.91/110.26/66.80/131.43ms, counters67/44/116/107rows in all5categories. Stop/Finished/Replay and all work windows closed to Welcome observed; CUA completion summary sent. Failed call/recovery retained gpu-replay-69258-20261118/cua-tool-failure.json and default-late-probe-buffer.ax.txt; transient unretained quicklook numbers are excluded. Initial disabled-row-only count100 was corrected against full116API-indexed rows, with raw head/tail preserved. No new shader source/reload, GPU experiment, engine crash or exact ambiance inference. Final GPU report913f9bf6/receipt1ddb185b and native addendum6a7904 retain exact coverage/unknowns.
+
+## PPD-387 — Checkpoint defect-register additions miss counter and citation metadata
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex documentation handoff
+- Discovered: 2026-11-18
+- Original reference: Every new retained defect record must advance the unique contiguous next-ID marker and include a Markdown evidence citation before handoff.
+- Evidence: [69258 checkpoint](research/shared-shadow-main-admission-checkpoint-69258-20261118.md); checks/final-docs-harness-01/receipt.json retains actual validate_harness.py exit1 at04:28:13UTC: stale next-ID marker plus missing Markdown citations for PPD385/386. The staged executable/library post-runtime hashes still match; no viewer/code/recording defect is inferred from this documentation check.
+- Next action: Retain failed receipt, advance the next-ID marker through this record, add links to existing evidence for385/386, and repeat the required documentation harness in a new evidence directory.
+- Verification: Actual documentation harness failure retained before correction; corrected check pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before metadata correction; no source or evidence bytes are removed.
+
+- 2026-11-18 PPD387 corrected next-ID388 and Markdown evidence citations; final-docs-harness-02 actual validate_harness.py exits0 with33required files, empty stderr. Failed01 remains retained. This is documentation structure qualification, not viewer or performance acceptance.
