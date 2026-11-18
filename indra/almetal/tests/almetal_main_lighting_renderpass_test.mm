@@ -670,3 +670,141 @@ TEST_CASE("almetal: complete serial and single-renderpass native main lighting c
         // results are not asserted speedups and do not establish viewer FPS.
     }
 }
+
+namespace
+{
+using RasterTileSize = ALMetalRasterTileSize;
+
+void checkLightingTilePass(const ALMetalWorldLightingTileStats& before,
+                           const ALMetalWorldLightingTileStats& after,
+                           RasterTileSize requested, bool base)
+{
+    CHECK(after.base_passes - before.base_passes == (base ? 1u : 0u));
+    CHECK(after.forward_passes - before.forward_passes == (base ? 0u : 1u));
+    CHECK(after.tile16_passes - before.tile16_passes +
+          after.tile32_passes - before.tile32_passes +
+          after.other_passes - before.other_passes == 1);
+    const bool explicit16 = requested == RasterTileSize::tile16;
+    CHECK(after.requested_tile16_passes - before.requested_tile16_passes == unsigned(explicit16));
+    CHECK(after.effective_tile16_passes - before.effective_tile16_passes == unsigned(explicit16));
+    CHECK((base ? after.last_base_requested_size : after.last_forward_requested_size) == (explicit16 ? 16u : 0u));
+    CHECK((base ? after.last_base_effective_size : after.last_forward_effective_size) == (explicit16 ? 16u : 0u));
+    if (explicit16)
+    {
+        CHECK(after.tile16_passes - before.tile16_passes == 1);
+        CHECK((base ? after.last_base_width : after.last_forward_width) == 16);
+        CHECK((base ? after.last_base_height : after.last_forward_height) == 16);
+    }
+}
+
+std::array<std::uint64_t, 15> lightingTileCensus(const ALMetalWorldLightingTileStats& value)
+{
+    // Compare every named field, including the two forward-owner fields that
+    // a BASE-only reload regression would otherwise leave unexercised.
+    return {value.base_passes, value.forward_passes, value.tile16_passes,
+        value.tile32_passes, value.other_passes, value.requested_tile16_passes,
+        value.effective_tile16_passes, value.last_base_requested_size,
+        value.last_base_effective_size, value.last_forward_requested_size,
+        value.last_forward_effective_size, value.last_base_width,
+        value.last_base_height, value.last_forward_width, value.last_forward_height};
+}
+} // namespace
+
+TEST_CASE("almetal: compound main lighting retains exact output with explicit raster tiles",
+          "[almetal][main-lighting-renderpass][main-lighting-raster-tiles]")
+{
+    @autoreleasepool
+    {
+        sky_test::Fixture f;
+        if (![(__bridge id<MTLDevice>)f.device->nativeHandle() supportsFamily:MTLGPUFamilyApple4])
+            SKIP("Explicit raster tile device unavailable");
+        // Two existing material/depth combinations, not another broad matrix.
+        for (bool pbr : {false, true})
+        {
+            const bool reverse = pbr;
+            CAPTURE(pbr, reverse);
+            Inputs inputs(f, 31, 27, reverse, true, true, pbr, true);
+            inputs.populate(0, 0);
+            auto no_lights = submit(f, *f.renderer, inputs, true, true);
+            inputs.populate(2, 2);
+            inputs.enableShadows();
+            const auto depth = f.read<std::uint32_t>(*inputs.gbuffer->depthStencilTexture());
+            const auto stencil = f.stencil(*inputs.gbuffer->depthStencilTexture());
+            std::array<std::vector<std::uint8_t>, 4> stores;
+            for (unsigned i = 0; i < stores.size(); ++i) stores[i] = f.bytes(*inputs.gbuffer->colorTexture(i));
+            inputs.base.lighting_raster_tile_size = RasterTileSize::automatic;
+            const auto before = f.renderer->lightingTileStats();
+            auto automatic = observe(f, *f.renderer, inputs, true, "raster-automatic", unsigned(pbr));
+            const auto after_automatic = f.renderer->lightingTileStats();
+            checkLightingTilePass(before, after_automatic, RasterTileSize::automatic, true);
+            inputs.base.lighting_raster_tile_size = RasterTileSize::tile16;
+            auto explicit16 = observe(f, *f.renderer, inputs, true, "raster-16", unsigned(pbr));
+            checkLightingTilePass(after_automatic, f.renderer->lightingTileStats(), RasterTileSize::tile16, true);
+            CHECK(automatic.encoders == 1); CHECK(explicit16.encoders == 1);
+            CHECK(automatic.draws == explicit16.draws); CHECK(automatic.commits == explicit16.commits);
+            const auto pixels = inputs.pixels(*automatic.output);
+            CHECK(inputs.pixels(*explicit16.output) == pixels);
+            CHECK(hasRGBIncrease(pixels, inputs.pixels(*no_lights)));
+            CHECK(pixels[13 * 31 + 24][2] != 0); // Original clear-depth sky half.
+            CHECK(f.read<std::uint32_t>(*automatic.output->depthStencilTexture()) == depth);
+            CHECK(f.read<std::uint32_t>(*explicit16.output->depthStencilTexture()) == depth);
+            CHECK(f.stencil(*automatic.output->depthStencilTexture()) == stencil);
+            CHECK(f.stencil(*explicit16.output->depthStencilTexture()) == stencil);
+            for (unsigned i = 0; i < stores.size(); ++i)
+                CHECK(f.bytes(*inputs.gbuffer->colorTexture(i)) == stores[i]);
+            inputs.checkQueries();
+        }
+    }
+}
+
+TEST_CASE("almetal: successful world shader reload retains populated lighting tile census",
+          "[almetal][main-lighting-renderpass][main-lighting-raster-tiles][shader-reload]")
+{
+    @autoreleasepool
+    {
+        sky_test::Fixture f;
+        if (![(__bridge id<MTLDevice>)f.device->nativeHandle() supportsFamily:MTLGPUFamilyApple4])
+            SKIP("Explicit raster tile device unavailable");
+        auto arena = ALMetalWorldFrameData::create(*f.device, &f.error);
+        REQUIRE(arena); arena->beginFrame(19); f.renderer->setFrameData(arena);
+        Inputs inputs(f, 31, 27, true, true, true, true);
+        inputs.enableShadows();
+        for (RasterTileSize tile : {RasterTileSize::automatic, RasterTileSize::tile16})
+        {
+            inputs.base.lighting_raster_tile_size = tile;
+            const auto before = f.renderer->lightingTileStats();
+            auto lit = submit(f, *f.renderer, inputs, true, true);
+            const auto after_base = f.renderer->lightingTileStats();
+            checkLightingTilePass(before, after_base, tile, true);
+            ALMetalWorldOpaquePostDeferredScene forward;
+            forward.gbuffer = inputs.gbuffer.get(); forward.composed_lighting = lit.get();
+            forward.width = 31; forward.height = 27; forward.reverse_z = true; forward.hdr = true;
+            forward.lighting_raster_tile_size = tile;
+            auto continued = f.renderer->renderOpaquePostDeferred(forward, &f.error);
+            INFO(f.error); REQUIRE(continued);
+            checkLightingTilePass(after_base, f.renderer->lightingTileStats(), tile, false);
+            CHECK(inputs.pixels(*continued) == inputs.pixels(*lit));
+        }
+        const auto populated = f.renderer->lightingTileStats();
+        REQUIRE(populated.base_passes >= 2); REQUIRE(populated.forward_passes >= 2);
+        REQUIRE(populated.requested_tile16_passes >= 2);
+        REQUIRE(populated.effective_tile16_passes >= 2); REQUIRE(populated.tile16_passes >= 2);
+        REQUIRE(populated.last_base_requested_size == 16); REQUIRE(populated.last_base_effective_size == 16);
+        REQUIRE(populated.last_forward_requested_size == 16); REQUIRE(populated.last_forward_effective_size == 16);
+        REQUIRE(populated.last_base_width == 16); REQUIRE(populated.last_base_height == 16);
+        REQUIRE(populated.last_forward_width == 16); REQUIRE(populated.last_forward_height == 16);
+        auto retained = submit(f, *f.renderer, inputs, true, true);
+        const auto expected = inputs.pixels(*retained);
+        const auto before_reload = lightingTileCensus(f.renderer->lightingTileStats());
+        const auto generation = f.renderer->shaderGeneration();
+        std::array<ALMetalWorldGBufferRenderer*, 1> owners{{f.renderer.get()}};
+        REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*arena, owners, &f.error));
+        CHECK(f.renderer->shaderGeneration() == generation + 1);
+        CHECK(lightingTileCensus(f.renderer->lightingTileStats()) == before_reload);
+        CHECK(inputs.pixels(*retained) == expected);
+        const auto after_reload = f.renderer->lightingTileStats();
+        auto rerendered = submit(f, *f.renderer, inputs, true, true);
+        checkLightingTilePass(after_reload, f.renderer->lightingTileStats(), RasterTileSize::tile16, true);
+        CHECK(inputs.pixels(*rerendered) == expected);
+    }
+}
