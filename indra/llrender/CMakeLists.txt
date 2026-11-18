@@ -191,6 +191,9 @@ if(AL_BUILD_TESTS)
       tests/alhud_diagnostics_metal_test.cpp
       tests/alpipeline_buffer_publication_metal_test.cpp
       tests/alpipeline_hero_capture_readiness_test.cpp
+      tests/alpipeline_shadow_terrain_preflight_test.cpp
+      tests/alterrainsurfacemaps_readiness_test.cpp
+      tests/alshadow_height_publication_metal_test.mm
       tests/algeometry_metal_test.cpp
       tests/alvertex_clone_metal_test.cpp
       tests/allight_screen_rect_native_test.cpp
@@ -235,6 +238,7 @@ if(AL_BUILD_TESTS)
                                 tests/altexture_mip_parity_native_test.mm
                                 tests/almetal_tessellation_invariants_test.mm
                                 tests/alframefences_metal_test.mm
+                                tests/alshadow_height_publication_metal_test.mm
                                 tests/alinfiniteprojection_metal_test.mm
                                 tests/alrendertarget_native_test.mm
                                 PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

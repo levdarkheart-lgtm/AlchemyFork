@@ -477,6 +477,7 @@ EarlyVisibilityProducerStats sEarlyVisibilityProducerStats;
 void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
 
 #include "pipeline_terrain_preflight_types_native.inl"
+#include "pipeline_shadow_terrain_preflight_types_native.inl"
 #include "pipeline_local_light_packet_native.inl"
 
 }
@@ -1043,6 +1044,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool spot_shadow_capture_directional = false;
     bool spot_shadow_capture_complete = false;
     U32 spot_shadow_first_incomplete_source_line = 0;
+    ShadowTerrainPreflightSnapshot first_shadow_terrain_preflight_failure;
+    ShadowTerrainPreflightSnapshot recent_shadow_terrain_preflight_failure;
+    U64 shadow_terrain_preflight_failures = 0;
+    std::array<U64, static_cast<std::size_t>(ShadowTerrainPreflightReason::count)>
+        shadow_terrain_preflight_reasons{};
     bool spot_shadow_avatar_pass_active = false;
     bool spot_shadow_avatar_cloth = false;
     F32 spot_shadow_avatar_wind[4]{};
@@ -3735,6 +3741,21 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             };
             log_terrain_preflight("main",&capture);
             log_terrain_preflight("probe",mMetalProbeWorldSimpleCapture.get());
+            const auto log_shadow_terrain_preflight = [](const char* owner, const MetalWorldSimpleCapture* source)
+            {
+                if (!source || !source->shadow_terrain_preflight_failures) return;
+                std::ostringstream reasons;
+                for (std::size_t i = 2; i < source->shadow_terrain_preflight_reasons.size(); ++i)
+                    if (source->shadow_terrain_preflight_reasons[i])
+                        reasons << shadowTerrainPreflightReasonName(static_cast<ShadowTerrainPreflightReason>(i))
+                            << '=' << source->shadow_terrain_preflight_reasons[i] << ',';
+                LL_INFOS("MetalScene") << "Native shadow terrain preflight: capture_owner=" << owner
+                    << ", failures=" << source->shadow_terrain_preflight_failures
+                    << ", reasons={" << reasons.str() << "}, recent={"
+                    << source->recent_shadow_terrain_preflight_failure << '}' << LL_ENDL;
+            };
+            log_shadow_terrain_preflight("main", &capture);
+            log_shadow_terrain_preflight("probe", mMetalProbeWorldSimpleCapture.get());
             const auto groups = ALSceneGroupPublicationNative::statistics;
             const auto layouts = ALSceneGroupPublicationNative::cpuLayoutStats();
             const auto& source_misses = ALScenePublicationNative::source_miss_statistics;
@@ -14149,6 +14170,7 @@ void LLPipeline::beginMetalSpotShadowCapture(
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
     capture.spot_shadow_first_incomplete_source_line = 0;
+    capture.first_shadow_terrain_preflight_failure = {};
     capture.spot_shadow_capture_directional = false;
     capture.spot_shadow_avatar_pass_active = false;
     capture.spot_shadow_avatar_cloth = false;
@@ -14204,6 +14226,7 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
     capture.spot_shadow_first_incomplete_source_line = 0;
+    capture.first_shadow_terrain_preflight_failure = {};
     capture.spot_shadow_capture_directional = true;
     capture.spot_shadow_avatar_pass_active = false;
     capture.spot_shadow_avatar_cloth = false;
@@ -14858,12 +14881,6 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const auto fail = [&capture]()
-    {
-        capture.spot_shadow_first_incomplete_source_line = __LINE__;
-        capture.spot_shadow_capture_complete = false;
-        capture.spot_shadow_batches.clear();
-    };
     LLDrawable* drawable = face ? face->getDrawable() : nullptr;
     LLVOSurfacePatch* object = drawable
         ? dynamic_cast<LLVOSurfacePatch*>(drawable->getVObj().get())
@@ -14872,23 +14889,9 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     LLSurface* surface = patch ? patch->getSurface() : nullptr;
     LLViewerRegion* region = surface ? surface->getRegion() : nullptr;
     LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
-    const ALMetalTexture* height_texture = surface
-        ? surface->getSurfaceMaps().getMetalHeightTexture() : nullptr;
-    if (!face || !patch || !surface || !region || !buffer ||
-        !height_texture || !buffer->prepareMetalBuffers(false) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
-        face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
-            buffer->getNumVerts() ||
-        !std::isfinite(tess_density) ||
-        (!tessellation_pinned && tess_density <= 0.f) ||
-        !std::isfinite(raster_segment) ||
-        !std::isfinite(surface->getMetersPerGrid()) ||
-        surface->getMetersPerGrid() <= 0.f)
-    {
-        fail();
-        return;
-    }
+    const ALMetalTexture* height_texture = nullptr;
+    const U32 shadow_terrain_preflight_source_line = __LINE__;
+#include "pipeline_shadow_terrain_preflight_native.inl"
 
     auto* appended = capture.appendSeparateShadowBatch(__LINE__);
     if (!appended) return;
@@ -15306,6 +15309,7 @@ void LLPipeline::endMetalSpotShadowCapture()
             << ", expected=" << capture.spot_shadow_expected_batches
             << ", renderer=" << static_cast<bool>(capture.renderer)
             << ", device=" << static_cast<bool>(capture.device)
+            << ", terrain_preflight={" << capture.first_shadow_terrain_preflight_failure << '}'
             << LL_ENDL;
     }
     capture.spot_shadow_capture_complete = false;

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-391 -->
+<!-- next-defect-id: PPD-394 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -5884,6 +5884,16 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-16 fresh69172 actual5min windows: mainfailedviews3already present at12:06:21startup,probe0; no increment in quiet/club. Same shadow-terrain compound lambda attribution remains operand-unknown. Opaque indirect0selected because no run reaches2048eligible draws; preparation/fallback failures0. No threshold lowering or GPUerror inference.
 
+- 2026-11-18 isolated69258 investigation: source afc9278d23 confirms native LLDrawPoolTerrain::captureMetalDirectionalShadow omits the surface-map ensureUploaded step that original1eb44 renderShadow/bindSurface and native reflection capture perform. Its getter does not upload, so cold/dirty height data can be absent/stale when shadows run before the lit pass. This is a source-confirmed preparation gap; the historical compound guard does not identify the exact failed operand, and null VBO during terrain rebuilding remains possible. Main sampled failures remain42/81/15, probe0; matching42/81/15 retained abandoned commands all precede STATE_STARTED by calibrated native clocks, but have no per-event terrain-reason join. No late FPS attribution or visual-failure/repair claim. [Exact source, timing, limits and next predicate/publication work](research/terrain-shadow-startup-cause-69258-20261118.md). Read-only source/log investigation; no launch/build/profile/push, concurrent engine worktree untouched.
+
+- 2026-11-18 owner authorizes proper terrain repair and subsequent notification to the performance session for integration. Before implementation, scope frozen: prepare current height publication at the native shadow capture boundary, distinguish successful height upload from composition-only failure, reject stale dirty height, preserve every original geometry/numeric/completeness/admission guard, and add ordered first-predicate diagnostics before clearing. No broad terrain skip or null-VBO admission policy change. Original afc9278d23/1eb44 mapping and historical operand limits remain in the linked investigation; correction cannot retrospectively prove all42/81/15 operands. Isolated branch codex/terrain-shadow-cause-20261118; canonical engine worktree remains under its integrator.
+
+- 2026-11-18 local repair sourceaa8b05a5d6: current-height publication now precedes terrain-shadow native geometry; successfulheight and composition readiness are independent, failed dirtyheight rejectsoldhandles, empty/outside notifications preserveheight and lazypolls avoidupload. Ordered copied first/recent predicates plus frame/startup/map/value evidence retain all original guards and failure/admission semantics; no nullVBskip/budget/qualitychange. Doctor/configure/fullRelease build0; actualbodyCPU508/14 and built suite587/16 (includesCPU+2realMetal COW/queue/publication cases, API/GPUvalidation observed), existingterrainlayout853/13 PASS. Strict3617zero; previous69279app preserved. Two independent source reviews clean. Live startup/terrain/transition acceptance and historic exactoperand attribution remain pending; not closed, no push. [Repair/evidence](research/terrain-shadow-startup-cause-69258-20261118.md).
+
+- 2026-11-18 final qualification: app69283 passes346ARM64/0invalid and deep strict signature0; binary3a02a1ebae785c6c986c68e0c383e2bdb3dc39c8e6349c8af73ff91e5d8ebc46. Pre-freeze review caught unnecessary invalidation on empty/outside dirty rectangles, including composition-only pending state; corrected beforeaa8b05a5d6, preliminary494 and extended508CPU results retained without GPU overclaim. Final source unchanged; live startup/transition verification remains pending. Owner requests performance-session integration; validation-window notification sent, exact qualified-source handoff follows final docs check. No launch/profile/push.
+
+- 2026-11-18 performance integrator independently reviews the qualified source/original invariant and height/geometry ownership before integration. Owner-authorized11source/test/CMake files applied from a769→aa8 only, preserving current PPD125 code and all current investigation docs; everyblob/full-indra cc04a93c matches qualified source. Receipt ppd241-integration-01/receipt.json retains proof. Combined build and live acceptance remain pending; historical operands and broader shadow architecture stay partial.
+
 ## PPD-242 — First terrain diagnostic can survive into a later hero face
 
 - Status: investigating
@@ -9129,6 +9139,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 raw case5 is actual-row1/default-only modern ambient helper: pixel62,9 green0x2114→0x2115 (+1halfULP,7.62939453125e-06); other30719components match, gloss/legacy0. Both helper paths runtimecompile whole-source plus same wrapper/options. Bounded same-baseline A/A first5cases passes0 through both helper/Boffline paths without comparator changes. This narrows the failure to added clone/compiler context for this prefix, not proof of a compiler bug;1228cases remain unrun. Clone still unselected for production. Five diagnostic sources separately compile/link10/10 with original flags, but those exits are not output parity or GPU cost.
 
+- 2026-11-18 full strict characterization completes1233/1233 with0unrun, nofatalinfra/parseerrors, overallexit42 retained. All549 actual offline production-entry images match exactly, including2preparedBASE/2preparedsimple/2preparedsimple-shadow images; configured4probe/mask/FC tests are not actual47scene proof. Two of684helper images each differ1component/+1half step (row1green62,9 and row53red57,20). Pairedinputs equal,176factoryvalidation rows1;75legitimateblackcontrols retained. PPD393 auxiliary expected relation stillfails separately. No production selection or tolerance waiver. Characterization report2a211a04/finalreceiptfaba1661 retained under original private checks/scoped-clone-parity-01/characterization-01.
+
 ## PPD-389 — Saved-frame source editor cannot receive bounded input
 
 - Status: investigating
@@ -9166,3 +9178,60 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before corrected private writer; no production or GPU repair is needed.
 
 - 2026-11-18 PPD390 final receipt writer had a second pre-execution quote error while quoting failure prose; both exact failed scripts/tool errors remain under derived/before-PPD390. New JSON-backed writer exits0, final receipt656cbbf1/report e332380e/focus60db1219 pin all actual completed controls and stop/Don'tSave/closure proof. No profiles are rerun, no source/library bytes change and no failed parity/coverage result is relabelled.
+
+## PPD-391 — Private characterization assigns a read-only pipeline label
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex strict shader characterization harness
+- Discovered: 2026-11-18
+- Original reference: Native pipeline descriptors own writable labels; an MTLRenderPipelineState label is read-only. Test-only metadata must not change rendering or fabricate endpoint coverage.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); peer review of private characterization draft82299770 identifies assignment p.label after PSO creation. Installed MTLRenderPipeline.h343 declares it read-only. Draft/patch retained in checks/scoped-clone-parity-01/characterization-01/precompile-readonly-label-draft/receipt.json. No compiler/native run occurred on that draft.
+- Next action: Retain draft and use a bounded host-side creation-function metadata map or writable descriptor label before creation. Preserve rendering, strict comparator and nonzero failure status; review corrected metadata routing before compile.
+- Verification: API misuse caught by source review before execution, not an observed compile/GPU/production failure. Corrected harness remains unrun.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before private correction. No source shader or production changes.
+
+- 2026-11-18 corrected characterization uses fail-closed host creation-function metadata map without changing PSO descriptors, labels or rendering. Full1233image coverage/176validation metadata rows completes; no readonlylabel misuse, no missingendpointmetadata. All initial drafts retained, ownerverification pending.
+
+## PPD-392 — Private input-hash helper omits an actual RGBA8 sRGB texture format
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shader characterization evidence
+- Discovered: 2026-11-18
+- Original reference: Input hashing must preserve the actual renderer resource format without changing its bytes, sampling or shader output. Unsupported metadata capture must fail closed and retain partial coverage.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); characterization-01/pre-rgba8-hash-failure/receipt.json retains native exit86 at09:10:46 after compile/link0. The hash helper rejects alpha_diffuse RGBA8Unorm_sRGB (fixture523), missing its4-byte handling. Three complete imageJSON rows remain; fourth material A/B comparison is exact but metadata hash is incomplete. No shader mismatch or production failure is attributed to this hash error.
+- Next action: Retain first attempt and add only raw4-byte support for RGBA8Unorm/RGBA8Unorm_sRGB, then rerun characterization under unchanged strict comparison rules in qualified02. No rendering/texture/comparator/tolerance changes.
+- Verification: Fatal infrastructure guard terminates as intended, exact unrun/prefix retained. Corrected hash writer pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before format-support correction.
+
+- 2026-11-18 qualified02 adds only both raw4-byte formats; compile/link0, full1233/1233comparison coverage completes withoutfatalhash/parseerror. Original86 attempt remains preserved. Overall42 stillcorrectly reflects numeric failures, not a passingcharacterization.
+
+## PPD-393 — Private classic-ambient contract assumes a different half conversion
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex shader characterization reference contract
+- Discovered: 2026-11-18
+- Original reference: A CPU half initializer is not automatically the same conversion as a GPU RGBA16F attachment store; expected numerical relations need an independent format-correct oracle.
+- Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); the inherited never-run classic ambient relation reports5120components despite exact A/B GPU images. Both controls store (0x3028,0x32b8,0x34f5,0x3c00), whereas its CPU _Float16 expectation is (0x3029,0x32b8,0x34f6,0x3c00). Red/blue differ1half step across2560pixels. Raw outputs/expectation remain retained; no actual A/B or production lighting regression follows from this auxiliary relation alone.
+- Next action: Keep this CHECK failing and the run nonzero while completing diagnosis/actual endpoint coverage. A later independent attachment-conversion reference may qualify the relation; do not use candidate output as its own oracle or loosen the bit comparator.
+- Verification: Expected-versus-both-control mismatch source/bit evidence observed; exact conversion mechanism remains to be independently qualified. No fix or new shader result.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before any reference change. PPD392 hash repair is separate; classic expected relation remains failed.
+
+- 2026-11-18 fullcharacterization completes while this auxiliary relation remains5120component failures; A/Bclassic images themselves exact. All numeric CHECKs remainedactive and overall nativeexit42 is retained. No oracle, comparator or shader change; conversion mechanism remainsunqualified.

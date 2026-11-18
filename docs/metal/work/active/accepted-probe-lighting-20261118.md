@@ -125,3 +125,27 @@ warmup rows/source evidence and owner confirmation mirrors work later. Actual
 changed-source runtime and historical terrain/teleport acceptance remain pending,
 wholePPD125 investigating/ownerverification pending, nopush. Combined build and
 next separately staged candidate follow the selected coherent source group.
+
+## Integrated terrain readiness and full strict characterization
+
+Owner-authorized PPD241 source aa8b05a5d6 applied after original1eb44 terrain
+bindSurface/ensureUploaded invariant and producer order review. All11 changed
+blobs and fullindra cc04a93c exactly match the qualified source; PPD125 retained.
+The copied terrain-shadow-startup-cause-69258-20261118 report preserves CPU508/14,
+built587/16 (includesCPU+2Metal), layout853/13 and isolated69283build/verification.
+Root receipt ppd241-integration-01/receipt.json pins the exact patch and sources.
+Combined root build/runtime remains pending; historical42/81/15 operands unknown,
+no lateFPS attribution and no new nullVBskip/admission/quality relaxation.
+
+Full strict characterization now covers1233/1233 images,0unrun, overallexit42.
+All549offline production-entry images exact, including preparedBASE/simple/shadow
+configured4probe tests, not the actual47probe scene. Two helper-only onecomponent
++1half-step differences remain; inherited393CPUhalfexpected relation alsofails.
+No tolerance/oracle waiver.176factoryvalidation metadata rows1/allpairedinputs
+hashes equal. PPD391read-onlylabel draft and392first fatalhash86 prefix retained;
+qualified02 hash repair has nofatalinfra/parseerrors. Exact report2a211a04 and
+finalreceiptfaba1661 under original private characterization-01; alljobsended.
+Next: review full tile-consumer host/actual130-row control, compile then strict
+A/A+A/B; only if strict passes, run exclusive initialization+consumercost. Reject
+failed/lost candidates without shipping them. Build/test/stage the coherent
+selected source group for owner checkpoint; no viewer action or push yet.

@@ -81,6 +81,10 @@ public:
     void ensureUploaded();
     void bind(S32 height_slot, S32 composition_slot);
 #if LL_DARWIN
+    // Publish current height data for a shadow consumer. A retained handle
+    // alone is insufficient after dirty data fails to upload. Composition
+    // readiness is independent because terrain shadows do not consume it.
+    bool ensureMetalHeightUploaded();
     const ALMetalTexture* getMetalHeightTexture() const;
     const ALMetalTexture* getMetalCompositionTexture() const;
     // Acquire on the surface publication owner after ensureUploaded(). Retain
@@ -212,6 +216,9 @@ private:
     // upload always is, or the texels of mDirtyRect, none when it is empty.
     bool                 mDirtyWhole = true;
     Rect                 mDirtyRect;
+#if LL_DARWIN
+    bool                 mMetalHeightCurrent = false;
+#endif
     U32                  mVersion = 0;
 };
 

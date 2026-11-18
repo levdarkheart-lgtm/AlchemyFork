@@ -1885,6 +1885,9 @@ if(AL_BUILD_VIEWER)
     pipeline_hud_debug_native.inl
     pipeline_buffer_publication_native.inl
     pipeline_hero_capture_readiness_native.inl
+    pipeline_shadow_terrain_preflight_native.inl
+    pipeline_shadow_terrain_preflight_types_native.inl
+    alterrainsurfacemaps_readiness_native.inl
     pipeline_shadow_membership_native.inl
     light_screen_rect_native.inl
     llreflectionmapmanager_config.inl
