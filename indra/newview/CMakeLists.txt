@@ -1060,6 +1060,7 @@ if(AL_BUILD_VIEWER)
     alfloatertransactionlog.h
     alrenderisolation.h
     alrendersizeoverride.h
+    alsafepreferencetelemetry.h
     alsceneexplorerpredicate.h
     alsnapshotcutout.h
     alscopedata.h
@@ -2953,6 +2954,24 @@ if(AL_BUILD_TESTS)
     target_link_options(native_texture_worker_startup_test PRIVATE -fsanitize=address,undefined)
     add_test(NAME "newview/native_texture_worker_startup" COMMAND native_texture_worker_startup_test)
     set_tests_properties("newview/native_texture_worker_startup" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    set(viewer_stats_preference_source "${CMAKE_CURRENT_BINARY_DIR}/viewer_stats_preference_generated.cpp")
+    add_custom_command(OUTPUT "${viewer_stats_preference_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/llviewerstats_preference_test.py"
+        --emit-source "${viewer_stats_preference_source}"
+      DEPENDS llviewerstats.cpp alsafepreferencetelemetry.h ../llxml/llcontrol.cpp
+        app_settings/settings.xml app_settings/settings_alchemy.xml
+        tests/llviewerstats_preference_test.py tests/llviewerstats_preference_fixture.cpp
+      VERBATIM)
+    add_executable(viewer_stats_preference_test "${viewer_stats_preference_source}")
+    target_link_libraries(viewer_stats_preference_test PRIVATE al::flags llcommon)
+    target_compile_features(viewer_stats_preference_test PRIVATE cxx_std_20)
+    target_include_directories(viewer_stats_preference_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(viewer_stats_preference_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(viewer_stats_preference_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/viewer_stats_preference_contract" COMMAND viewer_stats_preference_test)
+    set_tests_properties("newview/viewer_stats_preference_contract" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     set(inventory_open_policy_contract_source "${CMAKE_CURRENT_BINARY_DIR}/inventory_open_policy_contract_generated.cpp")
     add_custom_command(OUTPUT "${inventory_open_policy_contract_source}"
       COMMAND "${Python3_EXECUTABLE}"

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-491 -->
+<!-- next-defect-id: PPD-492 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10681,7 +10681,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve original Second Life HUD/asset startup and display behavior, including existing black-login repair PPD008; correlate actual startup/first-world/presentation and asset work rather than guessing from the progress indicator.
 - Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner Home report29→16FPS, slow HUDs and dark post-progress interval; exacte426/builderd2c9 appPID65356 and private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retained.; [69343 owner run](research/warning-runtime-69343-20261119.md).
-- Next action: Build the integrated default-off HUD/world metadata candidate, then identify the delayed HUD asset and distinguish cached fetch phase, quality demand, raw image and native create/downscale state on a connected retest. Inspect decoder downstream governor separately; do not increase concurrency without a concrete contract or matched evidence.
+- Next action: Verify general world/avatar/texture/HUD loading and responsiveness across scenes/teleports on the integrated parallel candidate. Compare aggregate decode/admission/raw/upload/publication phases; use representative metadata only when needed for stage attribution. No single HUD is a required special case.
 - Verification: Owner delayed-then-loaded HUD report remains unresolved. Exact run confirms OpenHTJ2K, topology10/8, workers6, adaptive2/4/6; native governor frequently clamps2. All38870 jobs complete, but early queue wait reaches28.083s before sampling. HUD identity and its causal stage remain unknown.
 - Owner verification: pending
 - Push approval: not_granted
@@ -10699,6 +10699,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 offline source/log audit finds no terminal global decode deadlock: all38,870submitted jobs start/finish,0cancelled, while early queue waits reach28seconds before sampling and the new native downstream governor frequently selects2decoders. Ready-upload and main-owner debt coexist; aggregate ceilings do not identify the pictured HUD. ExistingHTTP/bake categories cap early, and no per-HUD asset/discard/demand state was recorded. Begin a separate bounded default-off HUD texture metadata observation at the real HUD-boost/demand owner, preserving all fetch/decode/upload priorities and budgets. Distinct metadata-state keys must exclude frame/time, use a separate HUDcategory so maptiles cannot consume it, and avoid usernames/locations/URLs/data. This evidence repair must not be presented as a HUD-loading fix or unmeasured concurrency improvement.
 
 - 2026-11-19 Integratedf4e2819a34 +9a4baec630 add bounded separate HUD category at the actual boost/demand owner, not a priority/policy change. Records include asset/type/slot, demand/discard/dimensions, residency, cached fetch phase/priority and raw/create/downscale flags. Non-fetched fields remain unknown; cached phase0 does not prove no worker and may be stale. Stable keys omit frame/time/priority; 10000 changing frame/priority values preserve admission. Actual-body suite102 ASan/UBSan checks passes; prior observer has two expected failures for the added fields/phase admission. Full volume TU compiles. Nine-category gate and independent peer source review pass. This is evidence repair, not a loading fix. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
+- 2026-11-19 owner clarifies all HUDs eventually load, with a long delay, and no particular HUD needs special treatment. The active objective is general loading latency across the scene, textures, avatars and HUDs. PPD486/487/490 address whole-pipeline scheduling/publication; keep bounded HUD observation as supporting evidence only, not a requirement to identify one pictured asset or a separate special-case repair.
 
 
 ## PPD-464 — Owner reports brief unresponsiveness just after club teleport
@@ -11325,3 +11327,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before correction during the owner-requested whole-pipeline parallelism work. Merely decoding faster can increase an already-decoded backlog; the native upload stage must make bounded independent progress. Do not remove native in-flight/per-frame bounds or claim FPS/loading gains from admission counts alone.
 
 - 2026-11-19 Integrated4fd1876f34 tests +df61f82e5b production guard. Final7cases261assertions and full57cases6060assertions old75fail→new0 underASan/UBSan; earlier55/6019proof retained/superseded by extra41completion-count checks. Native count/frame/in-flight bytes, copied lease retirement, lowOS/process1progress, oversize/drain and optional/scene controls pass. Callerfile/timer branches byte-identical; independent source/test review passes. Final app and coupled owner runtime acceptance pending.
+
+## PPD-491 — Statistics preferences include credential-bearing settings in logs and payload
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex statistics privacy repair
+- Discovered: 2026-11-19
+- Original reference: send_viewer_stats optionally serializes complete nondefault global and per-account controls, logs the body, then adds session_id and submits that same body. Trace original1eb and current preference collection before repairing. Session-ID log exclusion alone does not sanitize arbitrary saved controls.
+- Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); llviewerstats.cpp816–836. Closed69343 INFO statistics includes a translation-service credential-bearing preference. Actual value remains private and is not repeated in repository evidence.
+- Next action: Sanitize optional preference telemetry before both logging/debugserialization and HTTP-body use using an explicit non-sensitive settings contract. Reproduce with synthetic secrets/nested values and preserve ordinary numeric/Boolean graphics/performance statistics. Do not change credentials, account files or send requests during tests.
+- Verification: Actual inherited exporter skips declared strings but permits nested string values in LLSD controls. Corrected actual exporter/consumer/addToMessage/tail plus real LLSD/XML fixture passes51cases277checks underASan/UBSan versus88baseline failures. Full viewerStatsTU syntax and source peer review pass; root normalCMake target/CTest pass. No actual account/credential setting changed or request sent by validation.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before correction. Preserve closed raw evidence privately; do not delete owner logs or mutate credential settings. The running3be26b full build remains source-frozen; implement independently, then integrate/rebuild the affected source before candidate qualification. No external request, credential rotation or publication is authorized by this record.
+
+- 2026-11-19 integratedc71b9c39f1 (agent5fc9389976) after the3be26b full1472-step Release build completed0. Explicit24field/type graphics/performance schema plus3named integer pool widths replaces raw preference-map export; account envelope remains empty. Unknown keys, nested/string/UUID/binary values, invalid Boolean shapes and nonfinite reals are rejected. The same safe body reaches actualINFO/debugXML/HTTP sinks; other statistics/session placement remain unchanged. Original1eb/69343/3be exporter and telemetry tail are byte-identical. Synthetic-only tests and scoped peer review; no whole-packet anonymity or successful prior server receipt claim. New normal generator-independentCMake source target is registered before final incremental source-qualified build.
