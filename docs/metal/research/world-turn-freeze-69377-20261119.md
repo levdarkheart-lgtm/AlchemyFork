@@ -425,3 +425,66 @@ An isolated repair will derive the new render allocation/adoption chain from liv
 extent and mip policy and compare actual bump backing size for retry. Allocation/
 adoption guards and full mipmap generation remain required. No repair is claimed
 qualified until root integrates/builds and runs actual native image regressions.
+
+
+### Complete warning reconciliation and PPD496 repair
+
+The [closed69384 warning audit](warning-runtime-69384-source-audit-20261119.md)
+accounts for all395warning rows /46sites, including shutdown.35 emitting whole
+bodies are identical to original1eb; all46are unchanged from69377. Emitter
+identity does not certify the upstream producer or clear unresolved requests.
+Complete source mapping and numeric transport/material/cap limits are retained
+without raw asset/account/stream identifiers or payloads.
+
+The lonePPD495failure used the actual J2C/OpenHT wrapper exception path. A fresh
+request's ownership/error propagation rules out unrelated stale reason text.
+The complete122-byte underlying exception detail is already recorded privately;
+longest source-literal/fragment checks, escaped/raw strings and ANSI/whitespace
+normalization do not provide a stable pinned-source category. Input bytes,
+primary/aux stage and eventual same-request recovery remain unknown. Do not add
+more raw error logging or change decoders; prepare bounded failure provenance
+and matching input before choosing a repair.
+
+PPD496source19c5d5f327 integrates as97cb7ff705. Shared private requested mip count
+now uses current live dimensions and mip policy for both allocation/adoption,
+leaving old allocation metadata and global setters unchanged. Both bump lookup
+and generation compare the actual native backing extent, permitting retry after
+a failed resized replacement. Actual-class/native-generator fixtures pass
+4800assertions /3cases under Metal API/GPU validation: shrink/regrow, both
+rectangular orientations, NPOT/discard, canceled candidate, old leased-owner
+readback, one-level media and incompatible-adoption guards. Exact old factory,
+adoption and both expression controls compile0 and each fail2checks/2cases,
+including the same mip-count-exceeds-dimensions class. Guaranteed restoration
+finally verifies the candidate cpp hash before final build. One prematurely
+invoked selector ran the prior test binary before build completion: no tests
+matched/exit2; excluded from qualification. The actual post-build run passes.
+Root and independent peer source reviews found no actionable concern; media,
+dynamic preview inls, GLTF preview and terrain-paintmap adoption owners preserve
+their full-chain/one-level contracts. Whole bump-manager runtime recovery is not
+proved by these fixtures; owner retest remains pending. Full application build
+and expanded image/preview checks are the remaining qualification step.
+
+
+### Qualified combined texture candidate69388
+
+Source97cb7ff705a17fb2dde73da737230f3cf97d91c4, indra
+65fb19d0eafb8471e60c89dfaf634aebf93603b5, version26.4.0.69388 /
+CFBundleVersion26.4.0d69388; exact executable SHA256
+a3051a443a6afd892e5b73eb5c7c645aa4990d8b7f6de456fd7d6fbbabbbebd8.
+Separate stable app `Alchemy Metal Texture Fixes 69388.app` and
+`texture-fixes-69388.json` preserve all69384corrections plus003/496.
+Full1312-step wrapper Release build0,27selectedCTest/API/GPU0, strict3645files/
+0blockers/0scanerrors/925info,346ARM64/deepstrictsignature/3owned-host directimport
+checks0. Native3/4800 and all exact old-source controls remain as above. No tool
+implementation changed; documentation harness and diffcheck pass. Full command/
+log detail is private ppd496-* evidence under the closed69384run; the actual
+built SHA remains97cb despite subsequent documentation commits.
+
+Owner explicitly authorizes launch and will manually log in/test. Fresh private
+run `Alchemy-texture-69388-gu0cgm5v` is prepared: requested Home only, saved
+settings/cache retained, no validation layers/profiler/Metal capture, bounded
+read-only LEAP/world/asset/rigging observers. Launch sentinel retains actual
+Popen.wait exit status and verifies exact executable path/hash. Requested Home
+is not arrival proof, and this is not a paired visual or performance test.
+Previous69384/69386 apps remain preserved; no push. Live run.json will record
+actual launch and owner/UI observations after this qualification checkpoint.
