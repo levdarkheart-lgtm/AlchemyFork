@@ -1192,7 +1192,9 @@ void LLPluginProcessParent::receiveMessage(const LLPluginMessage &message)
             }
             else
             {
-                LL_WARNS("Plugin") << "received hello message in wrong state -- bailing out" << LL_ENDL;
+                LL_WARNS("Plugin") << "received hello message in wrong state -- bailing out"
+                                   << " state=" << static_cast<int>(mState)
+                                   << " owner_present=" << static_cast<int>(mOwner != nullptr) << LL_ENDL;
                 errorState();
             }
 
@@ -1231,7 +1233,9 @@ void LLPluginProcessParent::receiveMessage(const LLPluginMessage &message)
             }
             else
             {
-                LL_WARNS("Plugin") << "received load_plugin_response message in wrong state -- bailing out" << LL_ENDL;
+                LL_WARNS("Plugin") << "received load_plugin_response message in wrong state -- bailing out"
+                                   << " state=" << static_cast<int>(mState)
+                                   << " owner_present=" << static_cast<int>(mOwner != nullptr) << LL_ENDL;
                 errorState();
             }
         }

@@ -11,13 +11,17 @@
 #include <utility>
 #include <vector>
 
-struct Log { template<class T> Log& operator<<(const T&) { return *this; } };
-inline Log log_stream;
+struct Log {
+    std::ostringstream buffer;
+    template<class T> Log& operator<<(const T& value) { buffer << value; return *this; }
+    void reset() { buffer.str(""); buffer.clear(); }
+};
+inline Log log_stream, warning_log;
 inline int warnings = 0;
 #define LL_DEBUGS(...) log_stream
 #define LL_INFOS(...) log_stream
-#define LL_WARNS(...) (++warnings, log_stream)
-#define LL_ENDL 0
+#define LL_WARNS(...) (++warnings, warning_log)
+#define LL_ENDL '\n'
 #define llassert_always(x) do { if (!(x)) std::abort(); } while (false)
 inline const std::string LLPLUGIN_MESSAGE_CLASS_INTERNAL = "internal";
 struct LLSD {
@@ -251,11 +255,30 @@ void child_shutdown_before_plugin_load() {
     child.mWaitGoodbye.expired=true; child.idle(); CHECK(child.mState==LLPluginProcessChild::STATE_UNLOADED); CHECK(warnings==1);
     child.idle(); CHECK(child.mState==LLPluginProcessChild::STATE_DONE); CHECK(child.socket_kills==1); CHECK(child.mMessagePipe==nullptr);
 }
+void unexpected_warning_prior_context() {
+    ++cases; Owner owner;
+    for(bool owner_present : {false,true}) {
+        for(bool hello : {false,true}) {
+            warnings=0; warning_log.reset(); Parent p; p.mOwner=owner_present ? &owner : nullptr;
+            const auto prior=hello ? Parent::STATE_LOADING : Parent::STATE_CONNECTED;
+            p.mState=prior;
+            p.receiveMessage(hello ? LLPluginMessage("internal","hello") : response());
+            const auto expected=" state="+std::to_string(static_cast<int>(prior))+" owner_present="+std::to_string(static_cast<int>(owner_present))+"\n";
+            CHECK(warnings==1); CHECK(warning_log.buffer.str().ends_with(expected));
+            CHECK(p.mState==Parent::STATE_LAUNCH_FAILURE);
+        }
+    }
+    warnings=0; warning_log.reset(); Parent p; p.mState=Parent::STATE_RUNNING; p.mOwner=&owner;
+    p.receiveMessage(response());
+    CHECK(warning_log.buffer.str().ends_with(" state="+std::to_string(static_cast<int>(Parent::STATE_RUNNING))+" owner_present=1\n"));
+    CHECK(p.mState==Parent::STATE_ERROR);
+}
 int main() {
     normal_load(); unexpected_active_response(); queued_then_cancelled(false); queued_then_cancelled(true);
     reply_after_shutdown_send(); duplicate_live_reply_still_fails(); wrong_terminal_states_still_fail(); normal_running_shutdown();
     standalone_cancelled_load(); multiple_obsolete_load_replies(); active_hello_guard_unchanged(); noninternal_reply_still_owned();
     launched_to_running_handshake(); connected_hello_cancelled(false); connected_hello_cancelled(true); late_hello_during_exit(); child_shutdown_before_plugin_load();
+    unexpected_warning_prior_context();
     std::cout << cases << " cases / " << checks << " checks / " << failures << " failures\n";
     return failures ? 1 : 0;
 }
