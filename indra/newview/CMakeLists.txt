@@ -145,6 +145,7 @@ if(AL_BUILD_VIEWER)
     alchatcommand.cpp
     alchattimestamp.cpp
     alcheatcodes.cpp
+    alcinematicmode.cpp
     alclassifieditem.cpp
     alcolorpopover.cpp
     alcolorwheelctrl.cpp
@@ -1026,6 +1027,7 @@ if(AL_BUILD_VIEWER)
     alchatbar.h
     alchatcommand.h
     alchattimestamp.h
+    alcinematicmode.h
     alclassifieditem.h
     alcolorpopover.h
     alcolorwheelctrl.h
@@ -2917,6 +2919,55 @@ if(AL_BUILD_TESTS)
       COMMAND lltexturecache_write_contract_test all)
     set_tests_properties("newview/texture_cache_write_contract"
       PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    # Execute current UI/consumer bodies using normal generator-independent targets.
+    set(startup_image_contract_source "${CMAKE_CURRENT_BINARY_DIR}/startup_image_contract_generated.cpp")
+    add_custom_command(OUTPUT "${startup_image_contract_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/llprogressview_start_image_test.py"
+        --emit-source "${startup_image_contract_source}"
+      DEPENDS llprogressview.cpp tests/llprogressview_start_image_test.py tests/llprogressview_start_image_fixture.cpp
+      VERBATIM)
+    add_executable(startup_image_contract_test "${startup_image_contract_source}")
+    target_link_libraries(startup_image_contract_test PRIVATE al::flags)
+    target_compile_features(startup_image_contract_test PRIVATE cxx_std_20)
+    target_include_directories(startup_image_contract_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(startup_image_contract_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(startup_image_contract_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/startup_image_contract" COMMAND startup_image_contract_test)
+    set_tests_properties("newview/startup_image_contract" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    set(inventory_open_policy_contract_source "${CMAKE_CURRENT_BINARY_DIR}/inventory_open_policy_contract_generated.cpp")
+    add_custom_command(OUTPUT "${inventory_open_policy_contract_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/inventory_open_policy_test.py"
+        --emit-source "${inventory_open_policy_contract_source}"
+      DEPENDS llinventorybridge.cpp tests/inventory_open_policy_test.py tests/inventory_open_policy_fixture.cpp app_settings/settings_alchemy.xml skins/default/xui/en/panel_preferences_interface.xml
+      VERBATIM)
+    add_executable(inventory_open_policy_contract_test "${inventory_open_policy_contract_source}")
+    target_link_libraries(inventory_open_policy_contract_test PRIVATE al::flags)
+    target_compile_features(inventory_open_policy_contract_test PRIVATE cxx_std_20)
+    target_include_directories(inventory_open_policy_contract_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(inventory_open_policy_contract_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(inventory_open_policy_contract_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/inventory_open_policy_contract" COMMAND inventory_open_policy_contract_test)
+    set_tests_properties("newview/inventory_open_policy_contract" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    set(cinematic_mode_contract_source "${CMAKE_CURRENT_BINARY_DIR}/cinematic_mode_contract_generated.cpp")
+    add_custom_command(OUTPUT "${cinematic_mode_contract_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cinematic_mode_contract_test.py"
+        --emit-source "${cinematic_mode_contract_source}"
+      DEPENDS alcinematicmode.cpp llhudtext.cpp alcinematicmode.h tests/cinematic_mode_contract_test.py tests/cinematic_mode_contract_fixture.cpp app_settings/settings_alchemy.xml skins/default/xui/en/panel_preferences_interface.xml skins/default/xui/en/menu_viewer.xml skins/default/xui/en/notifications.xml
+      VERBATIM)
+    add_executable(cinematic_mode_contract_test "${cinematic_mode_contract_source}")
+    target_link_libraries(cinematic_mode_contract_test PRIVATE al::flags)
+    target_compile_features(cinematic_mode_contract_test PRIVATE cxx_std_20)
+    target_include_directories(cinematic_mode_contract_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(cinematic_mode_contract_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(cinematic_mode_contract_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/cinematic_mode_contract" COMMAND cinematic_mode_contract_test)
+    set_tests_properties("newview/cinematic_mode_contract" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     add_test(NAME "newview/texture_fetch_results_contract"
       COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/llviewertexture_fetch_results_test.py")

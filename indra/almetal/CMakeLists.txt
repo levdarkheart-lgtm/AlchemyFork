@@ -243,6 +243,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_render_info_test.mm
             tests/almetal_avatar_coverage_test.mm
             tests/almetal_postchain_parity_test.mm
+            tests/almetal_exposure_transition_test.mm
             tests/almetal_postchain_legacy_admission_test.mm
             tests/almetal_lens_policy_admission_test.mm
             tests/almetal_linear_screen_boundary_test.mm
@@ -324,7 +325,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_source_admission_test.mm
             tests/almetal_world_library_test.mm
             tests/almetal_world_source_commands_test.mm
-    LIBRARIES almetal llcommon
+    LIBRARIES almetal llcommon llinventory
     # Visible correctness cases exercise every compiled lighting variant.
     # The production policy has a separate hidden native qualification case.
     ENVIRONMENT "ALCHEMY_METAL_E6_PREPARED_FORCE_ALL=1"
@@ -339,6 +340,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_render_info_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_avatar_coverage_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_postchain_parity_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_exposure_transition_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_postchain_legacy_admission_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_lens_policy_admission_test.mm
                               tests/almetal_linear_screen_boundary_test.mm
