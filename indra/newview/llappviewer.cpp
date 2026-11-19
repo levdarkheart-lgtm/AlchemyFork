@@ -5538,7 +5538,7 @@ void LLAppViewer::saveFinalSnapshot()
         snap_filename += gDirUtilp->getDirDelimiter();
         snap_filename += LLStartUp::getScreenLastFilename();
         // use full pixel dimensions of viewer window (not post-scale dimensions)
-        gViewerWindow->saveSnapshot(snap_filename,
+        const bool saved = gViewerWindow->saveSnapshot(snap_filename,
                                     gViewerWindow->getWindowWidthRaw(),
                                     gViewerWindow->getWindowHeightRaw(),
                                     false,
@@ -5547,6 +5547,12 @@ void LLAppViewer::saveFinalSnapshot()
                                     false,
                                     LLSnapshotModel::SNAPSHOT_TYPE_COLOR,
                                     LLSnapshotModel::SNAPSHOT_FORMAT_PNG);
+        if (!saved)
+        {
+            // A failed capture must not mark an older last image as current
+            // or copy it into the Home slot. A later caller may try again.
+            return;
+        }
         mSavedFinalSnapshot = true;
 
         if (gAgent.isInHomeRegion())
