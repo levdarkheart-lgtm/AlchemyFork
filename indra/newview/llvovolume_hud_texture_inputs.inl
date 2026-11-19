@@ -45,6 +45,8 @@ void observeHUDTextureInputs(const LLUUID& object_id, S32 face_index, U32 slot,
             s.has_fetcher = fetched->hasFetcher();
             s.fetching = fetched->isFetching();
             s.missing = fetched->isMissingAsset();
+            s.fetch_state = fetched->getFetchState();
+            s.fetch_priority = fetched->getFetchPriority();
             s.create_pending = fetched->mCreatePending;
             s.create_queued_frame = fetched->mCreateQueuedFrame;
             s.downscale_pending = fetched->mDownScalePending;

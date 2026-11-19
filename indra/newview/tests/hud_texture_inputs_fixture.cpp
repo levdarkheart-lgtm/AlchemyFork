@@ -46,6 +46,8 @@ struct LLViewerFetchedTexture: LLViewerTexture {
     S8 desired=0; S32 raw_discard=-1; bool raw_valid=false, has_fetcher=false, fetching=false, missing=false;
     bool mCreatePending=false, mDownScalePending=false; U64 mCreateQueuedFrame=0;
     LLImageRaw* raw=nullptr;
+    S32 mFetchState=0; U32 mFetchPriority=0;
+// @ACTUAL_FETCH_METADATA_GETTERS@
     LLViewerFetchedTexture() { type=FETCHED_TEXTURE; }
     S32 getDesiredDiscardLevel() const { ++metadata_reads; return desired; }
     S32 getRawImageLevel() const { ++metadata_reads; return raw_discard; }
@@ -104,6 +106,7 @@ void disabled() {
 }
 void enabled() {
     LLVOVolume owner; LLFace face; LLViewerFetchedTexture atlas; LLViewerTexture media;
+    atlas.mFetchState=2;atlas.mFetchPriority=123;
     media.type=LLViewerTexture::MEDIA_TEXTURE; media.parcel_media=true;
     media.id.value="30000000-0000-0000-0000-000000000001";
     face.textures[0]=&atlas; face.textures[1]=&media;
@@ -111,8 +114,10 @@ void enabled() {
     check(emits==2,"selected atlas and existing media slot both observed");
     check(contains("kind=hud_texture asset=") && contains("slot=0 frame=1 texture_type=3 type=fetched hud_boost_owner=1 boost=18"),"real fetched owner schema and numeric S8 type");
     check(contains("components=4 texture_state=1") && contains("fetch_details_known=1 desired_discard=0 raw_discard=-1"),"components and signed discard serialize numerically");
+    check(contains("fetch_state=2 fetch_priority=123"),"cached fetched state and priority serialize numerically");
     check(contains("slot=1 frame=1 texture_type=1 type=media hud_boost_owner=0 boost=0"),"non-selected media does not acquire a HUD boost");
     check(contains("current_discard_known=0 current_discard=-1 parcel_media=1 fetch_details_known=0 desired_discard=unknown") && contains("has_fetcher=unknown fetching=unknown missing=unknown"),"media without backing avoids fetched casts/backing getters and marks unknowns");
+    check(contains("fetch_state=unknown fetch_priority=unknown"),"non-fetched cache fields are explicitly unknown");
     const int initial=emits;
     for(unsigned n=0;n<20;++n){++gFrameCount;owner.object.value="20000000-0000-0000-0000-000000000002";owner.apply(&face,&atlas,0,2,99);}
     check(emits==initial,"frames, representative face and owner identity do not consume asset-state slots");
@@ -126,6 +131,12 @@ void enabled() {
     check(atlas.raw==&raw && atlas.raw_valid && atlas.raw_discard==0 && atlas.desired==0 && atlas.discard==0,"observation preserves fetched inputs and demand");
     media.resident=true;media.discard=2;owner.apply(&face,&atlas);
     check(emits==initial+4 && contains("current_discard_known=1 current_discard=2 parcel_media=1 fetch_details_known=0"),"resident media uses safe backing discard and still has unknown fetch state");
+    const int before_phase=emits;atlas.mFetchState=7;atlas.mFetchPriority=999999;owner.apply(&face,&atlas);
+    check(emits==before_phase+1 && contains("fetch_state=7 fetch_priority=999999"),"discrete cached fetch phase independently admits a metadata state");
+    const int before_priority=emits;
+    for(U32 priority=1;priority<=10000;++priority){++gFrameCount;atlas.mFetchPriority=priority;owner.apply(&face,&atlas);}
+    check(emits==before_priority,"10000 changing priorities and frames do not consume more keys");
+    check(atlas.mFetchState==7 && atlas.mFetchPriority==10000,"observer leaves cached phase and priority unchanged");
     LLViewerFetchedTexture lod;lod.type=LLViewerTexture::LOD_TEXTURE;lod.id.value="40000000-0000-0000-0000-000000000001";face.textures[0]=&lod;owner.apply(&face,&lod);
     check(contains("texture_type=4 type=lod hud_boost_owner=1"),"LOD is a proven fetched subtype");
     LLViewerTexture dynamic;dynamic.type=LLViewerTexture::DYNAMIC_TEXTURE;dynamic.id.value="00000000-0000-0000-0000-000000000000";face.textures[0]=&dynamic;face.textures[1]=nullptr;

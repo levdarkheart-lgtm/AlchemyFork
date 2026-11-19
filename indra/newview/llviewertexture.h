@@ -391,6 +391,8 @@ public:
 
     LLFrameTimer* getLastPacketTimer() {return &mLastPacketTimer;}
 
+    // Last texture-owner status sample, not a live worker query.
+    S32 getFetchState() const { return mFetchState; }
     U32 getFetchPriority() const { return mFetchPriority ;}
     F32 getDownloadProgress() const {return mDownloadProgress ;}
 

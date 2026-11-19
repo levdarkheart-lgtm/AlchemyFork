@@ -30,6 +30,8 @@ struct Snapshot
     std::int32_t texture_type = -1, face = -1, slot = -1, boost = -1;
     std::int32_t width = 0, height = 0, components = 0, texture_state = -1;
     std::int32_t current_discard = -1, desired_discard = -1, raw_discard = -1;
+    std::int32_t fetch_state = -1;
+    std::uint32_t fetch_priority = 0;
     std::int32_t raw_width = 0, raw_height = 0, raw_components = 0;
     std::uint64_t frame = 0, create_queued_frame = 0;
     bool boost_owner = false, resident = false, current_discard_known = false;
@@ -58,7 +60,7 @@ inline std::string key(const Snapshot& s)
     out << ':' << s.texture_type << ':' << s.slot << ':' << s.boost
         << ':' << s.current_discard << ':' << s.desired_discard << ':' << s.raw_discard
         << ':' << s.width << ':' << s.height << ':' << s.components << ':' << s.texture_state
-        << ':' << s.raw_width << ':' << s.raw_height << ':' << s.raw_components << ':' << s.flags();
+        << ':' << s.raw_width << ':' << s.raw_height << ':' << s.raw_components << ':' << s.fetch_state << ':' << s.flags();
     return out.str();
 }
 inline std::ostream& operator<<(std::ostream& out, const Snapshot& s)
@@ -75,14 +77,16 @@ inline std::ostream& operator<<(std::ostream& out, const Snapshot& s)
     if (!s.fetch_known)
         return out << " desired_discard=unknown raw_discard=unknown raw_present=unknown raw_valid=unknown"
             << " raw_width=unknown raw_height=unknown raw_components=unknown has_fetcher=unknown"
-            << " fetching=unknown missing=unknown create_queue_pending=unknown create_queued_frame=unknown"
+            << " fetching=unknown missing=unknown fetch_state=unknown fetch_priority=unknown"
+            << " create_queue_pending=unknown create_queued_frame=unknown"
             << " downscale_queue_pending=unknown";
     return out << " desired_discard=" << s.desired_discard
         << " raw_discard=" << s.raw_discard << " raw_present=" << s.raw_present
         << " raw_valid=" << s.raw_valid << " raw_width=" << s.raw_width
         << " raw_height=" << s.raw_height << " raw_components=" << s.raw_components
         << " has_fetcher=" << s.has_fetcher << " fetching=" << s.fetching
-        << " missing=" << s.missing << " create_queue_pending=" << s.create_pending
+        << " missing=" << s.missing << " fetch_state=" << s.fetch_state << " fetch_priority=" << s.fetch_priority
+        << " create_queue_pending=" << s.create_pending
         << " create_queued_frame=" << s.create_queued_frame
         << " downscale_queue_pending=" << s.downscale_pending;
 }
