@@ -11938,7 +11938,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ## PPD-512 — Translated outgoing IM echo omits the sender's original wording
 
 - Status: verified
-- Confirmation: reported
+- Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
 - Original reference: Native translated-send completion passes only translated text to existing sendMsg/LLIMModel::sendMessage; the local echo therefore contains only recipient-language text.
@@ -11957,6 +11957,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Owner69401 screenshots confirm local original-plus-French echo. New request concerns settings clutter (PPD-516); no push authorization inferred.
 
 - 2026-11-19: Owner accepts69404 ("this is fine") and authorizes committing/merging all translation work into codex/apple-silicon-metal. Earlier owner screenshots establish original-plus-French local echo; candidate build/tests and popup source review retained. Mark this bounded display/usability repair verified and owner passed. Other stress-case records retain their individual evidence limits; push remains not_granted.
+
+- 2026-11-19: Acceptance-record harness initially rejected verified status with the stale reported confirmation field. Owner screenshots reproduce the display/usability symptoms and owner69404 acceptance verifies the repair; correct Confirmation to reproduced and rerun the harness before merge. No application source change.
 
 ## PPD-513 — Translated initialization queue survives chat close and conference reuse
 
@@ -12018,7 +12020,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ## PPD-516 — Persistent translation controls crowd the IM conversation
 
 - Status: verified
-- Confirmation: reported
+- Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
 - Original reference: Native translation controls occupy a fixed111-pixel main_stack panel above the editor; updateNativeIMTranslationLayout also increases the normal chat minimum height.
@@ -12037,6 +12039,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
 
 - 2026-11-19: Owner accepts69404 ("this is fine") and authorizes committing/merging all translation work into codex/apple-silicon-metal. Earlier owner screenshots establish original-plus-French local echo; candidate build/tests and popup source review retained. Mark this bounded display/usability repair verified and owner passed. Other stress-case records retain their individual evidence limits; push remains not_granted.
+
+- 2026-11-19: Acceptance-record harness initially rejected verified status with the stale reported confirmation field. Owner screenshots reproduce the display/usability symptoms and owner69404 acceptance verifies the repair; correct Confirmation to reproduced and rerun the harness before merge. No application source change.
 
 ## PPD-517 — A delayed translation failure can open settings over another chat
 
