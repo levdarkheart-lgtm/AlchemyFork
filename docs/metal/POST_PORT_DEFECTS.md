@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-481 -->
+<!-- next-defect-id: PPD-483 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10954,6 +10954,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 history follow-up finds all3were real archived features, not fake placeholder names. Panel-only restoration042a1c3f4a followed intentionally commented cinematic menu restorationc678b7ff65c; history-merge663df365ca left settings/consumers absent before the Metal reference1eb44. Existing InventoryAddAttachmentBehavior(default0Add/1Replace) can back a real attachment preference; wearable and cinematic options require actual consumer/mode restoration. Historical wearable/attachment booleans defaulttrue; cinematic hover defaultfalse. No inert declarations or source/feature removal selected; this remains separate open UI restoration work, not an attributed Metal regression.
 
+- 2026-11-19 active fix goal includes this warning-backed feature defect. Root begins independent inventory/UI restoration from exact archived consumers: existing InventoryAddAttachmentBehavior must back an equivalent Add/Replace combo, rather than reversed boolean binding; restore real DoubleClickWearableAdd tree/gallery semantics, clothing/bodypart guards and Ctrl inversion. Cinematic option must restore actual mode/menu and native-visible HUD/text/UI consumers, not just declare an inert setting. Source edits remain in a separate persistent worktree; no UI/network/inventory action is executed by tests. Keep this scope separate from critical082/480 repairs and retain partial status until every consumer is implemented and verified.
+
 ## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
 
 - Status: ready_for_owner
@@ -11091,3 +11093,38 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-19 registered before any repair, cache/file replacement or viewer restart. Owner baseline claim is retained as reported, not dismissed because the current selection code is inherited. Stored startup-image candidates were copied read-only before owner logout; the existing last image was produced by a successful prior normal shutdown. Current connected Home/FPS check continues unchanged.
+
+
+## PPD-481 — Media plugin receives its load response outside the loading state
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning/runtime integrator
+- Discovered: 2026-11-19
+- Original reference: Original1eb44 and current LLPluginProcessParent::receiveMessage accept load_plugin_response only in STATE_LOADING; otherwise errorState selects launch failure or runtime error. Preserve the handshake/state and media behavior rather than suppressing this protocol error.
+- Evidence: [69343 closed warning audit](research/warning-runtime-69343-20261119.md); private closed-warning-audit retains exact382row map, emitting bodies/hashes and08:27:16UTC row. CEF daemon registration one second earlier is context only.
+- Next action: Trace actual load request/response dispatch, parent state ordering, duplicate or cancelled-instance handling and owner impact. Add actual state-machine reproduction before selecting a repair; do not invent a connection to HUD sharpness or world stalls.
+- Verification: A real wrong-state response is logged and takes errorState in69343. Emitting receiveMessage/errorState bodies are inherited; actual prior state, instance and producer/cancellation sequence are unlogged. No port-regression cause, recovery or visible media failure is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered from the complete closed-run reconciliation before repair. Raw protocol/log data remains private; no new requests, plugin restart, viewer action or code change selected.
+
+## PPD-482 — Shutdown reaches queued-request and TextureFetch worker residue cleanup
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning/runtime integrator
+- Discovered: 2026-11-19
+- Original reference: Original1eb44/current LLQueuedThread::shutdown aborts/deletes queued requests; LLWorkerThread::clearDeleteList clears worker request/work flags and deletes remaining workers. These are cleanup branches, not proof of leaks or lost required work.
+- Evidence: [69343 closed warning audit](research/warning-runtime-69343-20261119.md); private closed-warning-audit preserves08:45:03queued residue1 and08:45:04TextureFetch delete-list residue1, exact source bodies and Goodbye.
+- Next action: Identify the residual request/worker, owner cancellation and completion order, then check required callback/resource retirement invariants with actual bodies. Retain safe forced cleanup; do not conceal the warning or assume normal cancellation is a defect.
+- Verification: One STATUS_QUEUED request is aborted/deleted and one TextureFetch delete-list worker is forcibly cleared/deleted during normal69343logout. No active-request warning, ERROR/FATAL or failed logout occurs. Required-work loss, leak, common identity and lifetime defect are unknown; this record retains an observed cleanup concern with unproved impact.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered at final-run discovery before any repair. All current/original emitting functions resolve and match. No cache corruption, race or engine cause is inferred from residue counts alone.
