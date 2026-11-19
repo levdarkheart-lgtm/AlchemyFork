@@ -745,6 +745,13 @@ bool LLTextureCacheWorker::doWork(S32 param)
 void LLTextureCacheWorker::finishWork(S32 param, bool completed)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    if (param == 1 && completed && mDataSize < 0)
+    {
+        // Invalidate on the serial cache worker before a replacement write can
+        // run. A delayed endWork must not remove that newer same-UUID entry.
+        mCache->removeFromCache(mID);
+        mDataSize = 0;
+    }
     if (mResponder.notNull())
     {
         bool success = (completed && mDataSize > 0);
@@ -770,7 +777,7 @@ void LLTextureCacheWorker::finishWork(S32 param, bool completed)
             LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("tcwfw - write");
             // write
             mWriteData = NULL; // we never owned data
-            mDataSize = success ? 0 : -1; // endWork removes a failed cache entry.
+            mDataSize = 0;
         }
         mCache->addCompleted(mResponder, success);
     }
