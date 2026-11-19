@@ -11528,7 +11528,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-497 — SSR history reverses already preserved world rows
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-19
@@ -11548,3 +11548,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 actual rendered-world→history regression passes158assertions/2cases/fourHDR-Zvariants with corrected shader; identical executable/seed/frozen69388 library fails17assertions across2cases, including896misplacedcolor/depthpixels pergeometryvariant. API/GPU validation observed. Native42→0 and corrected-library restoration verified despite later private-runner UTF8 decoding error; raw logs retained/CPU-only receipts verified. Broader world/water run first fails1of36424 at a leftover flipped far-row test expectation; explicit actual-source depth landmark added before correcting that test coordinate, production unchanged. Rebuild/retest pending; owner-band causation/retest remains unknown.
 
 - 2026-11-19 far-landmark follow-up reads and requires actual source[0]depth1 before comparing unchanged history row0; independent review passes. Rebuilt broad world/water now passes36426assertions/1case, plus four registered SSR/water/haze/base-light CTests0. Final identical test executable again gives old-library17/158failures/native42 and corrected158/2/native0, exact library restored; API/GPU validation observed. Full viewer build and owner-band acceptance next; no publication.
+
+- 2026-11-19 source dc781c61db/indra326ad879fe qualifies separate69390: wrapperReleasebuild0,346ARM64/deepstrictsignature,strict3645zero and3owned-directimportchecks0; compiled/test/app shaderhashesmatchbf2a3b…, exactexe42fcf45f… embeds testedsource. Stable69388 hashunchanged. Manual owner-water retest prepared without capture/validation/profile; actualsceneacceptance and explicit497pushapproval pending. Do not close013 from this qualification.

@@ -165,3 +165,33 @@ source reviews, not additional executed tests. No actual above-water SSR
 consumer-chain fixture or owner water-band retest is yet claimed.
 
 Final fixture rebuild exits0. Broader actual world/water case now passes36426assertions/1case; four registered CTests (SSR isolation, water normal filtering, original haze projection and base-light fastpath) all pass. Final executableSHA256d4376a92aa9f937753e9c54111602a0a392baf30e7b2e1a370add8135be5c9fe again fails17/158 with frozen old library/native42 and passes158/2 with corrected library/native0, same seed/expectations; exact corrected library restored. API/GPU validation is observed in every final native log. final-native-validation.json retains exact argv/exits/hashes. This proves the coordinate repair and bounded compatibility, not the live water-band result. Separate full viewer build/verification and owner retest follow.
+
+## Qualified separate candidate69390
+
+Committed source dc781c61db97ec8bff51c0f1605fa57986ba0ac5, indra tree
+326ad879fe933432fc6e03f0e1e1437345098d3e. Required wrapper Release build
+exits0, then copied candidate passes verify_app (346ARM64/zero invalid), deep
+strict signature and strict source3645files/0blocking/0errors/925informational.
+Three owned main/CEF/VLC executables have zero forbidden direct graphics imports;
+foreign dependency and runtime context gates remain separate. Compiled,
+test-bundle and candidate metallibs all equal correctedbf2a3bb4d977… above.
+Final GPU test executable still equals the red/green-tested d4376a92aa9f….
+
+Separate app is Alchemy Metal Water SSR Fix69390.app, version26.4.0.69390,
+executable SHA256
+42fcf45f88e8b8ad9835d89fe7cf1f632e300414c087a06ed4914348e2460cb3.
+Embedded source SHA is verified. Stable69388 executable still equalsa3051a44…;
+69384/69386/69388 apps are preserved. qualified-candidate.json retains command
+statuses, exact source/binary/library identities, test receipts and limits.
+
+Next owner run is prepared in private Alchemy-waterfix-69390-memw12uh with
+manual login, the previously observed waterfront destination, retained current
+graphics/Looks/cache and bounded warning metadata. No capture, validation,
+sampler, Instruments or performance collection is enabled. Actual region,
+settings and disappearance of the band remain unverified until owner login.
+No merge/push or PPD-013/015 owner acceptance is claimed.
+
+Ordinary harness first rejects the missing next-ID counter advance when497 is
+registered; counter is corrected to498 and the subsequent33-file checks pass.
+The first producer-runner Unicode failure and broader far-row fixture failure
+remain in the preceding history. No assertions or policy are silently waived.
