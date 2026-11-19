@@ -9,9 +9,11 @@
 #include <string>
 #include <vector>
 using S32=int;
+using S8=signed char;
 using U32=unsigned;
 using F32=float;
 using S32Bytes=int;
+template<class T> T llmin(T a,T b){return a<b?a:b;}
 struct Entry { std::string tag,text; };
 std::vector<Entry> entries;
 bool throw_diagnostics=false;
@@ -72,8 +74,9 @@ struct Retry
 };
 struct Formatted
 {
+    S8 components=5;
     int getDataSize()const{return 321;}
-    int getComponents()const{return 5;}
+    S8 getComponents()const{return components;}
     int getDiscardLevel()const{return 2;}
 };
 struct LLImageRaw
@@ -106,6 +109,8 @@ struct TextureOwner
     ImagePointer mFormattedImage;
     bool mInCache=true,mInLocalCache=false,mHaveAllData=false,mFetchFailed=false;
     bool mNeedsAux=false,mDecoded=false;
+    bool mDecodeNeedsAux=false;
+    S32 mAuxComponents=-1;
     int mDecodeHandle=8,mWorkMutex=0,cache_removals=0;
     LLImageRaw*mRawImage=nullptr,*mAuxImage=nullptr;
     int mRetryAttempt=2,mRegionRetryAttempt=1,released=0;
@@ -142,7 +147,12 @@ void materialFailure(ID id,int asset_type,int status,U32 ext_status,Data*asset_d
     // @MATERIAL_FAILURE_DIAGNOSTIC@
 }
 int checks=0;
-void check(bool value){++checks;assert(value);}
+void checkImpl(bool value,const char* expression)
+{
+    ++checks;
+    if(!value){std::cerr<<"FAIL: "<<expression<<'\n';std::abort();}
+}
+#define check(value) checkImpl((value),#value)
 std::vector<std::string> diagnostics()
 {
     std::vector<std::string>out;
@@ -216,12 +226,14 @@ int main()
     check(decode_aux.mRawImage==&rgba);check(decode_aux.mAuxImage==&mask);
     check(decode_aux.mDecoded);check(decode_aux.mDecodeHandle==0);
     check(decode_aux.mDecodedDiscard==2);
+    check(decode_aux.mAuxComponents==1);
     if(enabled)
     {
         const auto line=diagnostics().back();
         check(line.find("bake_decode_result asset=decode-with-aux")!=std::string::npos);
         check(line.find("decode_id=8 active_decode_id=8 needs_aux=1")!=std::string::npos);
         check(line.find("formatted_components=5")!=std::string::npos);
+        check(line.find('\x05')==std::string::npos);
         check(line.find("aux_components=1 aux_bytes=16")!=std::string::npos);
         check(line.find("SECRET")==std::string::npos);
     }
@@ -233,6 +245,16 @@ int main()
         const auto line=diagnostics().back();
         check(line.find("needs_aux=0")!=std::string::npos);
         check(line.find("aux_present=0")!=std::string::npos);
+    }
+    TextureOwner maskless;maskless.mID.text="decode-four-components";maskless.mNeedsAux=true;
+    maskless.mFormattedImage.value.components=4;
+    maskless.decoded(true,"",&rgba,nullptr,8);
+    check(maskless.mDecoded);check(maskless.mAuxComponents==0);
+    if(enabled)
+    {
+        const auto line=diagnostics().back();
+        check(line.find("formatted_components=4")!=std::string::npos);
+        check(line.find('\x04')==std::string::npos);
     }
     const auto before_plain=diagnostics().size();
     TextureOwner plain;plain.decoded(true,"",&rgba,nullptr,8);

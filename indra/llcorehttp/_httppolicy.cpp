@@ -37,8 +37,9 @@
 #include "httpstats.h"
 #include "alwarningdiagnostics.h"
 #include "lluri.h"
+#include <atomic>
 #include <cctype>
-#include <sstream>
+#include <cstdint>
 
 namespace
 {
@@ -50,9 +51,12 @@ void diagnose_http_failure(LLCore::HttpOpRequest& operation)
     if (!ALWarningDiagnostics::enabled()) return;
     try
     {
-        std::ostringstream key;
-        key << operation.getHandle() << ':' << operation.mStatus.toTerseString();
-        if (!ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::http, key.str())) return;
+        // Handles can be recycled after completion. Identify this diagnostic
+        // boundary, rather than suppressing a later operation with that handle.
+        static std::atomic<std::uint64_t> terminal_events{0};
+        const auto terminal_event = terminal_events.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (!ALWarningDiagnostics::take(ALWarningDiagnostics::Kind::http,
+                                       std::to_string(terminal_event))) return;
         const LLURI uri(operation.mReqURL);
         // LLURI separates authority at its first '@'; suppress the whole host
         // for user-info rather than exposing a fragment of malformed multi-@ input.
@@ -62,7 +66,8 @@ void diagnose_http_failure(LLCore::HttpOpRequest& operation)
             if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
                 c != ':' && c != '[' && c != ']') c = '_';
         const char* scheme = uri.scheme() == "https" ? "https" : uri.scheme() == "http" ? "http" : "other";
-        LL_INFOS("WarningInputs") << "kind=http_terminal request_handle=" << operation.getHandle()
+        LL_INFOS("WarningInputs") << "kind=http_terminal terminal_event=" << terminal_event
+            << " request_handle=" << operation.getHandle()
             << " status=" << operation.mStatus.toTerseString()
             << " method=" << operation.mReqMethod << " policy=" << operation.mReqPolicy
             << " retries=" << operation.mPolicyRetries << " retry_limit=" << operation.mPolicyRetryLimit

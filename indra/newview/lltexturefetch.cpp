@@ -2595,7 +2595,7 @@ void LLTextureFetchWorker::callbackDecoded(bool success, const std::string &erro
                     << " decode_id=" << decode_id << " active_decode_id=" << mDecodeHandle
                     << " needs_aux=" << mNeedsAux << " fetch_type=" << static_cast<S32>(mFTType)
                     << " worker_state=" << static_cast<S32>(mState.load(std::memory_order_relaxed))
-                    << " formatted_components=" << mFormattedImage->getComponents()
+                    << " formatted_components=" << static_cast<S32>(mFormattedImage->getComponents())
                     << " formatted_discard=" << static_cast<S32>(mFormattedImage->getDiscardLevel())
                     << " formatted_bytes=" << mFormattedImage->getDataSize()
                     << " raw_present=" << static_cast<bool>(raw)
