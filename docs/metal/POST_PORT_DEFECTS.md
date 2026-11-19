@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-519 -->
+<!-- next-defect-id: PPD-520 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12127,3 +12127,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
 
 - 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
+
+## PPD-519 — Release preflight accepts an SDK too old for native IM sources
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex release integrator
+- Discovered: 2026-11-19
+- Original reference: Manual release workflow toolchain step requires macOS SDK major26, while alnativeimtranslation.swift references preferredStrategy/lowLatency declarations introduced in SDK26.4. Runtime availability guards preserve macOS26.0 runtime compatibility but do not supply missing compile-time declarations.
+- Evidence: [Alpha7 release ledger](work/active/release-alpha7-20261119.md).
+- Next action: Require SDK26.4 or newer and typecheck the actual Swift translation source before expensive dependency/build work. Validate old/new SDK gate boundaries and the actual local Swift source, then observe the hosted preflight.
+- Verification: Pre-fix workflow accepted26.0–26.3; those SDKs lack declarations used by the source. Exact old/new gate controls and actual Swift typecheck now pass locally. Current local Xcode26.6/SDK26.5 is suitable. No current hosted compile failure or runtime defect is attributed; this is an early validation gap.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-19 registered before corrective workflow edit during the owner's explicit build/publish request. Keep viewer deployment minimum26.0 and application source unchanged. Publication authorization covers required release build infrastructure; it does not close overall product gates or authorize billing/security changes.
+
+- 2026-11-19 SDK>=26.4 and actual-source Swift typecheck preflight implemented; exact old/new gate controls cover8version strings, demonstrating old false acceptance of26.0/26.3 and new rejection while26.4/26.4.1/26.5/27.0 pass. Actual local SDK26.5 Swift source typecheck and doctor exit0; ordinary harness33files and183tools(1optional skip) pass, whitespace0. Application tree unchanged. Hosted execution and publication stillpending; no runtime failure attribution.

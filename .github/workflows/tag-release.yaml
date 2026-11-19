@@ -104,7 +104,13 @@ jobs:
           xcrun --find metal || xcodebuild -downloadComponent MetalToolchain
           xcrun --find metal
           sdk="$(xcrun --sdk macosx --show-sdk-version)"
-          [[ "${sdk%%.*}" -ge 26 ]] || { echo '::error::macOS SDK 26 or later is required'; exit 1; }
+          [[ "$sdk" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]] || { echo '::error::Cannot parse macOS SDK version'; exit 1; }
+          sdk_major="${BASH_REMATCH[1]}"
+          sdk_minor="${BASH_REMATCH[2]}"
+          (( sdk_major > 26 || (sdk_major == 26 && sdk_minor >= 4) )) || { echo '::error::macOS SDK 26.4 or later is required to compile native IM translation'; exit 1; }
+          xcrun --sdk macosx swiftc -typecheck -parse-as-library -swift-version 5 \
+            -target arm64-apple-macosx26.0 -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+            indra/newview/alnativeimtranslation.swift
           xcode="$(xcodebuild -version | tr '\n ' '--')"
           vcpkg="$(git -C vcpkg rev-parse HEAD)"
           echo "cache_key=$xcode-$sdk-$vcpkg" >> "$GITHUB_OUTPUT"
