@@ -30,6 +30,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "pipeline.h"
+#include "alworldretentioninputs.h"
 #include "../almetal/almetalworldanimated.h"
 #include "../almetal/almetaldiagnostictelemetry.h"
 #include <algorithm>
@@ -759,6 +760,14 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> reference_still_target;
     std::shared_ptr<ALMetalRenderTarget> presentation_target;
     U32 presentation_frame = std::numeric_limits<U32>::max();
+    // Optional diagnostic policy facts, stamped where the actual owners
+    // decide them. They never participate in rendering or admission.
+    U32 retention_inputs_exposure_policy_frame = std::numeric_limits<U32>::max();
+    U32 retention_inputs_post_policy_frame = std::numeric_limits<U32>::max();
+    bool retention_inputs_meter_owner = false, retention_inputs_adaptation = false;
+    bool retention_inputs_classic = false, retention_inputs_gamma = false;
+    bool retention_inputs_no_post = false, retention_inputs_dynamic = false;
+
     // Retain only the world prefix, before any HUD or interface draw. A new
     // interface frame can then be rendered while scene resources load,
     // without accumulating yesterday's UI into today's backing texture.
@@ -9244,6 +9253,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::numeric_limits<U32>::max();
 
             #include "pipeline_exposure_policy_native.inl"
+            if (ALWarningDiagnostics::enabled())
+            {
+                capture.retention_inputs_exposure_policy_frame = gFrameCount;
+                capture.retention_inputs_meter_owner = main_exposure_meter;
+                capture.retention_inputs_adaptation = main_dynamic_exposure;
+                capture.retention_inputs_classic = LLRender::sClassicMode;
+            }
+
             // A missing history is the defined fixed EV 0 bootstrap. A
             // skipped native frame retains the last native texel; GL's
             // independent ping-pong sequence never invalidates it.
@@ -9495,6 +9512,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const bool no_post = gSnapshotNoPost || legacy_gamma ||
                 (build_no_post() && gFloaterTools &&
                  gFloaterTools->isAvailable());
+            if (ALWarningDiagnostics::enabled())
+            {
+                capture.retention_inputs_post_policy_frame = gFrameCount;
+                capture.retention_inputs_gamma = legacy_gamma;
+                capture.retention_inputs_no_post = no_post;
+                capture.retention_inputs_dynamic = dynamic_exposure;
+            }
+
 
             static LLCachedControl<F32> bloom_strength(
                 gSavedSettings, "RenderBloomStrength", 0.325f);
@@ -11227,6 +11252,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
                     << "Publishing fresh native UI over the retained pre-UI "
                        "world while current scene resources are incomplete"
                     << LL_ENDL;
+                #include "pipeline_world_retention_inputs_native.inl"
             }
         }
         else

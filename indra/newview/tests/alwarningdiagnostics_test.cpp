@@ -1,5 +1,7 @@
-/** CPU checks for the opt-in PPD-311/466 private warning diagnostic gate. */
+/** CPU checks for the opt-in PPD-311/466/003 private warning diagnostic gate. */
 #include "../../llcommon/alwarningdiagnostics.h"
+
+static_assert(static_cast<unsigned>(ALWarningDiagnostics::Kind::count) == 8);
 
 // Compile this source a second time with this definition to check the actual
 // inline gate's process-wide state across independent translation units.
