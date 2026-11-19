@@ -208,3 +208,24 @@ ready_for_owner/pending for69390. OpenHTJ2K and all retained unknowns remain.
 The normal publication target is the established codex/apple-silicon-metal
 branch. Preserve the separately published69277 checkpoint history and require
 final indra tree326ad879fe933432fc6e03f0e1e1437345098d3e, exactly candidate69390.
+
+## Publication observed
+
+Normal push to codex/apple-silicon-metal exits0, advancing af72868396 to
+[a58725784148412bacab1b218da79a8c04ea5fe2](https://github.com/levdarkheart-lgtm/AlchemyFork/commit/a58725784148412bacab1b218da79a8c04ea5fe2).
+Independent git ls-remote returns that exact head; main remains65c39b7bad.
+The normal merge retains published560bdf checkpoint ancestry, all six historical
+research notes and its completion-ledger addendum. Only current-state documents
+conflict; the latest state and pending test are retained. Final indra is exactly
+326ad879fe933432fc6e03f0e1e1437345098d3e and tools exactly match the tested
+source. No engine or tooling changes occur during publication integration.
+
+Two independent read-only reviews verify ancestry, final source identity,
+documentation-only merge, clean tracked worktree and unchanged original notes.
+A bounded changed-file/token review finds no unexpected binaries, raw captures,
+credentials or workflow/release edits. This is not an absolute secret guarantee.
+The first authorization commit has an extra EOF blank line caught by diffcheck;
+it is removed before the final merge's successful whitespace/harness checks.
+Private publication/ receipts retain push argv/status, remote refs and source
+identity. Five unrelated notes in the original owner checkout remain byte-for-byte
+unchanged and untracked. No viewer login or water-band acceptance is inferred.
