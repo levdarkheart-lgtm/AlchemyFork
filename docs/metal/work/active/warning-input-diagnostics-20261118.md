@@ -52,3 +52,5 @@ Owner was released to log out after both screenshots, a complete log prefix and 
 [Runtime source map and current actions](../../research/warning-input-runtime-69331-20261119.md). No cache clearing, blanket retry, new viewer run or push.
 
 First runtime-doc harness failed only because CURRENT/ledger grew to161/181lines. Adjacent existing prose was joined without dropping history; recovery limits are restored to160/180. Original failed console and subsequent harness result remain retained.
+
+Local functional repairs313/471/472/473/475/476 are integrated. PPD475 fixes a reproduced pre-instantiation starvation mechanism without disabling known occlusion. PPD476 preserves existing size limits and saved-copy/GPU metadata on the new callback path. Runtime findings and prerelease regressions remain in the linked research note/register. Combined app build/verification is next; no in-world fix acceptance or new launch is claimed.

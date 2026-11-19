@@ -17237,14 +17237,17 @@ void LLPipeline::endMetalWorldGBufferCapture()
             }
             capture.attempted = true;
             LL_WARNS("Metal")
-                << "Native world G-buffer probe retained GL after "
+                << "Native world G-buffer capture rejected after "
                 << failed_frames
                 << " deferred frames contained incomplete native "
                    "geometry or texture mirrors; first invalidation was "
                    "pipeline.cpp:"
                 << capture.first_incomplete_source_line
                 << " with " << incomplete_batch_count
-                << " batch(es) retained before discard"
+                << " batch(es) retained before discard; view="
+                << (capture.hero_probe_face_capture ? "hero"
+                    : capture.reflection_probe_face_capture ? "probe"
+                    : isMainWorldPass() ? "main" : "other")
                 << LL_ENDL;
         }
         return;

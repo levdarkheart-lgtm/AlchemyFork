@@ -2898,6 +2898,26 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN AND Python3_Interpreter_FOUND)
     find_package(Threads REQUIRED)
+    add_test(NAME "newview/texture_fetch_results_contract"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/llviewertexture_fetch_results_test.py")
+    set_tests_properties("newview/texture_fetch_results_contract"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    add_test(NAME "newview/vocache_admission_contract"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/vocache_admission_contract_test.py")
+    set_tests_properties("newview/vocache_admission_contract"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    add_test(NAME "newview/texture_aux_recovery"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/llviewertexture_aux_recovery_test.py")
+    set_tests_properties("newview/texture_aux_recovery"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    add_test(NAME "newview/avatar_palette_contract"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/avatar_palette_contract_test.py")
+    set_tests_properties("newview/avatar_palette_contract"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     add_library(alwarningdiagnostics_test_peer OBJECT tests/alwarningdiagnostics_test.cpp)
     target_link_libraries(alwarningdiagnostics_test_peer PRIVATE al::flags)
     target_compile_definitions(alwarningdiagnostics_test_peer PRIVATE AL_WARNING_DIAGNOSTICS_SECOND_TU=1)

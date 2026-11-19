@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-475 -->
+<!-- next-defect-id: PPD-477 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7566,6 +7566,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 registered before repair. Bounded source comparison exits0; no tests/builds/viewer or application edits performed. Existing palette stabilization tests do not cover LLMeshSkinInfo decoding/default/empty contracts. Numeric hash uses lround then S32 narrowing; do not call a session hash collision or multiplication bug without focused evidence.
 
+- 2026-11-19 local initialization/empty-contract repair integrated as b04b7ff22e (agentbaad19b5af): optional bind shape defaults to identity; empty inverse hash avoids element0; zero avatar palette uses data(). Original valid matrices/hash quantization and finite stabilization remain unchanged. Actual llprimitive target passes1489assertions/99cases including valid hash15304216647550519859; actual avatar packing/cache cases pass32checks after baseline UBSan empty indexing. This is not the cause of PPD311 nonfinite inverse data. Full combined application build and owner acceptance pending.
+
 ## PPD-314 — Multi-scene evaluation lacks continuous timestamped wall-frame telemetry
 
 - Status: investigating
@@ -10823,6 +10825,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 owner clarifies the club is high in the sky and the missing floor is likely mesh/prim geometry, not terrain. A stable read-only copy of the post-logout region object cache contains one approximate volume bounding box beneath both screenshot observer positions; actual volume/texture decoding is ongoing. This is a candidate identity, not a broken-frame draw receipt. Later hero generated-height warnings remain separate.
 
+- 2026-11-19 PPD475 independently reproduces cached-object admission starvation and is locally repaired; the candidate prim's conservative cache bounds contain both observed avatar positions, while actual camera/group state is unrecorded. This strengthens the investigation but does not establish incident causality. PPD473 loading-tree default binding is also repaired separately. Combined candidate is being prepared for a club teleport retest; the owner floor report stays open.
+
 ## PPD-471 — Requested bake auxiliary data can be omitted from successful final callbacks
 
 - Status: investigating
@@ -10843,6 +10847,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 actual pauseLoadedCallbacks/postCreateTexture/unpauseLoadedCallbacks and real OpenHT decode reproduce the exact needs_aux0/nullaux/successfinal consumer state (4cases/87assertions). Per-callback auxiliary demand is not stored; publication while paused clears the aggregate, and resume restores only raw demand. Live producer/order/mHasAux history remains unknown, so this is a matching source mechanism rather than full incident causality. Local repair begins in Alchemy-bake-471-20261119 from96f10353af, with exclusive texture/fetch ownership and root integration.
 
+- 2026-11-19 local repair integrated as950908bc10 (agent5e852fe3bd): per-callback auxiliary demand survives pause/resume, actual auxiliary quality gates fulfillment, completed/active primary-only workers admit auxiliary redecode from retained encoded bytes, and validated successful four-channel content terminates auxiliary requests without a retry loop. Retained formatted data follows existing worker lifetime/0.1second idle cleanup; no new cache/pool. Actual30cases/67checks passASan/UBSan against23baseline failures, prior upload16/171 passes, real OpenHT600byte progressiveRGBA control passes. Independent review found/fixed partial-maskless progress and both callback-clear paths. Whole consumer tests add duplicate/color queue coverage; PPD476 records/corrects a discovered size-validation gap before delivery. GPU/appearance recovery and live scheduling attribution remain pending.
+
 ## PPD-472 — Warning input diagnostics suppress reused handles and stream channel counts as bytes
 
 - Status: investigating
@@ -10860,6 +10866,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before diagnostic repair. Original source/warnings/prefixes, guarded rejected joins and byte normalization history remain private. Current live binary stays96f10353af while the owner reproduces rendering/rigging symptoms.
 
+
+- 2026-11-19 local repair integrated ascfa794a54f (agent17670c1c90). Enabled HTTP observations use an atomic terminal-boundary event key, so recycled handles/status do not suppress a later boundary; original64category cap remains. S8 channel count is cast numerically. Actual diagnostic prefix and asset/decode off/on checks passASan/UBSan (asset55/76,HTTP6/7); prior source fails targeted reuse/serialization cases. This is not a global operation identity or complete uncapped coverage. Capture rejection text also removes the stale retainedGL claim and names main/hero/probe view.
 
 ## PPD-473 — A loading tree texture can abort an entire native world view
 
@@ -10897,3 +10905,43 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-19 registered at source-confirmed discovery checkpoint before any repair. Existing non-rendering functions must be retained; no dead setting or silent feature removal is authorized.
+
+
+## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex cached-object admission investigation
+- Discovered: 2026-11-19
+- Original reference: Original1eb44 LLVOCache front/back selection and two-frame recent-visibility admission contract compared with native LLOcclusionCullingGroup query outcomes. Camera-inside avoids issuing a query; native Expired results are unavailable, not evidence of occlusion.
+- Evidence: [69331 runtime investigation](research/warning-input-runtime-69331-20261119.md); private floor-cache-admission-audit-01 actual cache cull/selectBack/add/process, culler classes and group check/do/earlyFail/recent/needs bodies.
+- Next action: Review the exact unknown/inside visibility contract, preserve known-zero occlusion and ordinary pending-query behavior, and implement bounded conservative progress through the existing admission owner. Retest all16schedule phases and both front/back selection paths; do not disable object-cache occlusion globally.
+- Verification: Actual-body controlled schedule reproduces zero object admission over2048frames for one of16LODhash phases with camera-inside bounds or repeated Expired tickets. Ready-positive admits all16; Ready-zero correctly admits none.112scenarios execute underASan/UBSan without runtime errors. Simple query-acquisition/capture refusal alone does not starve in this fixture because back selection makes progress. This is not yet attribution to the owner floor or its candidate box.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before production repair. Initial naive fixture admitted through the back path immediately; retained and corrected to a legal full-front-first phase after an earlier empty-tree frame. Separate PPD026 persistence/clear fixes and PPD470 missing-floor report remain retained. Native unknown result and camera-inside are distinct mechanisms; no stale-cache conclusion or global visibility bypass is accepted.
+
+
+- 2026-11-19 narrow repair integrated as7758d8fedc (agent4671590836). DISCARD_QUERY already zeroes its ticket; move the existing discarded-visible resolution outside the valid-ticket gate and report Expired/forgotten conservative visibility to the cache caller. Fresh groups, pending tickets, known-zero occlusion, hidden parents and per-camera state stay protected. No new visibility state, timer or global disabling. Actual durable5920checks passASan/UBSan against42baseline failures; independent review found no remaining issue. Real Metal query/texture provider selection passes1369assertions/9cases with API/GPU validation. Owner club-floor confirmation remains pending.
+
+## PPD-476 — Auxiliary-only duplicate delivery bypasses the texture size limit
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex PPD471 integration review
+- Discovered: 2026-11-19
+- Original reference: processFetchResults rejects reconstructed full dimensions above MAX_IMAGE_SIZE4096 on its normal upload path. PPD471 adds a callback-only duplicate path before that validation. OpenHT permits dimensions up to its wider wrapper limit, so decoder success does not establish the4096consumer limit.
+- Evidence: [69331 investigation and repair integration](research/warning-input-runtime-69331-20261119.md); private processFetchResults whole-body14case source comparison and additional boundary probes.
+- Next action: Apply the existing oversize failure contract to the new auxiliary-only path before retaining callback data, preserving the existing native image/generation and metadata. Test actual whole consumer/upload-queue bodies, including same-quality oversized data, full-size reconstruction and normal raw/aux controls.
+- Verification: Controlled same-quality primary/aux4097pixel data can reach success/final through the new path, whereas the original duplicate path discards it. No live oversized asset or relation to42missing-mask incidents is claimed. Different auxiliary component counts and per-channel dimensions are not rejected merely because they differ from primary data; the generic decode API permits up to4aux channels.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered during whole-consumer integration review, before a candidate using PPD471 was launched. Existing14whole-body controls pass on the PPD471 source (113checks), with two expected baseline failures proving duplicate auxiliary data loss. Additional oversized probes exposed this separate validation gap; no fixture failure was hidden or relabeled as owner runtime proof.
+
+- 2026-11-19 local repair integrated asde0ce5052d (agentafd5e89078). Callback-only duplicates check reconstructed full size before validity/retention; oversize follows existing missing-asset cancellation/fetch-stop contract without changing published GPU/full dimensions. Clear stale incoming raw validity before destruction so rejected bytes cannot replace a valid saved copy. Actual whole-consumer/upload-queue/callback/cleanup22cases244checks passASan/UBSan; baseline has5expected failures, removing only validity reset has1expected saved-copy failure. Independent review confirms the saved-level1/incoming0 fixture matches the actual replacement policy. Generic auxiliary channels/sampling dimensions remain unchanged.
