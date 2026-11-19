@@ -2957,7 +2957,7 @@ if(AL_BUILD_TESTS)
       COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/cinematic_mode_contract_test.py"
         --emit-source "${cinematic_mode_contract_source}"
-      DEPENDS alcinematicmode.cpp llhudtext.cpp alcinematicmode.h tests/cinematic_mode_contract_test.py tests/cinematic_mode_contract_fixture.cpp app_settings/settings_alchemy.xml skins/default/xui/en/panel_preferences_interface.xml skins/default/xui/en/menu_viewer.xml skins/default/xui/en/notifications.xml
+      DEPENDS alcinematicmode.cpp llhudtext.cpp llmoveview.cpp alcinematicmode.h tests/cinematic_mode_contract_test.py tests/cinematic_mode_contract_fixture.cpp app_settings/settings_alchemy.xml skins/default/xui/en/panel_preferences_interface.xml skins/default/xui/en/menu_viewer.xml skins/default/xui/en/notifications.xml
       VERBATIM)
     add_executable(cinematic_mode_contract_test "${cinematic_mode_contract_source}")
     target_link_libraries(cinematic_mode_contract_test PRIVATE al::flags)
@@ -2988,6 +2988,62 @@ if(AL_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/avatar_palette_contract_test.py")
     set_tests_properties("newview/avatar_palette_contract"
       PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    add_executable(alworldretentioninputs_test tests/alworldretentioninputs_test.cpp)
+    target_link_libraries(alworldretentioninputs_test PRIVATE al::flags Threads::Threads)
+    target_include_directories(alworldretentioninputs_test PRIVATE "${CMAKE_SOURCE_DIR}/llcommon")
+    target_compile_features(alworldretentioninputs_test PRIVATE cxx_std_20)
+    target_compile_options(alworldretentioninputs_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(alworldretentioninputs_test PRIVATE -fsanitize=address,undefined)
+    foreach(mode IN ITEMS disabled enabled classification schema)
+      add_test(NAME "newview/world_retention_inputs_${mode}" COMMAND alworldretentioninputs_test "${mode}")
+      set_tests_properties("newview/world_retention_inputs_${mode}"
+        PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    endforeach()
+    set(cinematic_mouselook_source "${CMAKE_CURRENT_BINARY_DIR}/cinematic_mouselook_contract_generated.cpp")
+    add_custom_command(OUTPUT "${cinematic_mouselook_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cinematic_mouselook_contract_test.py"
+        --emit-source "${cinematic_mouselook_source}"
+      DEPENDS tests/cinematic_mouselook_contract_test.py tests/cinematic_mouselook_contract_fixture.cpp
+        alcinematicmode.cpp alcinematicmode.h llagent.cpp llagentcamera.cpp llviewerwindow.cpp
+        ../llui/llfloater.cpp ../llui/llview.h
+      VERBATIM)
+    add_executable(cinematic_mouselook_contract_test "${cinematic_mouselook_source}")
+    target_link_libraries(cinematic_mouselook_contract_test PRIVATE al::flags llcommon)
+    target_include_directories(cinematic_mouselook_contract_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_features(cinematic_mouselook_contract_test PRIVATE cxx_std_20)
+    target_compile_options(cinematic_mouselook_contract_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(cinematic_mouselook_contract_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/cinematic_mouselook_contract" COMMAND cinematic_mouselook_contract_test)
+    set_tests_properties("newview/cinematic_mouselook_contract" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    set(hud_texture_inputs_source "${CMAKE_CURRENT_BINARY_DIR}/hud_texture_inputs_generated.cpp")
+    add_custom_command(OUTPUT "${hud_texture_inputs_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_texture_inputs_test.py"
+        --emit-source "${hud_texture_inputs_source}"
+      DEPENDS tests/hud_texture_inputs_test.py tests/hud_texture_inputs_fixture.cpp
+        llvovolume.cpp llviewertexture.h llvovolume_hud_texture_inputs.inl alhudtextureinputs.h ../llcommon/alwarningdiagnostics.h
+      VERBATIM)
+    add_executable(hud_texture_inputs_test "${hud_texture_inputs_source}")
+    target_link_libraries(hud_texture_inputs_test PRIVATE al::flags)
+    target_include_directories(hud_texture_inputs_test PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/llcommon")
+    target_compile_features(hud_texture_inputs_test PRIVATE cxx_std_20)
+    target_compile_options(hud_texture_inputs_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(hud_texture_inputs_test PRIVATE -fsanitize=address,undefined)
+    foreach(mode IN ITEMS disabled enabled exceptions cap)
+      add_test(NAME "newview/hud_texture_inputs_${mode}" COMMAND hud_texture_inputs_test "${mode}")
+      if(mode STREQUAL "disabled")
+        set(hud_diagnostic_optin 0)
+      else()
+        set(hud_diagnostic_optin 1)
+      endif()
+      set_tests_properties("newview/hud_texture_inputs_${mode}" PROPERTIES
+        ENVIRONMENT "ALCHEMY_WARNING_DIAGNOSTICS=${hud_diagnostic_optin}" TIMEOUT 60 LABELS "alchemy-bin")
+    endforeach()
     add_library(alwarningdiagnostics_test_peer OBJECT tests/alwarningdiagnostics_test.cpp)
     target_link_libraries(alwarningdiagnostics_test_peer PRIVATE al::flags)
     target_compile_definitions(alwarningdiagnostics_test_peer PRIVATE AL_WARNING_DIAGNOSTICS_SECOND_TU=1)
