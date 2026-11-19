@@ -1184,6 +1184,12 @@ void LLPluginProcessParent::receiveMessage(const LLPluginMessage &message)
                 // Plugin host has launched.  Tell it which plugin to load.
                 setState(STATE_HELLO);
             }
+            else if(mState == STATE_GOODBYE || mState == STATE_EXITING)
+            {
+                // The child can connect just as its owner requests shutdown.
+                // Keep teardown in progress when its queued hello arrives.
+                LL_DEBUGS("Plugin") << "received hello during shutdown" << LL_ENDL;
+            }
             else
             {
                 LL_WARNS("Plugin") << "received hello message in wrong state -- bailing out" << LL_ENDL;
@@ -1215,6 +1221,13 @@ void LLPluginProcessParent::receiveMessage(const LLPluginMessage &message)
                 setSleepTime(mSleepTime, true);
 
                 setState(STATE_RUNNING);
+            }
+            else if(mState == STATE_GOODBYE || mState == STATE_EXITING)
+            {
+                // A load response may already be in flight when the owner
+                // requests shutdown. Keep the graceful shutdown handshake in
+                // progress instead of turning that obsolete reply into an error.
+                LL_DEBUGS("Plugin") << "received load_plugin_response during shutdown" << LL_ENDL;
             }
             else
             {
