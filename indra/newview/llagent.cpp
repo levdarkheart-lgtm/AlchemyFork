@@ -2421,6 +2421,12 @@ void LLAgent::endAnimationUpdateUI()
             gFloaterView->popVisibleAll(skip_list);
 #endif
             mViewsPushed = false;
+            if (ALCinematicMode::isEnabled())
+            {
+                // A mode toggle can precede this pending mouselook pop.
+                // Keep its restored floaters under the cinematic UI owner.
+                gFloaterView->hideAllFloaters();
+            }
         }
 
         gAgentCamera.setLookAt(LOOKAT_TARGET_CLEAR);
@@ -2490,8 +2496,11 @@ void LLAgent::endAnimationUpdateUI()
     if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK)
     {
         // clean up UI
-        // first show anything hidden by UI toggle
-        gViewerWindow->setUIVisibility(true);
+        // Preserve cinematic ownership of the saved-hidden floater list.
+        if (!ALCinematicMode::isEnabled())
+        {
+            gViewerWindow->setUIVisibility(true);
+        }
 
         // then hide stuff we want hidden for mouselook
         gToolBarView->setToolBarsVisible(false);
