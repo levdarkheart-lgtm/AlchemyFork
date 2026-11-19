@@ -1,0 +1,23 @@
+# PPD082 — Current fixed exposure through classic-sky transitions
+
+Local correction in `codex/ppd082-exposure-transition-20261119`, based on8615dbb434 (same indra as owner69343/source8f1ef9bd8a). Root registered the updated PPD082 evidence before repair. This note does not close PPD082 or attribute every PPD002 retained-world episode to exposure.
+
+A modern→legacy sky blend copies the destination `canAutoAdjust` flag while interpolating probe ambiance. With legacy auto-adjust off, surface lighting can already be classic while the blended ambiance remainspositive. The native producer then skipped exposure adaptation and only produced the luminance meter, but final display admission still required a current exposure texel. The owner run contains three otherwise eligible presentation records08:37:35–38UTC with exposure=0; failed frames do not record every exposure-owner field, so the source case is not a complete incident-cause join.
+
+Original1eb44 `generateExposure` always draws its1×1output. When classic lighting disables metering, `exposureF.glsl` writes `(1,0,0,1)`, fixed EV0, independently of earlier adapted history. The correction preserves that contract through the existing Metal renderer: every main HDR exposure-meter owner now also publishes an exposure output. Adaptation-disabled frames use no previous texel, min/maxEV0 and zero unused adaptation inputs. The actual native no-history kernel produces exact half-float `(1,0,0,1)`. Dynamic parameters/history remain unchanged. The duplicate meter-only branch is removed; the same meter output remains available.
+
+Final admission still requires the current frame/epoch/target/readiness. No stale-target exemption, global post bypass, new backend, native API or shared MSL change was introduced. Existing eligibility, producer and admission bodies are shared as three function-local inls with a physical native test, so it executes the production owner rather than a second policy implementation.
+
+## Executed validation
+
+- `tools/metal/doctor.sh` exit0: ARM64 AppleM1Max, Xcode26.6.
+- Exact baseline producer/consumer from8615 plus the expanded fixture and freshly compiled actual `LLSettingsSky.cpp`: **5cases/155assertions,20failures**, Catch exit42. Tests show the real positive-ambiance/classic-flag blend, missing current output, and stale metadata after the old meter-only failure path.
+- Corrected source: **5cases/236assertions,0failures**, exit0. Physical Metal readback checks every channel of fixed EV output, adapted→fixed→adapted history, epoch restart, disabled adaptation, auto-adjust, no-post, probe/hero/nonmain/HDR exclusion, actual incompatible native input failure and next-frame retry. ASan+UBSan and Metal API/GPU validation enabled; no sanitizer or Metal validation errors observed.
+- Actual `pipeline.cpp` translation-unit syntax check, configured Release flags without PCH: exit0. This is not a viewer build or runtime qualification.
+- The first fixture compile omitted its `reverse_z` boundary field; retained and corrected. First proposal had one incorrect test expectation that resumed dynamic EV must differ from its initial value. The renderer's initial history bootstraps from EV0, so the corrected test first warms a second adapted frame, then verifies fixed EV0 resets it and the resumed value equals the independent bootstrap control. That setup failure and initial red/green receipts remain retained.
+
+Exact compile/link argv and raw stdout/stderr are private under `/Users/dekstroza/Alchemy-functional-69343-n6ifzso_/analysis/ppd082-offline-01`, with `repair-receipt.json`, `red-final/commands.json`, `green-02/commands.json`, `pipeline-syntax-command.json` and `doctor.log`. Build commands compile only the new native fixture and actual sky TU, then link retained configured native/CPU libraries; no application build or viewer launch. Test commands are `exposure_transition_tests '[ppd082]' --reporter compact` with `ASAN_OPTIONS=detect_leaks=0`, `MTL_DEBUG_LAYER=1`, `MTL_SHADER_VALIDATION=1`.
+
+## Integration and remaining qualification
+
+Root owns CMake/ledgers. Add `tests/almetal_exposure_transition_test.mm` to `almetal_tests`, link `llinventory` for the real sky class, and mark the Objective-C++ file `SKIP_PRECOMPILE_HEADERS`. Rebuild the combined candidate and run `[ppd082]`, then perform an owner-attended modern→legacy transition check with exact current-world publication. The controlled native fixture does not execute the entire viewer frame, live environment interpolation, resource pressure or actual HUD/floor scene. No FPS improvement, full stability, incident cause or owner acceptance is claimed. No push authorized.

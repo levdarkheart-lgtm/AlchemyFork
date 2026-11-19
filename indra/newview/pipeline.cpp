@@ -9243,17 +9243,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.bloom_frame =
                 std::numeric_limits<U32>::max();
 
-            static LLCachedControl<bool> dynamic_exposure(
-                gSavedSettings, "RenderDynamicExposureEnabled", true);
-            const bool main_exposure_meter = capture.hdr &&
-                isMainWorldPass() && mRT == &mMainRT &&
-                !mMetalHeroWorldCaptureActive &&
-                !mMetalReflectionWorldCaptureActive && !sCutoutRender;
-            const bool main_dynamic_exposure = main_exposure_meter &&
-                dynamic_exposure && !LLRender::sClassicMode;
-            const bool use_exposure_history =
-                capture.exposure_target &&
-                capture.exposure_epoch == mMetalExposureHistoryEpoch;
+            #include "pipeline_exposure_policy_native.inl"
             // A missing history is the defined fixed EV 0 bootstrap. A
             // skipped native frame retains the last native texel; GL's
             // independent ping-pong sequence never invalidates it.
@@ -9303,96 +9293,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         << history_batch_error << LL_ENDL;
                 }
             }
-            if (main_dynamic_exposure)
-            {
-                static LLCachedControl<F32> compensation(
-                    gSavedSettings, "AlchemyExposureCompensation", 0.f);
-                static LLCachedControl<F32> min_ev(
-                    gSavedSettings, "AlchemyExposureMinEV", -3.f);
-                static LLCachedControl<F32> max_ev(
-                    gSavedSettings, "AlchemyExposureMaxEV", 4.f);
-                static LLCachedControl<F32> low_percent(
-                    gSavedSettings, "AlchemyExposureLowPercent", 10.f);
-                static LLCachedControl<F32> high_percent(
-                    gSavedSettings, "AlchemyExposureHighPercent", 95.f);
-                static LLCachedControl<F32> speed_up(
-                    gSavedSettings, "AlchemyExposureSpeedUp", 3.f);
-                static LLCachedControl<F32> speed_down(
-                    gSavedSettings, "AlchemyExposureSpeedDown", 1.f);
-                static LLCachedControl<U32> metering_mode(
-                    gSavedSettings, "AlchemyExposureMeteringMode", 1);
-                static LLCachedControl<F32> sky_weight(
-                    gSavedSettings, "AlchemyExposureSkyWeight", 1.f);
-
-                const F32 low = llclamp(
-                    low_percent() * 0.01f, 0.f, 0.99f);
-                ALMetalWorldExposureScene exposure;
-                exposure.meter_output = &capture.exposure_meter_target;
-                exposure.source = target.get();
-                exposure.normal = capture.target->colorTexture(2);
-                exposure.depth = target->depthStencilTexture();
-                exposure.reverse_z = capture.reverse_z;
-                exposure.water_stencil = has_water_surface ? target.get() : nullptr;
-                exposure.previous = use_exposure_history
-                    ? capture.exposure_target->colorTexture(0) : nullptr;
-                exposure.delta_seconds = gFrameIntervalSeconds;
-                exposure.compensation = compensation();
-                exposure.min_ev = llmin(min_ev(), max_ev());
-                exposure.max_ev = llmax(min_ev(), max_ev());
-                exposure.low_fraction = low;
-                exposure.high_fraction = llclamp(
-                    high_percent() * 0.01f, low + 0.01f, 1.f);
-                exposure.speed_up = llmax(speed_up(), 0.f);
-                exposure.speed_down = llmax(speed_down(), 0.f);
-                exposure.sky_weight = llmax(sky_weight(), 0.f);
-                exposure.metering_mode = llmin(
-                    static_cast<U32>(metering_mode()), 2u);
-                std::string exposure_error;
-                auto exposure_target =
-                    capture.renderer->renderExposure(
-                        exposure, &exposure_error);
-                if (exposure_target)
-                {
-                    capture.exposure_target =
-                        std::move(exposure_target);
-                    capture.exposure_frame = gFrameCount;
-                    capture.exposure_epoch =
-                        mMetalExposureHistoryEpoch;
-                    mMetalExposureHistoryReady = true;
-                }
-                else
-                {
-                    capture.exposure_target.reset();
-                    capture.exposure_frame =
-                        std::numeric_limits<U32>::max();
-                    capture.exposure_epoch = 0;
-                    mMetalExposureHistoryReady = false;
-                    LL_WARNS("Metal")
-                        << "Native world exposure history did not advance: "
-                        << exposure_error << LL_ENDL;
-                }
-            }
-
-            if (main_exposure_meter && !main_dynamic_exposure)
-            {
-                // Original generateLuminance precedes adaptation and is not
-                // gated by automatic exposure or classic-sky fixed exposure.
-                std::string meter_error;
-                ALMetalWorldExposureScene meter;
-                meter.source = target.get();
-                meter.normal = capture.target->colorTexture(2);
-                meter.depth = target->depthStencilTexture();
-                meter.reverse_z = capture.reverse_z;
-                meter.water_stencil = has_water_surface ? target.get() : nullptr;
-                capture.exposure_meter_target =
-                    capture.renderer->renderExposureMeter(meter, &meter_error);
-                if (!capture.exposure_meter_target)
-                {
-                    LL_WARNS("Metal") << "Native luminance meter failed: "
-                        << meter_error << LL_ENDL;
-                }
-            }
-
+            #include "pipeline_exposure_publication_native.inl"
             if (main_lens_flare)
             {
                 ALMetalWorldLensFlareStateScene state;
@@ -9698,13 +9599,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // modern or legacy-gamma base permutation. This is intentionally stricter
             // than the GL renderer: every omitted upstream owner must be
             // inactive, or native-only scopes skip this frame.
-            const bool exact_dynamic_exposure = !capture.hdr || no_post ||
-                !dynamic_exposure ||
-                (mMetalExposureHistoryReady &&
-                 capture.exposure_target &&
-                 capture.exposure_epoch == mMetalExposureHistoryEpoch &&
-                 (capture.exposure_frame == gFrameCount ||
-                  cutout_snapshot));
+            #include "pipeline_exposure_admission_native.inl"
             const bool exact_bloom = !wants_native_bloom ||
                 (capture.bloom_target &&
                  capture.bloom_frame == gFrameCount);
