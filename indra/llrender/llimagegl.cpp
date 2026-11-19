@@ -1470,6 +1470,21 @@ namespace
     }
 }
 
+bool LLImageGL::hasMetalTextureSize(S32 width, S32 height) const noexcept
+{
+    return mMetalTexture && width > 0 && height > 0 &&
+        mMetalTexture->descriptor().width == static_cast<U32>(width) &&
+        mMetalTexture->descriptor().height == static_cast<U32>(height);
+}
+
+S32 LLImageGL::metalRenderMipLevelCount() const
+{
+    return mUseMipMaps
+        ? calcMipLevelCount(liveWidth(mCurrentDiscardLevel),
+                            liveHeight(mCurrentDiscardLevel))
+        : 1;
+}
+
 bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
 {
     if (!sImageMetalDevice || !texture ||
@@ -1490,11 +1505,7 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
     expected.format = upload_format.format;
     expected.width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
     expected.height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
-    expected.mipmap_level_count = static_cast<U32>(mMipLevels > 0
-        ? mMipLevels
-        : mUseMipMaps
-            ? calcMipLevelCount(expected.width, expected.height)
-            : 1);
+    expected.mipmap_level_count = static_cast<U32>(metalRenderMipLevelCount());
     expected.storage = ALMetalStorageMode::private_gpu;
     expected.usage = ALMetalTextureUsage::shader_read;
     switch (mDeprecatedSourceFormat)
@@ -1591,11 +1602,7 @@ std::unique_ptr<ALMetalTexture> LLImageGL::createMetalRenderTexture(
     descriptor.format = upload_format.format;
     descriptor.width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
     descriptor.height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
-    descriptor.mipmap_level_count = static_cast<U32>(mMipLevels > 0
-        ? mMipLevels
-        : mUseMipMaps
-            ? calcMipLevelCount(descriptor.width, descriptor.height)
-            : 1);
+    descriptor.mipmap_level_count = static_cast<U32>(metalRenderMipLevelCount());
     descriptor.storage = ALMetalStorageMode::private_gpu;
     descriptor.usage = ALMetalTextureUsage::shader_read |
                        ALMetalTextureUsage::render_target;

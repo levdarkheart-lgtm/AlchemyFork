@@ -15,6 +15,7 @@
 #include "../alrendercapabilities.h"
 #include "../../almetal/almetaldevice.h"
 #include "../../almetal/almetalresource.h"
+#include "../../almetal/almetaltextureops.h"
 #include "llimage.h"
 #include "llevents.h"
 #include <catch2/catch_test_macros.hpp>
@@ -146,6 +147,41 @@ namespace
             std::memcpy(&texel, raw->getData() +
                 (static_cast<std::size_t>(y) * raw->getWidth() + x) * 4, sizeof(texel));
             return texel;
+        }
+        static void checkSolidNative(const ALMetalDevice& device,
+                                     const ALMetalTexture& texture,
+                                     const std::array<U8, 4>& expected,
+                                     U32 tolerance = 0)
+        {
+            std::string error;
+            for (U32 level = 0; level < texture.descriptor().mipmap_level_count; ++level)
+            {
+                const U32 width = texture.width(level);
+                const U32 height = texture.height(level);
+                std::vector<U8> pixels(width * height * 4);
+                REQUIRE(texture.readback(device, level, 0, {}, pixels.data(), width * 4, &error));
+                INFO(error);
+                for (std::size_t i = 0; i < pixels.size(); ++i)
+                {
+                    const U32 value = pixels[i];
+                    CHECK(value + tolerance >= expected[i % 4]);
+                    CHECK(value <= static_cast<U32>(expected[i % 4]) + tolerance);
+                }
+            }
+        }
+        static void fillRendered(const ALMetalDevice& device,
+                                 ALMetalTexture& texture, U8 fill)
+        {
+            std::string error;
+            std::vector<U8> pixels(texture.width() * texture.height() * 4, fill);
+            auto command = device.makeCommandBuffer("PPD496 render replacement fixture", &error);
+            INFO(error);
+            REQUIRE(command);
+            REQUIRE(texture.upload(*command, 0, 0, {}, pixels.data(), texture.width() * 4, &error));
+            if (texture.descriptor().mipmap_level_count > 1)
+                REQUIRE(texture.generateMipmaps(*command, &error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
         }
     };
 
@@ -468,6 +504,166 @@ namespace
 
         img->destroyGLTexture();
         CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+    }
+
+    TEST_CASE_METHOD(llimage_native_data,
+                     "LLImageGL: bump render replacement derives a fresh full mip chain after resize",
+                     "[LLImageGL][almetal][native-image-coverage][PPD496]")
+    {
+        auto& device = *fixture_device;
+        std::string error;
+        auto generator = ALMetalNormalMapGenerator::create(device, &error);
+        INFO(error);
+        REQUIRE(generator);
+        LLPointer<LLImageGL> source = new LLImageGL(false);
+        source->setExplicitFormat(GL_RGBA8, GL_RGBA);
+        REQUIRE(source->createMetalTexture(0, makeRaw(8, 8, 4, 0x40).get()));
+        LLPointer<LLImageGL> bump = new LLImageGL(true);
+        bump->setExplicitFormat(GL_RGBA8, GL_RGBA);
+
+        struct Extent { S32 width, height; U32 levels; };
+        // Explicit expectations cover shrinking, regrowing and both rectangular
+        // orientations. Clamping an old level count cannot satisfy this sequence.
+        const std::array<Extent, 7> extents{{
+            {8, 8, 4}, {2, 2, 2}, {8, 8, 4}, {8, 2, 4},
+            {2, 8, 4}, {3, 5, 3}, {6, 10, 4}}};
+        std::shared_ptr<const ALMetalTexture> first_generation;
+        for (std::size_t step = 0; step < extents.size(); ++step)
+        {
+            const auto& extent = extents[step];
+            CAPTURE(step, extent.width, extent.height);
+            REQUIRE(bump->setSize(extent.width, extent.height, 4, 0));
+            bump->setUseMipMaps(true);
+            bump->setDiscardLevel(0);
+            CHECK_FALSE(bump->hasMetalTextureSize(extent.width, extent.height));
+            auto rendered = bump->createMetalRenderTexture(&error);
+            INFO(error);
+            REQUIRE(rendered);
+            CHECK(rendered->descriptor().width == static_cast<U32>(extent.width));
+            CHECK(rendered->descriptor().height == static_cast<U32>(extent.height));
+            REQUIRE(rendered->descriptor().mipmap_level_count == extent.levels);
+            auto command = device.makeCommandBuffer("PPD496 actual legacy bump generation", &error);
+            REQUIRE(command);
+            const bool darkness = step % 2 != 0;
+            REQUIRE(generator->encode(*command, *source->getMetalTexture(), *rendered,
+                                      1.f, darkness, &error));
+            REQUIRE(rendered->generateMipmaps(*command, &error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
+            REQUIRE(bump->adoptMetalRenderTextureAuthoritative(
+                std::move(rendered), LLGLTexture::LOCAL));
+            CHECK(bump->hasMetalTextureSize(extent.width, extent.height));
+            CHECK_FALSE(bump->getHasGLTexture());
+            checkSolidNative(device, *bump->getMetalTexture(),
+                             {128, 128, 255, static_cast<U8>(darkness ? 191 : 64)}, 1);
+            if (step == 0) first_generation = bump->getMetalTextureLease();
+        }
+        // Replacement publication does not overwrite a generation still leased
+        // by an earlier native packet, including its complete mip chain.
+        REQUIRE(first_generation);
+        CHECK(first_generation->descriptor().width == 8);
+        CHECK(first_generation->descriptor().mipmap_level_count == 4);
+        checkSolidNative(device, *first_generation, {128, 128, 255, 64}, 1);
+    }
+
+    TEST_CASE_METHOD(llimage_native_data,
+                     "LLImageGL: render mip allocation follows current discard and preserves a canceled prior owner",
+                     "[LLImageGL][almetal][native-image-coverage][PPD496]")
+    {
+        auto& device = *fixture_device;
+        std::string error;
+        LLPointer<LLImageGL> image = new LLImageGL(true);
+        image->setExplicitFormat(GL_RGBA8, GL_RGBA);
+        REQUIRE(image->createMetalTexture(1, makeRaw(8, 4, 4, 0x20).get()));
+        REQUIRE(image->getMetalTexture()->descriptor().mipmap_level_count == 4);
+        auto previous = image->getMetalTextureLease();
+        const auto* previous_pointer = image->getMetalTexture();
+        const U64 previous_stamp = image->getContentStamp();
+
+        REQUIRE(image->setSize(12, 4, 4, 1));
+        image->setDiscardLevel(1);
+        REQUIRE(image->getWidth() == 6);
+        REQUIRE(image->getHeight() == 2);
+        CHECK_FALSE(image->hasMetalTextureSize(image->getWidth(), image->getHeight()));
+        CHECK_FALSE(image->hasMetalTextureSize(0, 2));
+        CHECK_FALSE(image->hasMetalTextureSize(-1, 2));
+        // Current logical geometry must not make retained old backing look ready.
+        // Abandoning a candidate simulates failure before authoritative adoption.
+        {
+            auto abandoned = image->createMetalRenderTexture(&error);
+            INFO(error);
+            REQUIRE(abandoned);
+            CHECK(abandoned->descriptor().width == 6);
+            CHECK(abandoned->descriptor().height == 2);
+            CHECK(abandoned->descriptor().mipmap_level_count == 3);
+        }
+        CHECK(image->getMetalTexture() == previous_pointer);
+        CHECK(image->getContentStamp() == previous_stamp);
+        CHECK_FALSE(image->hasMetalTextureSize(6, 2));
+        checkSolidNative(device, *previous, {0x20, 0x20, 0x20, 0x20});
+        auto retry = image->createMetalRenderTexture(&error);
+        REQUIRE(retry);
+        auto incomplete_descriptor = retry->descriptor();
+        incomplete_descriptor.mipmap_level_count = 1;
+        auto incomplete = ALMetalTexture::create(device, incomplete_descriptor, &error);
+        REQUIRE(incomplete);
+        CHECK_FALSE(image->adoptMetalRenderTextureAuthoritative(
+            std::move(incomplete), LLGLTexture::LOCAL));
+        CHECK(image->getMetalTexture() == previous_pointer);
+        fillRendered(device, *retry, 0x60);
+        REQUIRE(image->adoptMetalRenderTextureAuthoritative(
+            std::move(retry), LLGLTexture::LOCAL));
+        CHECK(image->hasMetalTextureSize(6, 2));
+        REQUIRE(image->getMetalTexture()->descriptor().mipmap_level_count == 3);
+        checkSolidNative(device, *image->getMetalTexture(), {0x60, 0x60, 0x60, 0x60});
+        checkSolidNative(device, *previous, {0x20, 0x20, 0x20, 0x20});
+    }
+
+    TEST_CASE_METHOD(llimage_native_data,
+                     "LLImageGL: one-level media render replacements still reject incompatible adoption",
+                     "[LLImageGL][almetal][native-image-coverage][PPD496]")
+    {
+        auto& device = *fixture_device;
+        std::string error;
+        LLPointer<LLImageGL> image = new LLImageGL(false);
+        image->setExplicitFormat(GL_RGBA8, GL_RGBA);
+        REQUIRE(image->createMetalTexture(0, makeRaw(8, 8, 4, 0x30).get()));
+        auto previous = image->getMetalTextureLease();
+        const U64 previous_stamp = image->getContentStamp();
+        REQUIRE(image->setSize(2, 3, 4, 0));
+        image->setUseMipMaps(false);
+        image->setDiscardLevel(0);
+        auto rendered = image->createMetalRenderTexture(&error);
+        REQUIRE(rendered);
+        REQUIRE(rendered->descriptor().mipmap_level_count == 1);
+        const auto expected = rendered->descriptor();
+        for (U32 mismatch = 0; mismatch < 5; ++mismatch)
+        {
+            CAPTURE(mismatch);
+            auto descriptor = expected;
+            switch (mismatch)
+            {
+                case 0: descriptor.width = 4; break;
+                case 1: descriptor.format = ALMetalPixelFormat::bgra8_unorm; break;
+                case 2: descriptor.mipmap_level_count = 2; break;
+                case 3: descriptor.storage = ALMetalStorageMode::shared; break;
+                case 4: descriptor.usage = ALMetalTextureUsage::shader_read; break;
+            }
+            auto incompatible = ALMetalTexture::create(device, descriptor, &error);
+            INFO(error);
+            REQUIRE(incompatible);
+            CHECK_FALSE(image->adoptMetalRenderTexture(std::move(incompatible)));
+            CHECK(image->getMetalTexture() == previous.get());
+            CHECK(image->getContentStamp() == previous_stamp);
+            CHECK_FALSE(image->hasMetalTextureSize(2, 3));
+        }
+        fillRendered(device, *rendered, 0x70);
+        // Actual accelerated media uses this non-authoritative adoption owner.
+        REQUIRE(image->adoptMetalRenderTexture(std::move(rendered)));
+        CHECK(image->hasMetalTextureSize(2, 3));
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count == 1);
+        checkSolidNative(device, *image->getMetalTexture(), {0x70, 0x70, 0x70, 0x70});
+        checkSolidNative(device, *previous, {0x30, 0x30, 0x30, 0x30});
     }
 
     TEST_CASE_METHOD(llimage_native_data, "LLImageGL: scaleDown preserves its Metal mirror with a GPU blit", "[LLImageGL][almetal][native-image-coverage]")

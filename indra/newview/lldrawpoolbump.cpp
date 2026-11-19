@@ -614,11 +614,13 @@ LLViewerTexture* LLBumpImageList::getBrightnessDarknessImage(LLViewerFetchedText
         bump = iter->second;
     }
 
-    bool native_missing = false;
+    bool native_size_mismatch = false;
 #if LL_DARWIN
-    native_missing = bump && !bump->getGLTexture()->getMetalTexture();
+    native_size_mismatch = bump &&
+        !bump->getGLTexture()->hasMetalTextureSize(
+            src_image->getWidth(), src_image->getHeight());
 #endif
-    if (bump == nullptr || native_missing ||
+    if (bump == nullptr || native_size_mismatch ||
         src_image->getWidth() != bump->getWidth() ||
         src_image->getHeight() != bump->getHeight())
     {
@@ -735,7 +737,8 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
     bool needs_update = bump->getWidth() != src->getWidth() ||
                         bump->getHeight() != src->getHeight();
 #if LL_DARWIN
-    needs_update = needs_update || !bump->getGLTexture()->getMetalTexture();
+    needs_update = needs_update || !bump->getGLTexture()->hasMetalTextureSize(
+        src->getWidth(), src->getHeight());
 #endif
     if (needs_update) // bump not cached yet or has changed resolution/backing
     {

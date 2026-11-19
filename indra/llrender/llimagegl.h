@@ -314,6 +314,9 @@ public:
     LLGLuint getTexName() const { return mTexName; }
 #if LL_DARWIN
     ALMetalTexture* getMetalTexture() const noexcept { return mMetalTexture.get(); }
+    // A failed render replacement may leave the prior native allocation alive
+    // after local image geometry changes. Test the backing, not that geometry.
+    bool hasMetalTextureSize(S32 width, S32 height) const noexcept;
     // Render-produced updates must allocate/adopt a replacement while leased,
     // rather than blitting into backing already borrowed by a CPU/GPU packet.
     bool hasMetalTextureLeases() const noexcept { return mMetalTexture.use_count() > 1; }
@@ -423,6 +426,11 @@ public:
 
 private:
     ScaleDownResult scaleDownImpl(S32 desired_discard, ALNativeFrameBudget*);
+#if LL_DARWIN
+    // Render producers allocate a new full chain (or level 0 only) for the
+    // requested live extent; mMipLevels still describes the previous storage.
+    S32 metalRenderMipLevelCount() const;
+#endif
     void freePickMask();
     bool isCompressed() const;
 
