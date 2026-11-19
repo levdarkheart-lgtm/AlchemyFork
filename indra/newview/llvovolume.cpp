@@ -28,6 +28,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alhudtextureinputs.h"
+
 #include "llvovolume.h"
 #include "alsculptcopy.h"
 
@@ -838,6 +840,8 @@ bool LLVOVolume::isVisible() const
     return false ;
 }
 
+#include "llvovolume_hud_texture_inputs.inl"
+
 void LLVOVolume::updateTextureVirtualSize(bool forced)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
@@ -945,6 +949,20 @@ void LLVOVolume::updateTextureVirtualSize(bool forced)
             }
             face->setPixelArea(area); // treat as full screen
             face->setVirtualSize(vsize);
+            if (ALWarningDiagnostics::enabled())
+            {
+                // Observe existing slots after the unchanged demand/boost owner.
+                // Other slots are not implied to receive the selected image's boost.
+                try
+                {
+                    for (U32 slot = ch_min; slot <= ch_max; ++slot)
+                    {
+                        LLViewerTexture* texture = face->getTexture(slot);
+                        if (texture) observeHUDTextureInputs(getID(), i, slot, texture, texture == imagep, gFrameCount);
+                    }
+                }
+                catch (...) {} // Optional metadata must not affect the demand owner.
+            }
         }
         else
         {

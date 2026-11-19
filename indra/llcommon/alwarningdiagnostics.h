@@ -1,4 +1,4 @@
-/** Opt-in, bounded private input diagnostics for PPD-311/466/003. */
+/** Opt-in, bounded private input diagnostics for PPD-311/466/003/463. */
 #pragma once
 
 #include <array>
@@ -9,7 +9,7 @@
 
 namespace ALWarningDiagnostics
 {
-enum class Kind : unsigned { skin, skin_decode, bake, bake_decode, texture, material, http, world, count };
+enum class Kind : unsigned { skin, skin_decode, bake, bake_decode, texture, material, http, world, hud, count };
 inline bool enabled()
 {
     static const bool active = []
