@@ -225,9 +225,43 @@ Executed on the M1 Max/macOS26.5.2:
   transport/local original/links/code/emotes/split routing/callback deletion.
   `/tmp/alchemy-native-im-echo-argument-after`; earlier callback/argument UAF
   stacks retained in corresponding `*-before.log` files.
-- Updated Release build/CTest/app verification: next action, not yet observed.
+- Updated Release build/CTest/app verification completed below.
 
 Owner closed69398 and requests launch of the checked replacement. Original app
 preserved under ignored evidence `previous/Alchemy Metal IM Translation 69398.app`.
 No automated IMs, login or push. Logged-in UI acceptance remains the owner's next
 check. Rendering/performance release gates remain unchanged and incomplete.
+
+
+### Follow-up delivery —69401
+
+Source `323a21242e33fdb94ddb0a8b9a39d21e290eae97`, indra tree
+`31096a53de88a1fedafdb95bbb2266580347c36c`. Cached CMake configure exits0;
+required Release wrapper exits0,104 Ninja actions. Exact app remains
+`build-native-im-translation/newview/Release/Alchemy Metal IM Translation.app`,
+version26.4.0.69401, binary SHA256
+`4e98de1c534bc2b29976a7e42bc46eeb16bf9e14a04c2ddb494f2d0435d3e411`.
+`tools/metal/verify_app.sh <app>` and `codesign --verify --deep --strict <app>`
+exit0;346 Mach-O files ARM64, zero invalid slices. Strict source audit exits0,
+3647 files/925 informational/zero blocking/zero scan errors. Harness33 files pass.
+
+Ten focused CTest processes pass: native bridge/live, policy, actual-send echo,
+real UI handle, autocomplete, emoji, text parser, URL entry and URL matching.
+Policy716 and actual-send135 sanitizer checks pass; native342 checks include
+French and Japanese, installed/missing readiness, cancellation and protected
+URLs/code/emoji. No claim of translation linguistic perfection or logged-in UI
+acceptance follows from these checks.
+
+Detailed local receipt and logs: ignored
+`artifacts/metal/native-im-translation-20261119/followup/receipt.json`.
+Both pre-correction callback/session and borrowed-ID UAF stacks retained beside
+passing actual-send-body source/receipt. Previous69398 bundle remains preserved.
+
+Owner explicitly closed the old viewer and asked for the checked replacement to
+start. Exact69401 launched with `open -n <app> --args --multiple --set AutoLogin false`,
+exit0, observed PID19174 with exact executable path. Owner controls login/chat
+acceptance; no agent IMs, login, scene screenshots, profiling or push. PPD-512–515
+remain ready_for_owner. Next owner check: outgoing original+bracketed translation,
+receiver-only target text, download badge clearing, per-chat isolation, incoming
+opt-in and close/reopen behavior. Overall renderer/performance release gates are
+unchanged and are not claimed complete.

@@ -11937,13 +11937,13 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-512 — Translated outgoing IM echo omits the sender's original wording
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
 - Original reference: Native translated-send completion passes only translated text to existing sendMsg/LLIMModel::sendMessage; the local echo therefore contains only recipient-language text.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
-- Next action: Show original typed wording followed by the sent translation in brackets locally; keep recipient payload translated only and preserve lifecycle/RLVa/transport semantics.
+- Next action: Confirm local original plus bracketed translation in a logged-in chat, while recipient receives only the target text.
 - Verification: Owner confirms Japanese sending works on69398 and supplies a screenshot showing only Japanese in the outgoing chat row; asks for bilingual local echo. No repair yet.
 - Owner verification: pending
 - Push approval: not_granted
@@ -11952,15 +11952,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered owner's local-echo request before implementation. Separate French missing-model report matches expected not_installed status; French download is in progress, and no owner IM will be sent automatically.
 
+- 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
 ## PPD-513 — Translated initialization queue survives chat close and conference reuse
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
 - Original reference: LLFloaterIMSession::sendMsg stores mQueuedMsgsForInit; onClose cancels native tasks but originally retains already queued text.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
-- Next action: Clear the initialization queue on close and retain separate wire/original fields while flushing through current send restrictions.
+- Next action: Confirm closing/reopening chats and conference reuse never release a prior initialization queue; automated source/sanitizer evidence does not replace owner acceptance.
 - Verification: Independent source review confirms addP2PSessionParticipants reuses the floater after onClose; queued native text/local-original metadata must not cross into another conversation.
 - Owner verification: pending
 - Push approval: not_granted
@@ -11969,15 +11971,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered before repair during owner follow-up; old69398 remains owner-controlled until logout. No automation sends messages.
 
+- 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
 ## PPD-514 — Supported language selectors hide missing-model readiness
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
 - Original reference: Native IM dropdowns initially enumerate all supported languages without pair readiness; the send failure appears only in a truncated status line.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
-- Next action: Keep supported languages discoverable, label missing model pairs, prevent silent send attempts while unavailable, and refresh after language preparation.
+- Next action: Confirm dropdown Download needed labels and readiness updates after model preparation in the logged-in viewer.
 - Verification: Owner screenshot shows French selected and a retained unsent draft with not_installed status; asks for clear Download needed indicators and automatic availability refresh.
 - Owner verification: pending
 - Push approval: not_granted
@@ -11986,15 +11990,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered before repair during owner follow-up; old69398 remains owner-controlled until logout. No automation sends messages.
 
+- 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
 ## PPD-515 — IM send retains a session pointer across synchronous local-echo callbacks
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
 - Original reference: LLIMModel::sendMessage finds a session before addMessage/processAddingMessage and reads mInitialTargetIDs afterward; local message signals can remove the session synchronously.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
-- Next action: Reacquire the model session after local-echo callbacks and exercise session removal in the actual-send-body sanitizer fixture.
+- Next action: Confirm sending and closing chats remain stable in the updated viewer; retain both sanitizer reproductions and passing corrected cases.
 - Verification: Actual production send-body ASan fixtures reproduce heap-use-after-free both for the retained model session and for UUID references to a destroyed caller. Reacquiring the session and owning ID copies pass135 checks/0 failures. Floater send and input callers also reacquire a base weak handle and check close generation. No owner crash attributed to this path.
 - Owner verification: pending
 - Push approval: not_granted
@@ -12002,3 +12008,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-19: Registered before repair during callback-lifetime review of bilingual outgoing echo.
+
+- 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
