@@ -214,3 +214,66 @@ recovered from passing source/GPU unit checks. General loading improvement remai
 the69377 owner observation; no new whole-viewer FPS/latency/quality claim.
 PPD002/003/125/311/463/464/471/493 and denied-asset causes remain scoped/open;
 PPD492 is ready_for_owner, not verified. No push authorized or performed.
+
+## Continued native snapshot production audit
+
+After preserving69381, offline original/current audit rules out the same-frame
+retry premise: `display` increments gFrameCount for every snapshot attempt, and
+`snapshot_request` explicitly refreshes per-frame products/attempt gates. Cull
+references remain owned through deferred lighting/UI and clear afterward. The
+fused main-lighting path excludes gSnapshot. Normal cleanup alone starts resource
+draining, after the recorded snapshot failure. Nested final-snapshot idle can
+reenter shutdown/send logout in another admissible ordering, and a late fallback
+after isExiting cannot generate a new native frame, but safe69377marker order is
+requestQuit→snapshotfailure→LogoutRequest→QUITTING→cleanup. Neither alternate
+ordering is proved to explain this observed initial failure.
+
+The existing exact-snapshot error reports GBuffer target and composition/post
+attempts, not lightmap/base attempts. Add only opt-in stamped base branch, current
+atmospheric policy and selected/published hero coherence at that existing error;
+no retained-world Observer or absent UI-background dereference. Initial extraction
+selected the generic fail lambda by mistake; corrected againstHEAD before any
+compile or newcandidate. The detailed error/false result and exact-current guard
+remain intact.
+
+PPD494 is a separate source-confirmed parity gap. Original1eb pipeline11819
+unconditionally clears transparent screen, skips only the sunlight/soften-sky
+when RenderDeferredAtmospheric=false, then executes local/projectors and forward
+geometry. Native skips its sole base producer, and downstream local/projector/
+composition guards cannot proceed. The persisted setting is supported and defaults
+true. Actual69377value is unknown; no incident attribution is made. Repair with a
+direct native transparent-zero color owner carrying the current GBuffer depth,
+then the unchanged local/projector/post sequence. Do not force settings, reuse
+stale worlds, execute normal sun shading with guessed zero constants or relax
+completeness. Native/actual-caller qualification and owner acceptance remain
+pending;69381 remains preserved/notlaunched.
+
+Continued493 failure diagnostics pass the real included error/return body in
+separate cached-gate processes: disabled2cases/6checks, enabled12cases/67checks,
+ASan/UBSan. A poisoned selected pointer is untouched while disabled/null-error;
+metadata and append-allocation exceptions preserve the original error. No
+background/timer/GPU API exists in the fixture.
+
+494 root CPU18cases/194checks each disabled/enabled pass actual prelude and both
+view dispatches. Negative controls use exact22aa production snippets: oldcaller
+32/50failures, oldprelude37/46, both47/68. These are synthetic provider boundaries,
+not a renderer/whole-world test. Native backend0eef007590→root68e75ac0f4 and
+physical native tests compile as separateARM64 objects; normalroot nativebuild/
+GPU clear/depth/accumulation execution are pending. True-mode shading/math/native
+guards remain unchanged by scoped source review.
+
+494 native root tests initially failed1of511assertions due to the new fixture's
+reversed normal_hdr/hdr arguments, not a renderer correction. After fixing only
+argument order and failure context, actual native3cases/641assertions pass with
+Metal API/GPU validation. They verify exacttransparentzero, unchangeddepth/stencil/
+allGBufferstores across8format/reverse combinations, positive point/projector
+continuation and malformed-input/borrowed-prefix cancellation/retry controls.
+Header/production native method remain independently reviewed and unchanged.
+
+A further bounded492physical-publication lifetime audit finds no new normal-path
+stale-ready gap: ordinary probe scratch swaps preserve hero publications; settings/
+plan/reset/teardown invalidate the manager before or together with losing native
+resources; filter publication commits before updating generation. Conditional
+device-change reset is unpaired, but the current SDL production device is assigned
+only at construction and retained by context switches. No normal camera/resize
+source counterexample was found; do not infer runtime recovery or weaken guards.

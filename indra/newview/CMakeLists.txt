@@ -1893,6 +1893,9 @@ if(AL_BUILD_VIEWER)
     pipeline_producer_source_drain_native.inl
     pipeline_producer_capability_native.inl
     pipeline_hero_capture_readiness_native.inl
+    pipeline_snapshot_incomplete_native.inl
+    pipeline_zero_lighting_inputs_native.inl
+    pipeline_base_lighting_dispatch_native.inl
     pipeline_tree_capture_native.inl
     pipeline_shadow_terrain_preflight_native.inl
     pipeline_shadow_terrain_preflight_types_native.inl
@@ -3054,6 +3057,30 @@ if(AL_BUILD_TESTS)
     add_test(NAME "newview/final_snapshot_contract" COMMAND final_snapshot_contract_test)
     set_tests_properties("newview/final_snapshot_contract"
       PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    add_executable(zero_lighting_inputs_test tests/zero_lighting_inputs_test.cpp)
+    target_link_libraries(zero_lighting_inputs_test PRIVATE al::flags Threads::Threads)
+    target_include_directories(zero_lighting_inputs_test PRIVATE "${CMAKE_SOURCE_DIR}/llcommon")
+    target_compile_features(zero_lighting_inputs_test PRIVATE cxx_std_20)
+    target_compile_options(zero_lighting_inputs_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(zero_lighting_inputs_test PRIVATE -fsanitize=address,undefined)
+    foreach(mode IN ITEMS disabled enabled)
+      add_test(NAME "newview/zero_lighting_inputs_${mode}" COMMAND zero_lighting_inputs_test "${mode}")
+      set_tests_properties("newview/zero_lighting_inputs_${mode}"
+        PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    endforeach()
+    add_executable(snapshot_failure_inputs_test tests/snapshot_failure_inputs_test.cpp)
+    target_link_libraries(snapshot_failure_inputs_test PRIVATE al::flags ll::fmt)
+    target_include_directories(snapshot_failure_inputs_test PRIVATE "${CMAKE_SOURCE_DIR}/llcommon")
+    target_compile_features(snapshot_failure_inputs_test PRIVATE cxx_std_20)
+    target_compile_options(snapshot_failure_inputs_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(snapshot_failure_inputs_test PRIVATE -fsanitize=address,undefined)
+    foreach(mode IN ITEMS disabled enabled)
+      add_test(NAME "newview/snapshot_failure_inputs_${mode}" COMMAND snapshot_failure_inputs_test "${mode}")
+      set_tests_properties("newview/snapshot_failure_inputs_${mode}"
+        PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    endforeach()
     set(cinematic_mouselook_source "${CMAKE_CURRENT_BINARY_DIR}/cinematic_mouselook_contract_generated.cpp")
     add_custom_command(OUTPUT "${cinematic_mouselook_source}"
       COMMAND "${Python3_EXECUTABLE}"

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-494 -->
+<!-- next-defect-id: PPD-495 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -11439,3 +11439,29 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 result-only1fca2c26cf→root2f173468cc returns on saveSnapshot false before success latch/Home copy; no retry loop/timing/native guard changed. Whole caller body is byte-identical to original1eb before repair (inherited false-success contract). Actual-body12cases/68checks green versus12red, ASan/UBSan; root registered normalCMake target/CTest pass and independent source review pass. First isolated TU check lacked inactive submodule header; exact gitlink-matched read-only include fallback then fullTU syntax0. Missing current-frame native production remainsunproved; successful actual logout capture/owner acceptance pending.
 
 - 2026-11-19 result-only correction is included in qualified69381/source434f; fullappbuild/static/signature and12selectedCTest pass. Original exact-frame snapshot guard/retry policy remain unchanged. No connected logout-image success or missing-producer resolution has been observed; remaininvestigating, ownerpending. [Combined artifact](research/world-turn-freeze-69377-20261119.md#qualified-offline-candidate69381).
+
+- 2026-11-19 continued offline493 source audit after preserving qualified69381: display increments gFrameCount on every snapshot attempt and snapshot_request explicitly resets product/attempt gates, ruling out the proposed same-frame retry premise. beginDrain is only called by cleanup, not mQuitRequested; observed failure precedes LogoutRequest, so no drain attribution. Existing error's target means GBuffer and lighting_attempted means composition; it records neither lightmap nor base-attempt state, so no final9542 map/base-branch inference is justified. Add opt-in stamped base/atmospheric-policy/hero-coherence fields to the existing exact-snapshot failure only; default-off newmetadata unobserved, no Observer/UI-background/GPU query or capture policy change.69381 remains untouched/notlaunched.
+
+
+- 2026-11-19 opt-in exact-snapshot failure metadata implemented at unchanged guard/errorboundary, no Observer/UI-background/clock/GPU dependency. Whole detailed error/false-return include passes2scenarios6checks disabled and12scenarios67checks enabled underASan/UBSan, including poisoned-pointer isolation and metadata/append failures preserving originalerror. Initial extraction selected generic fail lambda accidentally; corrected fromHEAD before compilation. No currentnativeproducer cause or changed-source ownerlogoutimage success claimed.
+
+## PPD-494 — Atmospheric shader disabled leaves no native lighting target
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-19
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp11819–11824 clears transparent screen unconditionally, then conditionally omits sunlight/soften-sky; local/projectors11869–12194 and post-deferred geometry12203–12239 continue. Persisted RenderDeferredAtmospheric Boolean defaults true but false is an existing supported control.
+- Evidence: [Continued493 producer audit and494 mapping](research/world-turn-freeze-69377-20261119.md#continued-native-snapshot-production-audit); current renderDeferredLighting26941 and local/projector/composition prerequisite guards.
+- Next action: Supply an explicit native transparent-zero lighting color owner with current GBuffer depth when atmospheric lighting is disabled, then retain existing local/projector/post chain and native failure guards. Qualify actual caller branches and GPU clear/depth/accumulation; do not force the setting on or reuse old world.
+- Verification: Current false skips the only native base-light producer; local/projector require base/main-ready and composition requires successful base/local/projector. This source counterexample blocks world/exact snapshot instead of original darker local/emissive scene. Actual69377 control value was not observed, so no freeze/logout-failure attribution. No repair/runtime acceptance yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before repair while investigating493. Normal snapshot retry/reset/mainRT/cull checks reveal no new failure and fused main lighting excludes snapshots. Separate persisted-control source parity gap confirmed against original and actual prerequisite guards. Keep owner69377incident and source492 distinct; preserve qualified69381, closed viewer, cache/account files and all true-setting shading math.
+
+- 2026-11-19 backend0eef007590→root68e75ac0f4 implements renderZeroLighting with existing pooledRGBA16F/borrowed exact GBufferdepth, color-only clear pass, existing command/lease/failure-prefix rules. Root actual base prelude and both main/probe dispatch restore false mode; true order/mapguard/math unchanged. Actual CPU18cases194checks each diagnostics off/on passASan/UBSan. Exact old caller fails32/50checks, oldprelude37/46, combined47/68; private controls compile all actual snippets. Two independent source reviews noactionablefinding. Isolated backend/test ARM64objects compile0; root normal native targetbuild inprogress, no GPU/runtime acceptance yet.
+
+- 2026-11-19 root native validation initially fails1of511assertions because the new test reverses the fixture's normal_hdr/hdr arguments, causing local-light format mismatch; no production relaxation. Corrected only fixture argument order and added failure context. Rerun passes641assertions/3cases with actual Metal API+GPU validation:8format/reverse combinations preserve exactRGBAzero, depth/stencil/allGBufferstores; local/projector continuation positive, malformedinput/prefixcancel/retry controls pass. Production native method unchanged after review. Root fullcombinedapp build/owner verification stillpending.

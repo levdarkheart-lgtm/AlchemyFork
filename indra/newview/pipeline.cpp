@@ -11008,37 +11008,7 @@ bool LLPipeline::readMetalWorldSnapshot(
         capture.world_ui_capture_active || !texture || !device ||
         capture.device != device || capture.world_ui_frame != gFrameCount)
     {
-        if (error)
-        {
-            *error = fmt::format(
-                "Metal world snapshot did not complete exactly: "
-                "chain_snapshot={}, capture_active={}, chain_active={}, "
-                "complete={}, first_incomplete_line={}, "
-                "frame_active={}, renderer={}, target={}, composed_light={}, "
-                "lighting_attempted={}, post_attempted={}, "
-                "presentation_target={}, presentation_frame={}, "
-                "world_ui_target={}, world_ui_frame={}, current_frame={}, "
-                "device={}, device_match={}",
-                capture.world_ui_chain_snapshot,
-                capture.world_ui_capture_active,
-                capture.world_ui_chain_active,
-                capture.complete,
-                capture.first_incomplete_source_line,
-                capture.frame_active,
-                static_cast<bool>(capture.renderer),
-                static_cast<bool>(capture.target),
-                static_cast<bool>(capture.composed_light_target),
-                capture.lighting_composition_attempted,
-                capture.opaque_post_deferred_attempted,
-                static_cast<bool>(capture.presentation_target),
-                capture.presentation_frame,
-                static_cast<bool>(capture.world_ui_target),
-                capture.world_ui_frame,
-                gFrameCount,
-                device != nullptr,
-                capture.device == device);
-        }
-        return false;
+#include "pipeline_snapshot_incomplete_native.inl"
     }
     const ALMetalTextureDescriptor& descriptor = texture->descriptor();
     if (descriptor.format != ALMetalPixelFormat::bgra8_unorm ||
@@ -18414,31 +18384,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
     F32 ssao_scale, F32 ssao_max)
 {
-    if (!isMetalWorldCapturePass() ||
-        (!mMetalHeroWorldCaptureActive &&
-         !mMetalReflectionWorldCaptureActive && mRT != &mMainRT) ||
-        !mMetalWorldSimpleCapture)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    using BaseState = ALWorldRetentionInputs::BaseState;
-    const auto observe_base = [&](BaseState state)
-    {
-        if (ALWarningDiagnostics::enabled())
-        {
-            capture.retention_inputs_base_state = state;
-            capture.retention_inputs_base_state_frame = gFrameCount;
-        }
-    };
-    // A repeated call after encoding must preserve that frame's result.
-    if (!capture.base_lighting_attempted) observe_base(BaseState::prerequisite);
-    if (!capture.device || !capture.renderer || !capture.target ||
-        (!capture.base_light_map_target && !capture.pending_probe_light_map) ||
-        capture.base_lighting_attempted)
-    {
-        return;
-    }
+#include "pipeline_zero_lighting_inputs_native.inl"
 
     ALMetalWorldReflectionProbes probes;
     const ALMetalTexture* legacy_environment = nullptr;
@@ -26805,13 +26751,11 @@ void LLPipeline::renderDeferredLighting()
         // Keep SSAO in the main view; reflecting it here both darkens probe
         // lighting incorrectly and repeats screen-space work for every face.
         const bool has_ssao = false;
-        renderMetalWorldLightMap(*camera, has_sun_shadow, has_ssao);
         if (RenderDeferredAtmospheric)
         {
-            renderMetalWorldBaseLighting(
-                *camera, has_sun_shadow, has_ssao,
-                ssao_scale, ssao_max);
+            renderMetalWorldLightMap(*camera, has_sun_shadow, has_ssao);
         }
+#include "pipeline_base_lighting_dispatch_native.inl"
         renderMetalWorldLocalLights(
             *camera, modelview, light_scale,
             std::max<S32>(local_light_count, 0));
@@ -26915,9 +26859,12 @@ void LLPipeline::renderDeferredLighting()
         // The native directional-shadow/SSAO owner is the sole producer for
         // Metal base lighting. A missing input or encode failure leaves this
         // native frame incomplete; no legacy post-blur RG pixels cross back.
-        renderMetalWorldLightMap(
-            *camera, mResourceInputs.mShadowDetail > 0,
-            mResourceInputs.mSSAO);
+        const bool has_sun_shadow = mResourceInputs.mShadowDetail > 0;
+        const bool has_ssao = mResourceInputs.mSSAO;
+        if (RenderDeferredAtmospheric)
+        {
+            renderMetalWorldLightMap(*camera, has_sun_shadow, has_ssao);
+        }
 #endif
         screen_target->bindTarget();
         // clear color buffer here - zeroing alpha (glow) is important or it will accumulate against sky
@@ -26938,12 +26885,7 @@ void LLPipeline::renderDeferredLighting()
                 *camera, light_scale, visible_light_limit);
         }
 #if LL_DARWIN
-        if (RenderDeferredAtmospheric)
-        {
-            renderMetalWorldBaseLighting(
-                *camera, mResourceInputs.mShadowDetail > 0,
-                mResourceInputs.mSSAO, ssao_scale, ssao_max);
-        }
+#include "pipeline_base_lighting_dispatch_native.inl"
         // Consume the retained native G-buffer. CPU light traversal above
         // preserves visible-light accounting and next-frame projector-shadow
         // selection without any duplicate GL lighting draw.

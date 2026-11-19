@@ -19,7 +19,7 @@ enum class View : unsigned { other, main, hero, probe };
 enum class BaseState : unsigned
 {
     unobserved, prerequisite, ordinary_probes, legacy_environment,
-    hero_inputs, staged, encoding_failed, sky_failed, encoded
+    hero_inputs, staged, encoding_failed, sky_failed, encoded, cleared
 };
 inline const char* baseStateName(BaseState state)
 {
@@ -33,6 +33,7 @@ inline const char* baseStateName(BaseState state)
     case BaseState::encoding_failed: return "encoding_failed";
     case BaseState::sky_failed: return "sky_failed";
     case BaseState::encoded: return "encoded";
+    case BaseState::cleared: return "cleared";
     default: return "unobserved";
     }
 }

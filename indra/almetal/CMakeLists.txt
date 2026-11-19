@@ -286,6 +286,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_cohort_renderer_test.mm
             tests/almetal_borrowed_target_test.mm
             tests/almetal_base_lighting_fastpath_test.mm
+            tests/almetal_zero_lighting_test.mm
             tests/almetal_probe_accumulator_test.mm
             tests/almetal_debug_buffer_test.mm
             tests/almetal_shader_reload_test.mm
@@ -385,6 +386,7 @@ if(AL_BUILD_TESTS)
                               PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_borrowed_target_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_base_lighting_fastpath_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_zero_lighting_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_debug_buffer_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shader_reload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_utility_reload_test.mm tests/almetal_preview_reload_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

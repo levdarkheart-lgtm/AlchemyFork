@@ -63,7 +63,7 @@ TEST_CASE("almetal: zero lighting clears exact RGBA and preserves carried G-buff
         for (bool reverse : {false, true})
         {
             CAPTURE(hdr, normal_hdr, reverse);
-            auto gbuffer = f.gbuffer(true, reverse, hdr, normal_hdr);
+            auto gbuffer = f.gbuffer(true, reverse, normal_hdr, hdr);
             f.stampStencil(*gbuffer);
             const auto depth = f.read<std::uint32_t>(*gbuffer->depthStencilTexture());
             const auto stencil = f.stencil(*gbuffer->depthStencilTexture());
@@ -93,7 +93,7 @@ TEST_CASE("almetal: zero lighting remains a positive point and projector accumul
         for (bool hdr : {false, true}) for (bool reverse : {false, true})
         {
             CAPTURE(hdr, reverse);
-            auto gbuffer = f.gbuffer(true, reverse, hdr, true);
+            auto gbuffer = f.gbuffer(true, reverse, true, hdr);
             f.stampStencil(*gbuffer);
             const auto depth = f.read<std::uint32_t>(*gbuffer->depthStencilTexture());
             const auto stencil = f.stencil(*gbuffer->depthStencilTexture());
@@ -107,7 +107,8 @@ TEST_CASE("almetal: zero lighting remains a positive point and projector accumul
             local.gbuffer = gbuffer.get(); local.lights = &point; local.light_count = 1;
             local.hdr = hdr; local.reverse_z = reverse; local.additive_pass_count = 2;
             sky_test::identity(local.inverse_projection); local.inverse_projection[14] = -1.f;
-            REQUIRE(f.renderer->accumulateLocalLights(*target, local, &f.error));
+            const bool local_encoded = f.renderer->accumulateLocalLights(*target, local, &f.error);
+            INFO(f.error); REQUIRE(local_encoded);
             const auto point_pixels = f.read<HalfPixel>(*target->colorTexture(0));
             CHECK(increased(point_pixels, zero));
 
@@ -126,7 +127,8 @@ TEST_CASE("almetal: zero lighting remains a positive point and projector accumul
             projector.hdr = hdr; projector.normal_hdr = true; projector.reverse_z = reverse;
             projector.additive_pass_count = 2;
             std::copy_n(local.inverse_projection, 16, projector.inverse_projection);
-            REQUIRE(f.renderer->accumulateProjectorLights(*target, projector, &f.error));
+            const bool projector_encoded = f.renderer->accumulateProjectorLights(*target, projector, &f.error);
+            INFO(f.error); REQUIRE(projector_encoded);
             CHECK(increased(f.read<HalfPixel>(*target->colorTexture(0)), point_pixels));
             CHECK(f.read<std::uint32_t>(*target->depthStencilTexture()) == depth);
             CHECK(f.stencil(*target->depthStencilTexture()) == stencil);
