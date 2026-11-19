@@ -174,3 +174,43 @@ joined to its interval. Automatic120s is illustrative timing only, not a first-
 failure trigger. A new event-trigger implementation would have to latch a
 retention event and start before commands on the next eligible display; it is
 not implemented or claimed by this checkpoint. No new capture was run.
+
+## Qualified offline candidate69381
+
+Built source **434f4df20a4e9170fb2f07d3752d02f34064ceac**, indra
+**e9803807ea1e81a270db9b879c238625afa976eb**, version26.4.0.69381,
+CFBundleVersion26.4.0d69381. Separate stable app:
+`/Users/dekstroza/Alchemy-warning-inputs-wh3ienda/candidates/Alchemy Metal Functional Fixes 69381.app`.
+Executable `Contents/MacOS/Alchemy Metal Warning Inputs`, SHA256
+**1143f9af52167919a6da718772f39cd8205227865a12dcb7221347ec467cf28b**.
+Full source SHA is present in configured cache, generated header and executable.
+The first receipt assertion incorrectly expected numeric-only CFBundleVersion and
+stopped before copying; inspecting/asserting its actual full development format
+corrected the receipt, with unchanged build/source.69377 executable rehashed to
+its original3ad5bf0e value; neither prior candidate nor cache/account files changed.
+
+Executed onM1Max/64GiB/macOS26.5.2/Xcode26.6:
+
+- `tools/metal/doctor.sh`:0;10cores/8fastest-tier, nativeARM64/Metal device observed.
+- `AL_METAL_BUILD_DIR=build-Darwin-warning-audit AL_METAL_CONFIG=Release AL_METAL_JOBS=6 tools/metal/build.sh build`:0,16steps.
+- `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 ctest --test-dir build-Darwin-warning-audit -C Release -R '<12-test filter>' --output-on-failure`:0,12/12; exact filter/argv were issued in this session and retained in the CTest detail/test files. Native test outputs explicitly enable Metal API/GPU validation.
+- `tools/metal/verify_app.sh <exact stable69381app>` and `codesign --verify --deep --strict --verbose=2 <app>` combined command:0;346Mach-O files/0invalidARM64 slices, valid signature/designated requirement.
+- `python3 tools/metal/audit_gl.py --mode strict --output <private combined-strict.json>`:0,3638source files/0blockers/0errors/923informational compatibility rows.
+- `otool -L` owned main/CEF-host/VLC-host:all0, no forbidden direct graphics import. This is not a foreign/runtime-loaded-library or live-context claim.
+- Documentation harness and `git diff --check`:0 before code freeze; final doc-only handoff checks recorded separately. No tools/metal implementation changed, so no redundant tool-suite rerun.
+
+Private `analysis/combined-artifact.json`, `combined-source.json`,
+`combined-focused-detail.log` and canonical `functional-fixes-69381.json` retain
+identities, actual output/exit results and hashed evidence. Source492actual-body
+135assertions/6cases, diagnostic4modes4/47/33/9checks and snapshot68checks/12cases
+are controlled CPU correctness evidence. Native tests preserve prior resource
+guards, but do not exercise a connected owner camera/mirror scene.
+
+**Not launched.** All viewer/build/test/profile/capture jobs are closed. Next
+owner run should use this exact app with opt-in fresh world diagnostics and
+ordinary turning/walking/teleport, no concurrent profiler/build. Test occasional
+world freezes and a successful logout-image capture; do not assume either has
+recovered from passing source/GPU unit checks. General loading improvement remains
+the69377 owner observation; no new whole-viewer FPS/latency/quality claim.
+PPD002/003/125/311/463/464/471/493 and denied-asset causes remain scoped/open;
+PPD492 is ready_for_owner, not verified. No push authorized or performed.

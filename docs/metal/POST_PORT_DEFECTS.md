@@ -10738,6 +10738,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 follow-up narrows repeated apparent unresponsiveness: menus work, camera stops and displayedFPS32–34; world freezes every few walking steps, then recovers. This matches retained-world PPD002 more specifically than whole-application deadlock. First sample08:33:20–08:33:46 overlaps a28.093second live-observer gap and provides only2mainthread observations; do not count it as undisturbed freeze timing. Second2second sample08:34:49 provides1419mainthread observations through rendering; it does not prove camera updating or current-world publication. No further sampler is active when owner is released to logout.
 
+- 2026-11-19 exact69377 owner reports occasional turning freezes atHome despite much-better general loading, then clubarrival. Retained pre-UI world notices bracket11:11:55freeze mark. Source-confirmed mirror-advertisement defect492 corrected in offline69381 plus fresh bounded003diagnostics, but causal/runtime join and symptomrecovery remainunproved. Nativeframecapture controls are source-mapped; no first-retention arm exists and no newtrace was recorded. [Run/fix/nextcapture](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-465 — Runtime checkpoint capture timing and evidence qualification are incomplete
 
 - Status: investigating
@@ -11398,13 +11400,13 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-492 — Selected mirror advertises another owner's completed radiance
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-19
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 llheroprobemanager.cpp491–535 and class3/deferred/reflectionProbeF.glsl779–816; count0 omits only mirror contribution. Native completed-radiance identity is new and must qualify advertisement.
 - Evidence: [Closed69377 freeze investigation and original mapping](research/world-turn-freeze-69377-20261119.md).
-- Next action: Qualify the uniform producer against successful publication owner/epoch; retain same-owner completed refresh, native coherence guards and original selection/math. Add actual-body oldA/newB and stale-epoch controls before build/owner retest.
+- Next action: Qualify the uniform producer against successful publication owner/epoch; retain same-owner completed refresh, native coherence guards and original selection/math. Actual-body controls and combined build pass; owner-test exact69381 turning/walking/TP with fresh bounded diagnostics.
 - Verification: Source counterexample: camera selection changesA→B while renderProbes defers or B is occluded; ready(A) still advertisesB, native exact-owner fill rejects and ordinary base lighting silently returns. Runtime linkage to PPD002/464 remains unproved. The actual uniform body now passes135assertions/6cases versus14baseline failures, with downstream guards unchanged; full candidate build and owner freeze retest remain pending.
 - Owner verification: pending
 - Push approval: not_granted
@@ -11414,6 +11416,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before repair after exact69377 owner run. General loading improved by owner report, but turning freezes recur. Retained pre-UI world notices bracket11:11:55 owner mark; stable diagnostic dedup captured only an earlier snapshot, not the current branch. PPD125 face/startup failures remain separate. Original/reference and current display ordering inspected; implement earliest incorrect readiness advertisement rather than weakening downstream guards or changing quality.
 
 - 2026-11-19 local owner/epoch advertisement repair is implemented in the production uniform-body include. Exact old body fails14of135assertions/3of6cases; new passes135/6. Required math-header ordering caused the first fixture build failure, corrected before the red/green run. Independent source review finds no changed selection/admission/quality or weakened native coherence guard. Eleven focused CTests pass, including native hero overwrite/probe format/publication under actual API/GPU validation; this remains source correctness, not runtime freeze acceptance.
+
+- 2026-11-19 combined source434f4df20a/indra e9803807 builds0 as69381; separately cloned exactexe1143f9af5216 passes12focusedCTest/API+GPUvalidation,346ARM64/deepstrictsignature, owned directimports andstrict3638/0blockers/0errors. Source SHA verified in cache/header/executable. No newviewer/profile/capture launch or runtimefreezeverification; ready_for_owner only, no push. [Full artifact/commands/limits](research/world-turn-freeze-69377-20261119.md#qualified-offline-candidate69381).
 
 ## PPD-493 — Logout snapshot failure is latched as saved
 
@@ -11433,3 +11437,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered from exact69377 normal owner logout after complete45-site log census. Native failure fields are chain_snapshot1/chain_active1/complete1, capture_active0, frame_active0, renderer/target/device_match1, composed/post/presentation/world_ui0 and unknown presentation/UI frame, first_incomplete_line0. Failure is before readback/encoding; no cache/account data changed. Preserve existing saved image and diagnose missing current capture rather than relaxing readMetalWorldSnapshot.
 
 - 2026-11-19 result-only1fca2c26cf→root2f173468cc returns on saveSnapshot false before success latch/Home copy; no retry loop/timing/native guard changed. Whole caller body is byte-identical to original1eb before repair (inherited false-success contract). Actual-body12cases/68checks green versus12red, ASan/UBSan; root registered normalCMake target/CTest pass and independent source review pass. First isolated TU check lacked inactive submodule header; exact gitlink-matched read-only include fallback then fullTU syntax0. Missing current-frame native production remainsunproved; successful actual logout capture/owner acceptance pending.
+
+- 2026-11-19 result-only correction is included in qualified69381/source434f; fullappbuild/static/signature and12selectedCTest pass. Original exact-frame snapshot guard/retry policy remain unchanged. No connected logout-image success or missing-producer resolution has been observed; remaininvestigating, ownerpending. [Combined artifact](research/world-turn-freeze-69377-20261119.md#qualified-offline-candidate69381).
