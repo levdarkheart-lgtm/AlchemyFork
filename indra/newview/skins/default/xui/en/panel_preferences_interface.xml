@@ -107,7 +107,7 @@
   <check_box
     control_name="AlchemyCinematicModeHideHoverText"
     height="16"
-    initial_value="true"
+    initial_value="false"
     label="Hide in Cinematic Mode"
     layout="topleft"
     left="45"

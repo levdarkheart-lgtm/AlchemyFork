@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alcinematicmode.h"
+
 #include "llviewerdisplay.h"
 
 #include "alfarplane.h"
@@ -1756,7 +1758,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     static LLCachedControl<S32> avatar_name_tag_mode(gSavedSettings, "AvatarNameTagMode", 1);
     static LLCachedControl<S32> name_tag_show_group_titles(gSavedSettings, "GroupTitlesTagMode", 2 /*all group tags*/);
-    LLVOAvatar::sRenderName = avatar_name_tag_mode;
+    LLVOAvatar::sRenderName = ALCinematicMode::isEnabled() ? 0 : S32(avatar_name_tag_mode);
     LLVOAvatar::sRenderGroupTitles = avatar_name_tag_mode > 0 ? name_tag_show_group_titles : 0;
 
     gPipeline.mBackfaceCull = true;
@@ -2584,7 +2586,8 @@ void render_hud_attachments()
     // smoothly interpolate current zoom level
     gAgentCamera.mHUDCurZoom = lerp(gAgentCamera.mHUDCurZoom, gAgentCamera.getAgentHUDTargetZoom(), LLSmoothInterpolation::getInterpolant(0.03f));
 
-    if (LLPipeline::sShowHUDAttachments && !gDisconnected && setup_hud_matrices())
+    if (!ALCinematicMode::isEnabled() && LLPipeline::sShowHUDAttachments &&
+        !gDisconnected && setup_hud_matrices())
     {
         LLPipeline::sRenderingHUDs = true;
         LLCamera hud_cam = LLViewerCamera::getCurrent();

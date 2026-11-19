@@ -25,6 +25,8 @@
  */
 
 #include "llviewerprecompiledheaders.h"
+
+#include "alcinematicmode.h"
 #include "llagentcamera.h"
 
 #include "pipeline.h"
@@ -2465,7 +2467,7 @@ void LLAgentCamera::changeCameraToDefault()
     {
         changeCameraToThirdPerson();
     }
-    if (gSavedSettings.getBOOL("HideUIControls"))
+    if (ALCinematicMode::isEnabled() || gSavedSettings.getBOOL("HideUIControls"))
     {
         gViewerWindow->setUIVisibility(false);
         LLPanelStandStopFlying::getInstance()->setVisible(false);

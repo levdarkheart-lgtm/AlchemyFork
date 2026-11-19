@@ -30,6 +30,8 @@
 // (information about this stuff can be found in "llvoicevisualizer.h")
 //----------------------------------------------------------------------
 #include "llviewerprecompiledheaders.h"
+
+#include "alcinematicmode.h"
 #include "llviewercontrol.h"
 #include "llglheaders.h"
 #include "llvoicevisualizer.h"
@@ -334,7 +336,7 @@ void LLVoiceVisualizer::lipSyncOohAah( F32& ooh, F32& aah )
 void LLVoiceVisualizer::render()
 {
     static LLCachedControl<bool> show_visualizer(gSavedSettings, "VoiceVisualizerEnabled", true);
-    if (!mVoiceEnabled || !show_visualizer)
+    if (!mVoiceEnabled || !show_visualizer || ALCinematicMode::isEnabled())
     {
         return;
     }

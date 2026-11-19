@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alcinematicmode.h"
+
 #include "lltoolpie.h"
 
 #include "indra_constants.h"
@@ -1445,6 +1447,8 @@ bool LLToolPie::handleTooltipObject( LLViewerObject* hover_object, std::string l
 
 bool LLToolPie::handleToolTip(S32 local_x, S32 local_y, MASK mask)
 {
+    if (ALCinematicMode::isEnabled()) return true;
+
     static LLCachedControl<bool> show_hover_tips(*LLUI::getInstance()->mSettingGroups["config"], "ShowHoverTips", true);
     if (!show_hover_tips) return true;
     if (!mHoverPick.isValid()) return true;

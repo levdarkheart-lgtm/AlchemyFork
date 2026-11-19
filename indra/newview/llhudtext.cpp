@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alcinematicmode.h"
+
 #include "llhudtext.h"
 
 #include "llrender.h"
@@ -127,7 +129,9 @@ LLHUDText::~LLHUDText()
 
 void LLHUDText::render()
 {
-    if (!mOnHUDAttachment && sDisplayText)
+    static LLCachedControl<bool> hide_in_cinematic(gSavedSettings, "AlchemyCinematicModeHideHoverText", false);
+    if (!mOnHUDAttachment && sDisplayText &&
+        !(ALCinematicMode::isEnabled() && hide_in_cinematic))
     {
         LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE);
         //LLGLDisable gls_stencil(GL_STENCIL_TEST);

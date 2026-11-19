@@ -14134,4 +14134,20 @@ Save them before letting it go?
      notext="Don&apos;t Save"
      yestext="Save"/>
   </notification>
+  <notification
+     name="CinematicConfirmHideUI"
+     label=""
+     type="alertmodal">
+    <unique/>
+    <tag>confirm</tag>
+    Cinematic Mode hides most controls, HUDs, name tags and voice indicators.
+    Hover text follows your Cinematic Mode preference.
+    To restore the interface, press [SHORTCUT].
+    <usetemplate
+    name="okcancelignore"
+    yestext="OK"
+    notext="Cancel"
+    ignoretext="Confirm before enabling Cinematic Mode"/>
+  </notification>
+
 </notifications>

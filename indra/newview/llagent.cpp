@@ -27,6 +27,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alcinematicmode.h"
+
 #include "llagent.h"
 
 #include "pipeline.h"
@@ -2355,17 +2357,19 @@ void LLAgent::endAnimationUpdateUI()
     // clean up UI from mode we're leaving
     if (gAgentCamera.getLastCameraMode() == CAMERA_MODE_MOUSELOOK )
     {
-        gToolBarView->setToolBarsVisible(true);
+        gToolBarView->setToolBarsVisible(!ALCinematicMode::isEnabled());
         // show mouse cursor
         gViewerWindow->showCursor();
         // show menus
         gMenuBarView->setVisible(true);
-        LLNavigationBar::getInstance()->setVisible(gSavedSettings.getU32("NavigationBarStyle") == 2);
-        gStatusBar->setVisibleForMouselook(true);
+        LLNavigationBar::getInstance()->setVisible(!ALCinematicMode::isEnabled() &&
+            gSavedSettings.getU32("NavigationBarStyle") == 2);
+        gStatusBar->setVisibleForMouselook(!ALCinematicMode::isEnabled());
 
-        LLPanelTopInfoBar::getInstance()->setVisible(gSavedSettings.getU32("NavigationBarStyle") == 1);
+        LLPanelTopInfoBar::getInstance()->setVisible(!ALCinematicMode::isEnabled() &&
+            gSavedSettings.getU32("NavigationBarStyle") == 1);
 
-        LLChicletBar::getInstance()->setVisible(true);
+        LLChicletBar::getInstance()->setVisible(!ALCinematicMode::isEnabled());
 
         LLPanelStandStopFlying::getInstance()->setVisible(true);
 

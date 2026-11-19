@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "alcinematicmode.h"
+
 #include "llmoveview.h"
 
 // Library includes
@@ -612,6 +614,8 @@ bool LLPanelStandStopFlying::postBuild()
 //virtual
 void LLPanelStandStopFlying::setVisible(bool visible)
 {
+    visible = visible && !ALCinematicMode::isEnabled();
+
     //we dont need to show the panel if these buttons are not activated
     if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK) visible = false;
 
