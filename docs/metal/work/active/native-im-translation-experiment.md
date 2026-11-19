@@ -169,3 +169,13 @@ Final command/status/hash receipt is retained at
 argv and logs. Final nine-process CTest,346ARM64/deep signature, three owned
 executable direct imports, doctor, strict source and harness all exit0.
 No required live-chat observation was inferred from synthetic/native tests.
+
+## Owner-requested launch — 2026-11-19
+
+Exact normal candidate26.4.0.69398 launched with `open -n <verified app>
+--args --multiple --set AutoLogin false`, exit0. Actual process4274 executable
+path matches the delivery receipt; SHA256 still matches da6bb5a976d65bb4…5801a.
+CUA observed window “Alchemy Metal IM Translation 26.4.0.69398”. No fixture,
+profiler, capture or automatic IM is active; owner controls login and testing.
+Receipt: `artifacts/metal/native-im-translation-20261119/owner-launch.json`.
+No owner acceptance, logged-in observation, defect closure or push inferred.
