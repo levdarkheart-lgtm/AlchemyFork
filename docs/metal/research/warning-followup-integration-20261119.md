@@ -1,0 +1,47 @@
+# Warning and runtime follow-up integration — 2026-11-19
+
+The owner69343 run is closed normally; no viewer, sampler or recorder is active. The [complete run](warning-runtime-69343-20261119.md) accounts for all382 warnings/40sites and retains the actual owner-visible results. The high-altitude club object floor is owner-passed (PPD470). Frequent retained-world/camera freezes and slow HUD/world texture loading remain unresolved as whole-viewer behavior. No push is authorized.
+
+## Integrated corrective scope
+
+| Defect | Local source | Evidence and remaining boundary |
+| --- | --- | --- |
+| PPD082 | 5ccf34ee27 | Original-equivalent fixed EV0 production through classic-sky blend while current post output still requires exposure. Actual native5cases/236assertions green versus20/155 baseline failures. Does not prove every owner freeze was this transition. [Native reproduction](ppd082-exposure-transition-20261119.md). |
+| PPD480 | a455cf7897 | Missing/invalid requested Home image can use an existing last-location PNG once, retaining destination/grid/opt-out and texture ownership.21cases/114checks versus12 baseline failures; actual saved PNG pixels verified. No active account file changed. |
+| PPD481 | 81abcb7d47 +92c6e963eb | Obsolete queued HELLO/load replies during explicit GOODBYE/EXITING no longer divert graceful cancellation into ERROR. All active protocol errors remain. Numeric prior-state/owner metadata added before unexpected-state errors.18cases/163checks green. Actual69343 state/instance cause remains unknown. |
+| PPD474 | 9ab5452147 +9fb0c859d4 +48b9cddb5f | Restore real inventory Add/Replace/wearable consumers and archived cinematic mode/menu/HUD/text/voice/UI behavior. Inventory300checks versus79 baseline failures. Initial cinematic139-check fixture missed real owner interactions; see483/484. |
+| PPD483 | df39e03c9a | Preserve cinematic hidden floaters through actual balanced mouselook visibility push/pop and pending transitions. Earlier95-check functional reproduction had32 baseline failures. |
+| PPD484 | 06f798cb44 | Reject unrequested visibility snapshots and restore archived exit requests through current UI/movement owners. Final cinematic155checks includes16movement checks; final mouselook97checks. Baselines fail14/5 respectively. Counts overlap. No snapshot-restoration candidate was launched. |
+
+[Startup/media/cleanup qualification](ppd480-481-482-qualification-20261119.md) records source hashes, baseline history and controlled-boundary limits. PPD482 queued/delete-list residue is retained as a qualified cleanup concern:15-body original/current analysis establishes plausible normal cancellation/late retirement, not lost required work or a leak. No speculative cleanup change is selected. Media tests do not prove broader inherited raw-owner poll-thread lifetime synchronization.
+
+## Evidence improvements, not loading or freeze repairs
+
+PPD003 integrated847897d3f1 observes the actual stale-background-before-UI boundary. Separate bounded default-off world metadata records current/background/capture/display/exposure frames and readiness, policy and first-incomplete-line fields. Stable keys exclude frame/epoch/time, so transaction resets cannot suppress this separate observer. Presence flags do not establish GPU completion or causal stage. The original lighting warning-counter reset limitation remains open; rendering, retry/admission and capture behavior are unchanged.
+
+PPD463 integratedf4e2819a34 +9a4baec630 observes actual HUD boost/demand. The separate bounded HUD category records asset/type/slot, dimensions, demand/current/raw quality, residency and raw/create/downscale state. A narrow cached fetch-state getter avoids live worker queries. Cached state0 is ambiguous and can be stale; phase and priority are not a simultaneous worker timeline. Priority/frame/time are excluded from keys;10000changing priority/frame samples preserve a key. Non-fetched texture details remain unknown. Actual-body102 ASan/UBSan checks pass versus two expected prior-observer failures for the added phase fields/admission. No fetch/decode/upload priority or budget changes.
+
+Both observers exit before metadata/key/allocation when the exact opt-in is absent; exceptions are isolated. Separate world/HUD categories retain64 keys each, and the shared gate now has nine categories. Independent source reviews of world/exposure/cinematic integration and HUD API/type/key behavior found no actionable issue in their scoped review. They do not establish live acceptance.
+
+## Decoder and core-count audit
+
+Exact69343 startup detects10enabled cores, valid topology with8fastest-tier cores,6ImageDecode workers, normal admission4 and adaptive mode1. OpenHTJ2K0.27.0 is the sole JPEG2000 pixel decoder. OpenJPEG runtime supports header/encoding duties; its presence is not a decode fallback. The earlier topology/pool-width fix is present. These are concurrency limits, not pinned core reservations. PPD485 corrects the stale setting description: disabling CPU/thermal adaptation still respects native frame/upload backpressure; defaults and policy are unchanged.
+
+Owner-accepted2minimum/4normal/6maximum CPU/thermal/backlog scheduling remains. A later native-frame governor (introduceda69d6df872) supplies another downstream ceiling based on main-owner pressure, upload/publication queues and retained work. The accepted topology does not guarantee4active jobs when that ceiling is2. Of337 sampled/control-change records,241show limit2,89limit3,7limit4; these are not time percentages. Decoder waiting peaks2204jobs, and a28.083s queue wait occurs before the first sampler.155/206 native snapshots mark main_busy and143have ready-upload queue>=32; the operands do not identify every individual clamp.
+
+All38870submitted decode jobs start and finish, with0cancelled/pending at shutdown. Near the delayed-HUD checkpoint, decoder waiting/active are0/0. This excludes a terminal global decoder deadlock in this run, not excessive individual latency or downstream delay. A long decode-wall maximum overlaps the disturbed first sample and is not ordinary codec cost. No matched historical/current scene timing or exact HUD identity is available; no governor/concurrency adjustment or causal loading-performance claim is selected from aggregate data alone. Private decode-admission-audit retains exact joins and all limitations.
+
+## Root integration validation
+
+Host: native ARM64 AppleM1Max/64GiB, macOS26.5.2, Xcode26.6. Private exact stdout/commands and source qualification are under `/Users/dekstroza/Alchemy-functional-69343-n6ifzso_/analysis/integration-followups-01`.
+
+- `cmake --build build-Darwin-warning-audit --config Release --target startup_image_contract_test inventory_open_policy_contract_test cinematic_mode_contract_test almetal_tests --parallel 4` exits0. Focused CTest4/4 exits0 with `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1`, including actual exposure5/236.95.13s native-test duration is correctness-test wall time, not viewer cost. This earlier cinematic run preceded484 and is superseded for cinematic by the final checks below.
+- Final CPU build includes startup/inventory/cinematic/world/mouselook/plugin/shared-gate targets, exits0. Corresponding12CTest invocations pass; gate processes isolate environment caching and standalone test executables isolate controlled symbols. Final cinematic155/mouselook97 and parent163checks execute current extracted bodies.
+- HUD target build exits0. Loading-regression CTest24/24 exits0: HUD4modes, gate3modes, asset/upload/cache/fetch/aux/avatar controls, worker/scheduler/OpenHT/layout and native-frame-budget/texture-pressure/palette controls. Sessions overlap gate cases; do not sum as unique tests. Source-generated HUD dependencies include llviewertexture.h for actual cached getters.
+- Tool suite183tests exits0, one optional retained-native-fixture skip. The retained tool venv supplies PyYAML; adversarial audit fixture errors printed by its passing tests are expected fixture outcomes.
+
+Full integrated app build, strict source/signature/ARM64/artifact identity and exact candidate qualification follow this source freeze. Component success is not a full app or owner-visible acceptance claim. Keep69343 immutable and the new candidate separately staged. No new viewer is launched until that candidate is ready and the owner-attended retest begins.
+
+## Next connected acceptance
+
+Test exact new candidate with existing AlchemyNext cache and manual owner login. Verify meaningful saved login image, initial/late HUD sharpness, camera/walking response during loading and teleport, modern/legacy environment transitions, repeated club floor completeness, media, inventory and cinematic transitions. Bound opt-in evidence separately; identify the pictured HUD asset and actual missing world product. Preserve any failures and source identities. PPD311 rigging inputs did not recur in69343; bounded nonreproduction leaves its numerical cause open. No blanket port-correctness, performance gain or product-completion assurance is available.

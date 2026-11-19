@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-485 -->
+<!-- next-defect-id: PPD-486 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -156,8 +156,8 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 - Discovered: 2026-11-12
 - Original reference: No equivalent native retry counter in `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; inspect its per-light traversal and error reporting as the nearest original boundary.
 - Evidence: [Lighting failure-counter analysis](work/active/busy-turn-local-investigation.md).
-- Next action: Specify a bounded diagnostic outcome that survives continuous-frame resets and identifies the first local/projector failure; preserve rendering behavior.
-- Verification: Source trace only; no diagnostic correction or runtime validation performed.
+- Next action: Use the separate bounded world category on the next exact candidate to identify missing current-frame products; preserve the unresolved counter-reset limitation and PPD002 attribution.
+- Verification: Local bounded retained-world metadata is implemented and CPU-qualified; it survives transaction resets by observing actual stale-background presentation. Original warning-counter reset behavior remains unchanged. No live diagnostic or freeze closure.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -174,6 +174,9 @@ counter: some incomplete G-buffer retries can accumulate to their threshold.
   warnings must not be used as evidence that local/projector lighting completed.
 
 - 2026-11-19 recurring69343 stale-world/freshUI rows show the existing failure-counter gap still blocks exact stage attribution; no G-buffer WARN does not prove current-world completion. Begin bounded default-off main-world retained-frame diagnostics at the actual source-frame-mismatch boundary. Distinct keys must exclude frame IDs so startup cannot exhaust a per-frame budget; include current frame/background age and source/lighting/post/exposure readiness as record values. Preserve all capture/admission/retention behavior, exception isolation, no asset/account/URL data and existing diagnostic caps. This is evidence repair, not a cure or closure for PPD002.
+
+- 2026-11-19 Integrated847897d3f1 adds default-off metadata at the actual retained pre-UI world boundary, with stable readiness/view/first-line keys, frame/epoch values and exception isolation. Four source/component modes pass 3/16/18/3 checks; production pipeline ARM64 object compiles. Native readiness flags indicate available products, not GPU completion or the causal failure. The new observer does not change retry counters, rendering or admission. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-004 — Missing native impostor data invalidates unrelated world batches
 
@@ -2461,14 +2464,14 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-082 — Classic-sky blend policy can stop exposure before history admission changes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: LLSettingsSky blend copies target canAutoAdjust while lerping probe ambiance. Original1eb/final408 generateExposure always writes fixedEV0 when classic disables metering. Native pipeline7758–65 stops history updates on classic, but8104–08/8213–19 still requires fresh history until effective ambiance reaches0.
 - Evidence: [Overall exposure investigation](work/active/overall-exposure-investigation.md).; [69343 owner run](research/warning-runtime-69343-20261119.md).
-- Next action: Reproduce a PBR-to-legacy blend through actual native history/publication control and verify the original fixedEV0 invariant before selecting a repair. Keep separate from unproved steady overexposure PPD-081.
-- Verification: Read-only source confirms differing policy boundaries can coexist during interpolation. Steady classic skies correctly bypass history through no_post. No runtime transition reproduction, frame-withholding measurement, owner symptom attribution or correction yet.
+- Next action: Build the integrated candidate, then retest modern-to-legacy environment/teleport transitions for current-world and camera progress. Keep PPD081 steady exposure and other PPD002 freezes separate.
+- Verification: Actual sky-blend/native producer/admission reproduction fails 20 of 155 baseline assertions and passes 236 corrected assertions across five cases with API/GPU validation and ASan/UBSan. Full pipeline compilation passes. Exact owner-run environment/incident cause remains unproved.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -2477,6 +2480,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-13: Registered source-permitted transition concern from the PPD081 audit. No source/UI edits or failing GPU execution; preserve current owner viewer and retain concern for a bounded original/native transition check.
 
 - 2026-11-19 source follow-up on owner69343/source8f1ef9bd8a tour rediscovers this existing082 mechanism; ID retained, no duplicate481. Runtime has three eligible presentation=1/sky=1/hdr=1/classic_gamma=0/exposure=0/all-other-post=1 records08:37:35–38UTC, distinct from excluded probe records. Reachable modern→legacy blend copies target canAutoAdjust while interpolated probe ambiance remainspositive: classic lighting skips dynamic exposure production, but nonlegacy output still requires its current-frame target. Original1eb generateExposure always writes fixed(1,0,0,1) when metering is disabled. This narrows a concrete parity repair, not all PPD002 freezes or their exact environment state. Actual native producer/consumer transition reproduction and finite fixedEV output tests are required before integration. Owner has logged out normally; next work is offline repair/qualification.
+
+- 2026-11-19 Integrated5ccf34ee27 preserves original fixed EV0 (1,0,0,1) production through the reachable transition: current main HDR exposure owner runs even when adaptation is disabled; prior history is null and EV bounds are zero in that branch. Dynamic parameters/history and current frame/epoch admission stay intact. Root focused CTest passes with Metal API/GPU validation; test duration95.13s is correctness-test wall time, not viewer cost. No stale target exemption or shader simplification. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-083 — Owner reports a tint in neutral-looking scene surfaces
 
@@ -10673,8 +10679,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve original Second Life HUD/asset startup and display behavior, including existing black-login repair PPD008; correlate actual startup/first-world/presentation and asset work rather than guessing from the progress indicator.
 - Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner Home report29→16FPS, slow HUDs and dark post-progress interval; exacte426/builderd2c9 appPID65356 and private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retained.; [69343 owner run](research/warning-runtime-69343-20261119.md).
-- Next action: Correlate the owner69343 delayed-then-resolved HUD report with actual texture demand, fetch/decode/publication state. Preserve the unchanged connected run and exact image/prefix; identify the HUD object/texture before attributing generic403s, decoder work or scene pressure. No new profiling or cache clearing during the owner tour.
-- Verification: Owner report retained. Source/log/native analysis identifies a13.120277s startup iteration aligned with wearable-wait cleanup but lacks first-visible HUD/dark timing. Home early GPU replay is qualified; it does not isolate the reported appearance cause. No repair or owner acceptance.
+- Next action: Build the integrated default-off HUD/world metadata candidate, then identify the delayed HUD asset and distinguish cached fetch phase, quality demand, raw image and native create/downscale state on a connected retest. Inspect decoder downstream governor separately; do not increase concurrency without a concrete contract or matched evidence.
+- Verification: Owner delayed-then-loaded HUD report remains unresolved. Exact run confirms OpenHTJ2K, topology10/8, workers6, adaptive2/4/6; native governor frequently clamps2. All38870 jobs complete, but early queue wait reaches28.083s before sampling. HUD identity and its causal stage remain unknown.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10689,6 +10695,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 owner states world, textures and HUD loading were much faster before completion of Apple-first architecture. Preserve this as an owner-reported regression; no matched historical/current timing or exact HUD asset identity yet. Black progress-screen complaint also clarified: owner expects the saved last-location/frame image during login. Current69343 initStartTexture emits Bitmap load failed before decode, but requestedHome versusLast image selection and missing-file reason still require source/file verification. No decoder, upload or architecture-causality claim.
 
 - 2026-11-19 offline source/log audit finds no terminal global decode deadlock: all38,870submitted jobs start/finish,0cancelled, while early queue waits reach28seconds before sampling and the new native downstream governor frequently selects2decoders. Ready-upload and main-owner debt coexist; aggregate ceilings do not identify the pictured HUD. ExistingHTTP/bake categories cap early, and no per-HUD asset/discard/demand state was recorded. Begin a separate bounded default-off HUD texture metadata observation at the real HUD-boost/demand owner, preserving all fetch/decode/upload priorities and budgets. Distinct metadata-state keys must exclude frame/time, use a separate HUDcategory so maptiles cannot consume it, and avoid usernames/locations/URLs/data. This evidence repair must not be presented as a HUD-loading fix or unmeasured concurrency improvement.
+
+- 2026-11-19 Integratedf4e2819a34 +9a4baec630 add bounded separate HUD category at the actual boost/demand owner, not a priority/policy change. Records include asset/type/slot, demand/discard/dimensions, residency, cached fetch phase/priority and raw/create/downscale flags. Non-fetched fields remain unknown; cached phase0 does not prove no worker and may be stale. Stable keys omit frame/time/priority; 10000 changing frame/priority values preserve admission. Actual-body suite102 ASan/UBSan checks passes; prior observer has two expected failures for the added fields/phase admission. Full volume TU compiles. Nine-category gate and independent peer source review pass. This is evidence repair, not a loading fix. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-464 — Owner reports brief unresponsiveness just after club teleport
 
@@ -10940,14 +10949,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-474 — Three preferences checkboxes have no backing settings or consumers
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex warning-source audit
 - Discovered: 2026-11-19
 - Original reference: Both original1eb44 and current skin XML reference AlchemyCinematicModeHideHoverText, DoubleClickAttachmentAdd and DoubleClickWearableAdd; no matching setting declarations or C++ consumers exist in either inspected revision.
 - Evidence: [69331 runtime and source investigation](research/warning-input-runtime-69331-20261119.md); three lluictrl.cpp setControlName warnings and exact original/current search retained in private asset-live-02-final.
-- Next action: Trace the historical intended behavior and wire a meaningful existing feature/consumer contract before repairing controls. Adding unused declarations would only conceal the broken binding.
-- Verification: Current lookup fails and disconnects setting binding. This is an inherited UI contract defect; no effect on floor rendering, OpenHT decoding or measured frame time is established.
+- Next action: Build and owner-test the meaningful attachment Add/Replace combo, wearable tree/gallery double-click/Ctrl policy, and restored cinematic toggle/HUD/text/voice/UI behavior including mouselook and fly/sit transitions.
+- Verification: Real archived consumers are restored, not inert setting declarations. Inventory actual-body300 checks passes vs79 baseline failures. Final cinematic155 checks (including16 real movement-owner checks) and mouselook97 checks pass after prerelease483/484 repairs. No restored-mode candidate has been launched; owner acceptance pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10959,6 +10968,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 history follow-up finds all3were real archived features, not fake placeholder names. Panel-only restoration042a1c3f4a followed intentionally commented cinematic menu restorationc678b7ff65c; history-merge663df365ca left settings/consumers absent before the Metal reference1eb44. Existing InventoryAddAttachmentBehavior(default0Add/1Replace) can back a real attachment preference; wearable and cinematic options require actual consumer/mode restoration. Historical wearable/attachment booleans defaulttrue; cinematic hover defaultfalse. No inert declarations or source/feature removal selected; this remains separate open UI restoration work, not an attributed Metal regression.
 
 - 2026-11-19 active fix goal includes this warning-backed feature defect. Root begins independent inventory/UI restoration from exact archived consumers: existing InventoryAddAttachmentBehavior must back an equivalent Add/Replace combo, rather than reversed boolean binding; restore real DoubleClickWearableAdd tree/gallery semantics, clothing/bodypart guards and Ctrl inversion. Cinematic option must restore actual mode/menu and native-visible HUD/text/UI consumers, not just declare an inert setting. Source edits remain in a separate persistent worktree; no UI/network/inventory action is executed by tests. Keep this scope separate from critical082/480 repairs and retain partial status until every consumer is implemented and verified.
+
+- 2026-11-19 Integrated9ab5452147/9fb0c859d4 restore real inventory controls and source-derived tests. Integrated48b9cddb5f restores archived cinematic mode/menu/AltShiftC/default-off/native-visible consumers, then df39e03c9a and06f798cb44 correct registered483/484 findings before delivery. Final hover defaultfalse, attachment existing U32 Add0/Replace1 contract and wearable defaulttrue match archived intent. Independent reviews pass; full app build pending. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
 
@@ -11083,14 +11095,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-480 — Home login shows black instead of an available last-location image
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex warning/runtime integrator
 - Discovered: 2026-11-19
 - Original reference: Original1eb44 and current LLProgressView::initStartTexture select Home PNG/legacyBMP for Home or URL login, with no last-location fallback; failed file load selects the black image. Trace original/current startup selection and final-snapshot producer before changing the retained-image contract.
 - Evidence: [69331 runtime and current owner continuation](research/warning-input-runtime-69331-20261119.md); private Alchemy-functional-69343-n6ifzso_/analysis/login-background-01 preserves current/previous startup warning rows, pre-logout file hashes/copies and selected-home-versus-last.json. Owner explicitly reports the missing last-location image; current exact69343 emits Bitmap load failed before decode.; [69343 owner run](research/warning-runtime-69343-20261119.md).
-- Next action: Verify original/current file-selection and valid stored-image decoding, then restore useful startup-image fallback when the requested Home image is absent. Preserve the requested destination, production/grid-specific filenames, UseStartScreen opt-out and image/texture ownership. Do not conflate this with PPD008 post-login world presentation or PPD463 delayed HUD sharpness.
-- Verification: Current run selected My home. In the account directory whose prior00:00:16snapshot path/mtime match the closed69331 log, screen_home.png and screen_home.bmp are absent while screen_last.png exists (7,804,872bytes, PNGheader3456×2168). The requested-file load failure precedes PNG decode/native upload. Pixel decode and exact historical pre-architecture lookup remain unverified; this does not establish when the missing Home file or regression arose.
+- Next action: Build the integrated candidate and owner-test Home/URL login with missing Home image and valid last-location snapshot, including UseStartScreen opt-out. Keep post-login world and HUD delays separate.
+- Verification: Actual current loader fallback suite21 cases/114 checks passes vs12 baseline failures; real saved PNG decodes to3456×2168 with7126547 nonblack pixels and expands4096². Full TU compiles. No active account/image/cache file changed. Owner visual acceptance pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -11098,17 +11110,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 registered before any repair, cache/file replacement or viewer restart. Owner baseline claim is retained as reported, not dismissed because the current selection code is inherited. Stored startup-image candidates were copied read-only before owner logout; the existing last image was produced by a successful prior normal shutdown. Current connected Home/FPS check continues unchanged.
 
+- 2026-11-19 Integrateda455cf7897 retains requested Home PNG/legacyBMP selection, then tries existing grid/account last-location PNG once after primary file/decode failure for a non-LAST selection. LAST direct selection, opt-out and texture-publication ownership remain intact; native allocation failure does not trigger fallback. Original source confirms inherited gap but does not date the owner-reported regression. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-481 — Media plugin receives its load response outside the loading state
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex warning/runtime integrator
 - Discovered: 2026-11-19
 - Original reference: Original1eb44 and current LLPluginProcessParent::receiveMessage accept load_plugin_response only in STATE_LOADING; otherwise errorState selects launch failure or runtime error. Preserve the handshake/state and media behavior rather than suppressing this protocol error.
 - Evidence: [69343 closed warning audit](research/warning-runtime-69343-20261119.md); private closed-warning-audit retains exact382row map, emitting bodies/hashes and08:27:16UTC row. CEF daemon registration one second earlier is context only.
-- Next action: Trace actual load request/response dispatch, parent state ordering, duplicate or cancelled-instance handling and owner impact. Add actual state-machine reproduction before selecting a repair; do not invent a connection to HUD sharpness or world stalls.
-- Verification: A real wrong-state response is logged and takes errorState in69343. Emitting receiveMessage/errorState bodies are inherited; actual prior state, instance and producer/cancellation sequence are unlogged. No port-regression cause, recovery or visible media failure is established.
+- Next action: Build and owner-test media/navigation/shutdown; retain numeric prior-state/owner metadata for any unexpected handshake. Do not attribute the69343 row or world/HUD symptom without actual state/instance evidence.
+- Verification: Actual parent queue/receive/shutdown/idle plus child idle/shutdown controlled-boundary suite18 cases/163 checks passes. Final field-only baseline misses5 checks; prior17-case functional baseline has28 failures. Full parent TU compiles. Real69343 wrong-state row remains causally unjoined.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -11120,6 +11134,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 parent source review also identifies a potential queued hello completion meeting the same explicit closing-state guard. This is registered as a sibling handshake-cancellation edge under481 before any additional repair. Require actual legal pre-hello queue→shutdown→drain reproduction and bundled-child shutdown contract review before broadening the parent guard. Do not relax active-state hello validation or edit an unproved asynchronous child path.
 
+- 2026-11-19 Integrated81abcb7d47 handles only obsolete hello/load responses after explicit GOODBYE/EXITING, retaining normal CONNECTED/LOADING handling and all active-state errors. No child production change or fast-response race claim. Integrated92c6e963eb records numeric prior state and owner presence before existing unexpected-response error transitions, without URLs/names/pointers. Queued legal HELLO uses STATE_CONNECTED, not LAUNCHED. Child no-instance shutdown retains existing12s deadline; offline fixture does not prove poll-thread raw-owner lifetime synchronization. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
+
 ## PPD-482 — Shutdown reaches queued-request and TextureFetch worker residue cleanup
 
 - Status: investigating
@@ -11128,8 +11145,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: Original1eb44/current LLQueuedThread::shutdown aborts/deletes queued requests; LLWorkerThread::clearDeleteList clears worker request/work flags and deletes remaining workers. These are cleanup branches, not proof of leaks or lost required work.
 - Evidence: [69343 closed warning audit](research/warning-runtime-69343-20261119.md); private closed-warning-audit preserves08:45:03queued residue1 and08:45:04TextureFetch delete-list residue1, exact source bodies and Goodbye.
-- Next action: Identify the residual request/worker, owner cancellation and completion order, then check required callback/resource retirement invariants with actual bodies. Retain safe forced cleanup; do not conceal the warning or assume normal cancellation is a defect.
-- Verification: One STATUS_QUEUED request is aborted/deleted and one TextureFetch delete-list worker is forcibly cleared/deleted during normal69343logout. No active-request warning, ERROR/FATAL or failed logout occurs. Required-work loss, leak, common identity and lifetime defect are unknown; this record retains an observed cleanup concern with unproved impact.
+- Next action: Retain safe cleanup and unknown request/worker identity. Only add bounded metadata or select a repair when required callback/resource loss is demonstrated; do not weaken forced cancellation based on count equality.
+- Verification: Read-only15-body original/current cleanup trace shows queued cancellation and late scheduleDelete semantics can reach these branches normally. Decoder admission drains/joins before forced cleanup. No active request warning, failed logout or required callback/resource loss is established; two residue counts do not identify a common request.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -11137,17 +11154,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 registered at final-run discovery before any repair. All current/original emitting functions resolve and match. No cache corruption, race or engine cause is inferred from residue counts alone.
 
+- 2026-11-19 Private ppd482-cleanup-source-01 reportSHA3817f37a2f9f7e4485c7cf71e5f5d7ce75cf2c4ba989bc8be4fc20da6c9af88e retains exact source/order. TextureFetch destructor schedules remaining workers after other owners retire; queued thread identity is unlogged and could be another cancellation boundary. No source change is selected for this qualified cleanup concern, and no leak/UAF/corruption claim is made. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-483 — Restored cinematic mode can reveal hidden floaters across mouselook
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex PPD474 UI integration
 - Discovered: 2026-11-19
 - Original reference: Archived cinematic mode hides floaters through LLViewerWindow::setUIVisibility(false). Current LLAgent::endAnimationUpdateUI still unconditionally shows UI before pushing mouselook visibility, then pops that stack on exit. The restored mode must preserve its hidden-floater ownership across camera transitions while retaining normal mouselook behavior.
 - Evidence: [69343 follow-up work](research/warning-runtime-69343-20261119.md); private closed-warning-audit/ppd474-cinematic-peer-review/initial-review retains source path from local d781f738c4 (integrated48b9cddb5f) and actual LLFloaterView hide/show/push/pop implementation.
-- Next action: Reproduce the cinematic-enter→mouselook-enter/leave→cinematic-exit sequence with actual mode/agent gate and visibility-owner bodies, then guard mouselook UI unhide while cinematic remains enabled. Also cover mode activation during an outstanding mouselook transition and preserve push/pop balance and final restoration.
-- Verification: Source sequence open floater→cinematic hides/saves it→mouselook calls setUIVisibility(true) and clears saved-hidden list→pushVisible(false)→exit pops visible=true reveals it although mode remains enabled. Existing139mode/hover fixture stops at window visibility and does not execute this owner transition. No candidate with the restored mode has been launched; controlled reproduction/correction pending.
+- Next action: Owner-test restored cinematic mode across enter/exit mouselook, including enabling mode during a pending visibility pop. Retain balanced original visibility stack and verify full UI restoration.
+- Verification: Full actual LLAgent UI/camera/window/mode/floater/LLView visibility bodies reproduce the failing sequence. Final97 checks pass after484; earlier functional95-check proof fails32 baseline checks, and isolated guards fail2/18. Production agent object compiles. Live UI acceptance pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -11155,20 +11174,44 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 independent source review blocks cinematic restoration acceptance before candidate build. Other default-off/native HUD/text/voice/menu consumers have no actionable review finding. Preserve the initial local implementation and review; no warning suppression or unbalanced visibility stack repair is authorized.
 
+- 2026-11-19 Integrateddf39e03c9a guards entering-mouselook setUIVisibility(true) while cinematic is enabled and reapplies mode hiding after the balanced pop. Covers mode enabled during an outstanding mouselook transition without changing normal mode-off behavior. Initial139-check fixture did not cover this owner caller; its blind spot and failure are retained. Independent peer source review passes. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
 
 ## PPD-484 — Cinematic visibility snapshots can strand newly active movement controls
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex PPD474 UI integration
 - Discovered: 2026-11-19
 - Original reference: Archived cinematic exit requests UI/chiclet/movement visibility true. Local restoration d781f738c4/48b9cddb5f instead snapshots three booleans. Real setStandStopFlyingMode updates action buttons and requests panel visibility on fly/sit events; that request is suppressed while cinematic mode is enabled.
 - Evidence: [69343 follow-up work](research/warning-runtime-69343-20261119.md); independent source review of alcinematicmode.cpp and llmoveview.cpp563–630, event owners215/247; current139check fixture only verifies the newly invented snapshot contract.
-- Next action: Reproduce mode enter with inactive movement panel, fly/sit activation during cinematic, then exit. Restore the archived visible-on-exit contract through current UI owners instead of retaining stale snapshots. Update controlled tests to verify current actions and original exit behavior, including the PPD483 real mouselook caller sequence.
-- Verification: Source proves _restoreMovement=false can be captured, a real movement action becomes visible internally while panel visibility remains suppressed, then mode exit explicitly restores false with no regular reevaluation. The source owner is event-driven, so the action can remain hidden until another update. No candidate with this unapproved restoration has been launched; actual-body red proof/correction remains pending.
+- Next action: Owner-test fly/sit activation while cinematic hides the movement panel, then exit mode and verify current action controls are visible through their ordinary owners.
+- Verification: Real movement owner16 checks fails2 on snapshot baseline and passes corrected; final cinematic155 checks fails14 baseline and passes; mouselook97 fails5 baseline and passes. Counts overlap and must not be added as unique assertions. Source mode/agent objects compile; no live closure.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-19 registered before correction. The unrequested snapshot improvement is rejected for delivery; retain its history/tests and independent finding. Prefer original mode semantics rather than adding a general visibility restoration framework. PPD483 balanced-stack correction remains necessary under either exit contract.
+
+- 2026-11-19 Integrated06f798cb44 removes all three unrequested visibility snapshots and restores archived exit requests true through existing window/chiclet/movement owners. Mode flag updates before owner callbacks so reentrant camera paths see current state. Registered483 guards remain intact. No candidate containing the rejected snapshot restoration was launched; initial snapshot-specific green fixture was insufficient. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
+
+## PPD-485 — Adaptive decoder setting promises an unsupported fixed-maximum comparison
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex decoder/core-count follow-up
+- Discovered: 2026-11-19
+- Original reference: Owner-accepted pre-architecture adaptive scheduler98f41e652b used disabled mode as a fixed detected maximum. Later native-frame downstream admission deliberately applies independently to both adaptive and fixed modes. This policy has no original OpenGL equivalent.
+- Evidence: [Integrated decoder audit](research/warning-followup-integration-20261119.md); actual setDownstreamCeiling in indra/llimage/alimagedecodescheduler.h and existing fixed-width recovery test in indra/llimage/tests/alimagedecodescheduler_test.cpp.
+- Next action: Clarify the setting description without changing defaults, numeric limits or downstream safety. Keep any loading-performance repair separate and verify the integrated candidate.
+- Verification: Source and the passing existing scheduler test require adaptive=false to clamp6→2 and recover2→6 with the downstream ceiling. Current setting still promises a fixed-maximum comparison, which is inaccurate. No decoder liveness or HUD causal defect is established by this wording mismatch.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before description correction during the owner's explicit core/adaptive-allocation question. Existing scheduler/native-budget regression CTests pass; source uses no pinned core affinity. Retain intentional backpressure rather than bypassing it to satisfy stale wording. No viewer/settings mutation or decoder policy change.
+
+- 2026-11-19 description corrected to state that disabling adaptation still obeys native frame/upload backpressure. XML parsing passes. Defaulttrue, scheduler/source logic and2/4/6limits unchanged; prior CTest policy evidence remains applicable. No new test needed for this text-only correction.

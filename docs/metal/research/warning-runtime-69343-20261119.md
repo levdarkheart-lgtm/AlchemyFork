@@ -32,7 +32,7 @@ No Instruments or Metal capture was run. A requested3second sample started08:33:
 
 ## Active offline work
 
-Viewer is closed. Root owns integration/CMake/register/ledgers. Independent persistent worktrees own PPD082 exposure parity and PPD480 meaningful startup-image fallback, with actual-body/native regression controls required before integration. Independent warning reconciliation and later peer review remain separate. Existing PPD002/003/463 loading/publication defects and PPD474 real preference restoration stay open. Preserve mandatory OpenHTJ2K, visual quality, resource completeness and the owner-passed floor fix. Keep all repairs local; no push approval exists. A build or contained test cannot prove owner-visible jerkiness or loading recovered.
+Viewer is closed. Root integrated the offline082/480/481/474 repairs plus default-off world/HUD evidence, including registered prerelease483/484 corrections. [Integrated source, tests, decoder audit and pending candidate](warning-followup-integration-20261119.md) supersedes the earlier worktree-ownership plan. Existing002/003/463 loading/publication behavior remains unverified; preserve mandatory OpenHTJ2K, resource/quality completeness and the owner-passed floor. All repairs stay local. A build or contained test cannot prove the owner-visible jerkiness/loading recovered.
 
 
 ## Complete warning reconciliation
