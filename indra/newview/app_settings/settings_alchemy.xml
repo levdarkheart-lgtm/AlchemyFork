@@ -27,7 +27,7 @@
         <key>ImageDecodeAdaptive</key>
         <map>
             <key>Comment</key>
-            <string>Adapt simultaneous texture decodes to queue and CPU/thermal pressure within the detected hardware budget. Disabling this uses the detected maximum subject to native frame and upload backpressure. Requires viewer restart.</string>
+            <string>Adapt simultaneous texture decodes to queue and CPU/thermal pressure within the detected hardware budget. Disabling this uses the detected maximum subject to memory and decoded-image backlog limits. Requires viewer restart.</string>
             <key>Persist</key>
             <integer>1</integer>
             <key>Type</key>

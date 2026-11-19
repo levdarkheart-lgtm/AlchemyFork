@@ -2941,7 +2941,8 @@ if(AL_BUILD_TESTS)
       COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_texture_worker_startup_test.py"
         --emit-source "${native_texture_worker_startup_source}"
-      DEPENDS llviewerwindow.cpp ../llrender/llimagegl.cpp app_settings/settings.xml app_settings/settings_alchemy.xml
+      DEPENDS llviewerwindow.cpp ../llrender/llimagegl.cpp ../llcommon/threadpool.cpp
+        app_settings/settings.xml app_settings/settings_alchemy.xml
         tests/native_texture_worker_startup_test.py tests/native_texture_worker_startup_fixture.cpp
       VERBATIM)
     add_executable(native_texture_worker_startup_test "${native_texture_worker_startup_source}")

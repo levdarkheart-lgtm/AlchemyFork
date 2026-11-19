@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -44,6 +45,8 @@ def main():
     image = read('indra/llrender/llimagegl.cpp')
     initializer = block(image, 'void LLImageGL::initClass(')
     worker = block(image, 'LLImageGLThread::LLImageGLThread(')
+    pool = block(read('indra/llcommon/threadpool.cpp'), 'LL::ThreadPoolBase::ThreadPoolBase(')
+    width = re.search(r'mThreadCount\(([^\n]+)\),', pool).group(1)
     defaults = {}
     for name in ['settings.xml', 'settings_alchemy.xml']:
         root = ET.fromstring(read('indra/newview/app_settings/' + name)).find('map')
@@ -60,7 +63,8 @@ def main():
                           for name, value in sorted(defaults.items()))
     fixture = (HERE / 'native_texture_worker_startup_fixture.cpp').read_text()
     generated = (fixture.replace('// @DEFAULTS@', literals).replace('// @WINDOW_CALL@', call)
-                 .replace('// @INITIALIZER@', initializer).replace('// @WORKER@', worker))
+                 .replace('// @INITIALIZER@', initializer).replace('// @WORKER@', worker)
+                 .replace('/* @WIDTH@ */', width))
     if args.emit_source:
         args.emit_source.parent.mkdir(parents=True, exist_ok=True)
         args.emit_source.write_text(generated)
