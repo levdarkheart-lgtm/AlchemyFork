@@ -2936,6 +2936,22 @@ if(AL_BUILD_TESTS)
     target_link_options(startup_image_contract_test PRIVATE -fsanitize=address,undefined)
     add_test(NAME "newview/startup_image_contract" COMMAND startup_image_contract_test)
     set_tests_properties("newview/startup_image_contract" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    set(native_texture_worker_startup_source "${CMAKE_CURRENT_BINARY_DIR}/native_texture_worker_startup_generated.cpp")
+    add_custom_command(OUTPUT "${native_texture_worker_startup_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_texture_worker_startup_test.py"
+        --emit-source "${native_texture_worker_startup_source}"
+      DEPENDS llviewerwindow.cpp ../llrender/llimagegl.cpp app_settings/settings.xml app_settings/settings_alchemy.xml
+        tests/native_texture_worker_startup_test.py tests/native_texture_worker_startup_fixture.cpp
+      VERBATIM)
+    add_executable(native_texture_worker_startup_test "${native_texture_worker_startup_source}")
+    target_link_libraries(native_texture_worker_startup_test PRIVATE al::flags)
+    target_compile_features(native_texture_worker_startup_test PRIVATE cxx_std_20)
+    target_compile_options(native_texture_worker_startup_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(native_texture_worker_startup_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/native_texture_worker_startup" COMMAND native_texture_worker_startup_test)
+    set_tests_properties("newview/native_texture_worker_startup" PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     set(inventory_open_policy_contract_source "${CMAKE_CURRENT_BINARY_DIR}/inventory_open_policy_contract_generated.cpp")
     add_custom_command(OUTPUT "${inventory_open_policy_contract_source}"
       COMMAND "${Python3_EXECUTABLE}"

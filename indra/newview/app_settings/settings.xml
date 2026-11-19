@@ -9255,7 +9255,9 @@
     <key>RenderGLMultiThreadedTextures</key>
     <map>
       <key>Comment</key>
-      <string>Allow OpenGL to use multiple render contexts for loading textures (may reduce frame stutters, doesn't play nice with Intel drivers).</string>
+      <string>Legacy OpenGL preference retained for settings-file compatibility. Native texture uploads use RenderMetalMultiThreadedTextures.</string>
+      <key>HideFromEditor</key>
+      <integer>1</integer>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
