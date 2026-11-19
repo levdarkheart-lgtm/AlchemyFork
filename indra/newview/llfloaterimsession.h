@@ -39,6 +39,7 @@
 #include "llframetimer.h"
 
 #include <set>
+#include <limits>
 
 class LLAvatarName;
 class LLButton;
@@ -176,6 +177,9 @@ private:
     LLPanel* mNativeIMSettingsPanel = nullptr;
     LLButton* mNativeIMSettingsButton = nullptr;
     ALPopoverSlot mNativeIMSettingsPopover;
+    U32 mNativeIMSettingsCloseFrame = std::numeric_limits<U32>::max();
+    U32 mNativeIMSettingsPressFrame = std::numeric_limits<U32>::max();
+    U32 mNativeIMSettingsReleaseFrame = std::numeric_limits<U32>::max();
     std::string mNativeIMStatusText;
     LLComboBox* mNativeIMSource = nullptr;
     LLComboBox* mNativeIMIncoming = nullptr;

@@ -162,7 +162,8 @@ void LLFloaterIMSession::updateNativeIMTranslationButton()
 
 void LLFloaterIMSession::showNativeIMTranslationSettings()
 {
-    if (!mNativeIMSettingsPanel || !mIsP2PChat || !mSession) return;
+    if (!mNativeIMSettingsPanel || !mIsP2PChat || !mSession ||
+        !isInVisibleChain() || !isMessagePaneExpanded()) return;
     if (mNativeIMSettingsPopover.isOpen())
     {
         mNativeIMSettingsPopover.close(false);
@@ -181,6 +182,7 @@ void LLFloaterIMSession::showNativeIMTranslationSettings()
     mNativeIMSettingsPopover.hold(popup, [handle](bool) {
         if (auto* self = static_cast<LLFloaterIMSession*>(handle.get()))
         {
+            self->mNativeIMSettingsCloseFrame = LLFrameTimer::getFrameCount();
             self->mNativeIMSettingsPanel->setVisible(false);
             self->mNativeIMSettingsPanel->setFollows(FOLLOWS_NONE);
             self->addChild(self->mNativeIMSettingsPanel);
@@ -218,7 +220,20 @@ void LLFloaterIMSession::initNativeIMTranslation()
     mNativeIMIncoming->add(getString("native_im_system"), "");
     mNativeIMIncoming->selectFirstItem();
     mNativeIMIncoming->setEnabled(false);
-    mNativeIMSettingsButton->setClickedCallback([this](LLUICtrl*, const LLSD&) { showNativeIMTranslationSettings(); });
+    // The enclosing floater/button can close the popup by taking focus on
+    // mouse-down, before the click callback. Treat that as this click's close,
+    // including a press held across frames; keyboard activation still opens it.
+    mNativeIMSettingsButton->setMouseDownCallback([this](LLUICtrl*, const LLSD&) {
+        mNativeIMSettingsPressFrame = LLFrameTimer::getFrameCount();
+    });
+    mNativeIMSettingsButton->setMouseUpCallback([this](LLUICtrl*, const LLSD&) {
+        mNativeIMSettingsReleaseFrame = LLFrameTimer::getFrameCount();
+    });
+    mNativeIMSettingsButton->setClickedCallback([this](LLUICtrl*, const LLSD&) {
+        if (mNativeIMSettingsReleaseFrame == LLFrameTimer::getFrameCount() &&
+            mNativeIMSettingsCloseFrame == mNativeIMSettingsPressFrame) return;
+        showNativeIMTranslationSettings();
+    });
     mNativeIMSettingsPanel->getChild<LLButton>("native_im_done")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
         mNativeIMSettingsPopover.close(false);
     });

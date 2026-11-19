@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-517 -->
+<!-- next-defect-id: PPD-519 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12029,3 +12029,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Registered usability report before implementation. Owner screenshots demonstrate original-plus-bracketed translation locally; no additional recipient-side acceptance or push authorization inferred.
 
 - 2026-11-19 (PPD-516): Popup repair implemented with existing ALPopover. Persistent per-chat controls return to a hidden root panel before popup destruction; async translation does not depend on popup visibility. Adaptive142/177-pixel toolbar layouts retain all existing actions at the original minimum. First syntax attempt failed because LLUICtrlFactory::create requires an lvalue params block; corrected exact Release syntax check exits0. Full updated build and visual owner acceptance pending.
+
+## PPD-517 — A delayed translation failure can open settings over another chat
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: Proposed eedc0db054 popup auto-opens on translated-send failure but showNativeIMTranslationSettings does not check current visibility or compact mode.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Require the owning conversation to be visible and expanded before opening settings.
+- Verification: Source review confirms translation continues after switching tabs; its later failure could open a popup and take focus from the active conversation. No owner incident attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered during pre-delivery popup review before correction. eedc0db054 build exits0 but is not delivered or launched; proposed UI focus behavior is not owner-verified.
+
+## PPD-518 — Clicking the translation toolbar button again reopens its popup
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: LLButton focuses itself on mouse down, closing ALPopover through onFocusLost before the mouse-up callback tries to toggle the already empty slot.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Remember popup-close and button press/release frames so one mouse gesture dismisses once, while keyboard activation remains available.
+- Verification: Independent source review traces LLButton::handleMouseDown and ALPopover::onFocusLost; existing emoji helper compensates for the same event order. No owner incident attributed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered during pre-delivery popup review before correction. eedc0db054 build exits0 but is not delivered or launched; proposed UI focus behavior is not owner-verified.
+
+- 2026-11-19 (PPD-517/518): Before delivery, require visible expanded owner before opening; track popup-close and button press/release frames to suppress reopening from the same focus-loss click. A considered chrome-only fix was rejected by source inspection because the enclosing floater may take focus before child dispatch. Rebuild and existing widget/native regressions next.

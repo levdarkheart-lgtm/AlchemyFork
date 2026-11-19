@@ -296,3 +296,12 @@ rvalue params; corrected lvalue syntax exits0, old failure retained under
 and root-panel/main_stack/minheight checks pass; independent source review finds
 no ownership/geometry blocker. Updated full Release/widget regression/app
 verification is next. No renderer changes, IMs, automatic login or push.
+
+
+Pre-delivery focus review registers PPD-517/518 before fixes: delayed failure must
+not open over a hidden/compact chat, and toolbar focus loss must not close then
+reopen on the same click. Guard visibility/expansion and track close/press/release
+frames, following the existing emoji helper's event-order precedent. A chrome-only
+approach was rejected before rebuild because the parent floater can take focus
+first. Initial eedc0db054 Release49-action build exits0, not delivered/launched;
+widget placement/popover CTests2/2 pass. Final source-pinned rebuild follows.
