@@ -28,6 +28,7 @@
 
 #include "llimageworker.h"
 #include "alnativeframebudget.h"
+#include "alimagedecodeestimate.h"
 #include "llimagedxt.h"
 #include "threadpool.h"
 #if LL_DARWIN
@@ -49,7 +50,7 @@ public:
                  U32 request_id);
     virtual ~ImageRequest();
 
-    /*virtual*/ bool processRequest();
+    /*virtual*/ bool processRequest(ALNativeFrameBudget::DecodeEstimate& estimate);
     /*virtual*/ void finishRequest(bool completed);
     void setStage(const char* stage) noexcept { mStage = stage; }
     void logUnexpectedException(const char* type, const char* message) const noexcept;
@@ -226,10 +227,11 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
                         req.finishRequest(false);
                         return;
                     }
+                    ALNativeFrameBudget::DecodeEstimate estimate;
                     // Keep unexpected failures on the existing WorkQueue
                     // propagation path. Record the phase before unwinding
                     // erases the worker's useful context (PPD-090).
-                    const auto done = req.processRequest();
+                    const auto done = req.processRequest(estimate);
                     req.setStage("completion-accounting");
                     permit.decoded();
                     req.finishRequest(done);
@@ -325,7 +327,7 @@ void ImageRequest::logUnexpectedException(
 
 
 // Returns true when done, whether or not decode was successful.
-bool ImageRequest::processRequest()
+bool ImageRequest::processRequest(ALNativeFrameBudget::DecodeEstimate& estimate)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
@@ -370,6 +372,14 @@ bool ImageRequest::processRequest()
             mInputWidth = mFormattedImage->getWidth();
             mInputHeight = mFormattedImage->getHeight();
             mInputComponents = mFormattedImage->getComponents();
+            const auto cost = ALImageDecodeEstimate::metadata(
+                mInputWidth, mInputHeight, mInputComponents > 0 ? mInputComponents : 0,
+                mNeedsAux, mInputCodec == IMG_CODEC_J2C);
+            // Account only this active request, after the existing locked
+            // metadata parse and before pixels allocate. The worker's local
+            // owner lasts through the responder and unwinds on every throw;
+            // saved/cached raw images never retain this full working estimate.
+            estimate = ALNativeFrameBudget::instance().beginDecodeEstimate(cost.bytes, cost.known);
             mStage = "primary-allocation";
             mDecodedImageRaw = new LLImageRaw(mFormattedImage->getWidth(),
                                               mFormattedImage->getHeight(),

@@ -30,6 +30,7 @@
 // Class to test
 #include "../llimageworker.h"
 #include "alnativeframebudget.h"
+#include "../alimagedecodeestimate.h"
 // For timer class
 #include "../llcommon/lltimer.h"
 // for lltrace class
@@ -74,6 +75,11 @@ void LLImageBase::sanityCheck() { }
 void LLImageBase::deleteData() { }
 U8* LLImageBase::allocateData(S32 size) { return NULL; }
 U8* LLImageBase::reallocateData(S32 size) { return NULL; }
+// Controlled metadata input for the actual worker, without a pixel allocator.
+void LLImageBase::setSize(S32 width, S32 height, S32 components)
+{
+    mWidth = width; mHeight = height; mComponents = components;
+}
 
 LLImageFormatted::LLImageFormatted(S8 codec)
     : LLImageBase(),
@@ -97,7 +103,31 @@ S32 LLImageFormatted::calcDataSize(S32 discard_level) { return 0; }
 S32 LLImageFormatted::calcDiscardLevelBytes(S32 bytes) { return 0; }
 bool LLImageFormatted::decodeChannels(LLImageRaw* raw_image,F32  decode_time, S32 first_channel, S32 max_channel) { return false; }
 
-LLImageRaw::LLImageRaw(U16 width, U16 height, S8 components) { }
+namespace
+{
+    std::atomic<bool> inspect_raw_allocation{false}, raw_allocation_accounted{true};
+    std::atomic<bool> fail_raw_allocation{false};
+    std::atomic<unsigned> inspected_raw_allocations{0};
+    struct raw_allocation_controls
+    {
+        raw_allocation_controls()
+        {
+            inspected_raw_allocations = 0; raw_allocation_accounted = true;
+            inspect_raw_allocation = true; fail_raw_allocation = false;
+        }
+        ~raw_allocation_controls() { inspect_raw_allocation = false; fail_raw_allocation = false; }
+    };
+}
+LLImageRaw::LLImageRaw(U16 width, U16 height, S8 components)
+{
+    if (inspect_raw_allocation)
+    {
+        ++inspected_raw_allocations;
+        if (ALNativeFrameBudget::instance().snapshot().decode_estimates_in_flight == 0)
+            raw_allocation_accounted = false;
+    }
+    if (fail_raw_allocation.exchange(false)) throw std::bad_alloc();
+}
 LLImageRaw::~LLImageRaw() { }
 void LLImageRaw::deleteData() { }
 U8* LLImageRaw::allocateData(S32 size) { return NULL; }
@@ -286,6 +316,30 @@ namespace
         bool encode(const LLImageRaw*, F32) override { return false; }
     };
 
+    class costed_image final : public LLImageFormatted
+    {
+    public:
+        explicit costed_image(std::shared_ptr<decode_gate> gate = {}, bool fail = false)
+            : LLImageFormatted(IMG_CODEC_J2C), mGate(std::move(gate)), mFail(fail) {}
+        std::string getExtension() override { return "costed"; }
+        bool updateData() override
+        {
+            setSize(128, 64, 4);
+            return true;
+        }
+        bool decode(LLImageRaw*, F32) override
+        {
+            if (mGate) mGate->enter();
+            if (mFail) throw std::runtime_error("controlled post-estimate decode failure");
+            return true;
+        }
+        bool decodeChannels(LLImageRaw*, F32, S32, S32) override { return true; }
+        bool encode(const LLImageRaw*, F32) override { return false; }
+    private:
+        std::shared_ptr<decode_gate> mGate;
+        bool mFail;
+    };
+
     struct nonstandard_decode_exception
     {
         int payload;
@@ -304,15 +358,19 @@ namespace
     class throwing_responder final : public LLImageDecodeThread::Responder
     {
     public:
-        explicit throwing_responder(std::shared_ptr<std::atomic<unsigned>> called)
-            : mCalled(std::move(called)) {}
+        explicit throwing_responder(std::shared_ptr<std::atomic<unsigned>> called,
+                                    std::shared_ptr<std::atomic<bool>> estimate_seen = {})
+            : mCalled(std::move(called)), mEstimateSeen(std::move(estimate_seen)) {}
         void completed(bool, const std::string&, LLImageRaw*, LLImageRaw*, U32) override
         {
             ++*mCalled;
+            if (mEstimateSeen)
+                *mEstimateSeen = ALNativeFrameBudget::instance().snapshot().decode_estimates_in_flight != 0;
             throw std::runtime_error("controlled responder failure");
         }
     private:
         std::shared_ptr<std::atomic<unsigned>> mCalled;
+        std::shared_ptr<std::atomic<bool>> mEstimateSeen;
     };
 
     struct completion_state
@@ -530,6 +588,10 @@ namespace
         input.frame_interval_ns = 50'000'000;
         input.required_main_cpu_ns = 45'000'000;
         budget.beginFrame(input);
+        // Genuine decoded-primary backlog, independently of main CPU work.
+        ALNativeFrameBudget::StreamingBacklog ready;
+        ready.queued_input_bytes = 64ULL * 1024 * 1024;
+        budget.updateStreaming(ready);
         mThread->updateFrameAdmission(budget);
         CHECK(mThread->getDecodeStats().current == 2);
         CHECK(mThread->getDecodeStats().active == 4);
@@ -912,5 +974,94 @@ namespace
         mThread->shutdown();
         check_failed_once(completed, ids);
         CHECK(mThread->getPending() == 0);
+    }
+
+    TEST_CASE("Transient decode estimates check all known full-resolution allocations",
+              "[LLImageDecodeThread][PPD-486]")
+    {
+        const auto primary = ALImageDecodeEstimate::metadata(128, 64, 4, false, false);
+        REQUIRE(primary.known); CHECK(primary.bytes == 128 * 64 * 4);
+        const auto openht = ALImageDecodeEstimate::metadata(128, 64, 4, false, true);
+        REQUIRE(openht.known); CHECK(openht.bytes == 128 * 64 * 4 * 5);
+        const auto aux = ALImageDecodeEstimate::metadata(128, 64, 4, true, true);
+        REQUIRE(aux.known); CHECK(aux.bytes == 128 * 64 * (4 * 5 + 1));
+        CHECK_FALSE(ALImageDecodeEstimate::metadata(0, 64, 4, true, true).known);
+        CHECK_FALSE(ALImageDecodeEstimate::metadata(128, 64, 0, true, true).known);
+        CHECK_FALSE(ALImageDecodeEstimate::metadata(UINT64_MAX, 2, 4, false, true).known);
+        CHECK_FALSE(ALImageDecodeEstimate::metadata(UINT64_MAX / 4, 1, 4, false, true).known);
+        CHECK_FALSE(ALImageDecodeEstimate::metadata(UINT64_MAX, 1, 1, true, false).known);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: actual metadata accounts overlapping estimates through responders",
+        "[LLImageDecodeThread][PPD-486]")
+    {
+        auto& budget = ALNativeFrameBudget::instance();
+        REQUIRE(budget.snapshot().decode_estimates_in_flight == 0);
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        release_completion release_callbacks{completed};
+        completed->block = true;
+        mThread = new LLImageDecodeThread(true, limits(4, 6), false);
+        raw_allocation_controls allocation_controls;
+        const auto first = mThread->decodeImage(new costed_image(gate), 4, true, new counting_responder(completed));
+        const auto second = mThread->decodeImage(new costed_image(gate), 0, false, new counting_responder(completed));
+        REQUIRE(first != 0); REQUIRE(second != 0); REQUIRE(gate->waitFor(2));
+        constexpr U64 expected = 128 * 64 * (4 * 5 + 1) + 128 * 64 * 4 * 5;
+        auto active = budget.snapshot();
+        CHECK(active.decode_estimates_in_flight == 2);
+        CHECK(active.decode_estimated_bytes_in_flight == expected);
+        CHECK(active.decode_unknown_estimates_in_flight == 0);
+        CHECK_FALSE(active.decode_estimate_saturated);
+        CHECK(inspected_raw_allocations == 2); CHECK(raw_allocation_accounted);
+        budget.updateStreaming({});
+        CHECK(budget.snapshot().decode_estimated_bytes_in_flight == expected);
+        gate->release(); REQUIRE(completed->waitFor(2, false));
+        CHECK(budget.snapshot().decode_estimates_in_flight == 2);
+        CHECK(budget.snapshot().decode_estimated_bytes_in_flight == expected);
+        completed->release(); mThread->shutdown();
+        CHECK(budget.snapshot().decode_estimates_in_flight == 0);
+        CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 0);
+        CHECK(mThread->getPending() == 0);
+        check_failed_once(completed, {first, second}); // Raw-data boundary is stubbed.
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: accounted allocation decode and responder throws release every estimate",
+        "[LLImageDecodeThread][PPD-486]")
+    {
+        auto& budget = ALNativeFrameBudget::instance();
+        decode_exception_log diagnostics;
+        REQUIRE_FALSE(LL::WorkQueue::getInstance("mainloop"));
+        LL::WorkQueue mainloop("mainloop", 1024, false);
+        for (unsigned failure = 0; failure < 3; ++failure)
+        {
+            REQUIRE(budget.snapshot().decode_estimates_in_flight == 0);
+            mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+            const auto completed = std::make_shared<completion_state>();
+            const auto called = std::make_shared<std::atomic<unsigned>>(0);
+            const auto estimate_seen = std::make_shared<std::atomic<bool>>(false);
+            raw_allocation_controls allocation_controls;
+            fail_raw_allocation = failure == 0;
+            LLPointer<LLImageDecodeThread::Responder> responder = failure == 2
+                ? static_cast<LLImageDecodeThread::Responder*>(new throwing_responder(called, estimate_seen))
+                : static_cast<LLImageDecodeThread::Responder*>(new counting_responder(completed));
+            const auto id = mThread->decodeImage(new costed_image({}, failure == 1), 0, false, responder);
+            REQUIRE(id != 0); mThread->shutdown();
+            CHECK(budget.snapshot().decode_estimates_in_flight == 0);
+            CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 0);
+            CHECK(budget.snapshot().decode_unknown_estimates_in_flight == 0);
+            CHECK(mThread->getPending() == 0);
+            CHECK(inspected_raw_allocations == 1); CHECK(raw_allocation_accounted);
+            if (failure == 2) CHECK(estimate_seen->load());
+            REQUIRE(mainloop.size() == 1);
+            if (failure == 0) CHECK_THROWS_AS(mainloop.runOne(), std::bad_alloc);
+            else CHECK_THROWS_AS(mainloop.runOne(), std::runtime_error);
+            CHECK(mainloop.size() == 0);
+            CHECK(called->load() == (failure == 2 ? 1u : 0u));
+            delete mThread; mThread = nullptr;
+        }
+        CHECK(diagnostics.copy().size() == 3);
     }
 }
