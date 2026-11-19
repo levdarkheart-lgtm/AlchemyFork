@@ -767,6 +767,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool retention_inputs_meter_owner = false, retention_inputs_adaptation = false;
     bool retention_inputs_classic = false, retention_inputs_gamma = false;
     bool retention_inputs_no_post = false, retention_inputs_dynamic = false;
+    ALWorldRetentionInputs::Observer retention_inputs_observer;
+    ALWorldRetentionInputs::BaseState retention_inputs_base_state =
+        ALWorldRetentionInputs::BaseState::unobserved;
+    U32 retention_inputs_base_state_frame = std::numeric_limits<U32>::max();
 
     // Retain only the world prefix, before any HUD or interface draw. A new
     // interface frame can then be rendered while scene resources load,
@@ -11189,6 +11193,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
         capture.world_ui_chain_debug_color || gSnapshot;
     if (exact_frame)
     {
+        capture.retention_inputs_observer.recovered();
         // Screenshots and pixel diagnostics must describe this exact world,
         // never the retained prefix of a preceding display frame.
         if (!capture.world_ui_chain_active ||
@@ -11254,12 +11259,17 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
                     << LL_ENDL;
                 #include "pipeline_world_retention_inputs_native.inl"
             }
+            else
+            {
+                capture.retention_inputs_observer.recovered();
+            }
         }
         else
         {
             // A resize/device change invalidates both backing textures as
             // one pair. Keep publishing fresh controls even before any world
             // is ready, with far depth so HUD depth brackets remain valid.
+            capture.retention_inputs_observer.recovered();
             capture.ui_background.clear();
             if (!capture.ui_clear_background ||
                 !(capture.ui_clear_background->context == context))
@@ -18412,6 +18422,17 @@ void LLPipeline::renderMetalWorldBaseLighting(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    using BaseState = ALWorldRetentionInputs::BaseState;
+    const auto observe_base = [&](BaseState state)
+    {
+        if (ALWarningDiagnostics::enabled())
+        {
+            capture.retention_inputs_base_state = state;
+            capture.retention_inputs_base_state_frame = gFrameCount;
+        }
+    };
+    // A repeated call after encoding must preserve that frame's result.
+    if (!capture.base_lighting_attempted) observe_base(BaseState::prerequisite);
     if (!capture.device || !capture.renderer || !capture.target ||
         (!capture.base_light_map_target && !capture.pending_probe_light_map) ||
         capture.base_lighting_attempted)
@@ -18433,6 +18454,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
             // keeping the visible main-world transaction fail-closed.
             if (!isMetalProbeFaceCaptureActive())
             {
+                observe_base(BaseState::ordinary_probes);
                 LL_WARNS_ONCE("Metal")
                     << "Native main-world base lighting is waiting for a "
                        "coherent reflection-probe radiance/SH pair"
@@ -18443,6 +18465,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
             legacy_environment = metalSkyEnvironment();
             if (!legacy_environment)
             {
+                observe_base(BaseState::legacy_environment);
                 return;
             }
             use_reflection_probes = false;
@@ -18454,6 +18477,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
         legacy_environment = metalSkyEnvironment();
         if (!legacy_environment)
         {
+            observe_base(BaseState::legacy_environment);
             return;
         }
     }
@@ -18462,6 +18486,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
         isMetalHeroProbeActive();
     if (hero_active && !fillMetalImpostorHeroProbe())
     {
+        observe_base(BaseState::hero_inputs);
         return;
     }
     const bool ssr_active = use_reflection_probes &&
@@ -18597,6 +18622,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
                     ALSkyLayers::starAttachment(mResourceInputs.mEmissive));
             }
             capture.main_lighting_ready = std::move(ready);
+            observe_base(BaseState::staged);
             return;
         }
         catch (const std::bad_alloc&)
@@ -18633,6 +18659,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
     if (!target)
     {
+        observe_base(BaseState::encoding_failed);
         ++capture.base_lighting_failed_frames;
         capture.base_lighting_attempted = true;
         LL_WARNS("Metal")
@@ -18656,6 +18683,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
         if (!capture.renderer->compositeModernSky(*target,
                 *capture.target->depthStencilTexture(), capture.modern_sky.scene, &error))
         {
+            observe_base(BaseState::sky_failed);
             ++capture.base_lighting_failed_frames;
             capture.base_lighting_attempted = true;
             LL_WARNS("Metal") << "Native sky composite failed: " << error << LL_ENDL;
@@ -18665,6 +18693,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
 
     capture.base_light_target = std::move(target);
+    observe_base(BaseState::encoded);
     capture.base_lighting_attempted = true;
     capture.base_lighting_failed_frames = 0;
     if (!capture.continuous_world_capture &&

@@ -1,0 +1,59 @@
+# Closed69377 warning source reconciliation
+
+Exact source `74d9264b1ff8f27f2ce3b1ba07299135601465dc`; original `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; previous69343 source `8f1ef9bd8a`. Complete immutable log prefix 3,429,459 bytes / 9,642 lines, SHA256 `3f883b3be5174027d38d76883eed7fd7050a3b9e248c912e5eb5b16389303cdd`. All338 warnings at45 sites accounted; ERROR/FATAL0. Source mappings/hashes and private row references are in all-sites-final.json. No raw messages, statistic values, account paths, asset IDs or reason strings are exported.
+
+| Source site (indra/) | Rows | Source condition/outcome | Qualification |
+| --- | ---: | --- | --- |
+| newview/llappviewer.cpp:2756 initLoggingAndGetLastDuration | 1 | No predecessor log can be statted; previous duration remains unknown. | Fresh private log-path absence versus I/O failure is not distinguished. |
+| llxml/llcontrol.cpp:1079 LLControlGroup::loadFromFile | 1 | Optional user crash-policy file cannot be opened; defaults remain. | No actual account file inspected; absence versus other I/O failure unknown. |
+| llxml/llcontrol.cpp:793 LLControlVariable::setValueFromNotation | 1 | LEAP command does not parse as LLSD notation; retains command as String. | Warning is not failure of the subsequently connected observer. |
+| newview/llversioninfo.cpp:162 getViewerMaturity | 2 | Custom channel does not match maturity regex; returns TEST_VIEWER. | Channel classification, not a renderer failure. |
+| newview/llappviewer.cpp:1585 doFrame | 2 | Installed signal handler changed; viewer restores its handler. | Handler owner/reason unlogged; no crash inference. |
+| newview/llmutelist.cpp:1147 loadFromFile | 1 | Optional saved visual-mute list cannot be opened; imports no visual overrides. | Missing file versus filesystem error unknown. |
+| newview/llprogressview.cpp:445 LLProgressView::operator() | 1 | Requested startup bitmap load fails inside helper; Home path can fall back to last-location PNG. | New versus69343. One attempted load failure does not mean fallback failed or black was shown. |
+| newview/llviewertexturelist.cpp:452 LLViewerTextureList::getImageFromFile | 1 | Local image lookup fails and returns its default/UI-priority fallback. | Exact caller/widget and visible consequence unproved. |
+| newview/llinventorymodel.cpp:921 LLInventoryModel::findCategoryUUIDForTypeInRoot | 8 | Startup system-folder lookup misses current inventory root and returns null. | Per-folder later completion/creation not linked. |
+| newview/llviewerregion.cpp:3734 getCapability | 7 | Capability requested before capabilities are ready; returns empty. | No proof of permanent missing capability. |
+| llmessage/llexperiencecache.cpp:339 requestExperiences | 2 | Empty experience capability delays processing without consuming queued experience work. | Later per-request outcome unlinked. |
+| newview/llgltfmateriallist.cpp:558 onAssetLoadComplete | 30 | Material retrieval callback fails, completes material(false) and releases callback data. | Status-1/ext0 is not a demonstrated transport/object/root-cause join. |
+| newview/llviewermessage.cpp:3315 process_agent_movement_complete | 1 | Movement-complete arrives before avatar validity; warns and continues. | This guard does not abort teleport; producer ordering reason unknown. |
+| newview/llmutelist.cpp:264 clearCachedMutes | 1 | Cache-clear lifecycle emits WARNING unconditionally and continues server-cache loading. | Not proof of server/cache equivalence. |
+| newview/alderenderlist.cpp:168 load | 1 | Optional saved derender-list cannot open; imports no persisted derender entries. | Missing file versus I/O failure unknown. |
+| newview/lltoastalertpanel.cpp:197 LLToastAlertPanel::LLToastAlertPanel | 2 | Alert construction logs notification while constructing text/layout, then builds panel. | Message severity is not an independent renderer fault; notification text unexported. |
+| llrender/llimagegl.cpp:3077 calcAlphaChannelOffsetAndStride | 7 | Unsupported float-format image cannot use byte CPU alpha/pick analysis; resets classifier. | Upload has its own path; exact image and pick/alpha impact unlogged. |
+| newview/lllandmarklist.cpp:241 onRegionHandle | 6 | Landmark global position cannot be resolved after region-handle response; erases callbacks. | Asset/handle/caller identity and recovery unknown. |
+| newview/alassetblocklist.cpp:87 load | 1 | Optional saved asset-blocklist cannot open; imports no persisted blocks. | Missing file versus I/O failure unknown. |
+| newview/llvoavatar.cpp:10613 LLVOAvatar::processAvatarAppearance | 6 | Equal-version self-appearance update is skipped to avoid rollback. | Does not certify bake/morph completion. |
+| newview/lltexturefetch.cpp:2243 onCompleted | 26 | HTTP403 ordinary texture completion marks request unsuccessful. | Refusal root cause/object association unproved. |
+| newview/lltexturefetch.cpp:1765 doWork | 26 | No-data terminal texture transition resets formatted data, enters DONE and releases HTTP slot. | Same failure cascade, not a separate failed object or rejected successful upload. |
+| newview/llviewertexture.cpp:2216 LLViewerTexture::processFetchResults | 26 | No-data result with no current GPU/saved CPU image is marked missing. | Does not identify a GPU failure; actual function owner is LLViewerFetchedTexture. |
+| newview/llviewertexture.cpp:2598 LLViewerTexture::setIsMissingAsset | 26 | Missing-state entry cancels fetcher and retains missing state. | Cross-scene rows are not unique visible objects; later recovery unproved. |
+| newview/llappearancemgr.cpp:4178 LLAppearanceMgr::serverAppearanceUpdateCoro | 1 | Duplicate/stale COF version request is skipped before POST. | Not proof of appearance completion. |
+| newview/llviewerregion.cpp:3588 setSeedCapability | 3 | Duplicate seed starts comparison while preserving primary capability state. | Not itself a failed seed or independent teleport failure. |
+| newview/llviewerregion.cpp:506 requestBaseCapabilitiesCompleteCoro | 3 | Smaller comparison capability response does not replace primary map. | Different key/necessity unlogged. |
+| newview/lltexturefetch.cpp:2470 callbackHttpGet | 39 | Whole response arrives while partial offset expected; marks complete and replaces old partial data. | All39 logged file_size0/formatted_size600; actual response length/request offset unlogged. No cache file inspected. |
+| newview/llheroprobemanager.cpp:482 generateRadiance | 3 | Throttled readiness/publish notice leaves unready hero reflection mirror unadvertised. | Exact publisher predicate/visible impact unproved; native agent owns analysis. |
+| llui/llmodaldialog.cpp:144 stopModal | 2 | Dialog marked modal is absent from modal stack; still releases focus. | Dialog identity/close ordering unlogged. |
+| newview/llmediadataclient.cpp:613 LLMediaDataClient::Handler::onSuccess | 1 | Successful HTTP media-data completion belongs to a dead object request; stops tracking and returns. | New versus69343. Intentional obsolete-request guard; why target died and visible media outcome unlogged. |
+| llcorehttp/_httppolicy.cpp:458 stageAfterCompletion | 27 | Terminal non4xx request failure is forwarded; observed warning statuses are Easy_28 timeouts. | Policy7 source is long-poll; held duration/consumer completion unknown. No recyclable-handle joins. |
+| newview/llviewerobjectlist.cpp:1912 clearAllMapObjectsInRegion | 4 | Region-removal sweep finds residual live-map objects and marks them dead. | Counts can overlap; earlier visibility/staleness and missed removal cause unknown. |
+| newview/llagent.cpp:4679 LLAgent::doTeleportViaLocation | 2 | Non-landmark location path sends legacy TeleportLocationRequest reliably and warns about deprecated protocol. | New versus69343. Not a failed send by itself; actual teleport outcome tracked elsewhere. |
+| llcharacter/llkeyframemotion.cpp:2476 onLoadComplete | 2 | Animation retrieval callback has nonzero asset status and marks ASSET_FETCH_FAILED. | Asset delivery failure, not identified animation decoder defect. |
+| llcharacter/llkeyframemotion.cpp:1470 deserialize | 56 | Animation joint name has no character joint; warns. Normal downloaded content defaults allow_invalid_joints=true and continues with null joint state. | New versus69343. Strict upload mode returns false. Caller/content identity and eventual animation result not in these rows; no skin fallback inference. |
+| newview/lllandmarklist.cpp:200 processGetAssetReply | 1 | Landmark asset reports not-in-database; marks bad, removes pending/retry state and erases callbacks. | New versus69343. Request/asset reason and later recovery unknown; no cache mutation inspected. |
+| newview/llviewermessage.cpp:6470 process_teleport_failed | 1 | Receives TeleportFailed, notifies parcel manager and begins resolving failure reason. | New versus69343. Three emitter rows belong to one handler path, not three independent failures; raw region/reason data remains private. |
+| newview/llagent.cpp:4363 LLAgent::handleTeleportFailed | 1 | Handles an actual teleport-failure event: restores voice visibility, clears teleport state and marks request failed. | New versus69343. Failure reason/instance identity not exported; not proof of port cause. |
+| newview/llviewermessage.cpp:6490 process_teleport_failed | 1 | TeleportFailed AlertInfo message/reason is resolved and logged; then reads optional extra parameters. | New versus69343. Three emitter rows belong to one handler path, not three independent failures; raw region/reason data remains private. |
+| newview/llviewermessage.cpp:6543 process_teleport_failed | 1 | Resolved CouldNotTeleportReason is logged and notification is shown; teleport state then cleared if needed. | New versus69343. Three emitter rows belong to one handler path, not three independent failures; raw region/reason data remains private. |
+| newview/llviewerwindow.cpp:6144 rawSnapshot | 1 | Native exact-current world/UI snapshot guard fails; returns false before readback/encoding. | New versus69343. New functional failed request: world_ui_target absent; specific upstream production/admission cause unproved. |
+| newview/llviewerwindow.cpp:5531 saveSnapshot | 1 | rawSnapshot returned false; reports inability to capture and returns false without encoding/saving. | New versus69343. saveFinalSnapshot ignores this bool and sets saved latch; exact-current guard must remain. |
+| newview/llpanelobjectinventory.cpp:1385 ~LLPanelObjectInventory | 1 | Shutdown panel destructor cannot remove absent idle callback. | Never-built versus earlier-cleanup/duplicate removal unlogged. |
+| llcorehttp/httpstats.cpp:107 dumpStats | 1 | Shutdown HTTP aggregate is emitted unconditionally at WARNING. | Receipt of aggregate statistics, not another failed request; scalar values uninspected. |
+
+The progress warning moved into the PPD480 fallback helper; this does not establish fallback failure. The real new functional result is the failed logout native snapshot, addressed separately in the PPD493 source/caller note. Other new rows show server teleport failures, tolerant invalid-joint content, a missing landmark and an obsolete media request; those are outcomes/guards, not demonstrated port regressions.
+
+36 emitting site bodies are byte-identical to original; 44 are byte-identical to69343. Whole-body changes do not by themselves identify changed warning behavior or causal producers.
+
+Absent previous functions: newview/llviewertexturelist.cpp LLViewerTextureList::updateImagesCreateTextures, newview/llprogressview.cpp LLProgressView::initStartTexture, llplugin/llpluginprocessparent.cpp LLPluginProcessParent::receiveMessage, newview/llavatarrendernotifier.cpp displayNotification, llcommon/llqueuedthread.cpp shutdown, llcommon/llworkerthread.cpp clearDeleteList. Absence never closes those defects.
+
+[Owner run, freeze investigation, limits and follow-up](world-turn-freeze-69377-20261119.md).

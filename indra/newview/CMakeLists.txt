@@ -1684,6 +1684,7 @@ if(AL_BUILD_VIEWER)
     llreflectionmap.h
     llreflectionmapmanager.h
     llheroprobemanager.h
+    llhero_uniforms_native.inl
     llregioninfomodel.h
     llregionposition.h
     llremoteparcelrequest.h
@@ -2613,6 +2614,7 @@ if(AL_BUILD_TESTS)
       tests/almetalbenchmark_test.cpp
       tests/almetalbenchmark_provenance_test.cpp
       tests/alprobereadiness_test.cpp
+      tests/alheropublicationinputs_test.cpp
       tests/alpickactionpolicy_test.cpp
       tests/almotionpredictor_test.cpp
       tests/almaturitypreference_test.cpp

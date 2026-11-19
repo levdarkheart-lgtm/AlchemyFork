@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-492 -->
+<!-- next-defect-id: PPD-494 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -148,6 +148,8 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 
 - 2026-11-19 exact69343/source8f1ef9bd8a/PID19674 owner tour reproduces repeated world/camera stalls every few walking steps while menus work and displayedFPS32–34. Owner reports eventual full-scene catch-up after TP. Runtime has54throttled retained-preUI-world rows, first08:32:04 through08:37:39UTC, last reports5100occurrences; actual source emits only when retained source_frame differs from current. This confirms stale-world/freshUI operation in this run, not the failed producer/stage or exact join to every owner episode. PPD003 warning-reset limits remain applicable; success-message wording about incomplete frames is not counted as failures. First post-recovery sample hasonly2mainstacks and overlaps28.093sLEAPgap; second08:34:49two-second sample has1419mainstacks traversing rendering. The disturbed first interval is excluded from normal engine attribution. Private Alchemy-functional-69343-n6ifzso_/analysis contains exact logs/photos/stack/observer evidence; no policy change or repair selected.
 
+- 2026-11-19 exact69377 loading owner-positive, yet occasional Home turning freezes persist. A possible camera-triggered recovery is explicitly uncertain. Actual retained pre-UI world notices11:11:51/57 and11:12:01 bracket the11:11:55.814614 owner freeze mark. Source-confirmed PPD492 can veto main base lighting after mirror selection changes, but no runtime owner-identity join exists; preserve this symptom as unresolved. Owner authorizes offline investigation and targeted capture preparation after normal logout. [Exact run/limits](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-003 — Continuous lighting retries can suppress failure warnings
 
 - Status: open
@@ -157,7 +159,7 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 - Original reference: No equivalent native retry counter in `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; inspect its per-light traversal and error reporting as the nearest original boundary.
 - Evidence: [Lighting failure-counter analysis](work/active/busy-turn-local-investigation.md).
 - Next action: Use the separate bounded world category on the next exact candidate to identify missing current-frame products; preserve the unresolved counter-reset limitation and PPD002 attribution.
-- Verification: Local bounded retained-world metadata is implemented and CPU-qualified; it survives transaction resets by observing actual stale-background presentation. Original warning-counter reset behavior remains unchanged. No live diagnostic or freeze closure.
+- Verification: Local bounded retained-world metadata is implemented and CPU-qualified; it survives transaction resets by observing actual stale-background presentation. Original warning-counter reset behavior remains unchanged. 69377 exercised the first observer but its stable dedup lost fresh repeats. The refreshed observer is CPU-qualified; no changed-source live diagnostic or freeze closure.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -177,6 +179,10 @@ counter: some incomplete G-buffer retries can accumulate to their threshold.
 
 - 2026-11-19 Integrated847897d3f1 adds default-off metadata at the actual retained pre-UI world boundary, with stable readiness/view/first-line keys, frame/epoch values and exception isolation. Four source/component modes pass 3/16/18/3 checks; production pipeline ARM64 object compiles. Native readiness flags indicate available products, not GPU completion or the causal failure. The new observer does not change retry counters, rendering or admission. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
 
+
+- 2026-11-19 exact69377 owner freeze recurs, with retained-world notices around11:11:55UTC but only one world snapshot at11:10:40. Stable tuple dedup suppresses every later occurrence of the same readiness state, preventing fresh episode attribution. Zero attempt flags can also follow consumed fused staging, so they are not unconditional execution proof. Strengthen bounded opt-in observation with fresh onset/repeat/recovery and actual branch/coherence metadata; rendering policy must remain unchanged. [Closed-run evidence](research/world-turn-freeze-69377-20261119.md).
+
+- 2026-11-19 refreshed observation now uses per-capture fixed-size64distinct/64repeat budgets with explicit caps, unchanged-background first repeat0.1s then1s, recovery/progress resets and invalid-clock rebasing. Actual collector records stamped base-state branch/staging/result plus selected/published owner/epoch Boolean coherence, with no identities/GPU polling. Default-off never calls clock/collector. Four ASan/UBSan modes pass4/47/33/9checks; real old-header recurrence control5checks3fail→new0, progression no-flood valid onboth. Original retry counters remain unchanged/unresolved. Root integrated source and11focusedCTest invocations pass; fullapp/retest pending.
 
 ## PPD-004 — Missing native impostor data invalidates unrelated world batches
 
@@ -11371,3 +11377,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 integratedc71b9c39f1 (agent5fc9389976) after the3be26b full1472-step Release build completed0. Explicit24field/type graphics/performance schema plus3named integer pool widths replaces raw preference-map export; account envelope remains empty. Unknown keys, nested/string/UUID/binary values, invalid Boolean shapes and nonfinite reals are rejected. The same safe body reaches actualINFO/debugXML/HTTP sinks; other statistics/session placement remain unchanged. Original1eb/69343/3be exporter and telemetry tail are byte-identical. Synthetic-only tests and scoped peer review; no whole-packet anonymity or successful prior server receipt claim. New normal generator-independentCMake source target is registered before final incremental source-qualified build.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
+## PPD-492 — Selected mirror advertises another owner's completed radiance
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex integrator
+- Discovered: 2026-11-19
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 llheroprobemanager.cpp491–535 and class3/deferred/reflectionProbeF.glsl779–816; count0 omits only mirror contribution. Native completed-radiance identity is new and must qualify advertisement.
+- Evidence: [Closed69377 freeze investigation and original mapping](research/world-turn-freeze-69377-20261119.md).
+- Next action: Qualify the uniform producer against successful publication owner/epoch; retain same-owner completed refresh, native coherence guards and original selection/math. Add actual-body oldA/newB and stale-epoch controls before build/owner retest.
+- Verification: Source counterexample: camera selection changesA→B while renderProbes defers or B is occluded; ready(A) still advertisesB, native exact-owner fill rejects and ordinary base lighting silently returns. Runtime linkage to PPD002/464 remains unproved. The actual uniform body now passes135assertions/6cases versus14baseline failures, with downstream guards unchanged; full candidate build and owner freeze retest remain pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before repair after exact69377 owner run. General loading improved by owner report, but turning freezes recur. Retained pre-UI world notices bracket11:11:55 owner mark; stable diagnostic dedup captured only an earlier snapshot, not the current branch. PPD125 face/startup failures remain separate. Original/reference and current display ordering inspected; implement earliest incorrect readiness advertisement rather than weakening downstream guards or changing quality.
+
+- 2026-11-19 local owner/epoch advertisement repair is implemented in the production uniform-body include. Exact old body fails14of135assertions/3of6cases; new passes135/6. Required math-header ordering caused the first fixture build failure, corrected before the red/green run. Independent source review finds no changed selection/admission/quality or weakened native coherence guard. Eleven focused CTests pass, including native hero overwrite/probe format/publication under actual API/GPU validation; this remains source correctness, not runtime freeze acceptance.
+
+## PPD-493 — Logout snapshot failure is latched as saved
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-19
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLAppViewer::saveFinalSnapshot and idleShutdown; native rawSnapshot/readMetalWorldSnapshot replace original framebuffer capture. Inspect inherited caller latch separately from native exact-frame readiness.
+- Evidence: [69377 closed-run investigation](research/world-turn-freeze-69377-20261119.md); private asset-watch/logout-snapshot-order.json and shutdown-structural-scan.json retain safe source/call order and numeric rejection state.
+- Next action: Trace original/current saveFinalSnapshot and native snapshot production; latch successful saves only and preserve exact-current frame/target guard. Do not select arbitrary retries, stale frames or overwrite an existing last image on failure.
+- Verification: At11:18:33 final snapshot request is followed by native world snapshot did-not-complete-exactly and raw save failure, then LogoutRequest. Current frame9542 has no completed world/UI/presentation product. Caller ignores saveSnapshot false and sets mSavedFinalSnapshot, suppressing future attempts. Actual failure is recorded; cause of missing native products is unproved and separate from PPD480 last-image loading fallback. No repair/owner retest yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered from exact69377 normal owner logout after complete45-site log census. Native failure fields are chain_snapshot1/chain_active1/complete1, capture_active0, frame_active0, renderer/target/device_match1, composed/post/presentation/world_ui0 and unknown presentation/UI frame, first_incomplete_line0. Failure is before readback/encoding; no cache/account data changed. Preserve existing saved image and diagnose missing current capture rather than relaxing readMetalWorldSnapshot.

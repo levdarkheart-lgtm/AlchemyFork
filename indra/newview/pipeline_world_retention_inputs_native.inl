@@ -1,5 +1,5 @@
 /** Function-local observation at the actual stale-background boundary. PPD003. */
-ALWorldRetentionInputs::observe([&]
+capture.retention_inputs_observer.observe([] { return LLTimer::getTotalSeconds(); }, [&]
 {
     ALWorldRetentionInputs::Snapshot s;
     using View = ALWorldRetentionInputs::View;
@@ -12,6 +12,15 @@ ALWorldRetentionInputs::observe([&]
             ? ALWorldRetentionInputs::Snapshot::unknown : static_cast<U64>(value);
     };
     s.current_frame = gFrameCount;
+    s.base_state = capture.retention_inputs_base_state;
+    s.base_state_frame = frame(capture.retention_inputs_base_state_frame);
+    const auto& hero = mHeroProbeManager;
+    s.hero_selected = hero.mNearestHero.notNull() && !hero.mNearestHero->isDead();
+    s.hero_ready = hero.mMetalRadianceReady;
+    s.hero_advertised = hero.mHeroData.heroProbeCount == 1;
+    s.hero_owner_match = s.hero_selected &&
+        hero.mNativePublishedOwner == hero.mNearestHero->getID();
+    s.hero_epoch_match = hero.mNativePublishedEpoch == hero.mMetalRadianceEpoch;
     s.background_frame = capture.ui_frame_background->source_frame;
     s.capture_frame = frame(capture.continuous_world_frame);
     s.first_incomplete_line = capture.first_incomplete_source_line;
