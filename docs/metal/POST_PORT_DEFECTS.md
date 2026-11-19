@@ -152,14 +152,14 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 
 ## PPD-003 — Continuous lighting retries can suppress failure warnings
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: No equivalent native retry counter in `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; inspect its per-light traversal and error reporting as the nearest original boundary.
 - Evidence: [Lighting failure-counter analysis](work/active/busy-turn-local-investigation.md).
-- Next action: Complete fullapp/static qualification of integrated counter repair; retain bounded stage/coherence diagnostics if owner-visible freezing recurs. Keep PPD002 incident attribution separate and preserve tested69384 artifact.
-- Verification: Refreshed bounded observer exercised its repeat branch only at intentional69384 logout. After viewerexit0, integrated actual counter bodies pass5cases1741checks normalCatch2/ASan/UBSan; exactoriginal controls fail383/252/2/131checks. Fullapp qualification pending. This fixes warning visibility, not an attributed freeze or GPU completion.
+- Next action: Retain qualified counter-only69386 for next combined candidate; owner runtime verification of changed counters remains pending. Investigate new495/496 failures; keep PPD002 incident attribution separate and preserve tested69384 artifact.
+- Verification: Refreshed bounded observer exercised its repeat branch only at intentional69384 logout. After viewerexit0, integrated actual counter bodies pass5cases1741checks normalCatch2/ASan/UBSan; exactoriginal controls fail383/252/2/131checks. Fullapp69386/source7a2709d086 qualification passes wrapper build,21selectedCTest/API/GPU,strict3645zero,346ARM64/signature/ownedimports. This fixes warning visibility, not an attributed freeze or GPU completion.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -187,6 +187,8 @@ counter: some incomplete G-buffer retries can accumulate to their threshold.
 - 2026-11-19 while owner temporarily away with69384atmanualLogin, further read-only audit confirms a second warning gap: composition clears lighting_composition_failed_frames before the outer batch commit, so deleting fresh-GBuffer counter resets alone still cannot reach the120commit-failure warning. Local retry WARN currentlyuses>=120 and would flood if its streak simply persisted. A separate candidate-independent source/test patch is being prepared on codex/ppd003-counter-reset-20261119: retain local/projector streaks until actual stage success/lifecycle reset, warn once at threshold, and give actual outer-commit return failures their own owner-local streak reset only by actual successful commit; intentional cancellation is neither success nor a second failed commit. Preserve generic GBuffer counters, rendering/completeness/attempt ownership and candidate0bac. No compile/tests/integration during the live run; source fixture validation and owner recovery remainpending. Private lifecycle-numeric-watch/ppd003-counter-reset-audit-01.json records exact reset/increment/consumer matrix.
 
 - 2026-11-19 closed69384 owner tour positive; two repeated-retention observations source-joined to intentional post-snapshot logout. Afterexit0, root source-integrated revieweda305f1f17b. Initial normal compilation failed on Catch2 logical-expression syntax, corrected only test parentheses. Normal newview_tests/lighting_retry_counters_test passes0; actual-bodyASan/UBSan5cases1741checks pass. Exact original controls all compile0, return42 with383/252/2/131failedchecks respectively. Existing attempted gates/product invalidation/lifecycle resets unchanged; actual commit streak is CPU submission status, not GPU completion. Full app/static checks pending; no runtime assertion for this later source. [Closed run and counter proof](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up).
+
+- 2026-11-19 full counter-only69386/source7a2709d08674ee0eae81aabe9819ec287648eb5e/indra6772b628d6aeb3c7711a542f84673820989c4fa3 qualifies locally: doctor0,14-step wrapperReleasebuild0,21selectedCTest/API/GPU0,strict3645/0blockers/0scanerrors,346ARM64/deepstrictsignature/3owned-host directimport checks0,harness0. Exact stable app preserved separately with executable SHA256a82ebb294485e1cc7789518e217f2474d8b5e6671173d981e6965f81ef171868; no viewer launch or push. Owner69384 run predates this warning-only repair. Private counter-qualified-receipt.json retains commands/results/log hashes. Ready_for_owner is scoped to counter correctness, not a freeze resolution.
 
 ## PPD-004 — Missing native impostor data invalidates unrelated world batches
 
@@ -11498,16 +11500,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ## PPD-496 — Native legacy bump-map generation failed during69384 tour
 
 - Status: investigating
-- Confirmation: reproduced
+- Confirmation: source_confirmed
 - Owner: Codex integrator / lifecycle and asset audits
 - Discovered: 2026-11-19
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLBumpImageList::onSourceUpdated brightness/darkness normal-map conversion, compared with native ALMetalNormalMapGenerator and LLImageGL render-texture publication.
 - Evidence: [69384 qualified candidate and runtime](research/world-turn-freeze-69377-20261119.md#qualified-combined-candidate69384); private closed-run source census retains six lldrawpoolbump.cpp798 warnings. Full viewer log SHA25671a491ac1d71815f3c765704092f82752fd34812cb8a7cf3bfe9b69d1f6ca9ce.
-- Next action: Classify source error categories privately, trace original conversion and native resource/format/commit/adoption boundaries and whether retry can recover. Register before any repair; retain source-proven failure separately from owner-visible incident attribution.
-- Verification: Six failed create/encode/mipmap/commit/adopt chains return before generated bump-map publication. Owner reported no visible issue on this tour, which does not establish bump-map correctness or same-asset recovery. Root cause and recovery are unknown; no repair attempted.
+- Next action: Derive native render texture mip count from requested live dimensions and mip policy for both allocation/adoption; make bump resize retry compare actual backing dimensions. Qualify real image create/adopt/resize under Metal validation and retain malformed-adoption guards. Keep actual failed runtime dimensions unknown.
+- Verification: All six warnings classify as native mip count exceeds current dimensions before compute/commit/adopt. Source reproducer: generated8×8 has4levels; resize to2×2 leaves cached4 while maximum is2, and both factory/adopt reuse the stale count. Retained old native backing also suppresses retry because the existing check compares changed logical dimensions only. Actual runtime dimensions and same-asset recovery remain unknown. Original1eb derives levels from current destination dimensions; no intentional partial render chain producer found. Repair in progress.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-19 closed-run395WARN/46site source reconciliation reveals this emitter is a native functional failure rather than a generic notification. Registered before repair. Read-only original/native/error-category audit assigned to lifecycle and asset agents; no requests/cache mutations or changes to the tested69384 app.
+
+- 2026-11-19 source/error join confirms deterministic stale-allocation mip count, with fixed error category on all six rows; exact runtime extents remain unavailable. Original1eb onSourceUpdated979–982 derives mip count from current width/height before immutable storage. Native factory1594/adopt1493 prefer cached mMipLevels after logical resize, and bump presence/logical-size test can retain old backing without retry. Register expanded before source repair; lifecycle agent owns isolated LLImageGL/bump/native-image fixture. Do not weaken allocation/adoption guards, alter global setSize metadata or silently discard mipmaps. Root owns full build/integration.

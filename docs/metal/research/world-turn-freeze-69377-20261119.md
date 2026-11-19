@@ -400,3 +400,28 @@ ppd003-counter-fix-01/integrated-control-results.json retain exact argv/exits.
 Fullapp/source/static qualification follows; no push or new launch authorized
 by this evidence. Next inspect PPD495/496source errors, qualify counters and
 retain stage/coherence capture procedure if an owner-visible freeze recurs.
+
+
+Counter-only build69386 subsequently qualified at source
+7a2709d08674ee0eae81aabe9819ec287648eb5e / indra
+6772b628d6aeb3c7711a542f84673820989c4fa3. Doctor,14-step wrapper Release build,
+21 selected CTest invocations with Metal API/GPU validation, strict3645files/
+0blockers/0scanerrors,346ARM64 slices, deep strict signature and3owned-host direct
+import checks all pass. Stable local app `Alchemy Metal Warning Counters 69386.app`
+and private receipt are preserved; executable SHA256
+a82ebb294485e1cc7789518e217f2474d8b5e6671173d981e6965f81ef171868.
+No new viewer launch or push. This later warning correction was not the code in
+the owner's successful69384 run. All four old-source negative controls fail as
+expected and all actual current bodies pass; no GPU-completion interpretation
+of a successful CPU batch submission.
+
+PPD496 now has a source reproducer matching all six fixed error categories:
+a generated8×8 texture retains4mips after logical resize to2×2, whose maximum is2.
+Native factory and adoption both prefer that stale allocation count; original1eb
+bump conversion derives it from current destination dimensions. Old native backing
+can then suppress retries because the bump check uses only changed logical size
+and nonnull backing. Actual runtime dimensions/identity/recovery remain unknown.
+An isolated repair will derive the new render allocation/adoption chain from live
+extent and mip policy and compare actual bump backing size for retry. Allocation/
+adoption guards and full mipmap generation remain required. No repair is claimed
+qualified until root integrates/builds and runs actual native image regressions.
