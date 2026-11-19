@@ -131,16 +131,24 @@
      valign="center">
     Inventory:
   </text>
-  <check_box
-    control_name="DoubleClickAttachmentAdd"
+  <text
     height="16"
-    initial_value="true"
-    label="Double-click to add Attachments"
     layout="topleft"
     left="45"
-    name="DoubleClickAttachmentAddCheck"
+    name="DoubleClickAttachmentBehaviorLabel"
     top_pad="4"
-    width="256"/>
+    width="256">Double-click attachments:</text>
+  <combo_box
+    control_name="InventoryAddAttachmentBehavior"
+    height="24"
+    layout="topleft"
+    left="45"
+    name="DoubleClickAttachmentBehavior"
+    top_pad="2"
+    width="300">
+    <combo_box.item label="Add attachment" name="0" value="0"/>
+    <combo_box.item label="Wear (replace at attachment point)" name="1" value="1"/>
+  </combo_box>
   <check_box
     control_name="DoubleClickWearableAdd"
     height="16"

@@ -2,6 +2,17 @@
 <llsd xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="llsd.xsd">
     <map>
+        <key>DoubleClickWearableAdd</key>
+        <map>
+            <key>Comment</key>
+            <string>Double-click clothing in inventory to add it rather than replace the worn layer. Ctrl reverses this action.</string>
+            <key>Persist</key>
+            <integer>1</integer>
+            <key>Type</key>
+            <string>Boolean</string>
+            <key>Value</key>
+            <integer>1</integer>
+        </map>
         <key>ImageDecodeAdaptive</key>
         <map>
             <key>Comment</key>

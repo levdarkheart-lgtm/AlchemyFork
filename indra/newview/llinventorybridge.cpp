@@ -59,6 +59,7 @@
 #include "llinventorymodel.h"
 #include "llinventorymodelbackgroundfetch.h"
 #include "llinventorypanel.h"
+#include "llkeyboard.h"
 #include "llmarketplacefunctions.h"
 #include "llnotifications.h"
 #include "llnotificationsutil.h"
@@ -7435,9 +7436,13 @@ void LLObjectBridge::performAction(LLInventoryModel* model, std::string action)
 
 void LLObjectBridge::openItem()
 {
-    // object double-click action is to wear/unwear object
+    // Use the same Add/Replace preference as the inventory gallery. Ctrl
+    // temporarily reverses it, matching the original multi-attach shortcut.
+    static LLCachedControl<U32> behavior(gSavedSettings, "InventoryAddAttachmentBehavior", 0);
+    const bool control_only = gKeyboard && gKeyboard->currentMask(true) == MASK_CONTROL;
+    const bool add = (behavior() != 1) != control_only;
     performAction(getInventoryModel(),
-              get_is_item_worn(mUUID) ? "detach" : "attach");
+                  get_is_item_worn(mUUID) ? "detach" : (add ? "wear_add" : "wear"));
 }
 
 std::string LLObjectBridge::getLabelSuffix() const
@@ -7825,8 +7830,16 @@ void LLWearableBridge::performAction(LLInventoryModel* model, std::string action
 
 void LLWearableBridge::openItem()
 {
-    performAction(getInventoryModel(),
-                  get_is_item_worn(mUUID) ? "take_off" : "wear");
+    LLViewerInventoryItem* item = getItem();
+    if (!item || !item->isWearableType()) return;
+    const bool worn = get_is_item_worn(mUUID);
+    const bool bodypart = item->getType() == LLAssetType::AT_BODYPART;
+    if (worn && bodypart) return;
+
+    static LLCachedControl<bool> add_on_open(gSavedSettings, "DoubleClickWearableAdd", true);
+    const bool control_only = gKeyboard && gKeyboard->currentMask(true) == MASK_CONTROL;
+    const bool add = !bodypart && (add_on_open() != control_only);
+    performAction(getInventoryModel(), worn ? "take_off" : (add ? "wear_add" : "wear"));
 }
 
 void LLWearableBridge::buildContextMenu(LLMenuGL& menu, U32 flags)
@@ -8620,8 +8633,10 @@ void LLObjectBridgeAction::attachOrDetach()
     }
     else
     {
-        static LLCachedControl<U32> add_attachment_behavior(gSavedSettings, "InventoryAddAttachmentBehavior", 0);
-        LLAppearanceMgr::instance().wearItemOnAvatar(mUUID, true, add_attachment_behavior() == 1); // Don't replace if adding.
+        static LLCachedControl<U32> behavior(gSavedSettings, "InventoryAddAttachmentBehavior", 0);
+        const bool control_only = gKeyboard && gKeyboard->currentMask(true) == MASK_CONTROL;
+        const bool add = (behavior() != 1) != control_only;
+        LLAppearanceMgr::instance().wearItemOnAvatar(mUUID, true, !add);
     }
 }
 
@@ -8681,7 +8696,7 @@ void LLWearableBridgeAction::wearOnAvatar()
     // TODO: investigate wearables may not be loaded at this point EXT-8231
 
     LLViewerInventoryItem* item = getItem();
-    if(item)
+    if(item && item->isWearableType())
     {
         if (get_is_item_worn(mUUID))
         {
@@ -8692,7 +8707,11 @@ void LLWearableBridgeAction::wearOnAvatar()
         }
         else
         {
-            LLAppearanceMgr::instance().wearItemOnAvatar(item->getUUID(), true, true);
+            static LLCachedControl<bool> add_on_open(gSavedSettings, "DoubleClickWearableAdd", true);
+            const bool control_only = gKeyboard && gKeyboard->currentMask(true) == MASK_CONTROL;
+            const bool add = item->getType() != LLAssetType::AT_BODYPART &&
+                (add_on_open() != control_only);
+            LLAppearanceMgr::instance().wearItemOnAvatar(item->getUUID(), true, !add);
         }
     }
 }
