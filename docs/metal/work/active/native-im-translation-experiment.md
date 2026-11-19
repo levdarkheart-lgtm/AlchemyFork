@@ -21,7 +21,7 @@ Public Apple TranslationSession installed-language initialization is available o
 macOS 26+. LanguageAvailability enumerates supported languages, NaturalLanguage
 detects source text, and a native SwiftUI translation task can obtain explicit
 user permission to download models. No private APIs or remote translation
-provider is part of the experiment. SDK and runtime validation are in progress.
+provider is part of the experiment. SDK and native runtime viability are verified; normal logged-in IM acceptance remains pending.
 
 Primary sources: [TranslationSession initializer](https://developer.apple.com/documentation/translation/translationsession/init(installedsource:target:)),
 [Translation overview](https://developer.apple.com/documentation/translation),
@@ -130,9 +130,10 @@ terminated or used to send an IM.
 
 ## Final validation summary
 
-- App implementation checkpoint: 0cfff83edc; Release69397. Later test/record
-  commits retain the same translation implementation; final build identity and
-  hashes are recorded in the local evidence receipt.
+- App source checkpoint: `1573a3addcd448501a8b78187202f660e14e8bfc`,
+  Release `26.4.0.69398`, indra tree `f9070b328471878f5ad7bfc1ee4d01366380fa61`.
+  Main executable SHA256 `da6bb5a976d65bb45c54378c2f77e1f58b1916b729e6dd46c3d14adda8c5801a`.
+  The handle correction is0cfff83edc; subsequent handoff edits are documentation only.
 - Required doctor0 on M1Max/64GiB/macOS26.5.2/Xcode26.6. Configure and complete
   Release wrapper builds pass; first char8_t failure and callback crash remain
   recorded, not erased.
@@ -162,3 +163,9 @@ cancellation, error recovery, links, emotes and received originals/annotations.
 Closing a chat resets its choices; minimizing retains them. Groups/conferences
 have no native translation controls. Full owner acceptance and pushing remain
 unapproved.
+
+Final command/status/hash receipt is retained at
+`artifacts/metal/native-im-translation-20261119/delivery-receipt.json`, with exact
+argv and logs. Final nine-process CTest,346ARM64/deep signature, three owned
+executable direct imports, doctor, strict source and harness all exit0.
+No required live-chat observation was inferred from synthetic/native tests.
