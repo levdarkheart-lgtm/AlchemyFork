@@ -140,8 +140,56 @@ namespace
 void LLFloaterIMSession::setNativeIMTranslationStatus(const std::string& status)
 {
     mNativeIMStatusIsReadiness = false;
-    getChild<LLTextBase>("native_im_translation_status")->setText(status);
-    getChild<LLTextBase>("native_im_translation_status")->setToolTip(status);
+    mNativeIMStatusText = status;
+    mNativeIMSettingsPanel->getChild<LLTextBase>("native_im_translation_status")->setText(status);
+    mNativeIMSettingsPanel->getChild<LLTextBase>("native_im_translation_status")->setToolTip(status);
+    updateNativeIMTranslationButton();
+}
+
+void LLFloaterIMSession::updateNativeIMTranslationButton()
+{
+    if (!mNativeIMSettingsButton) return;
+    mNativeIMSettingsButton->setToggleState(usesNativeIMTranslation() || mNativeIMSettingsPopover.isOpen());
+    if (!mNativeIMOutgoing) return;
+    LLStringUtil::format_map_t args;
+    args["[SEND]"] = mNativeIMOutgoing->getSimple();
+    args["[RECEIVE]"] = mNativeIMIncomingEnabled->getValue().asBoolean()
+        ? mNativeIMIncoming->getSimple() : getString("native_im_receive_off");
+    args["[STATUS]"] = mNativeIMStatusText;
+    mNativeIMSettingsButton->setToolTip(getString("native_im_settings_title") + "\n" +
+        getString("native_im_settings_summary", args));
+}
+
+void LLFloaterIMSession::showNativeIMTranslationSettings()
+{
+    if (!mNativeIMSettingsPanel || !mIsP2PChat || !mSession) return;
+    if (mNativeIMSettingsPopover.isOpen())
+    {
+        mNativeIMSettingsPopover.close(false);
+        return;
+    }
+    // Borrow the persistent controls rather than recreating their per-chat
+    // state. Restore them before the popover destroys its content on close.
+    auto params = ALPopover::paramsFor(mNativeIMSettingsPanel->getRect().getWidth(),
+        mNativeIMSettingsPanel->getRect().getHeight());
+    auto* popup = LLUICtrlFactory::create<ALPopover>(params);
+    mNativeIMSettingsPanel->setOrigin(0, 0);
+    mNativeIMSettingsPanel->setFollows(FOLLOWS_ALL);
+    popup->addChild(mNativeIMSettingsPanel);
+    mNativeIMSettingsPanel->setVisible(true);
+    const LLHandle<LLFloater> handle = getHandle();
+    mNativeIMSettingsPopover.hold(popup, [handle](bool) {
+        if (auto* self = static_cast<LLFloaterIMSession*>(handle.get()))
+        {
+            self->mNativeIMSettingsPanel->setVisible(false);
+            self->mNativeIMSettingsPanel->setFollows(FOLLOWS_NONE);
+            self->addChild(self->mNativeIMSettingsPanel);
+            self->updateNativeIMTranslationButton();
+        }
+    });
+    popup->openBeside(mNativeIMSettingsButton);
+    updateNativeIMTranslationButton();
+    refreshNativeIMLanguageReadiness();
 }
 
 bool LLFloaterIMSession::usesNativeIMTranslation() const
@@ -153,9 +201,10 @@ bool LLFloaterIMSession::usesNativeIMTranslation() const
 
 void LLFloaterIMSession::initNativeIMTranslation()
 {
-    auto* panel = getChild<LLView>("native_im_translation_panel");
+    mNativeIMSettingsPanel = getChild<LLPanel>("native_im_translation_panel");
+    mNativeIMSettingsButton = getChild<LLButton>("native_im_translation_btn");
     updateNativeIMTranslationLayout();
-    if (!panel->getVisible()) return;
+    if (!mIsP2PChat || mOtherParticipantUUID.isNull()) return;
 
     mNativeIMOutgoing = getChild<LLComboBox>("native_im_outgoing");
     mNativeIMSource = getChild<LLComboBox>("native_im_source");
@@ -169,6 +218,10 @@ void LLFloaterIMSession::initNativeIMTranslation()
     mNativeIMIncoming->add(getString("native_im_system"), "");
     mNativeIMIncoming->selectFirstItem();
     mNativeIMIncoming->setEnabled(false);
+    mNativeIMSettingsButton->setClickedCallback([this](LLUICtrl*, const LLSD&) { showNativeIMTranslationSettings(); });
+    mNativeIMSettingsPanel->getChild<LLButton>("native_im_done")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
+        mNativeIMSettingsPopover.close(false);
+    });
     mNativeIMOutgoing->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
     mNativeIMSource->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
     mNativeIMIncoming->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
@@ -180,14 +233,14 @@ void LLFloaterIMSession::initNativeIMTranslation()
             if (mNativeIMReadinessTimer.hasExpired()) refreshNativeIMLanguageReadiness();
         });
     }
-    getChild<LLButton>("native_im_cancel")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
+    mNativeIMSettingsPanel->getChild<LLButton>("native_im_cancel")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
         nativeIMCancel(mNativeIMSendRequest.id());
         mNativeIMSendRequest.cancel();
         mInputEditor->setReadOnly(false);
-        getChild<LLButton>("native_im_cancel")->setEnabled(false);
+        mNativeIMSettingsPanel->getChild<LLButton>("native_im_cancel")->setEnabled(false);
         setNativeIMTranslationStatus(getString("native_im_cancelled"));
     });
-    getChild<LLButton>("native_im_setup")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
+    mNativeIMSettingsPanel->getChild<LLButton>("native_im_setup")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
         auto source = mNativeIMSource->getValue().asString();
         if (source == "@auto") source.clear();
         const auto target = mNativeIMOutgoing->getValue().asString();
@@ -198,7 +251,7 @@ void LLFloaterIMSession::initNativeIMTranslation()
         mNativeIMOutgoing->setEnabled(false);
         mNativeIMSource->setEnabled(false);
         mNativeIMIncomingEnabled->setEnabled(false);
-        getChild<LLButton>("native_im_setup")->setEnabled(false);
+        mNativeIMSettingsPanel->getChild<LLButton>("native_im_setup")->setEnabled(false);
         setNativeIMTranslationStatus(getString("native_im_unavailable"));
         return;
     }
@@ -234,7 +287,7 @@ void LLFloaterIMSession::refreshNativeIMLanguageReadiness()
             if (self->mNativeIMStatusIsReadiness)
             {
                 self->setNativeIMTranslationStatus(self->getString("native_im_models_unknown"));
-                self->getChild<LLTextBase>("native_im_translation_status")->setToolTip(result["error"].asString());
+                self->mNativeIMSettingsPanel->getChild<LLTextBase>("native_im_translation_status")->setToolTip(result["error"].asString());
                 self->mNativeIMStatusIsReadiness = true;
             }
             return;
@@ -289,6 +342,7 @@ void LLFloaterIMSession::applyNativeIMLanguageReadiness()
     mNativeIMIncoming->setToolTip(getString(explicit_peer ? "native_im_incoming_pair_tooltip" : "native_im_incoming_detect_tooltip"));
     mNativeIMAppliedLanguages = fingerprint;
     if (mNativeIMStatusIsReadiness) updateNativeIMReadinessStatus();
+    else updateNativeIMTranslationButton();
 }
 
 void LLFloaterIMSession::updateNativeIMReadinessStatus()
@@ -326,20 +380,35 @@ void LLFloaterIMSession::updateNativeIMReadinessStatus()
 
 void LLFloaterIMSession::updateNativeIMTranslationLayout()
 {
-    auto* panel = getChild<LLView>("native_im_translation_panel");
-    if (!mNativeIMBaseMinHeight)
+    if (!mNativeIMSettingsButton) return;
+    const bool eligible = mIsP2PChat && mOtherParticipantUUID.notNull();
+    mNativeIMSettingsButton->setVisible(eligible);
+    if (!eligible || !isMessagePaneExpanded())
     {
-        mNativeIMBaseMinWidth = getMinWidth();
-        mNativeIMBaseMinHeight = getMinHeight();
+        mNativeIMSettingsPopover.close();
+        if (!eligible) return;
     }
-    const bool visible = mIsP2PChat && mOtherParticipantUUID.notNull();
-    panel->setVisible(visible);
-    const S32 min_height = mNativeIMBaseMinHeight + (visible ? panel->getRect().getHeight() : 0);
-    setResizeLimits(mNativeIMBaseMinWidth, min_height);
-    if (getRect().getHeight() < min_height)
+    // At the container's original narrow-pane minimum, fit all five actions
+    // into the original 144-pixel toolbar instead of overlapping the close UI.
+    auto* toolbar = getChild<LLPanel>("p2p_toolbar");
+    auto* right_edge = getChild<LLButton>(getChild<LLButton>("close_btn")->getVisible()
+        ? "close_btn" : "expand_collapse_btn");
+    const S32 space = right_edge->getRect().mLeft - toolbar->getRect().mLeft - 2;
+    const bool compact = space < 177;
+    const S32 gap = compact ? 1 : 2;
+    S32 left = 0;
+    for (const auto* name : {"profile_btn", "teleport_btn", "chat_history_btn", "pay_btn", "native_im_translation_btn"})
     {
-        reshape(llmax(getRect().getWidth(), mNativeIMBaseMinWidth), min_height);
+        auto* control = toolbar->getChild<LLUICtrl>(name);
+        const S32 width = std::string_view(name) == "teleport_btn" ? (compact ? 38 : 44) : (compact ? 25 : 31);
+        LLRect rect = control->getRect();
+        rect.mLeft = left;
+        rect.mRight = left + width;
+        if (rect != control->getRect()) control->setShape(rect);
+        left += width + gap;
     }
+    if (toolbar->getRect().getWidth() != left - gap)
+        toolbar->reshape(left - gap, toolbar->getRect().getHeight());
 }
 
 void LLFloaterIMSession::nativeIMTranslationChanged()
@@ -350,7 +419,7 @@ void LLFloaterIMSession::nativeIMTranslationChanged()
         nativeIMCancel(mNativeIMSendRequest.id());
         mNativeIMSendRequest.cancel();
         mInputEditor->setReadOnly(false);
-        getChild<LLButton>("native_im_cancel")->setEnabled(false);
+        mNativeIMSettingsPanel->getChild<LLButton>("native_im_cancel")->setEnabled(false);
     }
     for (const auto request : mNativeIMReceiveRequests) nativeIMCancel(request);
     mNativeIMReceiveRequests.clear();
@@ -366,6 +435,7 @@ void LLFloaterIMSession::nativeIMTranslationChanged()
 
 void LLFloaterIMSession::cancelNativeIMTranslation()
 {
+    mNativeIMSettingsPopover.close();
     nativeIMCancel(mNativeIMLanguagesRequest);
     mNativeIMLanguagesRequest = 0;
     mNativeIMLanguageReadiness = LLSD();
@@ -407,7 +477,7 @@ bool LLFloaterIMSession::translateOutgoingIM(const std::string& message)
         auto* self = static_cast<LLFloaterIMSession*>(handle.get());
         if (!self || !self->mSession || !self->mNativeIMSendRequest.finish(request)) return;
         self->mInputEditor->setReadOnly(false);
-        self->getChild<LLButton>("native_im_cancel")->setEnabled(false);
+        self->mNativeIMSettingsPanel->getChild<LLButton>("native_im_cancel")->setEnabled(false);
         if (self->mInputEditor->getText() != draft)
         {
             self->setNativeIMTranslationStatus(self->getString("native_im_draft_changed"));
@@ -419,11 +489,14 @@ bool LLFloaterIMSession::translateOutgoingIM(const std::string& message)
             if (result["error_code"].asString() == "not_installed")
             {
                 self->setNativeIMTranslationStatus(self->getString("native_im_not_sent_download"));
-                self->getChild<LLTextBase>("native_im_translation_status")->setToolTip(result["error"].asString());
+                self->mNativeIMSettingsPanel->getChild<LLTextBase>("native_im_translation_status")->setToolTip(result["error"].asString());
                 self->mNativeIMStatusIsReadiness = true;
                 self->refreshNativeIMLanguageReadiness();
             }
             else self->setNativeIMTranslationStatus(result["error"].asString());
+            // An unsuccessful Enter must explain why the draft was retained,
+            // even when the configuration popup was previously out of the way.
+            if (!self->mNativeIMSettingsPopover.isOpen()) self->showNativeIMTranslationSettings();
             return;
         }
         if (!al::native_im_translation::isValidResult(prepared, translated, (MAX_MSG_BUF_SIZE * 5) - 1))
@@ -447,7 +520,7 @@ bool LLFloaterIMSession::translateOutgoingIM(const std::string& message)
     mNativeIMSendRequest.begin(request);
     mInputEditor->setReadOnly(true);
     setTyping(false);
-    getChild<LLButton>("native_im_cancel")->setEnabled(true);
+    mNativeIMSettingsPanel->getChild<LLButton>("native_im_cancel")->setEnabled(true);
     setNativeIMTranslationStatus(getString("native_im_translating"));
     const auto pieces = nativeIMProtectedMessage(prepared.body);
     al_native_im_translate_segments(request, pieces.c_str(), source.c_str(), target.c_str(), nativeIMCompleted);
@@ -481,7 +554,7 @@ void LLFloaterIMSession::translateIncomingIM(const std::string& from, const LLUU
             self->setNativeIMTranslationStatus(error == "unknown_source"
                 ? self->getString("native_im_incoming_unknown") : error == "not_installed"
                 ? self->getString("native_im_incoming_download") : result["error"].asString());
-            self->getChild<LLTextBase>("native_im_translation_status")->setToolTip(result["error"].asString());
+            self->mNativeIMSettingsPanel->getChild<LLTextBase>("native_im_translation_status")->setToolTip(result["error"].asString());
             if (error == "not_installed" && !self->mNativeIMOutgoing->getValue().asString().empty())
             {
                 self->mNativeIMStatusIsReadiness = true;
@@ -638,6 +711,7 @@ void LLFloaterIMSession::newIMCallback(const LLSD& data)
 void LLFloaterIMSession::onVisibilityChanged(const LLSD& new_visibility)
 {
     bool visible = new_visibility.asBoolean();
+    if (!visible) mNativeIMSettingsPopover.close();
 
     LLVoiceChannel* voice_channel = LLIMModel::getInstance()->getVoiceChannel(mSessionID);
 
@@ -1753,8 +1827,9 @@ void LLFloaterIMSession::processSessionUpdate(const LLSD& session_update)
 // virtual
 void LLFloaterIMSession::draw()
 {
+    updateNativeIMTranslationLayout();
     if (mNativeIMOutgoing && mSession && mIsP2PChat && isInVisibleChain()
-        && getChild<LLView>("native_im_translation_panel")->getVisible())
+        && mNativeIMSettingsPopover.isOpen())
     {
         applyNativeIMLanguageReadiness();
         if (mNativeIMReadinessTimer.hasExpired()) refreshNativeIMLanguageReadiness();

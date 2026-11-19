@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-516 -->
+<!-- next-defect-id: PPD-517 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12010,3 +12010,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Registered before repair during callback-lifetime review of bilingual outgoing echo.
 
 - 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
+## PPD-516 — Persistent translation controls crowd the IM conversation
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: Native translation controls occupy a fixed111-pixel main_stack panel above the editor; updateNativeIMTranslationLayout also increases the normal chat minimum height.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Put per-chat settings behind a top-toolbar button with a dismissible popup; restore normal chat height and preserve selected translation settings while the popup is closed.
+- Verification: Owner69401 screenshots show bilingual outgoing French working and the permanent three-row settings panel consuming the message area. Source review also finds upstream single-line collapse hides only body and toolbar, leaving the native settings sibling behind.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered usability report before implementation. Owner screenshots demonstrate original-plus-bracketed translation locally; no additional recipient-side acceptance or push authorization inferred.
+
+- 2026-11-19 (PPD-516): Popup repair implemented with existing ALPopover. Persistent per-chat controls return to a hidden root panel before popup destruction; async translation does not depend on popup visibility. Adaptive142/177-pixel toolbar layouts retain all existing actions at the original minimum. First syntax attempt failed because LLUICtrlFactory::create requires an lvalue params block; corrected exact Release syntax check exits0. Full updated build and visual owner acceptance pending.

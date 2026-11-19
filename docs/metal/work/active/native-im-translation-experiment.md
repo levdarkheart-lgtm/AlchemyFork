@@ -265,3 +265,34 @@ remain ready_for_owner. Next owner check: outgoing original+bracketed translatio
 receiver-only target text, download badge clearing, per-chat isolation, incoming
 opt-in and close/reopen behavior. Overall renderer/performance release gates are
 unchanged and are not claimed complete.
+
+
+## Settings popup follow-up — PPD-516
+
+Owner69401 screenshots show original-plus-bracketed French outgoing echo, then
+report the permanent settings rows crowd the chat. Move configuration to the
+P2P toolbar's compact A/文 button. Existing ALPopover handles placement, screen
+clamping, Escape and outside-focus dismissal. Done closes settings; changes apply
+immediately to this chat. Translation remains independent of popup visibility.
+
+The persistent control panel moves out of main_stack into a hidden root child.
+A close callback is installed before opening and returns it before the popup
+can destroy its children. All async native status/cancel/setup access uses the
+persistent panel pointer. Closing/hiding/reusing the chat closes its popup;
+closing the popup alone keeps language choices and pending translation intact.
+Unsuccessful translated Enter opens settings to explain its retained draft.
+Button highlight and tooltip expose enabled state, send/receive choices/status.
+
+Remove translation-specific minimum width/height overrides; upstream collapse
+and participant resize behavior apply again. Original144px toolbar width is the
+initial layout baseline. At narrow host/torn-off widths, five actions fit142px
+(25px buttons,38px teleport,1px gaps), retaining every old action; otherwise
+normal31/44px buttons and2px gaps use177px. Translation icon padding1px avoids
+three-glyph clipping at compact width. Nearby/group/conference default hidden.
+
+Doctor exits0 on M1Max/macOS26.5.2. Initial exact Release syntax failed on factory
+rvalue params; corrected lvalue syntax exits0, old failure retained under
+`/tmp/alchemy-im-popup-syntax.log`, corrected log `-syntax-after.log`. XML parsing
+and root-panel/main_stack/minheight checks pass; independent source review finds
+no ownership/geometry blocker. Updated full Release/widget regression/app
+verification is next. No renderer changes, IMs, automatic login or push.

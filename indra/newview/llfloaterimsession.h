@@ -35,6 +35,7 @@
 #include "llvoicechannel.h"
 #include "llvoiceclient.h"
 #include "alnativeimtranslationpolicy.h"
+#include "alpopover.h"
 #include "llframetimer.h"
 
 #include <set>
@@ -160,6 +161,8 @@ private:
 
     void initNativeIMTranslation();
     void updateNativeIMTranslationLayout();
+    void showNativeIMTranslationSettings();
+    void updateNativeIMTranslationButton();
     void nativeIMTranslationChanged();
     void refreshNativeIMLanguageReadiness();
     void applyNativeIMLanguageReadiness();
@@ -170,6 +173,10 @@ private:
     void setNativeIMTranslationStatus(const std::string& status);
 
     LLComboBox* mNativeIMOutgoing = nullptr;
+    LLPanel* mNativeIMSettingsPanel = nullptr;
+    LLButton* mNativeIMSettingsButton = nullptr;
+    ALPopoverSlot mNativeIMSettingsPopover;
+    std::string mNativeIMStatusText;
     LLComboBox* mNativeIMSource = nullptr;
     LLComboBox* mNativeIMIncoming = nullptr;
     std::string mNativeIMSystemLanguage;
@@ -183,8 +190,6 @@ private:
     bool mNativeIMReadinessPending = false;
     bool mNativeIMStatusIsReadiness = false;
     bool mNativeIMDisplayReplay = false;
-    S32 mNativeIMBaseMinWidth = 0;
-    S32 mNativeIMBaseMinHeight = 0;
 
     /*virtual*/ void refresh() override;
 
