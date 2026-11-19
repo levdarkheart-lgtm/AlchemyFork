@@ -428,8 +428,13 @@ public:
 
     // Locks:  Mw (held by the caller)
     void getStatus(LLTextureFetch::FetchStatus& status) const;
+    bool requiresAuxDecode() const;
 
-    void setUrl(const std::string& url) { mUrl = url; }
+    void setUrl(const std::string& url)
+    {
+        if (mUrl != url) mAuxComponents = -1;
+        mUrl = url;
+    }
 
     LLTextureFetch & getFetcher() { return *mFetcher; }
 
@@ -608,6 +613,8 @@ private:
     bool mDecoded;
     bool mWritten;
     bool mNeedsAux;
+    bool mDecodeNeedsAux = false;
+    S32 mAuxComponents = -1;
     bool mHaveAllData;
     // The last network request failed: the worker decodes what it holds and finishes rather
     // than asking again.
@@ -1107,6 +1114,7 @@ void LLTextureFetchWorker::resetFormattedData()
     mHttpReplySize = 0;
     mHttpReplyOffset = 0;
     mHaveAllData = false;
+    mAuxComponents = -1;
 }
 
 F32 LLTextureFetchWorker::getImagePriority() const
@@ -1135,12 +1143,22 @@ void LLTextureFetchWorker::getStatus(LLTextureFetch::FetchStatus& status) const
     }
     status.mFetchPriority = (U32)getImagePriority();
     status.mCanUseHTTP = getCanUseHTTP();
+    status.mAuxComponents = mState == DONE && mDecoded && mDecodedDiscard < 0 && mNeedsAux
+        ? -2 : mAuxComponents;
+}
+
+bool LLTextureFetchWorker::requiresAuxDecode() const
+{
+    return mNeedsAux && !mDecodeNeedsAux && mAuxImage.isNull() && mDecodedDiscard >= 0 &&
+        mFormattedImage.notNull() && mFormattedImage->getDataSize() > 0 &&
+        mFormattedImage->getComponents() > 4;
 }
 
 // Threads:  Tmain
 void LLTextureFetchWorker::startWork(S32 param)
 {
-    llassert(mFormattedImage.isNull());
+    if (mState != DECODE_IMAGE) mFormattedImage = nullptr;
+    else llassert(mFormattedImage.notNull());
 }
 
 // Threads:  Ttf
@@ -1224,6 +1242,8 @@ bool LLTextureFetchWorker::doWork(S32 param)
         mRequestedDiscard = -1;
         mLoadedDiscard = -1;
         mDecodedDiscard = -1;
+        mAuxComponents = -1;
+        mDecodeNeedsAux = false;
         mRequestedSize = 0;
         mRequestedOffset = 0;
         mFileSize = 0;
@@ -1933,6 +1953,12 @@ bool LLTextureFetchWorker::doWork(S32 param)
         // if we have the entire image data (and the image is not J2C), decode the full res image
         // DO NOT decode a higher res j2c than was requested.  This is a waste of time and memory.
         mDecoded  = false;
+        mDecodedDiscard = -1;
+        // A genuinely maskless complete image still supplies valid primary pixels.
+        // Metadata must be parsed before choosing whether channel four exists.
+        bool metadata_valid = mFormattedImage->getComponents() > 0;
+        if (mNeedsAux && !metadata_valid) metadata_valid = mFormattedImage->updateData();
+        mDecodeNeedsAux = mNeedsAux && (!metadata_valid || mFormattedImage->getComponents() > 4);
         setState(DECODE_IMAGE_UPDATE);
         LL_DEBUGS(LOG_TXT) << mID << ": Decoding. Bytes: " << mFormattedImage->getDataSize() << " Discard: " << discard
                            << " All Data: " << mHaveAllData << LL_ENDL;
@@ -1942,7 +1968,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
         // still in progress, assign a sufficiently unique id
         mDecodeHandle = LLAppViewer::getImageDecodeThread()->decodeImage(mFormattedImage,
                                                                        discard,
-                                                                       mNeedsAux,
+                                                                       mDecodeNeedsAux,
                                                                        new DecodeResponder(mFetcher, mID, this));
         if (mDecodeHandle == 0)
         {
@@ -1962,6 +1988,12 @@ bool LLTextureFetchWorker::doWork(S32 param)
         {
             mDecodeTime = mDecodeTimer.getElapsedTimeF32();
 
+            // Demand can arrive after a primary-only decode was submitted.
+            if (requiresAuxDecode())
+            {
+                setState(DECODE_IMAGE);
+                return doWork(param);
+            }
             if (mDecodedDiscard < 0)
             {
                 if (mCachedSize > 0 && !mInLocalCache && mRetryAttempt == 0)
@@ -2071,6 +2103,12 @@ bool LLTextureFetchWorker::doWork(S32 param)
 
     if (mState == DONE)
     {
+        if (requiresAuxDecode())
+        {
+            setState(DECODE_IMAGE);
+            return doWork(param);
+        }
+
         LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("tfwdw - DONE");
         // The decode can come out finer than the bytes support when the codestream has fewer
         // resolutions than the level loaded, so the bytes' level counts as well.
@@ -2251,7 +2289,13 @@ void LLTextureFetchWorker::endWork(S32 param, bool aborted)
         // LL::ThreadPool has no operation to cancel a particular work item
         mDecodeHandle = 0;
     }
-    mFormattedImage = NULL;
+    // Retain only an already decoded primary-only aux-capable codestream while
+    // this worker lives, so a late same-quality aux request need not refetch it.
+    if (aborted || mDecodedDiscard < 0 || mAuxImage.notNull() ||
+        mFormattedImage.isNull() || mFormattedImage->getComponents() <= 4)
+    {
+        mFormattedImage = NULL;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -2582,6 +2626,10 @@ void LLTextureFetchWorker::callbackDecoded(bool success, const std::string &erro
         mRawImage = raw;
         mAuxImage = aux;
         mDecodedDiscard = mFormattedImage->getDiscardLevel();
+        const S32 components = mFormattedImage->getComponents();
+        // A successful decode parsed the immutable component count (JPEG2000
+        // SIZ for J2C). More progressive bytes improve quality, not channel count.
+        mAuxComponents = components > 4 ? llmin(components - 4, 4) : 0;
         if (mDecodedDiscard < mDesiredDiscard)
         {
             LL_WARNS_ONCE(LOG_TXT) << "Decoded higher resolution than requested" << LL_ENDL;
@@ -2828,13 +2876,15 @@ S32 LLTextureFetch::createRequest(FTType f_type, const std::string& url, const L
         }
         worker->lockWorkMutex();                                        // +Mw
         desired_size = worker->calcDesiredSize(desired_discard, desired_size);
-        if (worker->mState == LLTextureFetchWorker::DONE && worker->mDesiredSize == llmax(desired_size, TEXTURE_CACHE_ENTRY_SIZE) && worker->mDesiredDiscard == desired_discard) {
+        const bool aux_upgrade = needs_aux && !worker->mNeedsAux && worker->mAuxComponents != 0;
+        if (!aux_upgrade && worker->mState == LLTextureFetchWorker::DONE && worker->mDesiredSize == llmax(desired_size, TEXTURE_CACHE_ENTRY_SIZE) && worker->mDesiredDiscard == desired_discard) {
+            worker->getStatus(status);
             worker->unlockWorkMutex();                                  // -Mw
 
             return CREATE_REQUEST_ERROR_TRANSITION; // similar request has finished, failed or is in a transitional state
         }
         worker->mActiveCount++;
-        worker->mNeedsAux = needs_aux;
+        worker->mNeedsAux |= needs_aux;
         worker->setImagePriority(priority);
         worker->setDesiredDiscard(desired_discard, desired_size);
         worker->setCanUseHTTP(can_use_http);
@@ -2844,7 +2894,12 @@ S32 LLTextureFetch::createRequest(FTType f_type, const std::string& url, const L
         const bool start_work = !worker->haveWork();
         if (start_work)
         {
-            worker->setState(LLTextureFetchWorker::INIT);
+            if (worker->requiresAuxDecode())
+            {
+                worker->setState(LLTextureFetchWorker::DECODE_IMAGE);
+                worker->mDecoded = false;
+            }
+            else worker->setState(LLTextureFetchWorker::INIT);
         }
         worker->getStatus(status);
         worker->unlockWorkMutex();                                      // -Mw
@@ -3054,6 +3109,16 @@ bool LLTextureFetch::getRequestFinished(const LLUUID& id, S32& discard_level, S3
             F32 cache_write_time;
             S32 file_size;
             worker->lockWorkMutex();                                    // +Mw
+            if (worker->requiresAuxDecode())
+            {
+                worker->setState(LLTextureFetchWorker::DECODE_IMAGE);
+                worker->mDecoded = false;
+                worker->getStatus(status);
+                worker->unlockWorkMutex();
+                worker->addWork(0);
+                return false;
+            }
+            worker->getStatus(status);
             last_http_get_status = worker->mGetStatus;
             discard_level = worker->mDecodedDiscard;
             raw = worker->mRawImage;

@@ -119,6 +119,7 @@ const F64 log_2 = log(2.0);
 LLLoadedCallbackEntry::LLLoadedCallbackEntry(loaded_callback_func cb,
                       S32 discard_level,
                       bool need_imageraw, // Needs image raw for the callback
+                      bool needs_aux,
                       void* userdata,
                       LLLoadedCallbackEntry::source_callback_list_t* src_callback_list,
                       LLViewerFetchedTexture* target,
@@ -127,6 +128,7 @@ LLLoadedCallbackEntry::LLLoadedCallbackEntry(loaded_callback_func cb,
       mLastUsedDiscard(MAX_DISCARD_LEVEL+1),
       mDesiredDiscard(discard_level),
       mNeedsImageRaw(need_imageraw),
+      mNeedsAux(needs_aux),
       mUserData(userdata),
       mSourceCallbackList(src_callback_list),
       mPaused(pause)
@@ -1229,6 +1231,8 @@ void LLViewerFetchedTexture::init(bool firstinit)
     mOrigHeight = 0;
     mHasAux = false;
     mNeedsAux = false;
+    mAuxComponents = -1;
+    mAuxRawDiscardLevel = -1;
     mLastWorkerDiscardLevel = -1;
     mRequestedDiscardLevel = -1;
     mRequestedDownloadPriority = 0.f;
@@ -2072,6 +2076,12 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - has raw image");
         mIsFetched = true;
         mRawDiscardLevel = fetch_discard;
+        if (mNeedsAux && mAuxRawImage.notNull() && mRawImage->getDataSize() > 0 &&
+            fetch_discard >= 0 && current_discard >= 0 && fetch_discard >= current_discard)
+        {
+            mIsRawImageValid = true;
+            return true;
+        }
         if ((mRawImage->getDataSize() > 0 && mRawDiscardLevel >= 0) &&
             (current_discard < 0 || mRawDiscardLevel < current_discard))
         {
@@ -2301,13 +2311,17 @@ bool LLViewerFetchedTexture::updateFetch()
         return false;
     }
 
+    const bool need_aux_decode = mNeedsAux && !mPauseLoadedCallBacks &&
+        (mAuxRawImage.isNull() || !mAuxRawImage->getData() || mAuxRawDiscardLevel < 0 ||
+         mAuxRawDiscardLevel > mLoadedCallbackDesiredDiscardLevel) && mAuxComponents != 0 && mAuxComponents != -2;
     S32 current_discard = getCurrentDiscardLevelForFetching();
     S32 desired_discard = getDesiredDiscardLevel();
-    F32 decode_priority = mMaxVirtualSize;
+    F32 decode_priority = need_aux_decode ? llmax(mMaxVirtualSize, 1.f) : mMaxVirtualSize;
 
     // what the running request reports, into the fields the texture console reads
     auto apply_status = [this](const LLTextureFetch::FetchStatus& status)
     {
+        if (status.mState == 0) return; // No worker status was published (missing/aborted request).
         mFetchState = status.mState;
         mDownloadProgress = status.mDataProgress;
         mRequestedDownloadPriority = status.mRequestedPriority;
@@ -2315,6 +2329,7 @@ bool LLViewerFetchedTexture::updateFetch()
         mFetchDeltaTime = status.mFetchDeltaTime;
         mRequestDeltaTime = status.mRequestDeltaTime;
         mCanUseHTTP = status.mCanUseHTTP;
+        if (status.mAuxComponents != -1) mAuxComponents = status.mAuxComponents;
     };
 
     if (mIsFetching)
@@ -2336,6 +2351,9 @@ bool LLViewerFetchedTexture::updateFetch()
             mHasAux = true;
             sAuxCount++;
         }
+        apply_status(status);
+        if (mRawImage.notNull() && mAuxRawImage.notNull()) mAuxRawDiscardLevel = fetch_discard;
+        else if (mAuxRawImage.isNull()) mAuxRawDiscardLevel = -1;
         if (finished)
         {
             mIsFetching = false;
@@ -2381,10 +2399,10 @@ bool LLViewerFetchedTexture::updateFetch()
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - create or missing");
         make_request = false;
     }
-    else if (current_discard >= 0 ? current_discard <= mMinDiscardLevel
+    else if (!need_aux_decode && (current_discard >= 0 ? current_discard <= mMinDiscardLevel
              : mSavedRawImage.notNull() && mSavedRawDiscardLevel >= 0
                  ? mSavedRawDiscardLevel <= mMinDiscardLevel
-                 : mSavedRawFetchFailed && getDiscardLevel() >= 0 && getDiscardLevel() <= mMinDiscardLevel)
+                 : mSavedRawFetchFailed && getDiscardLevel() >= 0 && getDiscardLevel() <= mMinDiscardLevel))
     {
         // At the best a fetch has brought: the texture's own level, or with none the copy's, or, where a fetch for the
         // copy brought nothing, the GPU level it had. Asked again, createRequest refuses a request its worker finished,
@@ -2393,7 +2411,7 @@ bool LLViewerFetchedTexture::updateFetch()
         make_request = false;
     }
 
-    if (make_request)
+    if (make_request && !need_aux_decode)
     {
         if (mIsFetching)
         {
@@ -2453,6 +2471,7 @@ bool LLViewerFetchedTexture::updateFetch()
         else if (fetch_request_response == LLTextureFetch::CREATE_REQUEST_ERROR_TRANSITION)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - processing transition error");
+            apply_status(status);
             // Request wasn't created because similar one finished or is in a transitional state, check worker state
             // As an example can happen if an image (like a server bake always fetches at dis 0), was scaled down to
             // needed discard after fetching then sudenly needed higher dis and worker wasn't yet deleted. Worker
@@ -2474,6 +2493,7 @@ bool LLViewerFetchedTexture::updateFetch()
                     mHasAux = true;
                     sAuxCount++;
                 }
+                mAuxRawDiscardLevel = mAuxRawImage.notNull() ? decoded_discard : -1;
                 processFetchResults(desired_discard, current_discard, decoded_discard, decode_priority);
             }
         }
@@ -2599,35 +2619,34 @@ void LLViewerFetchedTexture::setLoadedCallback( loaded_callback_func loaded_call
         pauseLoadedCallbacks(src_callback_list);
     }
 
-    LLLoadedCallbackEntry* entryp = new LLLoadedCallbackEntry(loaded_callback, discard_level, keep_imageraw, userdata, src_callback_list, this, pause);
+    LLLoadedCallbackEntry* entryp = new LLLoadedCallbackEntry(loaded_callback, discard_level, keep_imageraw || needs_aux, needs_aux, userdata, src_callback_list, this, pause);
     mLoadedCallbackList.push_back(entryp);
 
-    mNeedsAux |= needs_aux;
-    if(keep_imageraw)
+    if (keep_imageraw || needs_aux)
     {
         mSaveRawImage = true;
     }
-    if (mNeedsAux && mAuxRawImage.isNull() && getDiscardLevel() >= 0)
-    {
-        if(mHasAux)
-        {
-            //trigger a refetch
-            forceToRefetchTexture();
-        }
-        else
-        {
-            // We need aux data, but we've already loaded the image, and it didn't have any
-            LL_WARNS() << "No aux data available for callback for image:" << getID() << LL_ENDL;
-        }
-    }
+    updateAuxDemand();
     mLastCallBackActiveTime = sCurrentTime ;
         mLastReferencedSavedRawImageTime = sCurrentTime;
+}
+
+// Auxiliary demand belongs to each callback, including while it is paused.
+// Only active demand drives decode admission; resuming restores it from the owner.
+void LLViewerFetchedTexture::updateAuxDemand()
+{
+    mNeedsAux = false;
+    for (const LLLoadedCallbackEntry* entry : mLoadedCallbackList)
+    {
+        mNeedsAux |= !entry->mPaused && entry->mNeedsAux;
+    }
 }
 
 void LLViewerFetchedTexture::clearCallbackEntryList()
 {
     if(mLoadedCallbackList.empty())
     {
+        updateAuxDemand();
         return;
     }
 
@@ -2642,6 +2661,7 @@ void LLViewerFetchedTexture::clearCallbackEntryList()
         iter = mLoadedCallbackList.erase(iter);
         delete entryp;
     }
+    updateAuxDemand();
     gTextureList.mCallbackList.erase(this);
 
     mLoadedCallbackDesiredDiscardLevel = S8_MAX;
@@ -2708,6 +2728,7 @@ void LLViewerFetchedTexture::deleteCallbackEntry(const LLLoadedCallbackEntry::so
             destroySavedRawImage();
         }
     }
+    updateAuxDemand();
 }
 
 void LLViewerFetchedTexture::unpauseLoadedCallbacks(const LLLoadedCallbackEntry::source_callback_list_t* callback_list)
@@ -2715,6 +2736,7 @@ void LLViewerFetchedTexture::unpauseLoadedCallbacks(const LLLoadedCallbackEntry:
     if(!callback_list)
 {
         mPauseLoadedCallBacks = false;
+        updateAuxDemand();
         return;
     }
 
@@ -2739,6 +2761,7 @@ void LLViewerFetchedTexture::unpauseLoadedCallbacks(const LLLoadedCallbackEntry:
     {
         mSaveRawImage = true;
     }
+    updateAuxDemand();
 }
 
 void LLViewerFetchedTexture::pauseLoadedCallbacks(const LLLoadedCallbackEntry::source_callback_list_t* callback_list)
@@ -2770,6 +2793,7 @@ void LLViewerFetchedTexture::pauseLoadedCallbacks(const LLLoadedCallbackEntry::s
         resetTextureStats();
         mSaveRawImage = false;
     }
+    updateAuxDemand();
 }
 
 bool LLViewerFetchedTexture::doLoadedCallbacks()
@@ -2823,10 +2847,28 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
             delete entryp;
         }
         mLoadedCallbackList.clear();
+        updateAuxDemand();
 
         // Remove ourself from the global list of textures with callbacks
         gTextureList.mCallbackList.erase(this);
         return false;
+    }
+
+    if (mAuxComponents == 0 || mAuxComponents == -2)
+    {
+        for (auto iter = mLoadedCallbackList.begin(); iter != mLoadedCallbackList.end(); )
+        {
+            LLLoadedCallbackEntry* entry = *iter;
+            if (!entry->mPaused && entry->mNeedsAux)
+            {
+                iter = mLoadedCallbackList.erase(iter);
+                entry->mCallback(false, this, nullptr, nullptr, 0, true, entry->mUserData);
+                delete entry;
+                res = true;
+            }
+            else ++iter;
+        }
+        updateAuxDemand();
     }
 
     S32 gl_discard = getDiscardLevel();
@@ -2843,8 +2885,8 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
     //
     S32 current_raw_discard = MAX_DISCARD_LEVEL + 1; // We can always do a readback to get a raw discard
     S32 best_raw_discard = gl_discard;  // Current GL quality level
-    S32 current_aux_discard = MAX_DISCARD_LEVEL + 1;
-    S32 best_aux_discard = MAX_DISCARD_LEVEL + 1;
+    S32 current_aux_discard = mAuxRawImage.notNull() && mAuxRawImage->getData() && mAuxRawDiscardLevel >= 0
+        ? mAuxRawDiscardLevel : MAX_DISCARD_LEVEL + 1;
     LLImageRaw *current_raw_image = nullptr;
 
     if (mIsRawImageValid)
@@ -2857,8 +2899,6 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
         // only a saved one.
         current_raw_discard = mRawDiscardLevel;
         best_raw_discard = llmin(best_raw_discard, mRawDiscardLevel);
-        best_aux_discard = llmin(best_aux_discard, mRawDiscardLevel); // We always decode the aux when we decode the base raw
-        current_aux_discard = llmin(current_aux_discard, best_aux_discard);
         current_raw_image = mRawImage;
     }
     else if (mSavedRawImage.notNull())
@@ -2867,15 +2907,7 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
         // raw and auxiliary quality levels.
         current_raw_discard = mSavedRawDiscardLevel;
         best_raw_discard = llmin(best_raw_discard, mSavedRawDiscardLevel);
-        best_aux_discard = llmin(best_aux_discard, mSavedRawDiscardLevel); // We always decode the aux when we decode the base raw
-        current_aux_discard = llmin(current_aux_discard, best_aux_discard);
         current_raw_image = mSavedRawImage;
-    }
-    else
-    {
-        // We have no data at all, we need to get it
-        // Do this by forcing the best aux discard to be 0.
-        best_aux_discard = 0;
     }
 
 
@@ -2891,15 +2923,16 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
         iter != mLoadedCallbackList.end(); )
     {
         LLLoadedCallbackEntry *entryp = *iter++;
+        if (entryp->mPaused) continue;
 
         if (entryp->mNeedsImageRaw)
         {
-            if (mNeedsAux)
+            if (entryp->mNeedsAux)
             {
                 //
                 // Need raw and auxiliary channels
                 //
-                if (entryp->mLastUsedDiscard > current_aux_discard)
+                if (entryp->mLastUsedDiscard > llmax(current_raw_discard, current_aux_discard))
                 {
                     // We have useful data, run the callbacks
                     run_raw_callbacks = true;
@@ -2955,22 +2988,25 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
         {
             callback_list_t::iterator curiter = iter++;
             LLLoadedCallbackEntry *entryp = *curiter;
-            if (entryp->mNeedsImageRaw && (entryp->mLastUsedDiscard > current_raw_discard))
+            const S32 callback_discard = entryp->mNeedsAux
+                ? llmax(current_raw_discard, current_aux_discard) : current_raw_discard;
+            if (!entryp->mPaused && entryp->mNeedsImageRaw && callback_discard <= MAX_DISCARD_LEVEL &&
+                entryp->mLastUsedDiscard > callback_discard)
             {
                 // If we've loaded all the data there is to load or we've loaded enough
                 // to satisfy the interested party, then this is the last time that
                 // we're going to call them.
 
                 mLastCallBackActiveTime = sCurrentTime;
-                if(mNeedsAux && mAuxRawImage.isNull())
+                if(entryp->mNeedsAux && mAuxRawImage.isNull())
                 {
                     LL_WARNS() << "Raw Image with no Aux Data for callback" << LL_ENDL;
                 }
-                bool final = current_raw_discard <= entryp->mDesiredDiscard;
+                bool final = callback_discard <= entryp->mDesiredDiscard;
                 //LL_INFOS() << "Running callback for " << getID() << LL_ENDL;
                 //LL_INFOS() << current_raw_image->getWidth() << "x" << current_raw_image->getHeight() << LL_ENDL;
-                entryp->mLastUsedDiscard = current_raw_discard;
-                entryp->mCallback(true, this, current_raw_image, mAuxRawImage, current_raw_discard, final, entryp->mUserData);
+                entryp->mLastUsedDiscard = callback_discard;
+                entryp->mCallback(true, this, current_raw_image, mAuxRawImage, callback_discard, final, entryp->mUserData);
                 if (final)
                 {
                     iter = mLoadedCallbackList.erase(curiter);
@@ -2994,7 +3030,7 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
         {
             callback_list_t::iterator curiter = iter++;
             LLLoadedCallbackEntry *entryp = *curiter;
-            if (!entryp->mNeedsImageRaw && (entryp->mLastUsedDiscard > gl_discard))
+            if (!entryp->mPaused && !entryp->mNeedsImageRaw && (entryp->mLastUsedDiscard > gl_discard))
             {
                 mLastCallBackActiveTime = sCurrentTime;
                 bool final = gl_discard <= entryp->mDesiredDiscard;
@@ -3009,6 +3045,8 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
             }
         }
     }
+
+    updateAuxDemand();
 
     // Done with any raw image data at this point (will be re-created if we still have callbacks)
     destroyRawImage();
@@ -3060,6 +3098,7 @@ void LLViewerFetchedTexture::destroyRawImage()
     {
         sAuxCount--;
         mAuxRawImage = nullptr;
+        mAuxRawDiscardLevel = -1;
     }
 
     if (mRawImage.notNull())
@@ -3221,6 +3260,8 @@ void LLViewerFetchedTexture::readbackSculptImage()
 //force to refetch the texture to the discard level
 void LLViewerFetchedTexture::forceToRefetchTexture(S32 desired_discard, F32 kept_time)
 {
+    mAuxComponents = -1; // Explicit content reload invalidates prior format knowledge.
+
     if(mForceToSaveRawImage)
     {
         desired_discard = llmin(desired_discard, mDesiredSavedRawDiscardLevel);
@@ -3313,6 +3354,7 @@ void LLViewerFetchedTexture::destroySavedRawImage()
     {
         sAuxCount--;
         mAuxRawImage = NULL;
+        mAuxRawDiscardLevel = -1;
     }
 }
 

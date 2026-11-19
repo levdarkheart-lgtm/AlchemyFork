@@ -68,6 +68,7 @@ public:
     LLLoadedCallbackEntry(loaded_callback_func cb,
                           S32 discard_level,
                           bool need_imageraw, // Needs image raw for the callback
+                          bool needs_aux,
                           void* userdata,
                           source_callback_list_t* src_callback_list,
                           LLViewerFetchedTexture* target,
@@ -79,6 +80,7 @@ public:
     S32                     mLastUsedDiscard;
     S32                     mDesiredDiscard;
     bool                    mNeedsImageRaw;
+    bool                    mNeedsAux;
     bool                    mPaused;
     void*                   mUserData;
     source_callback_list_t* mSourceCallbackList;
@@ -493,7 +495,10 @@ protected:
     S8  mDesiredDiscardLevel;           // The discard level we'd LIKE to have - if we have it and there's space
     S8  mMinDesiredDiscardLevel;    // The minimum discard level we'd like to have
 
-    bool mNeedsAux;                 // We need to decode the auxiliary channels
+    bool mNeedsAux;                 // Active callbacks require auxiliary channels
+    S32 mAuxComponents = -1;        // -1 unknown, -2 terminal decode failure, 0 known maskless
+    S32 mAuxRawDiscardLevel = -1;
+    void updateAuxDemand();
     bool mHasAux;                    // We have aux channels
     bool mDecodingAux;              // Are we decoding high components
     bool mIsRawImageValid;

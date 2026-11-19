@@ -99,6 +99,7 @@ public:
         F32  mFetchDeltaTime = 999999.f;
         F32  mRequestDeltaTime = 999999.f;
         bool mCanUseHTTP = false;           // written only when the worker has work
+        S32 mAuxComponents = -1; // Known decoded content: -1 unknown, -2 failed, 0 maskless
     };
 
     // Threads:  T* (but Tmain mostly)
