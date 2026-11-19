@@ -194,9 +194,11 @@ void LLFloaterIMSession::initNativeIMTranslation()
         setNativeIMTranslationStatus(getString("native_im_unavailable"));
         return;
     }
-    const auto handle = getDerivedHandle<LLFloaterIMSession>();
+    // LLHandle downcasts reinterpret the UI base address. This class has a
+    // preceding observer base, so retrieve the base handle and adjust with C++.
+    const LLHandle<LLFloater> handle = getHandle();
     mNativeIMLanguagesRequest = nativeIMRequest([handle](const LLSD& result) {
-        auto* self = handle.get();
+        auto* self = static_cast<LLFloaterIMSession*>(handle.get());
         if (!self || !self->mSession) return;
         self->mNativeIMLanguagesRequest = 0;
         if (!result["ok"].asBoolean())
@@ -281,11 +283,11 @@ bool LLFloaterIMSession::translateOutgoingIM(const std::string& message)
     auto source = mNativeIMSource->getValue().asString();
     if (source.empty()) source = mNativeIMSystemLanguage;
     if (source == "@auto") source.clear();
-    const auto handle = getDerivedHandle<LLFloaterIMSession>();
+    const LLHandle<LLFloater> handle = getHandle();
     // Capture the operation ID as well as the weak handle: chat UUIDs are reused.
     const auto request = sNativeIMNextRequest + 1;
     nativeIMRequest([handle, request, prepared, draft](const LLSD& result) {
-        auto* self = handle.get();
+        auto* self = static_cast<LLFloaterIMSession*>(handle.get());
         if (!self || !self->mSession || !self->mNativeIMSendRequest.finish(request)) return;
         self->mInputEditor->setReadOnly(false);
         self->getChild<LLButton>("native_im_cancel")->setEnabled(false);
@@ -312,7 +314,7 @@ bool LLFloaterIMSession::translateOutgoingIM(const std::string& message)
             return;
         }
         self->sendMsg(prepared.assemble(translated));
-        self = handle.get();
+        self = static_cast<LLFloaterIMSession*>(handle.get());
         if (!self || !self->mSession) return;
         if (self->mInputEditor->getText() == draft) self->mInputEditor->setText(LLStringUtil::null);
         self->setNativeIMTranslationStatus(self->getString("native_im_sent"));
@@ -343,10 +345,10 @@ void LLFloaterIMSession::translateIncomingIM(const std::string& from, const LLUU
     }
     const auto target = mNativeIMIncoming->getValue().asString();
     const auto prepared = al::native_im_translation::prepareMessage(original);
-    const auto handle = getDerivedHandle<LLFloaterIMSession>();
+    const LLHandle<LLFloater> handle = getHandle();
     const auto request = sNativeIMNextRequest + 1;
     nativeIMRequest([handle, request, index, original, from_id, prepared](const LLSD& result) {
-        auto* self = handle.get();
+        auto* self = static_cast<LLFloaterIMSession*>(handle.get());
         if (!self || !self->mSession || !self->mNativeIMReceiveRequests.erase(request)) return;
         if (!result["ok"].asBoolean())
         {

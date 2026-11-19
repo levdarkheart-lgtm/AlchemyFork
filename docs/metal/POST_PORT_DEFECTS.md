@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-510 -->
+<!-- next-defect-id: PPD-511 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -11858,3 +11858,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-19: Registered before repair during final layout review; no original group-chat minimum should change.
+
+## PPD-510 — Native IM callbacks miscast a multiple-inheritance weak handle
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native IM translation experiment validation
+- Discovered: 2026-11-19
+- Original reference: New native callbacks use getDerivedHandle<LLFloaterIMSession>; LLHandle::get reinterpret_casts the stored UI base address, while this floater inherits a voice observer before its UI base.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Capture LLHandle<LLFloater> and perform the adjusting static_cast on retrieval in all native callbacks and the model hook, then repeat the exact offline fixture.
+- Verification: Fixture 69396 exits139. LLDB reproduces EXC_BAD_ACCESS in LLComboBox::add(this=null) on the first Arabic language entry; source confirms non-adjusting derived-handle access shifts this by the preceding observer base. Native framework/scanner tests pass independently.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: CUA reports app quit; controlled process receipt confirms exit 139. Logged-out world/region screenshot gate never passed; only login/preflight evidence was observed.
+
+- 2026-11-19 (PPD-510): Debugger and LLHandle source establish the native callback as the cause, superseding the initial unproved pre-login attribution. Fix in progress; no global handle-framework rewrite.

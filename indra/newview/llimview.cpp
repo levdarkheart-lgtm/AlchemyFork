@@ -1722,11 +1722,11 @@ void LLIMModel::addMessage(const LLUUID& session_id, const std::string& from, co
         // Preserve the original transcript and deliver normal notifications now.
         // Native translation is an asynchronous annotation of this chat only;
         // local echoes also bypass the global translator to retain the sent text.
-        const auto floater_handle = floater->getDerivedHandle<LLFloaterIMSession>();
+        const LLHandle<LLFloater> floater_handle = floater->getHandle();
         processAddingMessage(session_id, from, from_id, utf8_text, log2file, is_region_msg, time_stamp);
 
         // Message listeners can close the conversation while processing it.
-        floater = floater_handle.get();
+        floater = static_cast<LLFloaterIMSession*>(floater_handle.get());
         if (floater && floater->usesNativeIMTranslation() && from_id.notNull()
             && from != SYSTEM_FROM && from != INTERACTIVE_SYSTEM_FROM)
         {
