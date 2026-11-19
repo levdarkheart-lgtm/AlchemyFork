@@ -1141,15 +1141,15 @@ bool LLOcclusionCullingGroup::checkOcclusion()
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_OCTREE;
     const U32 camera = LLViewerCamera::sCurCameraID;
+    LLOcclusionCullingGroup* parent = (LLOcclusionCullingGroup*)getParent();
     if (mOcclusionIssued[camera] < sOcclusionForgotten[camera]
         && isOcclusionState(OCCLUDED | QUERY_PENDING | DISCARD_QUERY))
     {   // what this camera found before forgetOcclusion() is let go: seen, and nothing out
         mOcclusionQuery[camera] = {};
         clearOcclusionState(OCCLUDED | QUERY_PENDING | DISCARD_QUERY);
-        return false;
+        return !parent || !parent->isOcclusionState(OCCLUDED);
     }
 
-    LLOcclusionCullingGroup* parent = (LLOcclusionCullingGroup*)getParent();
     if (parent && parent->isOcclusionState(LLOcclusionCullingGroup::OCCLUDED))
     {   //if the parent has been marked as occluded, the child is implicitly occluded
         clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
@@ -1157,42 +1157,41 @@ bool LLOcclusionCullingGroup::checkOcclusion()
     }
 
     ALQueryTicket& query = mOcclusionQuery[LLViewerCamera::sCurCameraID];
+    if (isOcclusionState(DISCARD_QUERY))
+    {   // Setting DISCARD_QUERY already releases the ticket, including when
+        // the camera is inside the box and no query was issued. Report the
+        // conservative visible decision to the cache's admission cull too.
+        query = {};
+        discardStaleQueriesBelow();
+        clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
+        clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
+        return true;
+    }
     if (query.isValid() && isOcclusionState(QUERY_PENDING))
     {
-        if (isOcclusionState(DISCARD_QUERY))
-        {   // drop the query unread
-            query = {};
-            // mark non-occluded
-            discardStaleQueriesBelow();
-            clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
-            clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
-        }
-        else
+        // Pending until the pool has read the frame it was issued in, a frame or two on. The pool waits for a
+        // frame only once the GPU is ALQueryPool::FRAMES frames behind, which bounds how old the state kept here is.
+        U64 passed = 0;
+        ALQueryPool::Status status;
         {
-            // Pending until the pool has read the frame it was issued in, a frame or two on. The pool waits for a
-            // frame only once the GPU is ALQueryPool::FRAMES frames behind, which bounds how old the state kept here is.
-            U64 passed = 0;
-            ALQueryPool::Status status;
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_OCTREE("co - query result");
-                status = gGL.queries().result(query, passed);
-            }
+            LL_PROFILE_ZONE_NAMED_CATEGORY_OCTREE("co - query result");
+            status = gGL.queries().result(query, passed);
+        }
 
-            if (status != ALQueryPool::Status::Pending)
+        if (status != ALQueryPool::Status::Pending)
+        {
+            query = {};
+            if (status == ALQueryPool::Status::Ready && passed == 0)
             {
-                query = {};
-                if (status == ALQueryPool::Status::Ready && passed == 0)
-                {
-                    setOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
-                }
-                else
-                {   // seen, or expired unread: erring toward visible, as the cull does
-                    discardStaleQueriesBelow();
-                    clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
-                }
-                clearOcclusionState(QUERY_PENDING);
-                return status == ALQueryPool::Status::Ready && passed > 0;
+                setOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
             }
+            else
+            {   // seen, or expired unread: erring toward visible, as the cull does
+                discardStaleQueriesBelow();
+                clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
+            }
+            clearOcclusionState(QUERY_PENDING);
+            return status != ALQueryPool::Status::Ready || passed > 0;
         }
     }
     else if (mSpatialPartition->isOcclusionEnabled() && isOcclusionState(LLOcclusionCullingGroup::OCCLUDED))

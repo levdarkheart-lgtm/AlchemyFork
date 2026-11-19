@@ -298,7 +298,8 @@ public:
 
     void setOcclusionState(U32 state, S32 mode = STATE_MODE_SINGLE);
     void clearOcclusionState(U32 state, S32 mode = STATE_MODE_SINGLE);
-    /// Reads back the last occlusion query, if any has come back. True where one has and found the group in view.
+    /// True when a query resolves as visible, or a discarded/unavailable result
+    /// conservatively releases occlusion. Pending and known-hidden return false.
     bool checkOcclusion();
     void doOcclusion(LLCamera* camera, const LLVector4a* shift = NULL); //issue occlusion query
     bool isOcclusionState(U32 state) const { return mOcclusionState[LLViewerCamera::sCurCameraID] & state; }
