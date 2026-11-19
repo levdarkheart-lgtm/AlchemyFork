@@ -173,6 +173,8 @@ counter: some incomplete G-buffer retries can accumulate to their threshold.
 - 2026-11-12: Identified while investigating PPD-002; no fix implemented. Missing
   warnings must not be used as evidence that local/projector lighting completed.
 
+- 2026-11-19 recurring69343 stale-world/freshUI rows show the existing failure-counter gap still blocks exact stage attribution; no G-buffer WARN does not prove current-world completion. Begin bounded default-off main-world retained-frame diagnostics at the actual source-frame-mismatch boundary. Distinct keys must exclude frame IDs so startup cannot exhaust a per-frame budget; include current frame/background age and source/lighting/post/exposure readiness as record values. Preserve all capture/admission/retention behavior, exception isolation, no asset/account/URL data and existing diagnostic caps. This is evidence repair, not a cure or closure for PPD002.
+
 ## PPD-004 — Missing native impostor data invalidates unrelated world batches
 
 - Status: open
