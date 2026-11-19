@@ -18,7 +18,7 @@ def body(text, signature):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--revision');p.add_argument('--output-dir',type=Path);p.add_argument('--skip-xml',action='store_true')
+    p.add_argument('--revision');p.add_argument('--output-dir',type=Path);p.add_argument('--skip-xml',action='store_true');p.add_argument('--emit-source',type=Path)
     a=p.parse_args()
     text=read('indra/newview/llinventorybridge.cpp',a.revision)
     functions=[body(text,x) for x in ('void LLObjectBridge::openItem()', 'void LLWearableBridge::openItem()', 'void LLObjectBridgeAction::attachOrDetach()', 'void LLWearableBridgeAction::wearOnAvatar()')]
@@ -33,6 +33,10 @@ def main():
         children=list(settings);entry=next(children[i+1] for i,c in enumerate(children) if c.tag=='key' and c.text=='DoubleClickWearableAdd')
         values=dict(zip([c.text for c in list(entry)[::2]],[c.text for c in list(entry)[1::2]]))
         assert values['Type']=='Boolean' and values['Value']=='1' and values['Persist']=='1'
+    if a.emit_source:
+        a.emit_source.parent.mkdir(parents=True,exist_ok=True)
+        a.emit_source.write_text(cpp)
+        return 0
     def run(out):
         out.mkdir(parents=True,exist_ok=True);source=out/'inventory_open_actual.cpp';binary=out/'inventory_open_actual';source.write_text(cpp)
         subprocess.run(['clang++','-std=c++20','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-sanitize-recover=undefined','-fno-omit-frame-pointer','-g',str(source),'-o',str(binary)],check=True)
