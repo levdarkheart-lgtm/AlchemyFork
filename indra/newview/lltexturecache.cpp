@@ -655,7 +655,7 @@ bool LLTextureCacheRemoteWorker::doWrite()
                 bytes_written = (S32)LLFile::write(mCache->mHeaderDataFilePath, mWriteData, offset, size);
             }
 
-            if (bytes_written <= 0)
+            if (bytes_written != size)
             {
                 LL_WARNS() << "LLTextureCacheWorker: " << mID
                     << " Unable to write header entry!" << LL_ENDL;
@@ -692,8 +692,16 @@ bool LLTextureCacheRemoteWorker::doWrite()
                 // build the cache file name from the UUID
                 std::filesystem::path filename = mCache->getTextureFileName(mID);
                 //          LL_INFOS() << "Writing Body: " << filename << " Bytes: " << file_offset+file_size << LL_ENDL;
-                S32 bytes_written = (S32)LLFile::write(filename, mWriteData + TEXTURE_CACHE_ENTRY_SIZE, 0, file_size);
-                if (bytes_written <= 0)
+                // Each body write replaces the complete available prefix. A shorter
+                // prefix must not leave a previous body's tail past the indexed size.
+                std::error_code ec;
+                LLFile body(filename, LLFile::out | LLFile::binary | LLFile::trunc, ec);
+                S32 bytes_written = -1;
+                if (!ec && body)
+                {
+                    bytes_written = (S32)body.write(mWriteData + TEXTURE_CACHE_ENTRY_SIZE, file_size, ec);
+                }
+                if (bytes_written != file_size || ec)
                 {
                     LL_WARNS() << "LLTextureCacheWorker: " << mID
                         << " incorrect number of bytes written to body: " << bytes_written
