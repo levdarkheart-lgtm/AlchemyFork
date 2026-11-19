@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-480 -->
+<!-- next-defect-id: PPD-481 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -114,7 +114,7 @@ or shadow data and other projector validation failures need separate diagnosis.
 - Owner: Codex integrator
 - Discovered: 2026-11-10
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, `indra/newview/llviewerdisplay.cpp`; current world and current-camera UI precede the same swap.
-- Evidence: [Initial crowded-region report](work/active/crowd-live-68643.md), [failed 68845 retest and revert](work/active/busy-turn-local-investigation.md), [68869 pre-teleport profile analysis](research/projector-teleport-profile-2026-11-12.md).
+- Evidence: [Initial crowded-region report](work/active/crowd-live-68643.md), [failed 68845 retest and revert](work/active/busy-turn-local-investigation.md), [68869 pre-teleport profile analysis](research/projector-teleport-profile-2026-11-12.md).; [69343 owner run](research/warning-runtime-69343-20261119.md).
 - Next action: Capture local/projector completion flags and the first projector return reason or renderer error during a retained-world frame, without changing draw admission.
 - Verification: Owner-run 68845 retest failed; live cause remains unknown. The previous automated impostor test did not verify this incident.
 - Owner verification: failed
@@ -145,6 +145,8 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
   Per-frame exports are empty; visibility/instrumentation/publication/queued GPU
   work remain unseparated. Relationship to the owner-reported world-only freeze
   remains unproved; no corrective verification or closure inferred.
+
+- 2026-11-19 exact69343/source8f1ef9bd8a/PID19674 owner tour reproduces repeated world/camera stalls every few walking steps while menus work and displayedFPS32–34. Owner reports eventual full-scene catch-up after TP. Runtime has54throttled retained-preUI-world rows, first08:32:04 through08:37:39UTC, last reports5100occurrences; actual source emits only when retained source_frame differs from current. This confirms stale-world/freshUI operation in this run, not the failed producer/stage or exact join to every owner episode. PPD003 warning-reset limits remain applicable; success-message wording about incomplete frames is not counted as failures. First post-recovery sample hasonly2mainstacks and overlaps28.093sLEAPgap; second08:34:49two-second sample has1419mainstacks traversing rendering. The disturbed first interval is excluded from normal engine attribution. Private Alchemy-functional-69343-n6ifzso_/analysis contains exact logs/photos/stack/observer evidence; no policy change or repair selected.
 
 ## PPD-003 — Continuous lighting retries can suppress failure warnings
 
@@ -2462,7 +2464,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Owner: Codex integrator
 - Discovered: 2026-11-13
 - Original reference: LLSettingsSky blend copies target canAutoAdjust while lerping probe ambiance. Original1eb/final408 generateExposure always writes fixedEV0 when classic disables metering. Native pipeline7758–65 stops history updates on classic, but8104–08/8213–19 still requires fresh history until effective ambiance reaches0.
-- Evidence: [Overall exposure investigation](work/active/overall-exposure-investigation.md).
+- Evidence: [Overall exposure investigation](work/active/overall-exposure-investigation.md).; [69343 owner run](research/warning-runtime-69343-20261119.md).
 - Next action: Reproduce a PBR-to-legacy blend through actual native history/publication control and verify the original fixedEV0 invariant before selecting a repair. Keep separate from unproved steady overexposure PPD-081.
 - Verification: Read-only source confirms differing policy boundaries can coexist during interpolation. Steady classic skies correctly bypass history through no_post. No runtime transition reproduction, frame-withholding measurement, owner symptom attribution or correction yet.
 - Owner verification: pending
@@ -2471,6 +2473,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 ### History
 
 - 2026-11-13: Registered source-permitted transition concern from the PPD081 audit. No source/UI edits or failing GPU execution; preserve current owner viewer and retain concern for a bounded original/native transition check.
+
+- 2026-11-19 source follow-up on owner69343/source8f1ef9bd8a tour rediscovers this existing082 mechanism; ID retained, no duplicate481. Runtime has three eligible presentation=1/sky=1/hdr=1/classic_gamma=0/exposure=0/all-other-post=1 records08:37:35–38UTC, distinct from excluded probe records. Reachable modern→legacy blend copies target canAutoAdjust while interpolated probe ambiance remainspositive: classic lighting skips dynamic exposure production, but nonlegacy output still requires its current-frame target. Original1eb generateExposure always writes fixed(1,0,0,1) when metering is disabled. This narrows a concrete parity repair, not all PPD002 freezes or their exact environment state. Actual native producer/consumer transition reproduction and finite fixedEV output tests are required before integration. Owner has logged out normally; next work is offline repair/qualification.
 
 ## PPD-083 — Owner reports a tint in neutral-looking scene surfaces
 
@@ -10666,8 +10670,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex owner runtime checkpoint analysis
 - Discovered: 2026-11-18
 - Original reference: Preserve original Second Life HUD/asset startup and display behavior, including existing black-login repair PPD008; correlate actual startup/first-world/presentation and asset work rather than guessing from the progress indicator.
-- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner Home report29→16FPS, slow HUDs and dark post-progress interval; exacte426/builderd2c9 appPID65356 and private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retained.
-- Next action: After the owner reboot pause, correlate first-visible world/HUD timestamps with wearable, asset, presentation, admission and capture boundaries using bounded identity-aware diagnostics. Preserve cold-cache/compiler/instrumentation hypotheses as unproved; keep PPD008 history and PPD466 separate.
+- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner Home report29→16FPS, slow HUDs and dark post-progress interval; exacte426/builderd2c9 appPID65356 and private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retained.; [69343 owner run](research/warning-runtime-69343-20261119.md).
+- Next action: Correlate the owner69343 delayed-then-resolved HUD report with actual texture demand, fetch/decode/publication state. Preserve the unchanged connected run and exact image/prefix; identify the HUD object/texture before attributing generic403s, decoder work or scene pressure. No new profiling or cache clearing during the owner tour.
 - Verification: Owner report retained. Source/log/native analysis identifies a13.120277s startup iteration aligned with wearable-wait cleanup but lacks first-visible HUD/dark timing. Home early GPU replay is qualified; it does not isolate the reported appearance cause. No repair or owner acceptance.
 - Owner verification: pending
 - Push approval: not_granted
@@ -10678,6 +10682,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 closed-run source/log/native analysis retains a13.120277s startup iteration aligned with wearable-wait cleanup, but lacks first-visible HUD/dark-screen timestamps and cannot establish its cause. Home early capture has a separate3.992615s stop call about2s after first world. All317 warnings/37sites and three stderr PNG warnings mapped; no exact widget/HUD/asset correspondence. PPD466 separately retains later hair/loading report. No repair or closure; owner requested pause for reboot after saved-data analysis. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
 
+- 2026-11-19 owner reproduces delayed HUD sharpness in exact69343/source8f1ef9bd8a/PID19674 during the authorized club/Home tour, then reports it has loaded only now. Photo and complete2,011,376byte prefix through08:31:47UTC are preserved under private Alchemy-functional-69343-n6ifzso_/analysis/hud-load-01 (receipt SHA/image hash retained). This is eventual resolution after a visible delay, not permanent failure; exact object/texture and fetch/decode/upload cause remain unknown. No performance recorder, build, cache wipe or runtime policy change. Existing463 ID retained rather than duplicating the report.
+
+- 2026-11-19 owner states world, textures and HUD loading were much faster before completion of Apple-first architecture. Preserve this as an owner-reported regression; no matched historical/current timing or exact HUD asset identity yet. Black progress-screen complaint also clarified: owner expects the saved last-location/frame image during login. Current69343 initStartTexture emits Bitmap load failed before decode, but requestedHome versusLast image selection and missing-file reason still require source/file verification. No decoder, upload or architecture-causality claim.
+
 ## PPD-464 — Owner reports brief unresponsiveness just after club teleport
 
 - Status: investigating
@@ -10685,8 +10693,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex owner runtime checkpoint analysis
 - Discovered: 2026-11-18
 - Original reference: Preserve responsive teleport/loading, actual frame pacing and valid scene work. Separate instrumentation pause from normal engine stalls using retained capture request/return bounds and CPU/native timelines.
-- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner reports51FPS rapidly falling18, then21 and brief unresponsiveness just after Club arrival. Three automatic frames and separate later external archive retained; automaticClub-late is missing. ExactPID65356/sourcee426/runtimebuilderd2c9.
-- Next action: After owner reboot pause, preserve a normal capture-OFF control and precise stall/first-visible timestamps. Compare arrival capture API bounds with CPU/admission/resource/upload events before deciding a renderer responsiveness repair.
+- Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner reports51FPS rapidly falling18, then21 and brief unresponsiveness just after Club arrival. Three automatic frames and separate later external archive retained; automaticClub-late is missing. ExactPID65356/sourcee426/runtimebuilderd2c9.; [69343 owner run](research/warning-runtime-69343-20261119.md).
+- Next action: Analyze the normal capture-OFF69343 teleport recurrence: preserve owner before/after images, actual transition/log/live-observer gaps and post-recovery stack timing. Determine whether the event was application unresponsiveness, frozen presentation or progressive scene readiness before selecting a repair. A sample taken after owner recovery cannot prove the stalled stack.
 - Verification: Club early API capture starts2.030287s after scene2 and stop takes8.916251s, overlapping an8.996305s native iteration. Capture-associated pause is measured; exact owner symptom timing and normal-runtime recurrence are unknown. No source-confirmed regression or closure.
 - Owner verification: pending
 - Push approval: not_granted
@@ -10696,6 +10704,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before attribution/fix. Native/settings/rendering unchanged during run.
 
 - 2026-11-18 actual Club early capture starts2.030287s after scene2 and stop call takes8.916251s; native8.996305s iteration overlaps it. This establishes substantial capture-associated pause near arrival, without independently timing the owner symptom or proving capture-OFF recurrence. Later Club retained main thread is98.46%running with shadow/frontend/resource work, a separate sustained cost. No source change or normal-runtime responsiveness acceptance. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
+
+- 2026-11-19 owner69343/source8f1ef9bd8a/PID19674 teleports to another place and reports a frozen/incomplete scene, then says it loaded fully at once. Both supplied photos and complete prefix are preserved in private Alchemy-functional-69343-n6ifzso_/analysis/tp-freeze-01. The recovery message arrived before the short3second sample began; that sample is explicitly post-recovery, not a captured hang. No Instruments/Metal capture or build was running during this recurrence. Its duration, exact main/GPU/loading state and relationship to earlier capture-associated464 remain unresolved. Preserve current viewer/tour unchanged.
+
+- 2026-11-19 follow-up narrows repeated apparent unresponsiveness: menus work, camera stops and displayedFPS32–34; world freezes every few walking steps, then recovers. This matches retained-world PPD002 more specifically than whole-application deadlock. First sample08:33:20–08:33:46 overlaps a28.093second live-observer gap and provides only2mainthread observations; do not count it as undisturbed freeze timing. Second2second sample08:34:49 provides1419mainthread observations through rendering; it does not prove camera updating or current-world publication. No further sampler is active when owner is released to logout.
 
 ## PPD-465 — Runtime checkpoint capture timing and evidence qualification are incomplete
 
@@ -10820,15 +10832,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-470 — Owner reports missing and black floor sections after teleport
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex warning/runtime integrator
 - Discovered: 2026-11-18
 - Original reference: Preserve complete world geometry/material rendering across region changes. Original1eb44 tree deferred draw and face indexed-render readiness contracts must be traced before repair; current pipeline.cpp captureMetalWorldTreeBatch16596 has a compound region/buffer/image/attribute/native-publication/extent guard.
-- Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Exact source96f10353af/viewer69331/PID74144. Owner screenshots23:54:49 and23:55:33 show missing/black/blue floor sections at the club after teleports; original bytes retained privately. Earlier23:49:48–54log has230incomplete native world-capture warnings, first invalidation pipeline.cpp16596 in native tree preflight,0batches retained. Screenshot-to-warning causality is not proved.
-- Next action: Owner retests high-altitude club object floors across teleports in exact candidate69343. PPD473 and475 repair independently proved mechanisms; if the symptom recurs, capture its new first-predicate/view and object/camera/group state. The original run is closed with evidence preserved; do not treat later terrain warnings as the floor cause.
+- Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Exact source96f10353af/viewer69331/PID74144. Owner screenshots23:54:49 and23:55:33 show missing/black/blue floor sections at the club after teleports; original bytes retained privately. Earlier23:49:48–54log has230incomplete native world-capture warnings, first invalidation pipeline.cpp16596 in native tree preflight,0batches retained. Screenshot-to-warning causality is not proved.; [69343 owner run](research/warning-runtime-69343-20261119.md).
+- Next action: Retain owner-passed69343 object-floor recovery and reopen on recurrence. Keep PPD002 retained-world freezes, PPD463 slow HUD/world loading and unproved PPD473/475 incident causality separate. Push remains unapproved.
 - Verification: Owner-visible visual failure reproduced in two supplied images on exact candidate. Native tree capture rejection also reproduced, but its exact compound predicate and connection to the floor are unknown. The legacy warning text saying retainedGL does not prove any OpenGL execution or fallback backend.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -10841,6 +10853,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 PPD475 independently reproduces cached-object admission starvation and is locally repaired; the candidate prim's conservative cache bounds contain both observed avatar positions, while actual camera/group state is unrecorded. This strengthens the investigation but does not establish incident causality. PPD473 loading-tree default binding is also repaired separately. Combined candidate is being prepared for a club teleport retest; the owner floor report stays open.
 
 - 2026-11-19 final candidate69343 is ready for owner evaluation after build/bundle and31targeted CTest passes. The saved candidate box is ordinary prim geometry with valid production-unpacked mesh data; actual top diffuse/material content and broken-frame floor identity remain unknown. No new viewer launch or floor-recovery claim.
+
+- 2026-11-19 during fresh69343 owner tour, owner answers the floor check: Floor looks complete. Read-only watcher preserves the corresponding1,798,000byte prefix through08:31:08UTC and relayed owner report; no capture/tree/terrain/hero predicate failures at that cutoff. This is positive owner confirmation for the loaded club interval, not proof of PPD473/475 incident causality or later teleport stability. Continue the authorized tour before final status review.
+
+- 2026-11-19 owner explicitly confirms again after returning to the club: the floor is there. Fresh LEAP global-region cell matches the initially UI-verified club. Preserve this second positive visual result across teleport; exact PPD473/475 causal attribution remains unproved. Overall loading/retained-world issues PPD002/463 stay separate.
+
+- 2026-11-19 closed run ends normally Goodbye08:45:04UTC, PIDabsent; full log7,915,356bytes/SHA8be8fdc6655c9cb394b5dc2cca3f2e5e629d3bbc79c291065c8f9456768ff1f1. Owner explicitly confirms both initial loadedclub and afterreturnTP that floor is present. Mark the reported floor symptom verified on exact69343; this is not general render/loading acceptance or proof which independent mechanism caused it. No push permission.
 
 ## PPD-471 — Requested bake auxiliary data can be omitted from successful final callbacks
 
@@ -11055,3 +11073,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 pre-final qualification retained for history (superseded by the final result below): All69unowned cases pass in this run; their missing registration means ordinary per-file CTest execution did not own them. Do not suppress the guard, change its expected exit or relabel the failed aggregate as passing. No code/visual regression is inferred.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
+
+## PPD-480 — Home login shows black instead of an available last-location image
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex warning/runtime integrator
+- Discovered: 2026-11-19
+- Original reference: Original1eb44 and current LLProgressView::initStartTexture select Home PNG/legacyBMP for Home or URL login, with no last-location fallback; failed file load selects the black image. Trace original/current startup selection and final-snapshot producer before changing the retained-image contract.
+- Evidence: [69331 runtime and current owner continuation](research/warning-input-runtime-69331-20261119.md); private Alchemy-functional-69343-n6ifzso_/analysis/login-background-01 preserves current/previous startup warning rows, pre-logout file hashes/copies and selected-home-versus-last.json. Owner explicitly reports the missing last-location image; current exact69343 emits Bitmap load failed before decode.; [69343 owner run](research/warning-runtime-69343-20261119.md).
+- Next action: Verify original/current file-selection and valid stored-image decoding, then restore useful startup-image fallback when the requested Home image is absent. Preserve the requested destination, production/grid-specific filenames, UseStartScreen opt-out and image/texture ownership. Do not conflate this with PPD008 post-login world presentation or PPD463 delayed HUD sharpness.
+- Verification: Current run selected My home. In the account directory whose prior00:00:16snapshot path/mtime match the closed69331 log, screen_home.png and screen_home.bmp are absent while screen_last.png exists (7,804,872bytes, PNGheader3456×2168). The requested-file load failure precedes PNG decode/native upload. Pixel decode and exact historical pre-architecture lookup remain unverified; this does not establish when the missing Home file or regression arose.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before any repair, cache/file replacement or viewer restart. Owner baseline claim is retained as reported, not dismissed because the current selection code is inherited. Stored startup-image candidates were copied read-only before owner logout; the existing last image was produced by a successful prior normal shutdown. Current connected Home/FPS check continues unchanged.

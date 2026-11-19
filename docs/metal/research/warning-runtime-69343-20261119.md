@@ -1,0 +1,35 @@
+# Functional-fix owner run 69343 — loading and retained-world follow-up
+
+## Exact observed run
+
+Candidate26.4.0.69343/source `8f1ef9bd8aafa4efff409b2ed3fe28b5eb1f7e50`, indra `2971b311a67318a9d68b8e70dbb990e07ac64403`, executable SHA256 `a29c0eb8c44acbb6f35efbbd5b7554421930490c09c210e4605a6f95662524a9`, PID19674. The stable app from the [qualification note](warning-input-runtime-69331-20261119.md#final-candidate-69343) was launched with manual login, OpenHTJ2K0.27.0 as sole pixel decoder, existing AlchemyNext cache and bounded opt-in warning inputs. Read-only LEAP sampled7live graphics keys every3seconds; all stayed constant. No graphics preset was forced or screenshot/parity comparison asserted.
+
+Actual first scene was the club, verified from the exact viewer window location bar and fresh live position/settings. The Home login selection did not prove Home arrival. The owner subsequently teleported elsewhere and back to club, then requested a Home FPS check; actual region transitions are retained privately without inferring Home from intent alone. No controlled FPS result is claimed.
+
+Full viewer log spans08:26:14–08:45:04UTC, ending Goodbye. PID is absent. Complete7,915,356bytes SHA256 `8be8fdc6655c9cb394b5dc2cca3f2e5e629d3bbc79c291065c8f9456768ff1f1`;382WARNING rows/40source sites, zero unparsed rows/ERROR/FATAL. Private run root `/Users/dekstroza/Alchemy-functional-69343-n6ifzso_` contains closed-run-01, source-qualified run.json, live settings, all images, bounded agent reports and original bytes. Account/object/location/request data remains private. No engine code, cache policy, build or native test changed during the run.
+
+## Owner outcomes and limitations
+
+- **PPD470 floor:** owner confirms the high-altitude club object floor looks complete and again says it remains present after returning to the club. The reported symptom is owner-verified on69343. This does not prove which of PPD473/475 caused the original failure or verify general geometry/loading.
+- **PPD471 bake masks:**25observed auxiliary-requested five-component decodes return primaryRGBA plus valid1channelaux;38primary-only decodes are also observed. No mask warning recurs. Producer budget reaches63/64 early, so this is bounded positive evidence, not full live callback/order closure.
+- **PPD311 rigging:** zero skin_decode/product, llskinningutil/fallback/count warnings and saved skin files through the full log. No new operands to classify; bounded nonreproduction leaves the numerical cause open.
+- **PPD463 loading:** owner supplies a blurry HUD image several minutes after login, then says it loaded only now. Later owner reports world/HUD/textures loaded much faster before completion of Apple-first architecture. Preserve this reported regression; no matched timing, exact HUD asset identity or architecture attribution is established. Read-only pressure samples show discard_bias1, no system/os/process-low flags and image residency below target; those aggregate samples do not identify the HUD's delay.
+- **PPD002/464 freezes:** owner repeatedly reports the world/camera freezing during walking/turning and after TP, while menus work and displayedFPS32–34. This is more specific than whole-application unresponsiveness. Two supplied before/after images show an incomplete destination then full scene catch-up. Displayed FPS is a mean UI statistic, not current-world publication proof.
+- **PPD480 startup image:** Home login tries absent screen_home.png/legacyBMP and falls back to black before decode, while the same account has a saved screen_last.png from the preceding normal logout. Current/original loader bodies are byte-identical. This is a concrete fallback gap; when the missing Home file or pre-architecture regression arose remains unknown.
+- **Assets:** ordinary texture and material failures persist. Bounded15minute analysis records51texture failure chains across35IDs and28material warnings across14IDs.22material warning rows have strict adjacent typed-material403 matches. Texture/core diagnostic caps fill early; no speculative joins or HUD attribution. Final full-run reconciliation follows separately.
+
+## World publication discriminator and next repair
+
+Exact pipeline.cpp11331 emits only when the retained background's source_frame differs from gFrameCount. The run has54throttled rows through08:37:39, last counter5100; a later stall prefix through08:42:43 has67rows, last6400. This proves that fresh UI was repeatedly composed over an older world during this run. It matches the reported symptom without identifying the failed producer or mapping every episode. The successful-publication message saying each incomplete frame retains the previous drawable is not itself counted as a failure.
+
+Source inspection identifies the already registered **PPD082** modern-to-legacy sky transition mismatch. Sky blend copies target canAutoAdjust before interpolated ambiance reaches0. Classic lighting can skip exposure history production while a nonlegacy presentation still requires its current output. Three08:37:35–38rows have presentation1/sky1/HDR1/classic_gamma0/exposure0/allotherpost1, distinct from ordinary excluded-probe rows. The failed frames do not record classic_lighting or every exposure-ready bit, so the incident join is qualified. Original1eb always produces fixed exposure(1,0,0,1) when classic disables metering. Repair must reproduce actual native transition/publication and retain this invariant, not exempt stale history from validation.
+
+PPD003 remains relevant: transaction resets and some returns can prevent120failure warning thresholds, so no G-buffer warning does not prove current-world completion. Normal main/probe exclusions also cannot be relabeled as main presentation failures.
+
+## Stack-sample qualification
+
+No Instruments or Metal capture was run. A requested3second sample started08:33:20 after the owner had already reported recovery; it produced only2main-thread observations and completed08:33:46 amid DWARF-analysis warnings. Its interval overlaps a28.093second LEAP gap; do not attribute that disturbed interval to ordinary engine stalls. The second2second sample at08:34:49 supplies1419main-thread observations through rendering. It supports active main-loop work during that sample, not current camera/world progress or a cause for every owner episode. All sampling had ended before later repeated stalls and owner release to logout.
+
+## Active offline work
+
+Viewer is closed. Root owns integration/CMake/register/ledgers. Independent persistent worktrees own PPD082 exposure parity and PPD480 meaningful startup-image fallback, with actual-body/native regression controls required before integration. Independent warning reconciliation and later peer review remain separate. Existing PPD002/003/463 loading/publication defects and PPD474 real preference restoration stay open. Preserve mandatory OpenHTJ2K, visual quality, resource completeness and the owner-passed floor fix. Keep all repairs local; no push approval exists. A build or contained test cannot prove owner-visible jerkiness or loading recovered.
