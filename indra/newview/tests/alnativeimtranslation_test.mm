@@ -59,6 +59,35 @@ bool errorIs(NSDictionary* value, NSString* code)
     return ![value[@"ok"] boolValue] && [value[@"error_code"] isEqual:code];
 }
 
+NSDictionary* languageEntry(NSDictionary* listing, NSString* code)
+{
+    for (NSDictionary* entry in listing[@"languages"])
+    {
+        if ([entry[@"code"] isEqual:code]) return entry;
+    }
+    check(false, "requested supported language has a readiness entry");
+    return @{};
+}
+
+void checkReadinessOutcome(NSDictionary* listing, NSString* target, NSDictionary* translation)
+{
+    NSString* status = languageEntry(listing, target)[@"outgoing_status"];
+    if ([translation[@"ok"] boolValue])
+    {
+        check([status isEqual:@"installed"] || [status isEqual:@"identity"],
+              "successful native translation agrees with reported pair readiness");
+    }
+    else if (errorIs(translation, @"not_installed"))
+    {
+        check([status isEqual:@"supported"], "missing model agrees with download-needed pair readiness");
+    }
+    else
+    {
+        check([status isEqual:@"unsupported"] && errorIs(translation, @"unsupported_pair"),
+              "unavailable native pair agrees with unsupported readiness");
+    }
+}
+
 std::string scannerJSON(std::string_view body)
 {
     NSMutableArray* entries = [NSMutableArray array];
@@ -166,6 +195,89 @@ int main(int argc, const char* argv[])
         check([languages[@"system_language"] length] > 0, "system language is explicit");
         std::printf("LANGUAGES %lu\n", static_cast<unsigned long>([languages[@"languages"] count]));
 
+        // Readiness queries never translate or download. They retain supported
+        // choices while distinguishing the source/target pairs actually ready.
+        al_native_im_translation_languages_for_source(60, "en", "ja", complete);
+        check(waitFor(60), "explicit pair readiness enumeration completes");
+        NSDictionary* readiness = result(60);
+        check([readiness[@"ok"] boolValue], "explicit pair readiness succeeds");
+        check([readiness[@"languages"] count] == [languages[@"languages"] count],
+              "readiness retains every supported language including missing models");
+        check([readiness[@"source"] isEqual:@"en"] && [readiness[@"peer_source"] isEqual:@"ja"] &&
+              [readiness[@"peer_source_explicit"] boolValue], "readiness identifies writing and explicit peer sources");
+        NSSet* statuses = [NSSet setWithArray:@[@"installed", @"supported", @"unsupported", @"identity"]];
+        for (NSDictionary* entry in readiness[@"languages"])
+        {
+            check([statuses containsObject:entry[@"outgoing_status"]], "every supported target has a valid outgoing pair status");
+            check([statuses containsObject:entry[@"incoming_status"]], "every supported target has a valid incoming pair status");
+        }
+        check([languageEntry(readiness, @"en")[@"outgoing_status"] isEqual:@"identity"],
+              "writing language identity needs no model");
+        check([languageEntry(readiness, @"ja")[@"incoming_status"] isEqual:@"identity"],
+              "peer language identity needs no model");
+        check([readiness[@"system_target"] length] > 0 && [statuses containsObject:readiness[@"incoming_system_status"]],
+              "native readiness resolves the system target and its incoming pair status");
+        for (NSDictionary* entry in readiness[@"languages"])
+        {
+            if ([entry[@"code"] isEqual:readiness[@"system_target"]])
+            {
+                check([entry[@"incoming_status"] isEqual:readiness[@"incoming_system_status"]],
+                      "system incoming status agrees with its canonical supported language entry");
+            }
+        }
+
+        al_native_im_translation_languages_for_source(61, "", "", complete);
+        check(waitFor(61), "system-default readiness completes");
+        NSDictionary* defaults = result(61);
+        check([defaults[@"ok"] boolValue] && [defaults[@"source"] length] > 0 &&
+              [defaults[@"source"] isEqual:defaults[@"peer_source"]] && ![defaults[@"peer_source_explicit"] boolValue],
+              "empty readiness sources resolve explicitly without claiming an explicit peer language");
+        for (NSDictionary* entry in defaults[@"languages"])
+        {
+            check([entry[@"outgoing_status"] isEqual:entry[@"incoming_status"]],
+                  "default peer assumption uses the same pair readiness as the writing source");
+        }
+
+        al_native_im_translation_languages_for_source(62, "zz", "ja", complete);
+        check(waitFor(62), "unsupported writing source readiness completes");
+        NSDictionary* unsupportedReadiness = result(62);
+        check([unsupportedReadiness[@"ok"] boolValue] && [unsupportedReadiness[@"languages"] count] == [languages[@"languages"] count],
+              "unsupported writing source still permits choosing from all supported languages");
+        for (NSDictionary* entry in unsupportedReadiness[@"languages"])
+        {
+            check([entry[@"outgoing_status"] isEqual:@"unsupported"], "unsupported source marks outgoing pairs unavailable");
+            check([entry[@"incoming_status"] isEqual:languageEntry(readiness, entry[@"code"])[@"incoming_status"]],
+                  "unsupported writing source does not affect explicit peer readiness");
+        }
+        al_native_im_translation_languages_for_source(63, "en", "ja", complete);
+        al_native_im_translation_cancel(63);
+        [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+        check(!results.count(63), "readiness cancellation suppresses callback");
+        al_native_im_translation_languages_for_source(64, "en", "ja", complete);
+        check(waitFor(64), "readiness can be queried again to refresh installed model state");
+        NSDictionary* refreshed = result(64);
+        check([refreshed[@"ok"] boolValue] && [refreshed[@"languages"] count] == [readiness[@"languages"] count],
+              "fresh readiness query retains supported choices while refreshing model state");
+        for (NSString* code in @[@"es", @"ja", @"fr"])
+        {
+            NSDictionary* entry = languageEntry(refreshed, code);
+            std::printf("READINESS en->%s %s; ja->%s %s\n", [code UTF8String],
+                        [entry[@"outgoing_status"] UTF8String], [code UTF8String], [entry[@"incoming_status"] UTF8String]);
+        }
+        for (NSDictionary* entry in refreshed[@"languages"])
+        {
+            if (![entry[@"outgoing_status"] isEqual:@"supported"]) continue;
+            // Exercise an actually missing pair when this host has one, without
+            // downloading. Installation state may vary between test machines.
+            al_native_im_translate(66, "Hello, how are you today?", "en", [entry[@"code"] UTF8String], complete);
+            check(waitFor(66), "download-needed pair fails promptly without preparing models");
+            NSDictionary* missing = result(66);
+            check(errorIs(missing, @"not_installed"), "download-needed readiness corresponds to explicit missing-model failure");
+            checkReadinessOutcome(refreshed, entry[@"code"], missing);
+            std::printf("MISSING_MODEL en->%s %s\n", [entry[@"code"] UTF8String], results[66].c_str());
+            break;
+        }
+
         const char* original = "Hello, how are you doing today?";
         al_native_im_translate(4, original, "en", "en-IE", complete);
         check(waitFor(4), "same-language request completes");
@@ -216,6 +328,18 @@ int main(int argc, const char* argv[])
             check(!requireLive, "--live requires installed packs and a real native translation");
             std::puts("LIVE en->es: not_installed (no models downloaded by test).");
         }
+        checkReadinessOutcome(refreshed, @"es", translated);
+
+        al_native_im_translate(65, original, "en", "fr", complete);
+        check(waitFor(65), "English to French completes without implicit download");
+        NSDictionary* french = result(65);
+        checkReadinessOutcome(refreshed, @"fr", french);
+        if ([french[@"ok"] boolValue])
+        {
+            check([french[@"text"] length] > 0 && ![french[@"text"] isEqual:@"Hello, how are you doing today?"],
+                  "installed French model translates the synthetic source");
+        }
+        std::printf("LIVE en->fr %s\n", results[65].c_str());
 
         al_native_im_translate_segments(13, "[{\"text\":\"Hello, please visit \",\"protected\":false},{\"text\":\"https://example.com/CaSe?x=%2F&name=caf%C3%A9#Anchor\",\"protected\":true},{\"text\":\" after five o'clock.\",\"protected\":false}]", "en", "es", complete);
         check(waitFor(13), "segmented English to Spanish completes");
@@ -269,6 +393,7 @@ int main(int argc, const char* argv[])
             check([japanese[@"source"] isEqual:@"en"] && [japanese[@"target"] isEqual:@"ja"], "native Japanese translation reports requested pair");
         }
         else check(errorIs(japanese, @"not_installed") && !requireLive, "--live requires English Japanese model");
+        checkReadinessOutcome(refreshed, @"ja", japanese);
         std::printf("LIVE en->ja %s\n", results[30].c_str());
 
         al_native_im_translate(31, "こんにちは、お元気ですか？\nまた明日お話ししましょう。", "", "en", complete);
@@ -280,6 +405,9 @@ int main(int argc, const char* argv[])
             check([japaneseReverse[@"text"] length] > 0 && ![japaneseReverse[@"text"] containsString:@"こんにちは"], "native Japanese reverse returns translated prose");
         }
         else check(errorIs(japaneseReverse, @"not_installed") && !requireLive, "--live requires automatic Japanese reverse success");
+        check([languageEntry(refreshed, @"en")[@"incoming_status"] isEqual:
+               [japaneseReverse[@"ok"] boolValue] ? @"installed" : @"supported"],
+              "Japanese reverse outcome agrees with explicit peer incoming readiness");
         std::printf("LIVE auto ja->en %s\n", results[31].c_str());
 
         al_native_im_translate_segments(32, "[{\"text\":\"こんにちは！\\nここを見てください：\",\"protected\":false},{\"text\":\"https://example.com/CaSe?x=%2F&name=caf%C3%A9#Anchor\",\"protected\":true},{\"text\":\"。\\nまた明日！\",\"protected\":false}]", "ja", "en", complete);

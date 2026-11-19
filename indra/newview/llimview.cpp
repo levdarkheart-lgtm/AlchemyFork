@@ -28,6 +28,7 @@
 
 #include "llimview.h"
 #include "alchattimestamp.h"
+#include "alnativeimtranslationpolicy.h"
 
 #include "llavatarnamecache.h"  // IDEVO
 #include "llavataractions.h"
@@ -1945,10 +1946,15 @@ void LLIMModel::sendLeaveSession(const LLUUID& session_id, const LLUUID& other_p
 
 //*TODO this method is better be moved to the LLIMMgr
 void LLIMModel::sendMessage(const std::string& utf8_text,
-                     const LLUUID& im_session_id,
-                     const LLUUID& other_participant_id,
-                     EInstantMessage dialog)
+                     const LLUUID& im_session_id_arg,
+                     const LLUUID& other_participant_id_arg,
+                     EInstantMessage dialog,
+                     const std::string& local_original)
 {
+    // Callers can pass floater members. Local-echo callbacks may destroy that
+    // floater, so own the IDs used by subsequent speaker/recent-people updates.
+    const LLUUID im_session_id = im_session_id_arg;
+    const LLUUID other_participant_id = other_participant_id_arg;
     std::string name;
     bool sent = false;
     LLAgentUI::buildFullname(name);
@@ -2058,7 +2064,18 @@ void LLIMModel::sendMessage(const std::string& utf8_text,
         // Do we have to replace the /me's here?
         std::string from;
         LLAgentUI::buildFullname(from);
-        LLIMModel::getInstance()->addMessage(im_session_id, from, gAgentID, utf8_text);
+        if (!local_original.empty())
+        {
+            // Only this local history row contains the original. Every packet
+            // above still carries utf8_text, the translated recipient message.
+            // Avoid the global translation service re-translating our own echo.
+            LLIMModel::getInstance()->processAddingMessage(im_session_id, from, gAgentID,
+                al::native_im_translation::formatOutgoingEcho(local_original, utf8_text), true, false, 0);
+        }
+        else
+        {
+            LLIMModel::getInstance()->addMessage(im_session_id, from, gAgentID, utf8_text);
+        }
 
         //local echo for the legacy communicate panel
         std::string history_echo;
@@ -2075,6 +2092,8 @@ void LLIMModel::sendMessage(const std::string& utf8_text,
     }
 
     // Add the recipient to the recent people list.
+    // The local-echo signal above may close/recreate this session.
+    session = LLIMModel::getInstance()->findIMSession(im_session_id);
     bool is_not_group_id = LLGroupMgr::getInstance()->getGroupData(other_participant_id) == NULL;
 
     if (is_not_group_id)

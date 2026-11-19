@@ -311,7 +311,8 @@ public:
                           const uuid_vec_t& ids, EInstantMessage dialog, bool p2p_as_adhoc_call);
     static void sendTypingState(LLUUID session_id, LLUUID other_participant_id, bool typing);
     static void sendMessage(const std::string& utf8_text, const LLUUID& im_session_id,
-                                const LLUUID& other_participant_id, EInstantMessage dialog);
+                                const LLUUID& other_participant_id, EInstantMessage dialog,
+                                const std::string& local_original = {});
 
     // Adds people from speakers list (people with whom you are currently speaking) to the Recent People List
     static void addSpeakersToRecent(const LLUUID& im_session_id);

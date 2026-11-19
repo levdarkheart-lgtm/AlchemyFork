@@ -72,6 +72,18 @@ private enum ALNativeIMTranslationBridge {
     static func sameLanguage(_ first: Locale.Language, _ second: Locale.Language) -> Bool {
         first.languageCode == second.languageCode && first.script == second.script
     }
+
+    @available(macOS 26.0, *)
+    static func pairStatus(_ availability: LanguageAvailability, from source: Locale.Language,
+                           to target: Locale.Language) async -> String {
+        if sameLanguage(source, target) { return "identity" }
+        switch await availability.status(from: source, to: target) {
+        case .installed: return "installed"
+        case .supported: return "supported"
+        case .unsupported: return "unsupported"
+        @unknown default: return "unsupported"
+        }
+    }
 }
 
 @MainActor
@@ -93,23 +105,71 @@ func nativeIMTranslationAvailable() -> Int32 {
 @_cdecl("al_native_im_translation_languages")
 @MainActor
 func nativeIMTranslationLanguages(_ id: UInt64, _ callback: ALNativeIMTranslationCompletion?) {
+    nativeIMLanguageListing(id, nil, nil, callback)
+}
+
+@_cdecl("al_native_im_translation_languages_for_source")
+@MainActor
+func nativeIMTranslationLanguagesForSource(_ id: UInt64, _ sourcePointer: UnsafePointer<CChar>?,
+                                           _ peerSourcePointer: UnsafePointer<CChar>?,
+                                           _ callback: ALNativeIMTranslationCompletion?) {
+    nativeIMLanguageListing(id, sourcePointer.map { String(cString: $0) } ?? "",
+                             peerSourcePointer.map { String(cString: $0) } ?? "", callback)
+}
+
+@MainActor
+private func nativeIMLanguageListing(_ id: UInt64, _ suppliedSource: String?, _ suppliedPeer: String?,
+                                    _ callback: ALNativeIMTranslationCompletion?) {
     guard let operation = ALNativeIMTranslationBridge.begin(id) else { return }
     operation.task = Task { @MainActor in
         guard #available(macOS 26.0, *) else {
             ALNativeIMTranslationBridge.finish(id, operation, callback, ALNativeIMTranslationBridge.failure("unavailable", "Native IM translation requires macOS 26 or later."))
             return
         }
-        let languages = await ALNativeIMTranslationBridge.availability().supportedLanguages
+        let availability = ALNativeIMTranslationBridge.availability()
+        let languages = await availability.supportedLanguages
+        guard !Task.isCancelled else { return }
         guard !languages.isEmpty else {
             ALNativeIMTranslationBridge.finish(id, operation, callback, ALNativeIMTranslationBridge.failure("service_unavailable", "Apple Translation returned no supported languages. Check the macOS translation service and retry."))
             return
         }
-        let entries = languages.map { language in
-            ["code": language.minimalIdentifier,
-             "name": Locale.current.localizedString(forIdentifier: language.minimalIdentifier) ?? language.minimalIdentifier]
-        }.sorted { $0["name", default: ""].localizedStandardCompare($1["name", default: ""]) == .orderedAscending }
-        ALNativeIMTranslationBridge.finish(id, operation, callback,
-                      ["ok": true, "languages": entries, "system_language": ALNativeIMTranslationBridge.systemLanguage])
+        var entries: [[String: String]] = []
+        var result: [String: Any] = ["ok": true, "system_language": ALNativeIMTranslationBridge.systemLanguage]
+        let source: Locale.Language?
+        let peer: Locale.Language?
+        if let suppliedSource {
+            let sourceCode = suppliedSource.isEmpty ? ALNativeIMTranslationBridge.systemLanguage : suppliedSource
+            let peerCode = (suppliedPeer ?? "").isEmpty ? sourceCode : suppliedPeer!
+            source = ALNativeIMTranslationBridge.match(sourceCode, in: languages) ?? Locale.Language(identifier: sourceCode)
+            peer = ALNativeIMTranslationBridge.match(peerCode, in: languages) ?? Locale.Language(identifier: peerCode)
+            result["source"] = source!.minimalIdentifier
+            result["peer_source"] = peer!.minimalIdentifier
+            result["peer_source_explicit"] = !(suppliedPeer ?? "").isEmpty
+            let system = ALNativeIMTranslationBridge.match(ALNativeIMTranslationBridge.systemLanguage, in: languages)
+                ?? Locale.Language(identifier: ALNativeIMTranslationBridge.systemLanguage)
+            result["system_target"] = system.minimalIdentifier
+            result["incoming_system_status"] = await ALNativeIMTranslationBridge.pairStatus(availability, from: peer!, to: system)
+        } else {
+            source = nil
+            peer = nil
+        }
+        for language in languages {
+            guard !Task.isCancelled else { return }
+            var entry = ["code": language.minimalIdentifier,
+                         "name": Locale.current.localizedString(forIdentifier: language.minimalIdentifier) ?? language.minimalIdentifier]
+            if let source, let peer {
+                let outgoing = await ALNativeIMTranslationBridge.pairStatus(availability, from: source, to: language)
+                guard !Task.isCancelled else { return }
+                entry["outgoing_status"] = outgoing
+                entry["incoming_status"] = source.isEquivalent(to: peer) ? outgoing
+                    : await ALNativeIMTranslationBridge.pairStatus(availability, from: peer, to: language)
+            }
+            entries.append(entry)
+        }
+        result["languages"] = entries.sorted {
+            $0["name", default: ""].localizedStandardCompare($1["name", default: ""]) == .orderedAscending
+        }
+        ALNativeIMTranslationBridge.finish(id, operation, callback, result)
     }
 }
 

@@ -395,6 +395,28 @@ inline PreparedMessage prepareMessage(std::string_view message)
             std::string(emote ? message.substr(4) : message)};
 }
 
+inline std::string formatOutgoingEcho(std::string_view original, std::string_view sent)
+{
+    // This is local display text only. The transport must receive `sent`
+    // separately; applying wire limits here would discard the original draft.
+    if (original.empty() || original == sent) return std::string(sent);
+    if (sent.empty()) return std::string(original);
+    auto annotation = sent;
+    const auto prefix = original.substr(0, 4);
+    if ((prefix == "/me " || prefix == "/me'") && sent.substr(0, 4) == prefix)
+    {
+        annotation.remove_prefix(4);
+    }
+    // Empty/prefix-only sent text is not a valid translated send, but keep
+    // local formatting benign if a caller nevertheless supplies one.
+    if (annotation.empty()) return std::string(original);
+    std::string echo(original);
+    echo += "\n[";
+    echo.append(annotation);
+    echo += ']';
+    return echo;
+}
+
 inline bool isValidResult(const PreparedMessage& message, std::string_view translated,
                           std::size_t max_bytes) noexcept
 {

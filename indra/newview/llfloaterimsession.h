@@ -35,6 +35,7 @@
 #include "llvoicechannel.h"
 #include "llvoiceclient.h"
 #include "alnativeimtranslationpolicy.h"
+#include "llframetimer.h"
 
 #include <set>
 
@@ -104,7 +105,7 @@ public:
     void reloadMessages(bool clean_messages = false);
     static void onSendMsg(LLUICtrl*, void*);
     void sendMsgFromInputEditor(bool ooc_chat = false);
-    void sendMsg(const std::string& msg);
+    void sendMsg(const std::string& msg, const std::string& local_original = {});
 
     // Native translation belongs to this live P2P conversation only.
     bool usesNativeIMTranslation() const;
@@ -160,6 +161,10 @@ private:
     void initNativeIMTranslation();
     void updateNativeIMTranslationLayout();
     void nativeIMTranslationChanged();
+    void refreshNativeIMLanguageReadiness();
+    void applyNativeIMLanguageReadiness();
+    void updateNativeIMReadinessStatus();
+    bool nativeIMLanguageMenuOpen() const;
     bool translateOutgoingIM(const std::string& message);
     void cancelNativeIMTranslation();
     void setNativeIMTranslationStatus(const std::string& status);
@@ -172,6 +177,11 @@ private:
     al::native_im_translation::RequestSlot mNativeIMSendRequest;
     std::set<uint64_t> mNativeIMReceiveRequests;
     uint64_t mNativeIMLanguagesRequest = 0;
+    LLSD mNativeIMLanguageReadiness;
+    std::string mNativeIMAppliedLanguages;
+    LLFrameTimer mNativeIMReadinessTimer;
+    bool mNativeIMReadinessPending = false;
+    bool mNativeIMStatusIsReadiness = false;
     bool mNativeIMDisplayReplay = false;
     S32 mNativeIMBaseMinWidth = 0;
     S32 mNativeIMBaseMinHeight = 0;
@@ -230,6 +240,7 @@ private:
 
     bool mSessionInitialized;
     LLSD mQueuedMsgsForInit;
+    U64 mSessionCloseGeneration = 0;
 
     uuid_vec_t mInvitedParticipants;
     uuid_vec_t mPendingParticipants;

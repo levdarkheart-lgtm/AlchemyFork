@@ -28,6 +28,22 @@ int al_native_im_translation_available(void);
  */
 void al_native_im_translation_languages(uint64_t request_id, ALNativeIMTranslationCallback callback);
 
+/* Pair readiness for chat controls. The languages result additionally contains
+ * outgoing_status and incoming_status on every entry: installed, supported
+ * (download needed), unsupported, or identity (same language/script; no model).
+ * Outgoing is Write in -> entry; incoming is expected peer -> entry. Empty
+ * source resolves the system language; empty peer resolves that source. Result
+ * source, peer_source and peer_source_explicit identify these assumptions.
+ * system_target is the matched system language; incoming_system_status reports
+ * expected peer -> system language without requiring caller locale matching.
+ * These are pair statuses, not global per-language installation claims. Query
+ * again after setup or on focus to refresh; this function never downloads.
+ */
+void al_native_im_translation_languages_for_source(uint64_t request_id,
+                                                  const char* source_language,
+                                                  const char* peer_source_language,
+                                                  ALNativeIMTranslationCallback callback);
+
 /* Empty source = NaturalLanguage detection; empty target = first system
  * preferred language. Success: {ok:true,text,source,target}; same language is
  * a successful identity result. Failure: {ok:false,error_code,error,source?,target?}.

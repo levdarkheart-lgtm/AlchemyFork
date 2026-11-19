@@ -2948,6 +2948,25 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN AND Python3_Interpreter_FOUND)
     find_package(Threads REQUIRED)
+    # Exercise the real send body while capturing network and local-echo
+    # boundaries, so the original wording can never leak into IM packets.
+    set(native_im_echo_source "${CMAKE_CURRENT_BINARY_DIR}/native_im_echo_generated.cpp")
+    add_custom_command(OUTPUT "${native_im_echo_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/alnativeimtranslationecho_test.py"
+        --emit-source "${native_im_echo_source}"
+      DEPENDS llimview.cpp alnativeimtranslationpolicy.h ../llmessage/lldbstrings.h
+        tests/alnativeimtranslationecho_test.py tests/alnativeimtranslationecho_test.cpp
+      VERBATIM)
+    add_executable(alnativeimtranslationecho_test "${native_im_echo_source}")
+    target_link_libraries(alnativeimtranslationecho_test PRIVATE al::flags)
+    target_compile_features(alnativeimtranslationecho_test PRIVATE cxx_std_23)
+    target_include_directories(alnativeimtranslationecho_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(alnativeimtranslationecho_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(alnativeimtranslationecho_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME newview/native_im_translation_echo COMMAND alnativeimtranslationecho_test)
+    set_tests_properties(newview/native_im_translation_echo PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     # Generate only the current producer/completion bodies; the normal target
     # supplies real LLFile and dependencies for Ninja and Xcode alike.
     set(cache_write_contract_source "${CMAKE_CURRENT_BINARY_DIR}/lltexturecache_write_contract_generated.cpp")

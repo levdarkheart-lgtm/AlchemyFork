@@ -179,3 +179,55 @@ CUA observed window “Alchemy Metal IM Translation 26.4.0.69398”. No fixture,
 profiler, capture or automatic IM is active; owner controls login and testing.
 Receipt: `artifacts/metal/native-im-translation-20261119/owner-launch.json`.
 No owner acceptance, logged-in observation, defect closure or push inferred.
+
+## Owner follow-up — outgoing original and French preparation
+
+Owner confirms live Japanese outgoing translation works on69398. Requests original
+wording plus bracketed sent translation in local history (PPD-512), with recipient
+payload still translated only. Owner's French attempt retains its draft and shows
+not_installed; English is present and French was absent from downloaded models.
+French public System Settings download completed; root synthetic native en→fr passes. No automation sends IMs.
+
+
+### Follow-up implementation checkpoint
+
+PPD-512: `local_original` is separate metadata through the floater/initialization
+queue/model send. Only the local history uses `original\n[translation]`; packets
+retain the target-only string. Identical/protected-only results do not duplicate;
+matching `/me` markers are omitted inside brackets. Ordinary sends retain their
+existing local echo/global translation behavior.
+
+PPD-513: Close clears initialization messages. Queue drain copies and clears
+before callbacks, rechecks current RLVa restrictions through sendMsg, and checks
+base weak handle, session UUID and close generation before each queued send.
+The close generation also prevents a close/reopen of the same UUID from resuming
+old queued text or clearing a new draft.
+
+PPD-514: Native pair-readiness endpoint keeps supported choices visible with
+installed/supported/unsupported/identity status. UI adds Download needed labels,
+retains selections, defers menu rebuilding while open, polls visible chats every
+four seconds and refreshes on selection changes. Detect-source and unknown-peer
+incoming choices do not claim availability for an unknown source. Native send
+remains authoritative so protected-only text and freshly installed models work.
+
+PPD-515: Independent actual-body sanitizer fixtures reproduce session deletion
+and floater-owned UUID argument deletion during synchronous local echo. Retain
+both failed runs. Correction reacquires the session and owns ID copies; floater
+send/input callers reacquire base weak handles before accessing UI afterward.
+
+Executed on the M1 Max/macOS26.5.2:
+- `tools/metal/doctor.sh`: exit0, log `/tmp/alchemy-im-followup-doctor.log`.
+- Standalone native probe `--live`:342 checks/0 failures; en→fr, en→ja,
+  ja→en, protected production segments and missing en→ar-AE agree with readiness.
+  `/tmp/alchemy-native-readiness-20261119/native-live.log`.
+- C++23 policy with ASan+UBSan:716 checks/0 failures.
+- Actual LLIMModel send body with ASan+UBSan:135 checks/0 failures, target-only
+  transport/local original/links/code/emotes/split routing/callback deletion.
+  `/tmp/alchemy-native-im-echo-argument-after`; earlier callback/argument UAF
+  stacks retained in corresponding `*-before.log` files.
+- Updated Release build/CTest/app verification: next action, not yet observed.
+
+Owner closed69398 and requests launch of the checked replacement. Original app
+preserved under ignored evidence `previous/Alchemy Metal IM Translation 69398.app`.
+No automated IMs, login or push. Logged-in UI acceptance remains the owner's next
+check. Rendering/performance release gates remain unchanged and incomplete.

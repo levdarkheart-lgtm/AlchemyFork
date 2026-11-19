@@ -268,6 +268,42 @@ int main()
         check(normalized, "Scanner emits nonempty segments and merges adjacent identical modes");
     }
 
+    check(formatOutgoingEcho("Hello", "Bonjour") == "Hello\n[Bonjour]",
+          "Local outgoing echo shows the original followed by bracketed sent translation");
+    check(formatOutgoingEcho("", "Bonjour") == "Bonjour", "Missing original leaves the sent echo unchanged");
+    check(formatOutgoingEcho("Hello", "Hello") == "Hello", "Identical translation does not duplicate the original");
+    check(formatOutgoingEcho("Hello", "") == "Hello", "Missing sent text does not create an empty annotation");
+    check(formatOutgoingEcho("", "").empty(), "Empty local echo remains empty");
+    check(formatOutgoingEcho("/me waves", "/me fait signe") == "/me waves\n[fait signe]",
+          "Matching space emote prefix appears only on the original local echo");
+    check(formatOutgoingEcho("/me's hat", "/me's sombrero") == "/me's hat\n[s sombrero]",
+          "Matching apostrophe emote marker is removed only from the annotation");
+    check(formatOutgoingEcho("/me waves", "Bonjour") == "/me waves\n[Bonjour]",
+          "Plain sent text remains literal when the original is an emote");
+    check(formatOutgoingEcho("Hello", "/me fait signe") == "Hello\n[/me fait signe]",
+          "Sent emote marker is retained when the original has no matching marker");
+    check(formatOutgoingEcho("/me waves", "/me's sombrero") == "/me waves\n[/me's sombrero]",
+          "Different emote markers are not treated as matching prefixes");
+    check(formatOutgoingEcho("/me waves", "/me ") == "/me waves",
+          "Prefix-only sent text does not create an empty annotation");
+    check(formatOutgoingEcho("Hello [friend]", "Bonjour [ami]") == "Hello [friend]\n[Bonjour [ami]]",
+          "User brackets stay literal inside the local annotation");
+    check(formatOutgoingEcho("Hello\nfriend", "Bonjour\nami") == "Hello\nfriend\n[Bonjour\nami]",
+          "Original and sent newlines survive local formatting");
+    check(formatOutgoingEcho("こんにちは🙂", "Bonjour🙂") == "こんにちは🙂\n[Bonjour🙂]",
+          "Unicode bytes survive local formatting");
+    check(formatOutgoingEcho("Go https://example.com/日本、語 `code()`",
+                             "Allez https://example.com/日本、語 `code()`") ==
+          "Go https://example.com/日本、語 `code()`\n[Allez https://example.com/日本、語 `code()`]",
+          "URL and code bytes survive local formatting without escaping");
+    const std::string long_original(5119, 'a');
+    const std::string long_sent(5119, 'b');
+    const auto long_echo = formatOutgoingEcho(long_original, long_sent);
+    check(long_echo == long_original + "\n[" + long_sent + "]" && long_echo.size() == 10241,
+          "Local echo retains both full transport-sized messages without wire truncation");
+    check(formatOutgoingEcho(std::string("a\0b", 3), "translated") == std::string("a\0b\n[translated]", 16),
+          "Pure local formatting preserves embedded bytes without hidden c-string truncation");
+
     std::cout << checks << " native IM translation policy checks; " << failures << " failures\n";
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
