@@ -3038,6 +3038,22 @@ if(AL_BUILD_TESTS)
       set_tests_properties("newview/world_retention_inputs_${mode}"
         PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     endforeach()
+    set(final_snapshot_source "${CMAKE_CURRENT_BINARY_DIR}/actual_final_snapshot.cpp")
+    add_custom_command(OUTPUT "${final_snapshot_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/save_final_snapshot_contract_test.py"
+        --emit-source "${final_snapshot_source}"
+      DEPENDS tests/save_final_snapshot_contract_test.py tests/save_final_snapshot_fixture.cpp llappviewer.cpp
+      VERBATIM)
+    add_executable(final_snapshot_contract_test "${final_snapshot_source}")
+    target_link_libraries(final_snapshot_contract_test PRIVATE al::flags)
+    target_compile_features(final_snapshot_contract_test PRIVATE cxx_std_20)
+    target_compile_options(final_snapshot_contract_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(final_snapshot_contract_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/final_snapshot_contract" COMMAND final_snapshot_contract_test)
+    set_tests_properties("newview/final_snapshot_contract"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     set(cinematic_mouselook_source "${CMAKE_CURRENT_BINARY_DIR}/cinematic_mouselook_contract_generated.cpp")
     add_custom_command(OUTPUT "${cinematic_mouselook_source}"
       COMMAND "${Python3_EXECUTABLE}"

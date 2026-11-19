@@ -153,3 +153,24 @@ background no-flood control passes both. Observation durations are wall time
 since last observed background progress, not CPU stall durations. Hero Boolean
 fields are current manager samples, not separately stamped uniform-production
 events; staged base does not prove later fused composition success.
+
+PPD493 result-only repair1fca2c26cf→root2f173468cc captures saveSnapshot's Boolean
+result, returns on failure before marking saved or copying an older image into
+Home, and adds no retry loop/timing/guard change. Exact pre-fix whole caller
+matches original1eb; the false-success latch is inherited. Actual-body synthetic
+fixture12cases/68checks passesASan/UBSan versus12baseline failures; root normal
+CMake target/CTest passes, independent source review passes and full isolated TU
+syntax0 (initial missing submodule include failure retained, then exact pinned
+read-only header fallback). This does not repair or prove the missing native
+current-world products; existing shutdown-attempt latch remains unchanged.
+
+[Exact existing capture controls and next-run recipe](world-turn-capture-controls-20261119.md)
+are source-verified. No existing UI/LEAP control arms first-retention capture and
+no pre-event rolling buffer exists. Prefer fresh diagnostic receipts first; a
+CPU early-return needs branch/owner evidence rather than a post-failure GPU
+trace. If GPU evidence is needed, the device-all-queue display route can be
+time-targeted at launch under explicit gates, with healthy/stalled diagnostics
+joined to its interval. Automatic120s is illustrative timing only, not a first-
+failure trigger. A new event-trigger implementation would have to latch a
+retention event and start before commands on the next eligible display; it is
+not implemented or claimed by this checkpoint. No new capture was run.

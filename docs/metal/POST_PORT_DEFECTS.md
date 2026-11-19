@@ -7550,6 +7550,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 Owner offers Home then Club login to collect missing evidence. Prepare opt-in bounded exact matrix/skin/pose provenance before launch; existing finite-only diagnostics cannot reconstruct operands. Preserve current deformation/fallback behavior and capture original decoder/producer boundaries without treating PPD313 as causal.
 
 
+- 2026-11-19 Exact69377 closed owner tour has0skinning-utility nonfinite/fallback or saved skininputevents within diagnosticcoverage. Separate56unknown animation-joint warnings use original-identical tolerant lookup/deserialization and are not this skinpalette emitter. No runtime fallback operands were collected; defect remainsopen. [Allsites](research/warning-runtime-69377-source-audit-20261119.md).
+
 ## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
 
 - Status: investigating
@@ -10711,6 +10713,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 owner clarifies all HUDs eventually load, with a long delay, and no particular HUD needs special treatment. The active objective is general loading latency across the scene, textures, avatars and HUDs. PPD486/487/490 address whole-pipeline scheduling/publication; keep bounded HUD observation as supporting evidence only, not a requirement to identify one pictured asset or a separate special-case repair.
 
 
+- 2026-11-19 Exact69377 owner reports textures/HUDs almost instant and much better; general loading positive, occasional Home turning freezes remain002/464 and login-background outcome unreported. Nativeworker actually active and no retries/pending atfinalcensus; no pairedlatency/FPS attribution or single-HUD specialcase. Retain mixed-report scope and [closed-run audit](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-464 — Owner reports brief unresponsiveness just after club teleport
 
 - Status: investigating
@@ -10910,6 +10914,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Source-confirmed inherited callback-fulfillment defect in a contained actual-body/real decoder case. Live42needs_aux0 records are not the same as the initial needs_aux1 reproduction, so live cause remains qualified. All29old complete inputs decode valid1channelaux in87OpenHT requests; that does not prove live callback lifetime/progressive inputs.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
+- 2026-11-19 Exact69377 observed63bakeproducer events/57assets,28requestedaux all1component;0missing-mask consumer event. No sameasset primary-only→laterrequestedaux transition captured and64-key cap boundscoverage, so no late-demand closure. [Run/limits](research/world-turn-freeze-69377-20261119.md).
 
 ## PPD-472 — Warning input diagnostics suppress reused handles and stream channel counts as bytes
 
@@ -11267,6 +11273,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
+- 2026-11-19 Exact69377 observed decoder min2/normal4/max6/adaptive1, limits4/5/6 and ceiling6,23610submitted/started/completed with0active/wait/estimates final; no lookahead-limit event in sampledcensus. Owner general textures/HUDs loading much better. This is positive combined runtime evidence, not isolated policy gain, low-memory-bound qualification or freeze recovery. [Run/limits](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-487 — Native texture upload worker remains gated by a disabled legacy OpenGL setting
 
 - Status: ready_for_owner
@@ -11291,6 +11299,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
+- 2026-11-19 Exact69377 runtime native texture worker enabled1 and36420actual posts with0synchronous creates observed; owner reports much-better texture/HUD loading. This confirms activation in the owner tour, not isolated speed/FPS benefit or allfeatureacceptance. [Run/limits](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-488 — Native upload continuation may lose fetched-image ownership during shutdown
 
 - Status: ready_for_owner
@@ -11312,6 +11322,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
+
+- 2026-11-19 Exact69377 enabled-native-worker run exits after Goodbye11:18:35UTC; no worker-shutdown warning/ERROR/FATAL observed. Main-thread registry release/destructor identities are not exposed in these logs, so absence does not independently prove all ownership invariants. [Closedrun](research/world-turn-freeze-69377-20261119.md).
 
 ## PPD-489 — Native image batch flush assumes one worker but pool width is overridable
 
@@ -11335,6 +11347,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
+- 2026-11-19 Exact69377 nativeworker run records36674workeruploads/3190batchcommits/0failures in final typedcensus; constructor remains explicitfixed1. No saved-width override changed in the owner account; runtime result supplements component checks without claiming fullshutdown/race proof. [Closedrun](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-490 — Time-bounded texture publication also has a main-busy one-item ceiling
 
 - Status: ready_for_owner
@@ -11357,6 +11371,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
+- 2026-11-19 Exact69377 owner general loading positive, native create_pending returns0/retries0; cumulativeposts/bytes are not elapsed throughput or latency. A938downscale queue remains atfinalsample, so no all-pipeline drainclaim. Freeze recurrence staysseparate002/464. [Closedrun](research/world-turn-freeze-69377-20261119.md).
+
 ## PPD-491 — Statistics preferences include credential-bearing settings in logs and payload
 
 - Status: ready_for_owner
@@ -11377,6 +11393,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 integratedc71b9c39f1 (agent5fc9389976) after the3be26b full1472-step Release build completed0. Explicit24field/type graphics/performance schema plus3named integer pool widths replaces raw preference-map export; account envelope remains empty. Unknown keys, nested/string/UUID/binary values, invalid Boolean shapes and nonfinite reals are rejected. The same safe body reaches actualINFO/debugXML/HTTP sinks; other statistics/session placement remain unchanged. Original1eb/69343/3be exporter and telemetry tail are byte-identical. Synthetic-only tests and scoped peer review; no whole-packet anonymity or successful prior server receipt claim. New normal generator-independentCMake source target is registered before final incremental source-qualified build.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
+- 2026-11-19 Exact69377 shutdown preferences packet11:18:33UTC is structurally screened without decoding/exporting scalar values: only8allowed graphics numeric/Boolean fields and2integer poolwidths, emptyaccount map,0unknownkeys/typeviolations. This exercises optional preferencestrue productionpath positively; other telemetry/private metadata are not declared anonymous. [Closedrun](research/world-turn-freeze-69377-20261119.md).
 
 ## PPD-492 — Selected mirror advertises another owner's completed radiance
 
@@ -11406,10 +11424,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLAppViewer::saveFinalSnapshot and idleShutdown; native rawSnapshot/readMetalWorldSnapshot replace original framebuffer capture. Inspect inherited caller latch separately from native exact-frame readiness.
 - Evidence: [69377 closed-run investigation](research/world-turn-freeze-69377-20261119.md); private asset-watch/logout-snapshot-order.json and shutdown-structural-scan.json retain safe source/call order and numeric rejection state.
 - Next action: Trace original/current saveFinalSnapshot and native snapshot production; latch successful saves only and preserve exact-current frame/target guard. Do not select arbitrary retries, stale frames or overwrite an existing last image on failure.
-- Verification: At11:18:33 final snapshot request is followed by native world snapshot did-not-complete-exactly and raw save failure, then LogoutRequest. Current frame9542 has no completed world/UI/presentation product. Caller ignores saveSnapshot false and sets mSavedFinalSnapshot, suppressing future attempts. Actual failure is recorded; cause of missing native products is unproved and separate from PPD480 last-image loading fallback. No repair/owner retest yet.
+- Verification: At11:18:33 final snapshot request is followed by native world snapshot did-not-complete-exactly and raw save failure, then LogoutRequest. Current frame9542 has no completed world/UI/presentation product. Caller ignores saveSnapshot false and sets mSavedFinalSnapshot, suppressing future attempts. Actual failure is recorded; cause of missing native products is unproved and separate from PPD480 last-image loading fallback. Result-only caller repair passes actual-body68checks/12cases versus12baseline failures; missing native products and owner final-image retest remain unresolved.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-19 registered from exact69377 normal owner logout after complete45-site log census. Native failure fields are chain_snapshot1/chain_active1/complete1, capture_active0, frame_active0, renderer/target/device_match1, composed/post/presentation/world_ui0 and unknown presentation/UI frame, first_incomplete_line0. Failure is before readback/encoding; no cache/account data changed. Preserve existing saved image and diagnose missing current capture rather than relaxing readMetalWorldSnapshot.
+
+- 2026-11-19 result-only1fca2c26cf→root2f173468cc returns on saveSnapshot false before success latch/Home copy; no retry loop/timing/native guard changed. Whole caller body is byte-identical to original1eb before repair (inherited false-success contract). Actual-body12cases/68checks green versus12red, ASan/UBSan; root registered normalCMake target/CTest pass and independent source review pass. First isolated TU check lacked inactive submodule header; exact gitlink-matched read-only include fallback then fullTU syntax0. Missing current-frame native production remainsunproved; successful actual logout capture/owner acceptance pending.
