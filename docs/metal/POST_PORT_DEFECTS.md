@@ -11648,4 +11648,3 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 source dc781c61db/indra326ad879fe qualifies separate69390: wrapperReleasebuild0,346ARM64/deepstrictsignature,strict3645zero and3owned-directimportchecks0; compiled/test/app shaderhashesmatchbf2a3b…, exactexe42fcf45f… embeds testedsource. Stable69388 hashunchanged. Manual owner-water retest prepared without capture/validation/profile; actualsceneacceptance and explicit497pushapproval pending. Do not close013 from this qualification.
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
-

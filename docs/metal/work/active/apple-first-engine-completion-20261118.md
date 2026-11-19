@@ -639,3 +639,22 @@ After owner resumes: use restored saved-frame Home receiver-cost experiments and
 bounded Club actual-owner CPU checks, keep lighting/quality/lifetime safety, repair
 coordinated recording coverage before any new runtime. Current goal remains paused
 for owner's reboot; no automatic reboot, implementation, launch, recording or push.
+
+
+## Owner resumed: source checkpoint before functional repairs
+
+Owner completed reboot and explicitly authorizes committing all existing work and
+pushing a separate GitHub checkpoint branch before functional investigation.
+Temporary worktree was cleared; committed history through d87f9aced6 survived and
+is restored at /Users/dekstroza/Alchemy-worktrees/apple-first-checkpoint-69277-20261118.
+Checkpoint branch codex/apple-first-checkpoint-69277-20261118 adds the five preserved
+historical research notes and recovery documentation, with no indra/source change.
+All raw private runtime evidence remains local. Root verifies outgoing contents,
+source identity, documentation checks and exact remote ref; push success is recorded
+in the private receipt rather than assumed. No release workflow/default merge.
+
+After that checkpoint, owner prioritizes functional failures over FPS optimization.
+PPD311/463/464/466 and related asset/material/bake/PNG failures remain open with
+unknown symptom associations. Existing source/native/build evidence and all failed
+runtime/coverage history remain as recorded; no new build, viewer run or functional
+repair occurs in this checkpoint step. [Checkpoint record](../../research/apple-first-checkpoint-69277-20261118.md).
