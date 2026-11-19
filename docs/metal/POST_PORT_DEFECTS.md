@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-477 -->
+<!-- next-defect-id: PPD-479 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -8201,6 +8201,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 current69331 startup repeats one body/index mismatch (29225actual/18786indexed bytes), using the same sampled purge/recovery. Existing cache was preserved; no new cause or cache-wide conclusion. See69331 runtime research note.
 
+
+- 2026-11-19 source follow-up finds an inherited producer mismatch: updateEntry can commit a smaller body size, then doWrite overwrites the UUID body from offset0 via LLFile::write without truncation (macOS openO_WRONLY|O_CREAT). A successful shorter rewrite leaves an old tail that exact startup validation later rejects. Relevant producer/file-helper bodies match original1eb44; no retained per-entry write sequence proves this caused29225/18786. Register this mechanism before a narrow producer repair; active cache remains untouched by the investigation.
+
+- 2026-11-19 producer repair integrated as79d7a7b711 (agent2e504b7e05): replace only positive-length complete body prefixes with truncate-on-open and require exact header/body byte counts. Header random writes, header-only entries, global LLFile semantics, cache format and active files are unchanged by the investigation. Actual producer+realLLFile temporary-file controls reproduce5baseline failures and pass corrected shorter/repeated-shrink/growth/short-write/open-error cases. Completion cleanup is qualified by PPD477/478; full combined real-file suite26cases/153checks passes. Relevant original producer/file bodies match1eb44. The exact historical write behind the observed size mismatch remains unknown.
+
 ## PPD-341 — Private checkpoint analysis needs complete warning forms and precise sample bounds
 
 - Status: ready_for_owner
@@ -10907,6 +10912,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered at source-confirmed discovery checkpoint before any repair. Existing non-rendering functions must be retained; no dead setting or silent feature removal is authorized.
 
 
+- 2026-11-19 history follow-up finds all3were real archived features, not fake placeholder names. Panel-only restoration042a1c3f4a followed intentionally commented cinematic menu restorationc678b7ff65c; history-merge663df365ca left settings/consumers absent before the Metal reference1eb44. Existing InventoryAddAttachmentBehavior(default0Add/1Replace) can back a real attachment preference; wearable and cinematic options require actual consumer/mode restoration. Historical wearable/attachment booleans defaulttrue; cinematic hover defaultfalse. No inert declarations or source/feature removal selected; this remains separate open UI restoration work, not an attributed Metal regression.
+
 ## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
 
 - Status: investigating
@@ -10945,3 +10952,46 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered during whole-consumer integration review, before a candidate using PPD471 was launched. Existing14whole-body controls pass on the PPD471 source (113checks), with two expected baseline failures proving duplicate auxiliary data loss. Additional oversized probes exposed this separate validation gap; no fixture failure was hidden or relabeled as owner runtime proof.
 
 - 2026-11-19 local repair integrated asde0ce5052d (agentafd5e89078). Callback-only duplicates check reconstructed full size before validity/retention; oversize follows existing missing-asset cancellation/fetch-stop contract without changing published GPU/full dimensions. Clear stale incoming raw validity before destruction so rejected bytes cannot replace a valid saved copy. Actual whole-consumer/upload-queue/callback/cleanup22cases244checks passASan/UBSan; baseline has5expected failures, removing only validity reset has1expected saved-copy failure. Independent review confirms the saved-level1/incoming0 fixture matches the actual replacement policy. Generic auxiliary channels/sampling dimensions remain unchanged.
+
+
+## PPD-477 — Failed cache writes lose the state needed to remove their entry
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex texture-cache producer review
+- Discovered: 2026-11-19
+- Original reference: Original1eb44/current LLTextureCacheWorker::finishWork reports write failure, then sets mDataSize0; later endWork removes the cache entry only if mDataSize<0. Actual LLWorkerClass finishRequest/checkWork ordering runs those boundaries in that order.
+- Evidence: [Warning runtime/cache investigation](research/warning-input-runtime-69331-20261119.md); lltexturecache.cpp finishWork/endWork and llworkerthread.cpp WorkRequest::finishRequest/checkWork.
+- Next action: Execute actual worker completion/cleanup cases and preserve a failed write's negative state until entry cleanup while retaining success/read/abort ownership and callback behavior. Keep optional cache failure independent of successful texture decode.
+- Verification: Source proves failed write state is erased before the intended per-entry invalidation check. No retained live failure proves this caused an observed mismatch. Positive short cache writes require exact-byte rejection in the PPD340 producer scope; callbackCacheWrite intentionally settles optional-cache waiting and must not turn cache failure into a texture/network failure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before repair. Narrow completion-state correction is separate from PPD340 successful-shorter-rewrite truncation. Broader cache transaction redesign is not selected; this record remains open rather than being deferred without owner authorization.
+
+
+
+- 2026-11-19 first local477 repair337c9647c8/3ad35e preserves the negative sentinel and passes ordinary completion cases, but independent ownership review and an actual-body overlap case find late A cleanup can remove newer sameUUID B (PPD478). That qualification rejects the initial implementation for delivery. The corrective plan moves completed failed-write cleanup to the serial cache worker before B executes and clears handled state; no per-generation framework or optional-fetch failure policy change.
+
+- 2026-11-19 corrective ownership repair integrated asc5102a03b0 (agent330fcff4ce). For completed failed writes, finishWork invalidates while still on the serial cache queue, before responder delivery/any later writer, then clears the handled sentinel. The ordinary write reset is restored; genuine cache abort, read and optional-fetch behavior remain original. Initial337c9647c8 delayed-removal implementation is superseded and retained, not approved for delivery. Full26/153 source-body/real-file suite and full cache TU compile pass; peer review finds no remaining scoped writer issue. Root's generated normal CMake executable also passes26/153 underASan/UBSan.
+
+## PPD-478 — Deferred failed-writer cleanup can remove a newer cache entry
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex cache lifetime integration review
+- Discovered: 2026-11-19
+- Original reference: Cache writes serialize on one LLQueuedThread, but fetch deleteRequest removes A from its UUID map before its deferred cache handle retires, so B can write the same UUID before late A endWork. Initial PPD477 repair restores delayed UUID-only removal without operation ownership.
+- Evidence: [Warning/cache repair investigation](research/warning-input-runtime-69331-20261119.md); private ppd340-477-independent-review-01 seven-step source trace and ppd477-cleanup-repair-01/late-cleanup-overlap actual-body23case/125check red proof.
+- Next action: Complete failed-write invalidation on the serial cache worker before later queued writes execute; clear the handled failure state so late endWork cannot delete a replacement. Preserve genuinely aborted-work policy and optional-cache callback completion. Test failed A→successful sameUUID B→late A cleanup, null responder and read/success/abort cases.
+- Verification: Initial local337c9647c8/agent3ad35e passes22ordinary cases but fails one additional overlap case. No candidate with that patch has been launched. The prior one-active-fetch-map assumption did not cover scheduled-deletion workers and is withdrawn.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before corrective repair. Initial477 source remains retained in local history; independent review blocks its acceptance until cleanup ownership is corrected. Controlled removal establishes the ordering defect; actual runtime occurrence is not claimed. No active cache mutation or push.
+
+- 2026-11-19 c5102a03b0/330fcff4ce corrects cleanup ownership without adding state or a generation framework. Both responder and null-responder failedA→successfulB→lateAend paths now preserveB; normal write/read/abort/callback ownership controls pass. Rejected initial completion13cases/63checks has6expected failures; corrected combined26/153 haszero. Actual queue-lock→header/ID/file cleanup and corruption fallback have no inspected reverse header→queue/worker wait. Independent review verifies source/bodies and retained evidence. Read cleanup remains original; this is not a general cache-generation safety claim. No viewer using the rejected patch was launched.

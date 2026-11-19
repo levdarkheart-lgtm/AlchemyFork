@@ -2898,6 +2898,25 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN AND Python3_Interpreter_FOUND)
     find_package(Threads REQUIRED)
+    # Generate only the current producer/completion bodies; the normal target
+    # supplies real LLFile and dependencies for Ninja and Xcode alike.
+    set(cache_write_contract_source "${CMAKE_CURRENT_BINARY_DIR}/lltexturecache_write_contract_generated.cpp")
+    add_custom_command(OUTPUT "${cache_write_contract_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/lltexturecache_write_test.py"
+        --emit-source "${cache_write_contract_source}"
+      DEPENDS lltexturecache.cpp
+        tests/lltexturecache_write_test.py tests/lltexturecache_write_fixture.cpp
+      VERBATIM)
+    add_executable(lltexturecache_write_contract_test "${cache_write_contract_source}")
+    target_link_libraries(lltexturecache_write_contract_test PRIVATE al::flags llcommon)
+    target_compile_options(lltexturecache_write_contract_test PRIVATE
+      -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(lltexturecache_write_contract_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME "newview/texture_cache_write_contract"
+      COMMAND lltexturecache_write_contract_test all)
+    set_tests_properties("newview/texture_cache_write_contract"
+      PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     add_test(NAME "newview/texture_fetch_results_contract"
       COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/llviewertexture_fetch_results_test.py")

@@ -28,18 +28,25 @@ def block(text, start):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision')
-    parser.add_argument('--build-dir', type=Path, required=True)
+    parser.add_argument('--build-dir', type=Path)
+    parser.add_argument('--emit-source', type=Path, help='Generate the actual-body fixture for a native CMake test target')
     parser.add_argument('--config', default='Release')
     parser.add_argument('--suite', choices=['body', 'completion', 'all'], default='all')
     parser.add_argument('--output-dir', type=Path)
     args = parser.parse_args()
-    build = args.build_dir.resolve()
     source = (subprocess.check_output(['git', 'show', f'{args.revision}:indra/newview/lltexturecache.cpp'], cwd=ROOT, text=True)
               if args.revision else (ROOT / 'indra/newview/lltexturecache.cpp').read_text())
     signatures = ['bool LLTextureCacheRemoteWorker::doWrite()',
                   'void LLTextureCacheWorker::finishWork(', 'void LLTextureCacheWorker::endWork(']
     bodies = [block(source, source.index(signature)) for signature in signatures]
     generated = (HERE / 'lltexturecache_write_fixture.cpp').read_text().replace('// @PRODUCTION@', '\n\n'.join(bodies))
+    if args.emit_source:
+        args.emit_source.parent.mkdir(parents=True, exist_ok=True)
+        args.emit_source.write_text(generated)
+        return 0
+    if not args.build_dir:
+        parser.error('--build-dir is required unless --emit-source is used')
+    build = args.build_dir.resolve()
     commands = json.loads((build / 'compile_commands.json').read_text())
     original = next(command for command in commands if command['file'].endswith('/tests/llfile_test.cpp') and f'/{args.config}/' in command['command'])
     lines = (build / f'CMakeFiles/impl-{args.config}.ninja').read_text().splitlines()
