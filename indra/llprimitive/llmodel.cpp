@@ -1684,12 +1684,16 @@ void LLMeshSkinInfo::updateHash()
     hash.update((const void*)mJointNums.data(), sizeof(S32) * mJointNums.size());
 
     //mInvBindMatrix
-    F32* src = mInvBindMatrix[0].getF32ptr();
-
-    for (size_t i = 0, count = mInvBindMatrix.size() * 16; i < count; ++i)
+    // PPD-313: empty/mismatch-cleared bindings have no first matrix. Preserve
+    // the established hash byte order and quantization for nonempty inputs.
+    if (!mInvBindMatrix.empty())
     {
-        S32 t = ll_round(src[i] * 10000.f);
-        hash.update((const void*)&t, sizeof(S32));
+        F32* src = mInvBindMatrix[0].getF32ptr();
+        for (size_t i = 0, count = mInvBindMatrix.size() * 16; i < count; ++i)
+        {
+            S32 t = ll_round(src[i] * 10000.f);
+            hash.update((const void*)&t, sizeof(S32));
+        }
     }
     //hash.update((const void*)mInvBindMatrix.data(), sizeof(LLMatrix4a) * mInvBindMatrix.size());
 

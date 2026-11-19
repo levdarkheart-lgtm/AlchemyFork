@@ -64,7 +64,8 @@ public:
     // cached multiply of mBindShapeMatrix and mInvBindMatrix
     matrix_list_t mBindPoseMatrix;
 
-    LLMatrix4a mBindShapeMatrix;
+    // PPD-313: the optional bind-shape field defaults to the neutral transform.
+    LLMatrix4a mBindShapeMatrix = LLMatrix4a::identity();
 
     float mPelvisOffset;
     bool mLockScaleIfJointPosition;

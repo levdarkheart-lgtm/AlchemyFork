@@ -10885,9 +10885,9 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
         //build matrix palette
         U32 count = LLSkinningUtil::getMeshJointCount(skin);
         entry.mMatrixPalette.resize(count);
-        LLSkinningUtil::initSkinningMatrixPalette(&(entry.mMatrixPalette[0]), count, skin, this);
+        LLSkinningUtil::initSkinningMatrixPalette(entry.mMatrixPalette.data(), count, skin, this);
 
-        const LLMatrix4a* mat = &(entry.mMatrixPalette[0]);
+        const LLMatrix4a* mat = entry.mMatrixPalette.data();
 
         entry.mGLMp.resize(4 + count * 12);
 
