@@ -43,11 +43,45 @@ struct ALNativeFrameBudget::State
         limits.preparation_jobs = std::max(limits.preparation_jobs, 1u);
         limits.preparation_bytes_in_flight = std::max<std::uint64_t>(limits.preparation_bytes_in_flight, 1);
         limits.maximum_deferral_frames = std::max<Frame>(limits.maximum_deferral_frames, 1);
+        updateDecodePressure();
     }
     mutable std::mutex mutex;
     Limits limits;
     FrameInputs inputs;
     Snapshot stats;
+    // Exact two-word sum: releasing an overflowing estimate must recover
+    // immediately while other estimates remain, rather than stick at saturation.
+    std::uint64_t decode_bytes_low = 0, decode_bytes_high = 0;
+    void updateDecodePressure() noexcept
+    {
+        stats.decode_estimate_saturated = decode_bytes_high != 0;
+        stats.decode_estimated_bytes_in_flight = stats.decode_estimate_saturated
+            ? std::numeric_limits<std::uint64_t>::max() : decode_bytes_low;
+        const auto available = std::min(inputs.os_available_bytes, inputs.process_headroom_bytes);
+        stats.decode_ahead_headroom_known = available != ALNativeFrameBudget::unknown_bytes;
+        // Initial UNMEASURED policy: use one eighth of known spare CPU memory;
+        // neither queued logical bytes nor estimates are added to resident RAM.
+        const auto spare = available > inputs.minimum_headroom_bytes
+            ? available - inputs.minimum_headroom_bytes : 0;
+        stats.decode_ahead_target_bytes = stats.decode_ahead_headroom_known
+            ? spare / 8 : 64ULL * 1024 * 1024;
+        stats.decode_ahead_release_bytes = stats.decode_ahead_target_bytes * 3 / 4;
+        stats.decode_ahead_pressure_saturated = stats.decode_estimate_saturated ||
+            stats.decode_unknown_estimates_in_flight != 0;
+        stats.decode_ahead_pressure_bytes = stats.decode_ahead_pressure_saturated
+            ? std::numeric_limits<std::uint64_t>::max()
+            : saturatedSum(stats.streaming.queued_input_bytes,
+                stats.decode_estimated_bytes_in_flight, stats.decode_ahead_pressure_saturated);
+        if (stats.decode_ahead_target_bytes == 0)
+            stats.decode_ahead_pressure = true;
+        else if (stats.decode_ahead_pressure)
+        {
+            if (stats.decode_ahead_pressure_bytes <= stats.decode_ahead_release_bytes)
+                stats.decode_ahead_pressure = false;
+        }
+        else if (stats.decode_ahead_pressure_bytes >= stats.decode_ahead_target_bytes)
+            stats.decode_ahead_pressure = true;
+    }
     std::thread::id main_observation_owner;
     bool mayObserveMain(Frame frame) const noexcept
     {
@@ -282,6 +316,7 @@ void ALNativeFrameBudget::beginFrame(const FrameInputs& inputs)
         (inputs.native_budget_bytes != 0 && state.stats.native_admission_allocated_bytes >= inputs.native_budget_bytes) ||
         (inputs.os_available_bytes != unknown_bytes && inputs.os_available_bytes < inputs.minimum_headroom_bytes) ||
         (inputs.process_headroom_bytes != unknown_bytes && inputs.process_headroom_bytes < inputs.minimum_headroom_bytes);
+    state.updateDecodePressure();
 }
 
 void ALNativeFrameBudget::recordRequiredMainWork(std::uint64_t cpu_nanoseconds)
@@ -331,6 +366,7 @@ void ALNativeFrameBudget::updateStreaming(const StreamingBacklog& backlog)
     const auto publications = mState->stats.streaming.pending_publications;
     mState->stats.streaming = backlog;
     mState->stats.streaming.pending_publications = publications;
+    mState->updateDecodePressure();
 }
 
 void ALNativeFrameBudget::setPendingPublications(std::uint64_t count)
@@ -341,6 +377,54 @@ void ALNativeFrameBudget::setPendingPublications(std::uint64_t count)
 
 ALNativeFrameBudget::Credit::Credit(std::shared_ptr<State> state, Work work, std::uint64_t bytes)
     : mState(std::move(state)), mWork(work), mBytes(bytes) {}
+
+ALNativeFrameBudget::DecodeEstimate::DecodeEstimate(
+    std::shared_ptr<State> state, std::uint64_t bytes, bool known)
+    : mState(std::move(state)), mBytes(bytes), mKnown(known)
+{
+    std::lock_guard lock(mState->mutex);
+    ++mState->stats.decode_estimates_in_flight;
+    if (mKnown)
+    {
+        const auto before = mState->decode_bytes_low;
+        mState->decode_bytes_low += mBytes;
+        if (mState->decode_bytes_low < before) ++mState->decode_bytes_high;
+    }
+    else ++mState->stats.decode_unknown_estimates_in_flight;
+    mState->updateDecodePressure();
+}
+ALNativeFrameBudget::DecodeEstimate::DecodeEstimate(DecodeEstimate&& other) noexcept
+    : mState(std::move(other.mState)), mBytes(other.mBytes), mKnown(other.mKnown) {}
+ALNativeFrameBudget::DecodeEstimate& ALNativeFrameBudget::DecodeEstimate::operator=(DecodeEstimate&& other) noexcept
+{
+    if (this != &other)
+    {
+        reset();
+        mState = std::move(other.mState);
+        mBytes = other.mBytes;
+        mKnown = other.mKnown;
+    }
+    return *this;
+}
+ALNativeFrameBudget::DecodeEstimate::~DecodeEstimate() { reset(); }
+void ALNativeFrameBudget::DecodeEstimate::reset() noexcept
+{
+    auto state = std::move(mState);
+    if (!state) return;
+    std::lock_guard lock(state->mutex);
+    --state->stats.decode_estimates_in_flight;
+    if (mKnown)
+    {
+        if (state->decode_bytes_low < mBytes) --state->decode_bytes_high;
+        state->decode_bytes_low -= mBytes;
+    }
+    else --state->stats.decode_unknown_estimates_in_flight;
+    state->updateDecodePressure();
+}
+ALNativeFrameBudget::DecodeEstimate ALNativeFrameBudget::beginDecodeEstimate(std::uint64_t bytes, bool known)
+{
+    return DecodeEstimate(mState, bytes, known);
+}
 
 ALNativeFrameBudget::Credit::~Credit()
 {
@@ -574,32 +658,13 @@ unsigned ALNativeFrameBudget::decodeCeiling(unsigned minimum, unsigned current, 
 {
     (void)current;
     std::lock_guard lock(mState->mutex);
-    const auto& state = *mState;
+    auto& state = *mState;
     const auto& stats = state.stats;
     minimum = std::max(minimum, 1u);
     maximum = std::max(maximum, minimum);
     if (stats.draining) return maximum;
-    if (!stats.initialized)
-    {
-        // Preserve existing startup upload/preparation behavior, while an
-        // actual scene receipt already owns bounded downstream work even
-        // before the first outer frame plan has been published.
-        if (stats.scene_publications_in_flight >= state.limits.scene_publications_in_flight ||
-            stats.scene_bytes_in_flight >= state.limits.scene_bytes_in_flight)
-            return minimum;
-        return maximum - std::min(maximum - minimum, stats.scene_publications_in_flight);
-    }
-    const bool downstream_full = stats.streaming.queued_requests >= state.limits.uploads_in_flight ||
-        stats.streaming.queued_input_bytes >= state.limits.upload_bytes_in_flight ||
-        stats.streaming.pending_publications >= state.limits.uploads_in_flight ||
-        stats.uploads_in_flight >= state.limits.uploads_in_flight ||
-        stats.upload_bytes_in_flight >= state.limits.upload_bytes_in_flight ||
-        stats.scene_publications_in_flight >= state.limits.scene_publications_in_flight ||
-        stats.scene_bytes_in_flight >= state.limits.scene_bytes_in_flight ||
-        stats.streaming.pressure_requests != 0;
-    if (stats.main_busy || stats.memory_pressure || downstream_full) return minimum;
-    const auto active_native_debt = std::uint64_t(stats.preparation_in_flight) + stats.scene_publications_in_flight;
-    return maximum - static_cast<unsigned>(std::min<std::uint64_t>(maximum - minimum, active_native_debt));
+    state.updateDecodePressure();
+    return stats.memory_pressure || stats.decode_ahead_pressure ? minimum : maximum;
 }
 
 ALNativeFrameBudget::Snapshot ALNativeFrameBudget::snapshot() const

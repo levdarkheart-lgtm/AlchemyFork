@@ -5,9 +5,11 @@
  */
 #include "linden_common.h"
 #include "../alnativeframebudget.h"
+#include "../../llimage/alimagedecodescheduler.h"
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <memory>
 #include <vector>
 #include <limits>
@@ -43,6 +45,280 @@ Budget::Limits smallScene()
     limits.scene_bytes_per_frame = 16;
     limits.scene_bytes_in_flight = 32;
     return limits;
+}
+
+TEST_CASE("Decode ahead remains available under main-only CPU or GPU wait pressure",
+          "[native-frame-budget][decode-ahead][PPD-486]")
+{
+    constexpr auto GiB = std::uint64_t{1024} * 1024 * 1024;
+    for (bool gpu_wait : {false, true})
+    {
+        INFO("main-only GPU wait=" << gpu_wait);
+        Budget budget;
+        auto input = frame(10);
+        input.os_available_bytes = 16 * GiB;
+        input.process_headroom_bytes = 24 * GiB;
+        input.required_main_cpu_ns = gpu_wait ? 5'000'000 : 45'000'000;
+        budget.beginFrame(input);
+        if (gpu_wait) REQUIRE(budget.recordRequiredMainGpuWait(10, 41'000'000, 1'000'000));
+        REQUIRE(budget.snapshot().main_busy);
+        REQUIRE_FALSE(budget.snapshot().memory_pressure);
+        CHECK(budget.snapshot().streaming.queued_input_bytes == 0);
+        CHECK(budget.snapshot().uploads_in_flight == 0);
+        CHECK(budget.snapshot().scene_publications_in_flight == 0);
+        CHECK(budget.snapshot().preparation_in_flight == 0);
+        for (unsigned current : {2u, 4u, 6u}) CHECK(budget.decodeCeiling(2, current, 6) == 6);
+        // Main ownership still throttles optional work and upload pacing.
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 10));
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::hero_probe, 0, 10));
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 10));
+        auto upload = budget.tryAcquire(Budget::Work::upload, 4, 10);
+        REQUIRE(upload);
+        CHECK(upload.reason == Budget::Reason::progress);
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 4, 10));
+        CHECK(budget.snapshot().main_busy);
+    }
+}
+
+TEST_CASE("Actual budget and decoder scheduler separate decode ahead from CPU thermal adaptation",
+          "[native-frame-budget][decode-ahead][PPD-486]")
+{
+    using Scheduler = ALImageDecodeScheduler;
+    constexpr auto GiB = std::uint64_t{1024} * 1024 * 1024;
+    Budget budget;
+    auto input = frame(1);
+    input.os_available_bytes = 16 * GiB;
+    input.process_headroom_bytes = 24 * GiB;
+    input.required_main_cpu_ns = 45'000'000;
+    budget.beginFrame(input);
+    REQUIRE(budget.snapshot().main_busy);
+    auto now = Scheduler::TimePoint{};
+    const auto clock = [&] { return now; };
+    const auto limits = Scheduler::Limits::fromTopology(10, {8, 2});
+    REQUIRE(limits.minimum == 2);
+    REQUIRE(limits.baseline == 4);
+    REQUIRE(limits.maximum == 6);
+    Scheduler::Pressure cool;
+    cool.cpu_valid = true;
+    cool.system_busy = 0.2;
+    cool.main_thread_busy = 0.95; // Main alone does not imply all cores busy.
+    cool.thermal_level = 0;
+    for (bool adaptive : {false, true})
+    {
+        Scheduler gate(limits, adaptive, clock);
+        auto stats = gate.snapshot();
+        gate.setDownstreamCeiling(budget.decodeCeiling(stats.minimum, stats.current, stats.maximum));
+        CHECK(gate.snapshot().downstream_ceiling == 6);
+        CHECK(gate.snapshot().current == (adaptive ? 4 : 6));
+        for (unsigned half_seconds = 1; half_seconds <= 6; ++half_seconds)
+        {
+            now += std::chrono::milliseconds(500);
+            gate.tick(now, cool);
+        }
+        CHECK(gate.snapshot().current == (adaptive ? 4 : 6));
+    }
+    now = Scheduler::TimePoint{};
+    Scheduler cpu(limits, true, clock);
+    auto busy = cool;
+    busy.system_busy = 0.95;
+    busy.main_thread_busy = 0.90;
+    for (unsigned half_seconds = 1; half_seconds <= 5; ++half_seconds)
+    {
+        now += std::chrono::milliseconds(500);
+        cpu.setDownstreamCeiling(budget.decodeCeiling(2, cpu.snapshot().current, 6));
+        cpu.tick(now, busy);
+    }
+    CHECK(cpu.snapshot().current == 2);
+    CHECK(cpu.snapshot().transition_reason == "cpu-pressure");
+    for (bool low_power : {false, true})
+    {
+        Scheduler capped(limits, true, clock);
+        auto pressure = cool;
+        pressure.low_power = low_power;
+        pressure.thermal_level = low_power ? 0 : 2;
+        capped.setDownstreamCeiling(budget.decodeCeiling(2, 4, 6));
+        capped.tick(now, pressure);
+        CHECK(capped.snapshot().current == 2);
+        CHECK(capped.snapshot().transition_reason == (low_power ? "low-power" : "thermal-serious"));
+    }
+}
+
+TEST_CASE("Decode ahead follows known CPU headroom with an explicit unknown fallback",
+          "[native-frame-budget][decode-ahead][PPD-486]")
+{
+    constexpr auto MiB = std::uint64_t{1024} * 1024;
+    constexpr auto GiB = MiB * 1024;
+    std::uint64_t previous_target = 0;
+    // Representative available-memory observations on32/64GiB machines;
+    // installed RAM is not invented as currently available memory.
+    for (unsigned physical_gib : {32u, 64u})
+    {
+        Budget budget;
+        auto input = frame(1);
+        input.os_available_bytes = physical_gib / 2 * GiB;
+        input.process_headroom_bytes = physical_gib * 3 / 4 * GiB;
+        budget.beginFrame(input);
+        auto stats = budget.snapshot();
+        REQUIRE(stats.decode_ahead_headroom_known);
+        CHECK(stats.decode_ahead_target_bytes == input.os_available_bytes / 8 - 64 * MiB);
+        CHECK(stats.decode_ahead_target_bytes > previous_target);
+        previous_target = stats.decode_ahead_target_bytes;
+        CHECK(stats.decode_ahead_release_bytes == stats.decode_ahead_target_bytes * 3 / 4);
+        Budget::StreamingBacklog ready;
+        ready.queued_requests = 6842;
+        ready.queued_input_bytes = 64 * MiB;
+        ready.pending_publications = 100;
+        ready.pressure_requests = 100;
+        budget.updateStreaming(ready);
+        CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Counts and GPU windows do not size CPU decode-ahead.
+        ready.queued_input_bytes = stats.decode_ahead_target_bytes;
+        budget.updateStreaming(ready);
+        CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+        CHECK(budget.snapshot().decode_ahead_pressure);
+    }
+    Budget unknown;
+    CHECK_FALSE(unknown.snapshot().decode_ahead_headroom_known);
+    CHECK(unknown.snapshot().decode_ahead_target_bytes == 64 * MiB);
+    CHECK(unknown.decodeCeiling(2, 4, 6) == 6);
+    auto input = frame(1);
+    input.process_headroom_bytes = 1024 * MiB; // One known source is useful; unknown OS stays unknown.
+    unknown.beginFrame(input);
+    CHECK(unknown.snapshot().decode_ahead_headroom_known);
+    CHECK(unknown.snapshot().decode_ahead_target_bytes == 64 * MiB);
+    input.frame = 2;
+    input.process_headroom_bytes = 128 * MiB;
+    unknown.beginFrame(input);
+    CHECK(unknown.snapshot().memory_pressure);
+    CHECK(unknown.decodeCeiling(2, 4, 6) == 2);
+    CHECK(unknown.snapshot().decode_ahead_target_bytes == 0);
+    input.frame = 3;
+    input.process_headroom_bytes = input.minimum_headroom_bytes;
+    unknown.beginFrame(input);
+    CHECK_FALSE(unknown.snapshot().memory_pressure);
+    for (unsigned i = 0; i < 5; ++i) CHECK(unknown.decodeCeiling(2, 4, 6) == 2); // Zero target cannot oscillate.
+    input.frame = 4;
+    input.process_headroom_bytes = 8 * GiB;
+    unknown.beginFrame(input);
+    CHECK(unknown.decodeCeiling(2, 2, 6) == 6);
+}
+
+TEST_CASE("Decode estimates combine with ready raw bytes and hysteresis without borrowing GPU credits",
+          "[native-frame-budget][decode-ahead][PPD-486]")
+{
+    Budget budget(smallScene());
+    auto input = frame(1);
+    input.minimum_headroom_bytes = 20;
+    input.os_available_bytes = 100;
+    input.process_headroom_bytes = 200;
+    budget.beginFrame(input);
+    REQUIRE(budget.snapshot().decode_ahead_target_bytes == 10);
+    REQUIRE(budget.snapshot().decode_ahead_release_bytes == 7);
+    auto upload1 = budget.tryAcquire(Budget::Work::upload, 8);
+    auto upload2 = budget.tryAcquire(Budget::Work::upload, 8);
+    REQUIRE(upload1); REQUIRE(upload2);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 1));
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Real upload capacity remains full but raw CPU headroom is free.
+    auto preparation = budget.tryAcquire(Budget::Work::preparation);
+    auto scene = budget.tryAcquire(Budget::Work::scene_publication, 1);
+    REQUIRE(preparation); REQUIRE(scene);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
+    auto estimate = budget.beginDecodeEstimate(6);
+    CHECK(budget.snapshot().decode_estimates_in_flight == 1);
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 6);
+    Budget::StreamingBacklog ready;
+    ready.queued_requests = 1000;
+    ready.queued_input_bytes = 4;
+    budget.updateStreaming(ready);
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 6); // Main queue refresh cannot erase worker debt.
+    CHECK(budget.snapshot().decode_ahead_pressure_bytes == 10);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    ready.queued_input_bytes = 3;
+    budget.updateStreaming(ready);
+    CHECK(budget.snapshot().decode_ahead_pressure_bytes == 9);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2); // Below entry threshold still inside hysteresis.
+    ready.queued_input_bytes = 1;
+    budget.updateStreaming(ready);
+    CHECK(budget.decodeCeiling(2, 2, 6) == 6); // Exact release boundary.
+    ready.queued_input_bytes = 3;
+    budget.updateStreaming(ready);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // No chatter until target reached again.
+    ready.queued_input_bytes = 4;
+    budget.updateStreaming(ready);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    estimate.reset();
+    CHECK(budget.decodeCeiling(2, 2, 6) == 6);
+    CHECK(budget.snapshot().decode_estimates_in_flight == 0);
+    ready.queued_input_bytes = 10;
+    budget.updateStreaming(ready);
+    CHECK(budget.decodeCeiling(0, 4, 3) == 1);
+    CHECK(budget.decodeCeiling(7, 4, 3) == 7);
+    budget.beginDrain();
+    CHECK(budget.decodeCeiling(2, 2, 6) == 6);
+    CHECK(budget.snapshot().uploads_in_flight == 2); // Drain does not revoke owners.
+}
+
+TEST_CASE("Decode estimate ownership survives moves errors overflow and concurrent completion",
+          "[native-frame-budget][decode-ahead][PPD-486]")
+{
+    Budget budget;
+    auto first = budget.beginDecodeEstimate(std::numeric_limits<std::uint64_t>::max() - 10);
+    auto second = budget.beginDecodeEstimate(20);
+    CHECK(budget.snapshot().decode_estimates_in_flight == 2);
+    CHECK(budget.snapshot().decode_estimate_saturated);
+    CHECK(budget.snapshot().decode_ahead_pressure_saturated);
+    first.reset();
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 20);
+    CHECK_FALSE(budget.snapshot().decode_estimate_saturated);
+    CHECK_FALSE(budget.snapshot().decode_ahead_pressure);
+    Budget::DecodeEstimate moved(std::move(second));
+    CHECK(budget.snapshot().decode_estimates_in_flight == 1);
+    first = budget.beginDecodeEstimate(30);
+    moved = std::move(first); // Retires old20 exactly once, transferring30.
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 30);
+    CHECK(budget.snapshot().decode_estimates_in_flight == 1);
+    moved.reset(); moved.reset();
+    CHECK(budget.snapshot().decode_estimates_in_flight == 0);
+    {
+        auto unknown = budget.beginDecodeEstimate(0, false);
+        CHECK(budget.snapshot().decode_unknown_estimates_in_flight == 1);
+        CHECK(budget.snapshot().decode_ahead_pressure_saturated);
+        CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    }
+    CHECK(budget.snapshot().decode_unknown_estimates_in_flight == 0);
+    try
+    {
+        auto failed = budget.beginDecodeEstimate(100);
+        throw 1;
+    }
+    catch (int) {}
+    CHECK(budget.snapshot().decode_estimates_in_flight == 0);
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 0);
+    Budget::DecodeEstimate outliving;
+    {
+        Budget temporary;
+        outliving = temporary.beginDecodeEstimate(1);
+    }
+    outliving.reset(); // Shared state survives the public budget owner.
+    constexpr unsigned count = 16;
+    std::atomic<unsigned> entered{0};
+    std::atomic<bool> release{false};
+    std::vector<std::thread> workers;
+    for (unsigned i = 0; i < count; ++i)
+        workers.emplace_back([&]
+        {
+            auto active = budget.beginDecodeEstimate(4 * 1024 * 1024);
+            entered.fetch_add(1, std::memory_order_release);
+            while (!release.load(std::memory_order_acquire)) std::this_thread::yield();
+        });
+    while (entered.load(std::memory_order_acquire) != count) std::this_thread::yield();
+    CHECK(budget.snapshot().decode_estimates_in_flight == count);
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 64 * 1024 * 1024);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    release.store(true, std::memory_order_release);
+    for (auto& worker : workers) worker.join();
+    CHECK(budget.snapshot().decode_estimates_in_flight == 0);
+    CHECK(budget.snapshot().decode_estimated_bytes_in_flight == 0);
+    CHECK(budget.decodeCeiling(2, 2, 6) == 6);
 }
 }
 
@@ -93,7 +369,7 @@ TEST_CASE("Native frame budget shares main and streaming debt while guaranteeing
     auto input = frame(10);
     input.required_main_cpu_ns = 45'000'000;
     budget.beginFrame(input);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Main pressure still paces upload/probes, not parallel decoding.
     auto upload = budget.tryAcquire(Budget::Work::upload, 4, 10);
     REQUIRE(upload);
     CHECK(upload.reason == Budget::Reason::progress);
@@ -107,7 +383,7 @@ TEST_CASE("Native frame budget shares main and streaming debt while guaranteeing
     budget.beginFrame(frame(11));
     Budget::StreamingBacklog backlog;
     backlog.queued_requests = 2;
-    backlog.queued_input_bytes = 16;
+    backlog.queued_input_bytes = budget.snapshot().decode_ahead_target_bytes;
     backlog.oldest_request_frame = 7;
     budget.updateStreaming(backlog);
     CHECK(budget.decodeCeiling(2, 4, 6) == 2);
@@ -115,7 +391,7 @@ TEST_CASE("Native frame budget shares main and streaming debt while guaranteeing
     CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     auto preparation = budget.tryAcquire(Budget::Work::preparation);
     REQUIRE(preparation);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 5);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Preparation owns a separate CPU/byte lane.
 }
 
 TEST_CASE("Nested frames cannot refill native work and draining does not require future ticks",
@@ -150,7 +426,7 @@ TEST_CASE("Native completion credits safely outlive the frame policy owner",
     SUCCEED("Completion retirement does not borrow the destroyed policy owner");
 }
 
-TEST_CASE("A single large native upload constrains decoder starts until its completion owner releases",
+TEST_CASE("A single large native upload retains its own credit independently of CPU decode ahead",
           "[native-frame-budget][PPD-121]")
 {
     Budget budget;
@@ -163,15 +439,15 @@ TEST_CASE("A single large native upload constrains decoder starts until its comp
     CHECK(occupied.streaming.queued_input_bytes == 0);
     CHECK(occupied.uploads_in_flight == 1);
     CHECK(occupied.uploads_in_flight < Budget::Limits{}.uploads_in_flight);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 1));
 
     // Submission/publication does not release the credit held by its actual
-    // completion owner. Reducing new decode starts cancels no accepted work.
+    // completion owner. CPU decode-ahead does not consume that GPU lane.
     auto completion_owner = upload.credit;
     upload.credit.reset();
     budget.beginFrame(frame(2));
-    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     CHECK(budget.snapshot().retired == 0);
     completion_owner.reset();
     CHECK(budget.snapshot().upload_bytes_in_flight == 0);
@@ -254,7 +530,7 @@ TEST_CASE("Native source publication enforces separate frame and active byte cei
     auto third = budget.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(third);
     CHECK(budget.snapshot().scene_bytes_in_flight == 24);
     CHECK(budget.snapshot().uploads_in_flight == 0);CHECK(budget.snapshot().upload_bytes_in_flight == 0);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 2); // actual scene bytes, no fabricated image upload.
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Scene bytes retain their own owner limit.
     auto upload = budget.tryAcquire(Budget::Work::upload, 8);REQUIRE(upload);
     first.credit.reset();second.credit.reset();
     CHECK(budget.snapshot().scene_bytes_in_flight == 8);
@@ -322,7 +598,7 @@ TEST_CASE("Source publication startup bounds checked sums and stale frame plans 
     Budget startup(smallScene());
     auto first = startup.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(first);
     auto second = startup.tryAcquire(Budget::Work::scene_publication, 8);REQUIRE(second);
-    CHECK(startup.decodeCeiling(2, 4, 6) == 2);
+    CHECK(startup.decodeCeiling(2, 4, 6) == 6);
     CHECK_FALSE(startup.tryAcquire(Budget::Work::scene_publication, 1));
     first.credit.reset();second.credit.reset();
     CHECK(startup.decodeCeiling(2, 4, 6) == 6);
@@ -333,12 +609,12 @@ TEST_CASE("Source publication startup bounds checked sums and stale frame plans 
     startup.beginFrame(frame(3));startup.beginFrame(frame(2));
     CHECK(startup.snapshot().frame == 3);CHECK(startup.snapshot().scene_bytes_this_frame == 16);
     CHECK_FALSE(startup.tryAcquire(Budget::Work::scene_publication, 1));
-    CHECK(startup.decodeCeiling(2, 4, 6) == 6); // retired work is no longer decoder debt.
+    CHECK(startup.decodeCeiling(2, 4, 6) == 6); // Frame/source credit accounting is independent of decode-ahead.
 
     auto limits = smallScene();limits.scene_bytes_per_frame = limits.scene_bytes_in_flight = Budget::unknown_bytes;
     Budget checked(limits);auto maximum = checked.tryAcquire(Budget::Work::scene_publication, Budget::unknown_bytes);REQUIRE(maximum);
     CHECK(checked.snapshot().scene_bytes_in_flight == Budget::unknown_bytes);
-    CHECK(checked.decodeCeiling(2, 4, 6) == 2);
+    CHECK(checked.decodeCeiling(2, 4, 6) == 6);
     CHECK_FALSE(checked.tryAcquire(Budget::Work::scene_publication, 1));
     maximum.credit.reset();CHECK(checked.snapshot().scene_bytes_in_flight == 0);
     CHECK(checked.decodeCeiling(2, 4, 6) == 6);
@@ -347,26 +623,26 @@ TEST_CASE("Source publication startup bounds checked sums and stale frame plans 
     checked.beginFrame(frame(1));CHECK(checked.tryAcquire(Budget::Work::scene_publication, 1));
 }
 
-TEST_CASE("Actual source credit debt reduces decoder starts without crossing the finite floor",
+TEST_CASE("Actual source and preparation credits do not replace the CPU decode ahead memory lane",
           "[native-frame-budget][scene-publication]")
 {
     Budget budget;budget.beginFrame(frame(1));std::vector<Budget::Lease> sources;
     CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     sources.push_back(budget.tryAcquire(Budget::Work::scene_publication, 1).credit);REQUIRE(sources.back());
-    CHECK(budget.decodeCeiling(2, 4, 6) == 5);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     auto preparation = budget.tryAcquire(Budget::Work::preparation);REQUIRE(preparation);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 4);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     for(unsigned i = 0; i < 3; ++i)
     {sources.push_back(budget.tryAcquire(Budget::Work::scene_publication, 1).credit);REQUIRE(sources.back());}
-    CHECK(budget.decodeCeiling(2, 4, 6) == 2);CHECK(budget.decodeCeiling(0, 4, 3) == 1);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6);CHECK(budget.decodeCeiling(0, 4, 3) == 3);
     CHECK(budget.decodeCeiling(7, 4, 3) == 7);
     auto state = budget.snapshot();CHECK(state.uploads_in_flight == 0);CHECK(state.upload_bytes_in_flight == 0);
     CHECK(state.streaming.pending_publications == 0);CHECK(state.optional_views_in_flight == 0);
-    sources.clear();CHECK(budget.decodeCeiling(2, 4, 6) == 5);
+    sources.clear();CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     preparation.credit.reset();CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     budget.beginFrame(frame(2));
     auto large = budget.tryAcquire(Budget::Work::scene_publication, Budget::Limits{}.scene_bytes_in_flight);REQUIRE(large);
-    CHECK(budget.snapshot().scene_publications_in_flight == 1);CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    CHECK(budget.snapshot().scene_publications_in_flight == 1);CHECK(budget.decodeCeiling(2, 4, 6) == 6);
     large.credit.reset();CHECK(budget.decodeCeiling(2, 4, 6) == 6);
 }
 
@@ -1296,7 +1572,7 @@ TEST_CASE("Closed main GPU pressure coordinates the next early admission without
     CHECK(early.required_main_gpu_pressure_ns == 38'000'000);
     CHECK(early.required_main_pressure_ns == 52'000'000);
     REQUIRE(early.main_busy);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 2);
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // The preserved wait hint still governs optional owners below.
     CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 11));
     CHECK_FALSE(budget.tryAcquire(Budget::Work::hero_probe, 0, 11));
     CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 11));

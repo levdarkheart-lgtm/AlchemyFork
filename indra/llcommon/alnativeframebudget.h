@@ -87,6 +87,17 @@ public:
         bool draining = false;
         bool main_busy = false;
         bool memory_pressure = false;
+        // Soft CPU decode-ahead accounting, independent of GPU publication credits.
+        std::uint64_t decode_estimates_in_flight = 0;
+        std::uint64_t decode_estimated_bytes_in_flight = 0;
+        std::uint64_t decode_unknown_estimates_in_flight = 0;
+        bool decode_estimate_saturated = false;
+        bool decode_ahead_headroom_known = false;
+        std::uint64_t decode_ahead_target_bytes = 0;
+        std::uint64_t decode_ahead_release_bytes = 0;
+        std::uint64_t decode_ahead_pressure_bytes = 0;
+        bool decode_ahead_pressure_saturated = false;
+        bool decode_ahead_pressure = false;
         std::uint64_t native_driver_allocated_bytes = 0;
         std::uint64_t native_owned_reported_bytes = 0;
         std::uint64_t native_owned_unknown_declared_bytes = 0;
@@ -155,6 +166,25 @@ public:
         bool mAcquired = false;
     };
     using Lease = std::shared_ptr<const Credit>;
+    // Accounting only: this never rejects an accepted decode. Keep it through
+    // the responder; it does not claim to own all retained raw/codec memory.
+    class DecodeEstimate final
+    {
+    public:
+        DecodeEstimate() noexcept = default;
+        DecodeEstimate(DecodeEstimate&&) noexcept;
+        DecodeEstimate& operator=(DecodeEstimate&&) noexcept;
+        DecodeEstimate(const DecodeEstimate&) = delete;
+        DecodeEstimate& operator=(const DecodeEstimate&) = delete;
+        ~DecodeEstimate();
+        void reset() noexcept;
+    private:
+        friend class ALNativeFrameBudget;
+        DecodeEstimate(std::shared_ptr<State>, std::uint64_t bytes, bool known);
+        std::shared_ptr<State> mState;
+        std::uint64_t mBytes = 0;
+        bool mKnown = true;
+    };
     struct Decision
     {
         Lease credit;
@@ -167,6 +197,7 @@ public:
     ALNativeFrameBudget(const ALNativeFrameBudget&) = delete;
     ALNativeFrameBudget& operator=(const ALNativeFrameBudget&) = delete;
     static ALNativeFrameBudget& instance();
+    DecodeEstimate beginDecodeEstimate(std::uint64_t bytes, bool known = true);
 
     // Duplicate/nested or stale frame starts cannot refill the current plan.
     void beginFrame(const FrameInputs&);
