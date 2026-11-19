@@ -3704,8 +3704,9 @@ void LLImageGL::checkActiveThread()
 
 
 LLImageGLThread::LLImageGLThread(LLWindow* window)
-    // We want exactly one thread.
-    : LL::ThreadPool("LLImageGL", 1)
+    // The upload batch and its queued flush barrier must run on the same
+    // worker. A saved ThreadPoolSizes override must not widen this owner.
+    : LL::ThreadPool("LLImageGL", 1, 1024 * 1024, true, true)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     (void)window;

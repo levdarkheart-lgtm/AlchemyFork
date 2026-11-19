@@ -16,6 +16,7 @@
 #include "../../almetal/almetaldevice.h"
 #include "../../almetal/almetalresource.h"
 #include "llimage.h"
+#include "llevents.h"
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
 #include <arm_neon.h>
@@ -2412,4 +2413,32 @@ TEST_CASE_METHOD(llimage_native_data,
     CHECK_FALSE(LLImageGLThread::sEnabledMedia);
     LLImageGL::cleanupClass();
     LLImageGL::setMetalTextureAuthority(true);
+}
+
+TEST_CASE_METHOD(llimage_native_data,
+                 "LLImageGL: a saved pool width cannot widen the native batch owner",
+                 "[LLImageGL][almetal][native-image-coverage][native-upload-owner-width]")
+{
+    // Exercise the real CommonControl query route without an account/settings file.
+    unsigned queries = 0;
+    LLTempBoundListener controls = LLEventPumps::instance().obtain("LLViewerControl").listen(
+        "native-image-worker-width", [&](const LLSD& request)
+        {
+            if (request["op"].asString() == "get" && request["group"].asString() == "Global" &&
+                request["key"].asString() == "ThreadPoolSizes")
+            {
+                ++queries;
+                LLSD response;
+                response["value"]["LLImageGL"] = 8;
+                LLEventPumps::instance().obtain(request["reply"].asString()).post(response);
+            }
+            return false;
+        });
+    CHECK(LL::ThreadPoolBase::getConfiguredWidth("LLImageGL", 1) == 8);
+    CHECK(queries == 1);
+    LLImageGL::initClass(nullptr, 1, false, true, false);
+    REQUIRE(LLImageGLThread::instanceExists());
+    CHECK(LL::ThreadPoolBase::getWidth("LLImageGL", 0) == 1);
+    CHECK(queries == 1); // Fixed width never consults the conflicting setting.
+    LLImageGL::cleanupClass();
 }
