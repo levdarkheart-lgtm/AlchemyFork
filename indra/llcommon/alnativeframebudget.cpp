@@ -575,12 +575,14 @@ ALNativeFrameBudget::Decision ALNativeFrameBudget::tryAcquire(
                  (bytes > limits.upload_bytes_per_frame ||
                   stats.upload_bytes_this_frame > limits.upload_bytes_per_frame - bytes));
             if (frame_full) return deny(Reason::frame_work);
-            if (stats.main_busy || stats.memory_pressure)
+            // The texture-list owner already bounds elapsed main-thread time,
+            // including synchronous fallback. Its worker posts may overlap a
+            // busy main/GPU frame while these count/byte/completion caps hold.
+            // Real memory pressure retains the one-item progress lane.
+            if (stats.memory_pressure)
             {
-                // One upload each frame is the forward-progress lane, while
-                // additional traffic competes with main/probe work normally.
                 if (stats.uploads_this_frame != 0)
-                    return deny(stats.memory_pressure ? Reason::memory_pressure : Reason::frame_work);
+                    return deny(Reason::memory_pressure);
                 reason = Reason::progress;
             }
         }
