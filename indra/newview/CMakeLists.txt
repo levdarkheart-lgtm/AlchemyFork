@@ -1895,6 +1895,10 @@ if(AL_BUILD_VIEWER)
     pipeline_hero_capture_readiness_native.inl
     pipeline_snapshot_incomplete_native.inl
     pipeline_zero_lighting_inputs_native.inl
+    pipeline_frame_product_reset_native.inl
+    pipeline_lighting_batch_settlement_native.inl
+    pipeline_local_lighting_result_native.inl
+    pipeline_projector_lighting_result_native.inl
     pipeline_base_lighting_dispatch_native.inl
     pipeline_tree_capture_native.inl
     pipeline_shadow_terrain_preflight_native.inl
@@ -2618,6 +2622,7 @@ if(AL_BUILD_TESTS)
       tests/almetalbenchmark_provenance_test.cpp
       tests/alprobereadiness_test.cpp
       tests/alheropublicationinputs_test.cpp
+      tests/lighting_retry_counters_test.cpp
       tests/alpickactionpolicy_test.cpp
       tests/almotionpredictor_test.cpp
       tests/almaturitypreference_test.cpp

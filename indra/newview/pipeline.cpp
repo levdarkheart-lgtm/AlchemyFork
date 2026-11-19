@@ -1381,6 +1381,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 projector_lighting_failed_frames = 0;
     bool lighting_composition_attempted = false;
     U32 lighting_composition_failed_frames = 0;
+    // Consecutive actual outer-lighting commit failures; not per-frame status.
+    U32 lighting_batch_commit_failed_frames = 0;
     bool opaque_post_deferred_attempted = false;
     bool base_lighting_attempted = false;
     U32 base_lighting_failed_frames = 0;
@@ -2804,6 +2806,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
         capture.projector_lighting_failed_frames = 0;
         capture.lighting_composition_attempted = false;
         capture.lighting_composition_failed_frames = 0;
+        capture.lighting_batch_commit_failed_frames = 0;
         capture.opaque_post_deferred_attempted = false;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
@@ -4170,54 +4173,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         (snapshot_request || request_continuous_world_ui ||
          debug_color_requested) &&
         canCaptureMetalWorldPresentation();
-    if (!capture.frame_active &&
-        (snapshot_request ||
-         (capture.attempted &&
-          (capture.continuous_world_capture || mScenePixelPending ||
-           refresh_scope || refresh_lens_flare || refresh_lens_dirt ||
-           request_world_ui_chain) &&
-          capture.continuous_world_frame != gFrameCount)))
-    {
-        // Continuous SSR history makes every main-world frame a fresh
-        // transaction; a pending one-shot CPU probe or an exactly supported
-        // native scope sample requests the same refresh without making the
-        // chain permanently continuous. Retire only
-        // per-frame products and attempt gates; persistent probe, shadow and
-        // history resources stay live. A failed stage therefore retains the
-        // previous Metal drawable and retries instead of wedging a gate.
-        capture.target.reset();
-        capture.composed_light_target.reset();
-        capture.opaque_post_deferred_target.reset();
-        capture.display_post_target.reset();
-        capture.display_post_frame = std::numeric_limits<U32>::max();
-        capture.presentation_target.reset();
-        capture.presentation_frame = std::numeric_limits<U32>::max();
-        capture.world_ui_target.reset();
-        capture.world_ui_frame = std::numeric_limits<U32>::max();
-        capture.world_ui_chain_active = false;
-        capture.world_ui_chain_counted = false;
-        capture.world_ui_chain_snapshot = false;
-        capture.world_ui_chain_debug_color = false;
-        capture.depth_of_field_target.reset();
-        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-        capture.bloom_target.reset();
-        capture.bloom_frame = std::numeric_limits<U32>::max();
-        capture.base_light_map_target.reset();
-        capture.pending_probe_light_map.reset();
-        capture.main_lighting_ready.reset();
-        capture.base_light_target.reset();
-        capture.attempted = false;
-        capture.local_lighting_attempted = false;
-        capture.local_lighting_failed_frames = 0;
-        capture.projector_lighting_attempted = false;
-        capture.projector_lighting_failed_frames = 0;
-        capture.lighting_composition_attempted = false;
-        capture.lighting_composition_failed_frames = 0;
-        capture.opaque_post_deferred_attempted = false;
-        capture.base_lighting_attempted = false;
-        capture.base_lighting_failed_frames = 0;
-        capture.failed_frames = 0;
-    }
+    #include "pipeline_frame_product_reset_native.inl"
 
     if (capture.frame_active || capture.attempted)
     {
@@ -4758,6 +4714,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.projector_lighting_failed_frames = 0;
         capture.lighting_composition_attempted = false;
         capture.lighting_composition_failed_frames = 0;
+        capture.lighting_batch_commit_failed_frames = 0;
         capture.opaque_post_deferred_attempted = false;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
@@ -17767,24 +17724,7 @@ void LLPipeline::renderMetalWorldLocalLights(
         return;
     }
 
-    std::string error;
-    if (!capture.renderer->accumulateLocalLights(
-            *capture.base_light_target, scene, &error))
-    {
-        if (++capture.local_lighting_failed_frames >=
-            MetalWorldSimpleCapture::max_failed_frames)
-        {
-            capture.local_lighting_attempted = true;
-            LL_WARNS("Metal")
-                << "Native world local-point-light owner left the native frame incomplete after "
-                << capture.local_lighting_failed_frames
-                << " failures: " << error << LL_ENDL;
-        }
-        return;
-    }
-
-    capture.local_lighting_attempted = true;
-    capture.local_lighting_failed_frames = 0;
+    #include "pipeline_local_lighting_result_native.inl"
     if (!capture.continuous_world_capture &&
         !capture.world_ui_continuous_unlocked)
     {
@@ -18062,32 +18002,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
         return;
     }
 
-    std::string error;
-    if (!capture.renderer->accumulateProjectorLights(
-            *capture.base_light_target, scene, &error))
-    {
-        // The raw maps and selected shadow-owning lights are one frame's
-        // transaction. A retry must capture both again rather than combine
-        // a later light list with stale spot-map contents or matrices.
-        capture.projector_shadows = {};
-        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
-        const U32 failed_frames =
-            ++capture.projector_lighting_failed_frames;
-        if (failed_frames >= MetalWorldSimpleCapture::max_failed_frames)
-        {
-            capture.projector_lighting_attempted = true;
-            if (failed_frames == MetalWorldSimpleCapture::max_failed_frames)
-            {
-                LL_WARNS("Metal")
-                    << "Native world projector-light owner left the native frame incomplete after "
-                    << failed_frames << " failures: " << error << LL_ENDL;
-            }
-        }
-        return;
-    }
-
-    capture.projector_lighting_attempted = true;
-    capture.projector_lighting_failed_frames = 0;
+    #include "pipeline_projector_lighting_result_native.inl"
     if (!capture.continuous_world_capture &&
         !capture.world_ui_continuous_unlocked)
     {
@@ -26894,36 +26809,7 @@ void LLPipeline::renderDeferredLighting()
         renderMetalWorldProjectorLights(
             *camera, mat, light_scale, visible_light_limit);
         renderMetalWorldLightingComposition();
-        if (lighting_batch_active)
-        {
-            MetalWorldSimpleCapture& capture =
-                *mMetalWorldSimpleCapture;
-            lighting_batch_error.clear();
-            // Composition can already abandon a failed native prefix. Do
-            // cleanup once, without committing an absent command or counting
-            // that intentional cancellation as a second failed frame.
-            const bool command_active = capture.renderer->commandBatchActive();
-            if (!command_active || !capture.renderer->commitCommandBatch(
-                    &lighting_batch_error))
-            {
-                capture.base_light_map_target.reset();
-                capture.pending_probe_light_map.reset();
-                capture.main_lighting_ready.reset();
-                capture.base_light_target.reset();
-                capture.composed_light_target.reset();
-                const U32 failed_frames = command_active
-                    ? ++capture.lighting_composition_failed_frames
-                    : capture.lighting_composition_failed_frames;
-                if (command_active && failed_frames ==
-                    MetalWorldSimpleCapture::max_failed_frames)
-                {
-                    LL_WARNS("Metal")
-                        << "Native deferred-light batch left the frame incomplete after "
-                        << failed_frames << " commit failures: "
-                        << lighting_batch_error << LL_ENDL;
-                }
-            }
-        }
+        #include "pipeline_lighting_batch_settlement_native.inl"
         // These native owners must not disturb the retained traversal target.
         // Rebinding that same target would push a cycle into LLRenderTarget's
         // ownership stack.

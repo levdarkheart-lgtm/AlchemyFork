@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-495 -->
+<!-- next-defect-id: PPD-497 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -158,8 +158,8 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 - Discovered: 2026-11-12
 - Original reference: No equivalent native retry counter in `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`; inspect its per-light traversal and error reporting as the nearest original boundary.
 - Evidence: [Lighting failure-counter analysis](work/active/busy-turn-local-investigation.md).
-- Next action: Use the separate bounded world category on the next exact candidate to identify missing current-frame products; preserve the unresolved counter-reset limitation and PPD002 attribution.
-- Verification: Local bounded retained-world metadata is implemented and CPU-qualified; it survives transaction resets by observing actual stale-background presentation. Original warning-counter reset behavior remains unchanged. 69377 exercised the first observer but its stable dedup lost fresh repeats. The refreshed observer is CPU-qualified; no changed-source live diagnostic or freeze closure.
+- Next action: Complete fullapp/static qualification of integrated counter repair; retain bounded stage/coherence diagnostics if owner-visible freezing recurs. Keep PPD002 incident attribution separate and preserve tested69384 artifact.
+- Verification: Refreshed bounded observer exercised its repeat branch only at intentional69384 logout. After viewerexit0, integrated actual counter bodies pass5cases1741checks normalCatch2/ASan/UBSan; exactoriginal controls fail383/252/2/131checks. Fullapp qualification pending. This fixes warning visibility, not an attributed freeze or GPU completion.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -183,6 +183,10 @@ counter: some incomplete G-buffer retries can accumulate to their threshold.
 - 2026-11-19 exact69377 owner freeze recurs, with retained-world notices around11:11:55UTC but only one world snapshot at11:10:40. Stable tuple dedup suppresses every later occurrence of the same readiness state, preventing fresh episode attribution. Zero attempt flags can also follow consumed fused staging, so they are not unconditional execution proof. Strengthen bounded opt-in observation with fresh onset/repeat/recovery and actual branch/coherence metadata; rendering policy must remain unchanged. [Closed-run evidence](research/world-turn-freeze-69377-20261119.md).
 
 - 2026-11-19 refreshed observation now uses per-capture fixed-size64distinct/64repeat budgets with explicit caps, unchanged-background first repeat0.1s then1s, recovery/progress resets and invalid-clock rebasing. Actual collector records stamped base-state branch/staging/result plus selected/published owner/epoch Boolean coherence, with no identities/GPU polling. Default-off never calls clock/collector. Four ASan/UBSan modes pass4/47/33/9checks; real old-header recurrence control5checks3fail→new0, progression no-flood valid onboth. Original retry counters remain unchanged/unresolved. Root integrated source and11focusedCTest invocations pass; fullapp/retest pending.
+
+- 2026-11-19 while owner temporarily away with69384atmanualLogin, further read-only audit confirms a second warning gap: composition clears lighting_composition_failed_frames before the outer batch commit, so deleting fresh-GBuffer counter resets alone still cannot reach the120commit-failure warning. Local retry WARN currentlyuses>=120 and would flood if its streak simply persisted. A separate candidate-independent source/test patch is being prepared on codex/ppd003-counter-reset-20261119: retain local/projector streaks until actual stage success/lifecycle reset, warn once at threshold, and give actual outer-commit return failures their own owner-local streak reset only by actual successful commit; intentional cancellation is neither success nor a second failed commit. Preserve generic GBuffer counters, rendering/completeness/attempt ownership and candidate0bac. No compile/tests/integration during the live run; source fixture validation and owner recovery remainpending. Private lifecycle-numeric-watch/ppd003-counter-reset-audit-01.json records exact reset/increment/consumer matrix.
+
+- 2026-11-19 closed69384 owner tour positive; two repeated-retention observations source-joined to intentional post-snapshot logout. Afterexit0, root source-integrated revieweda305f1f17b. Initial normal compilation failed on Catch2 logical-expression syntax, corrected only test parentheses. Normal newview_tests/lighting_retry_counters_test passes0; actual-bodyASan/UBSan5cases1741checks pass. Exact original controls all compile0, return42 with383/252/2/131failedchecks respectively. Existing attempted gates/product invalidation/lifecycle resets unchanged; actual commit streak is CPU submission status, not GPU completion. Full app/static checks pending; no runtime assertion for this later source. [Closed run and counter proof](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up).
 
 ## PPD-004 — Missing native impostor data invalidates unrelated world batches
 
@@ -11419,6 +11423,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 combined source434f4df20a/indra e9803807 builds0 as69381; separately cloned exactexe1143f9af5216 passes12focusedCTest/API+GPUvalidation,346ARM64/deepstrictsignature, owned directimports andstrict3638/0blockers/0errors. Source SHA verified in cache/header/executable. No newviewer/profile/capture launch or runtimefreezeverification; ready_for_owner only, no push. [Full artifact/commands/limits](research/world-turn-freeze-69377-20261119.md#qualified-offline-candidate69381).
 
+- 2026-11-19 exact69384 completed normalexit0. Owner Home→club→Home reports no noticed freezes/issues after source0bac repair; good bounded acceptance, no exact incident owner-identity join or every-freeze closure. [Closed runtime evidence](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up). All proposed fixes remain local; no push approval.
+
 ## PPD-493 — Logout snapshot failure is latched as saved
 
 - Status: investigating
@@ -11445,6 +11451,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 opt-in exact-snapshot failure metadata implemented at unchanged guard/errorboundary, no Observer/UI-background/clock/GPU dependency. Whole detailed error/false-return include passes2scenarios6checks disabled and12scenarios67checks enabled underASan/UBSan, including poisoned-pointer isolation and metadata/append failures preserving originalerror. Initial extraction selected generic fail lambda accidentally; corrected fromHEAD before compilation. No currentnativeproducer cause or changed-source ownerlogoutimage success claimed.
 
+- 2026-11-19 exact69384 completed normalexit0. Native normal logout snapshot and exact fresh nonblack last-image PNG verified; previously failed producer root cause and next-login image UI remain unproved. [Closed runtime evidence](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up). All proposed fixes remain local; no push approval.
+
 ## PPD-494 — Atmospheric shader disabled leaves no native lighting target
 
 - Status: ready_for_owner
@@ -11467,3 +11475,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 root native validation initially fails1of511assertions because the new test reverses the fixture's normal_hdr/hdr arguments, causing local-light format mismatch; no production relaxation. Corrected only fixture argument order and added failure context. Rerun passes641assertions/3cases with actual Metal API+GPU validation:8format/reverse combinations preserve exactRGBAzero, depth/stencil/allGBufferstores; local/projector continuation positive, malformedinput/prefixcancel/retry controls pass. Production native method unchanged after review. Root fullcombinedapp build/owner verification stillpending.
 
 - 2026-11-19 finalcombined69384/source0bacb370fa/indra8f350bf47e builds0(173steps) andpasses20selectedCTest/API+GPUvalidation, strict3641/0blocking/0errors,346ARM64/deepstrictsignature/owneddirectimports. Source/header/executableverified; prior69381preserved. CPU/nativeproof supports source repair, actual69377flag remainsunknown andruntimeincidentunattributed. Ownerrequestsallfixescombined; ready_for_owner only. [Artifact and capturesequence](research/world-turn-freeze-69377-20261119.md#qualified-combined-candidate69384).
+
+- 2026-11-19 exact69384 completed normalexit0. Actual69384 RenderDeferredAtmospheric1 leaves supported false-setting repair unexercised; retain CPU/GPU qualification and ready_for_owner scope. [Closed runtime evidence](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up). All proposed fixes remain local; no push approval.
+
+## PPD-495 — One texture decode failure during69384 owner tour
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator / asset audit
+- Discovered: 2026-11-19
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLTextureFetchWorker::callbackDecoded and decode responder/worker completion boundaries. Trace codec and actual error separately from inherited failure/cache-recovery handling.
+- Evidence: [69384 closed run and qualified fixes](research/world-turn-freeze-69377-20261119.md#qualified-combined-candidate69384); private analysis/asset-watch-segment-02/decode-failure-01.json retains12:44:55Z row10794, bytes3767322–3767607/discard1/eventhash.
+- Next action: Classify the exact failure reason/codec/worker origin and any subsequent recovery using only stable opaque asset joins and original/current source; preserve failed input if available without manual cache mutation or extra network requests. Do not infer an OpenHT bug or successful recovery from a callback label alone.
+- Verification: One success=false callback logs DECODE FAILED and invalidates its cached entry, decoded_discard=-1. Owner reports quick loading/no visible issues; this does not explain or dismiss the failed request. Actual codec, producer cause and same-request recovery remain unproved. No repair attempted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before repair after exact69384/source0bac ownerHome/club/return test. Fullrun395WARN/46sites,0ERROR/FATAL; sourcewarning is not itself decoder/root-cause attribution. Viewer exited0 normally after successful native logout snapshot; rawreason/asset/profile data remain private. Original/current/error-category and fixed-field sourceaudit continues offline, no requests/cache mutation.
+
+## PPD-496 — Native legacy bump-map generation failed during69384 tour
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator / lifecycle and asset audits
+- Discovered: 2026-11-19
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLBumpImageList::onSourceUpdated brightness/darkness normal-map conversion, compared with native ALMetalNormalMapGenerator and LLImageGL render-texture publication.
+- Evidence: [69384 qualified candidate and runtime](research/world-turn-freeze-69377-20261119.md#qualified-combined-candidate69384); private closed-run source census retains six lldrawpoolbump.cpp798 warnings. Full viewer log SHA25671a491ac1d71815f3c765704092f82752fd34812cb8a7cf3bfe9b69d1f6ca9ce.
+- Next action: Classify source error categories privately, trace original conversion and native resource/format/commit/adoption boundaries and whether retry can recover. Register before any repair; retain source-proven failure separately from owner-visible incident attribution.
+- Verification: Six failed create/encode/mipmap/commit/adopt chains return before generated bump-map publication. Owner reported no visible issue on this tour, which does not establish bump-map correctness or same-asset recovery. Root cause and recovery are unknown; no repair attempted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 closed-run395WARN/46site source reconciliation reveals this emitter is a native functional failure rather than a generic notification. Registered before repair. Read-only original/native/error-category audit assigned to lifecycle and asset agents; no requests/cache mutations or changes to the tested69384 app.

@@ -329,3 +329,74 @@ Capture sequence:
 No connected69384 observation or capture has occurred at this qualification
 checkpoint. The launch sentinel will retain Popen.wait and exact exit status;
 private run.json is the subsequent authoritative runtime record.
+
+
+## Closed owner run69384 and offline follow-up
+
+The prepared run subsequently completed, exact source/binary unchanged. Owner
+reported no freeze atHome, teleported toClub, reported fast enough loading/no
+freezing, heard parcel music correctly, returnedHome without noticed issues and
+logged out normally. Club UI and exact69384 build were independently observed
+atWarehouse21/MysticHarbor(51,197,2004); Home and return are owner reports, not
+independent requested-login-location proof. Club14–20FPS is one reported range,
+not a matched performance result. There was no Metal capture/profiler during this
+run. Prior69377 freeze evidence is retained; this bounded positive test does not
+prove all freeze causes absent or isolate each repair's effect.
+
+The sentinel retained actual viewerexit0 at2026-11-19T12:48:55.993985Z. All run
+watchers stopped. Private run `Alchemy-freeze-69384-xjxh4etn` has5,208,249bytes/
+15,260lines, SHA25671a491ac1d71815f3c765704092f82752fd34812cb8a7cf3bfe9b69d1f6ca9ce,
+395WARN/46source-line sites, zeroERROR/FATAL/unparsed severity. Every warning still
+needs semantic disposition; row/source accounting is not proof that every
+runtime cause is cleared. PPD495 records one decode failure, PPD496six native
+legacy bump-generation failures; source/error provenance audits continue without
+extra requests or manual cache mutation. Asset/status caps remain explicit.
+
+Two retained-world samples at12:48:53 follow successful saved-final-snapshot and
+LogoutRequest. Current13066/13070 differ from background13065; capture/base/post/
+presentation/exposure all carry old13065. Encoded base is explicitly not current.
+`display()` intentionally skips fresh geometry once logout request is sent and
+the final snapshot saved. This is a shutdown cohort, not an owner-visible freeze
+recurrence or a current base-light failure. Private source join02/row receipts
+preserve the ordering.91other displaypost-withheld records do not establish an
+eligible presentation-without-exposure failure.
+
+Fresh native snapshot completed at12:48:53Z; the exact logged last-image file
+has matching freshmtime12:48:53.470109Z,3456×2168RGB8,14,158,389bytes and SHA256
+9214ddee909af8f1edd45416b9dce0d38dbdb397da016c8aaa17eaabf3b5c524.
+Read-only PNG checks validate all1728chunkCRCs,22,479,992decompressedscanlinebytes,
+filter types and nonblack pixel content. Account path/identity and image remain
+private. This verifies normal logout file production, not the previously failed
+native producer's root cause or a subsequent login's UI display.
+
+Final typed decode census39,270submitted/started/completed, zeroactive/wait;
+native60,218posts/60,241dequeued, createpending0/retries0,69,740actualworkeruploads/
+15,060batchcommits/failures0. Downscale305prevents a whole-pipeline-drained claim;
+cumulative29,360,678,834inputbytes is neither resident RAM nor elapsed throughput.
+No skin fallback/nonfinite/product warning, no missing bake-mask or skin-input
+capture;3invalid-animation-joint warnings are separate.64bakeevents hit cap:
+38requested auxiliary masks present/onecomponent,26primary-only; absence after
+cap is not coverage. ActualAtmo1/fusedmain0 means494false branch was not exercised.
+Owner audibility, rather than requested playback state, verifies audio here.
+
+After exit, root integrated revieweda305f1f17b5c8ebd2f321db30426b543e4381616 source
+only. PPD003 fresh-product reset now preserves local/projector failure streaks;
+local warning emits once at120. A separate owner-local actual-batch-commit streak
+survives per-transaction composition success and resets only on an actual
+successful commit; canceled/absent commands are neither success nor new failure.
+Existing product invalidation, attempt gates, retry/failure rendering policy,
+generic GBuffer counters and lifecycle resets remain unchanged. The original
+viewer has no equivalent native counter; nearest original traversal/reporting
+contract is retained. This improves failure visibility, not rendering speed or
+proof of GPU completion, and was not in the owner-tested69384 executable.
+
+Initial normal fixture build failed because Catch2 forbids decomposing logical
+Boolean expressions without parentheses. Two test-only syntax corrections led
+to normal newview_tests build0/CTest0. Actual four production-body CPU fixture
+passes5cases/1741assertions underASan/UBSan. Exactoriginal controls compile0 and
+fail as expected: all-original383checks/5cases, reset-only252/3, local-only2/1,
+batch-only131/2; fixed body0failures. Private counter-integrated-* logs and
+ppd003-counter-fix-01/integrated-control-results.json retain exact argv/exits.
+Fullapp/source/static qualification follows; no push or new launch authorized
+by this evidence. Next inspect PPD495/496source errors, qualify counters and
+retain stage/coherence capture procedure if an owner-visible freeze recurs.
