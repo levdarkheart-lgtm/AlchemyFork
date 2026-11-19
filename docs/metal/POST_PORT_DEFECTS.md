@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-486 -->
+<!-- next-defect-id: PPD-491 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -3388,7 +3388,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-121 — Shared decoder backpressure omits in-flight upload byte debt
 
-- Status: ready_for_owner
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex whole-engine streaming admission
 - Discovered: 2026-11-14
@@ -3406,6 +3406,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
+- 2026-11-19 owner requests intelligent independent decode-ahead after69343shows frequent native clamping. PPD486 deliberately replaces this cross-stage decoder byte/count coupling with a separate headroom/queued-CPU/active-estimate soft lane. GPU upload byte/count credits remain enforced through their actual completion owner; native/unified-memory pressure still limits CPU admission. Retain the earlier gap/fix/test history rather than requiring CPU decoders to mirror a full GPU lane indefinitely. Next owner candidate must qualify the replacement as one pipeline; no earlier runtime closure or push approval is inferred.
+
 ## PPD-122 — HTTP 4xx warning demotion checks the internal flag instead of the HTTP code
 
 - Status: ready_for_owner
@@ -11215,3 +11217,111 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before description correction during the owner's explicit core/adaptive-allocation question. Existing scheduler/native-budget regression CTests pass; source uses no pinned core affinity. Retain intentional backpressure rather than bypassing it to satisfy stale wording. No viewer/settings mutation or decoder policy change.
 
 - 2026-11-19 description corrected to state that disabling adaptation still obeys native frame/upload backpressure. XML parsing passes. Defaulttrue, scheduler/source logic and2/4/6limits unchanged; prior CTest policy evidence remains applicable. No new test needed for this text-only correction.
+
+- 2026-11-19 Following486 the description now names memory/decoded-image backlog limits, rather than implying main/GPU credit pressure still directly controls decode starts. Numeric worker limits/default remain unchanged.
+
+
+## PPD-486 — Main-owner pressure independently restricts background decoding
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex decoder admission correction
+- Discovered: 2026-11-19
+- Original reference: Owner-accepted adaptive scheduler98f41e652b backs off for sustained whole-system AND main CPU pressure, thermals/power and backlog policy. Later native-frame decodeCeiling additionally returns minimum solely for main_busy, whose pressure includes nonCPU GPU waiting. Independent decoding can therefore be restricted without measured whole-system CPU, memory or downstream capacity pressure.
+- Evidence: [Integrated decoder audit](research/warning-followup-integration-20261119.md); indra/llcommon/alnativeframebudget.cpp decodeCeiling and required-main pressure calculation, plus actual69343 low-CPU/downstream-ceiling observations.
+- Next action: Qualify the integrated app and owner-test loading/HUD/camera/teleport under actual CPU/memory pressure. Compare exact decode-ahead bytes/limits and native publication throughput; retain soft coverage and unmeasured-share caveats.
+- Verification: Actual CPU budget/controller and worker/ownership/burst controls pass; final490extends the same budget suite to57cases6060assertions. Controlled real-worker burst admits6 versus2 under exact old policy; all6callbacks and estimates drain. No viewer FPS/loading/visible freeze acceptance yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before correction after the owner's explicit question about decoding ahead while main is busy. Prior release-path tests prove no stuck admission latch but do not justify this pressure coupling. Root7089full build is an intermediate frozen source; next candidate must include the separately qualified correction. No connected runtime, cache or saved settings change.
+
+- 2026-11-19 owner explicitly rejects a narrow predicate-only correction and requests intelligent parallel hardware use where CPU/RAM permit. Source audit finds queued_requests means actual primary-raw-ready texture FIFO, not generic fetches, and its bytes are compared against reused GPU32entry/64MiB limits regardless spare RAM. Broaden the registered correction before edits: separate CPU lookahead budget from GPU credits; use existing measured OS/process headroom and safety reserve, initial conservative one-eighth share with hysteresis and unknown fallback; scope worker estimates across actual full-size primary/aux allocation and known OpenHT int32 planes through responder. This is a soft admission signal with progress floor2, sampled headroom and omitted private codec/intermediate/cache memory, not a hard physical quota or measured optimal sizing. Aurora source is inspiration only; no code or renderer backend adoption.
+
+- 2026-11-19 common82b5bc27c9→root777c12dd68 andworker aefe91951c→rootcf364a3e40 integrated locally after independent source review. Real budget/controller53cases5879assertions0 (focused5/125) versus immutable exact7089decodeCeiling substitution29focused/43whole failures. Actualworker17cases409assertions0 versus3focusedcases73assertions10baseline failures; full-metadata preallocation/overlap/responder/exception/drain controls. Initial byte-share/hysteresis choices remain unmeasured; a deterministic worker retained-ready burst and final full candidate qualification are pending. Root adds current soft-lane metadata to the existing throttled Decode admission log, without scheduling behavior changes.
+
+- 2026-11-19 Requested actual-worker burst proof is integrated3b90ce2242: controlled128retained pixelbuffers/64KiBlogicalbytes and known8GiB headroom, actual previous production ceiling admits2workers versus new6;43assertions old5fail→new0. Both controls drain all6callbacks/estimates. Fullworker18cases452assertions0; boundaries/known omissions and no whole-viewer speed claim retained.
+
+
+## PPD-487 — Native texture upload worker remains gated by a disabled legacy OpenGL setting
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native streaming integration
+- Discovered: 2026-11-19
+- Original reference: Original1eb uses RenderGLMultiThreadedTextures (defaultfalse) to opt into shared-context OpenGL uploading. Current Metal-only worker needs no graphics context and has native publication/rollback ownership, but LLViewerWindow still passes that legacy setting unchanged to LLImageGL::initClass.
+- Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); current llviewerwindow.cpp2412, llimagegl.cpp400–415/3654–3695 and llviewertexture.cpp postNativeTextureUpload; complete69343 native texture publication census.
+- Next action: Verify the final source-pinned app starts its native worker and records actual worker posts during owner loading/teleport, then evaluate whole-viewer latency and shutdown. Preserve explicit new-key opt-out.
+- Verification: Exact69343 had zero worker posts. New packaged native default, full actual startup-call/initializer/constructor plus width selection pass38CPUchecks; realnative startup/retirement/width101assertions6unique cases pass withAPI/GPUvalidation. New default-enabled app not yet owner-tested.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before any activation/default/source change during owner-requested whole-pipeline parallelism investigation. Existing PPD467 worker failure/rollback repair remains a prerequisite and must pass with actual native execution. No viewer/account/settings mutation. Preserve OpenHT-only decoding and native Metal-only worker context.
+
+- 2026-11-19 root local implementation uses new persisted RenderMetalMultiThreadedTextures defaulttrue with explicit disable choice. Legacy GLtexture flag remains hidden for settings-file compatibility; it does not override the native control. Startup records actual worker-enabled state. Original1eb shared-context opt-in invariant is mapped to current no-context native worker ownership; media policy unchanged. Source-derived full window call/initClass/native constructor plus actual packaged Boolean defaults passes27checks versus12baseline failures; normalCMake/CTest1/1 and ARM64 windowTU syntax pass. Test setup failures retained: unrelated Boolean1.0 parser handling, omitted unused-parameter flag, null baseline fixture guard and missing explicit exception header; corrected before final proof. Physical worker startup and PPD488 shutdown ownership are delivery prerequisites. No candidate with this default has been launched.
+
+- 2026-11-19 Root38-check final startup/width contract passes after489; explicit new native key is independent of legacyfalse and supports opt-out. Actual native initClass with null window/Metal authority, disable path and native-only path are qualified by101assertions/6matched physical cases including488/489. No live default-enabled viewer has run; final integrated app build/static/owner test remain.
+
+
+## PPD-488 — Native upload continuation may lose fetched-image ownership during shutdown
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native upload lifecycle
+- Discovered: 2026-11-19
+- Original reference: Current postNativeTextureUpload takes one fetched-image ref after a successful worker post; its main continuation and later publication finish lambda perform the balancing unref. Original worker shares related postTo ownership, but Metal adds delayed afterPublish completion/failure semantics that must settle during shutdown.
+- Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); llviewertexture.cpp postNativeTextureUpload, LL::WorkQueue::postTo queue closure and llappviewer/llimagegl cleanup order. PPD467 existing publication failure repair is retained.
+- Next action: Build final integrated worker activation and owner-test load/teleport/logout with publication diagnostics, preserving current source/macro cleanup and exactly-once release.
+- Verification: Actual queue/template/fetched/native cleanup controlled fixture27cases260checks passes perdebugcopy mode versus8baseline failures. Native101assertions/6cases includes realGLlast-owner cleanup, startup and worker width; actual fetched destructor is a controlled count boundary. Independent source/closure/exception/token review passes; live acceptance pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before reproduction/correction from the487 activation prerequisite review. Do not enable an unchecked worker lifetime by default or infer safe shutdown merely from existing lower-level native batch tests. Owner goal includes whole-pipeline parallel utilization with retained functional ownership; no viewer or settings change has occurred.
+
+- 2026-11-19 Integratedc5b94dd44c (agentdbccb85251): main-owned GL keepalive/release registry balances fetched refs/debug buffers even if continuation/publication is dropped. Matching attempt tokens guard both queued reply entry and moved publication finish before any raw-this access; synchronous post exceptions restore/release onmain then rethrow. Exact27cases260checks0 perdebug macro versus baseline27/224/8fail; native93assertions/5unique cases withAPI/GPUvalidation, including realGLlast-owner destruction but fetched destructor remains controlled-count boundary. Independent review initially missed SUBSYSTEM_CLEANUP macro, then verified actual2849cleanup after priorworkerjoin/mainqueue drains; missing-call concern withdrawn. First move-only-function assumption and initial token/exception gaps were corrected before delivery; intermediate failures retained. Final peer passes; no runtime closure.
+
+
+## PPD-489 — Native image batch flush assumes one worker but pool width is overridable
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native upload lifecycle
+- Discovered: 2026-11-19
+- Original reference: Original shared-context image worker requests one ThreadPool worker. Current native worker keeps each Metal upload batch in thread_local state and posts its flush barrier to the shared image queue; that barrier must run on the owning worker. Existing ThreadPool fixed_width API is already used for the topology-sized ImageDecode pool.
+- Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); llimagegl.cpp acquire_worker_metal_upload/LLImageGLThread constructor and llcommon/threadpool.h/.cpp configured width selection.
+- Next action: Keep the fixed single native batch owner in the integrated candidate and verify live startup/posts/shutdown alongside independent6maximum decoder pool.
+- Verification: ActualCommonControl persisted override8 causes2baseline assertion failures; corrected native filter101assertions6cases passes. Source-derived startup38checks passes versus2width failures; CPU/GPU validation does not establish live loading speed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before correction from487/488 prerequisite review. This is the actual thread-local batch ownership constraint, not a blanket ban on parallel decoding/CPU preparation. Native image upload execution remains one ordered owner while other independent stages run concurrently.
+
+- 2026-11-19 Integratedd7539fb296 (agent5d51247cf8): existing pool API fixes native image batch owner width1, preserving independent decoder parallelism. Physical CommonControl override8 produces8workers/2baseline assertion failures; corrected matched native filter101assertions/6unique cases0 withAPI/GPUvalidation. Source-derived exact window/init/constructor and actual ThreadPoolBase width expression separately38checks old2fail→new0. No account file mutation; no performance optimum or live incidence claimed.
+
+
+## PPD-490 — Time-bounded texture publication also has a main-busy one-item ceiling
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native streaming integration
+- Discovered: 2026-11-19
+- Original reference: Original1eb processes decoded textures within the caller-provided elapsed-time budget. Current LLViewerTextureList still enforces that time budget and explicit native byte/count/completion bounds, but ALNativeFrameBudget additionally permits only one upload per main_busy frame. Main busy includes nonCPU GPU waiting.
+- Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); sole production Work::upload acquisition in llviewertexturelist.cpp, elapsed-time checks after worker post/synchronous fallback, and alnativeframebudget.cpp upload admission branch. Exact69343 has a substantial already-decoded queue.
+- Next action: Build the complete parallel streaming candidate, then compare loading/HUD sharpness and camera/world responsiveness with actual upload throughput and frame pacing under the retained time/count/byte/completion bounds.
+- Verification: Same actual test source/header with exact old production budget has75failures; corrected focused7cases261assertions/full57cases6060assertions passes ASan/UBSan. Sole actual caller/timer byte-identical, native bounds/low-memory progress/optional-scene behavior retained; peer source/test review passes. No viewer gain/closure.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before correction during the owner-requested whole-pipeline parallelism work. Merely decoding faster can increase an already-decoded backlog; the native upload stage must make bounded independent progress. Do not remove native in-flight/per-frame bounds or claim FPS/loading gains from admission counts alone.
+
+- 2026-11-19 Integrated4fd1876f34 tests +df61f82e5b production guard. Final7cases261assertions and full57cases6060assertions old75fail→new0 underASan/UBSan; earlier55/6019proof retained/superseded by extra41completion-count checks. Native count/frame/in-flight bytes, copied lease retirement, lowOS/process1progress, oversize/drain and optional/scene controls pass. Callerfile/timer branches byte-identical; independent source/test review passes. Final app and coupled owner runtime acceptance pending.
