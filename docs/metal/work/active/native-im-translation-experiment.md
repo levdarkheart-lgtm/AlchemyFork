@@ -392,3 +392,27 @@ symptoms; source6584985804 corrects Confirmation to reproduced, retains the fail
 harness history, and passes the harness before integration. No application change.
 
 Merged-doc validation first exceeded recovery line limits by one line in CURRENT and the active ledger. Fold the two adjacent top summaries onto one physical line (same Markdown soft-break semantics), retaining both native and water evidence, then rerun the harness. No code changed.
+
+## Owner-authorized publication
+
+After confirming that native IM translation is merged locally, the owner
+explicitly requests: "commit all changes if any and push". This authorizes
+normal publication of the complete current codex/apple-silicon-metal branch,
+including local merge5413ee5a01 and translation head6584985804. All application
+changes were already committed. The follow-up commit records publication
+approval and preserves the individual verification limits of PPD-498–518.
+PPD-512/516 stay owner-verified; other narrower stress gates are not promoted.
+
+Merged application source remains exactly tested69404 indra tree
+6cfca54e0398bb26d97ac33c39941a3ead123512 (built7d607c955a). Existing12focused
+CTest processes, Release build,346ARM64/signature/strict-source qualification
+and owner acceptance remain the evidence for that unchanged source. No rebuild,
+viewer restart, IM sending, release or default-branch merge occurs in this task.
+
+The untracked worktrees/native-im-translation directory is a separate clean
+Git worktree at6584985804, not uncommitted application files. Preserve it locally;
+do not add an embedded repository, generated bundles or private evidence to the
+publication. Canonical docs/harness/whitespace checks and exact remote-ref/source
+verification are recorded in ignored artifacts/metal/native-im-translation-20261119/publication-20261119.
+Normal push targets codex/apple-silicon-metal; main remains separate. Retain the
+source branch and earlier owner-verified water checkpoint ancestry.

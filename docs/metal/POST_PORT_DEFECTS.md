@@ -11666,7 +11666,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Correct Swift C export visibility, relink the actual bridge probe, then build and verify the viewer.
 - Verification: First standalone C++ link fails on hidden/local private @_cdecl exports. Swift object compilation alone passed and did not prove C ABI linkage. Corrective test pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11675,6 +11675,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-499 — Experimental translated send uses floater after reentrant notification
 
@@ -11687,7 +11689,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Reacquire the weak floater handle after sendMsg before accessing the editor or status, and review all callback reentrancy.
 - Verification: Independent source review finds self dereferences after sendMsg; no runtime crash claimed. Corrective validation pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11696,6 +11698,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-500 — Experimental incoming annotations replay conversation activity and scroll
 
@@ -11708,7 +11712,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Add display-only replay semantics that preserve scroll and do not change activity or issue alerts.
 - Verification: Independent source review traces both effects. No owner runtime acceptance yet.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11717,6 +11721,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-501 — Experimental short-message language error offers an unavailable source selector
 
@@ -11729,7 +11735,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Add a per-chat outgoing source selector defaulting to the system language with explicit-language and automatic options; make incoming error actionable.
 - Verification: Source review confirms there is no way to follow the original error advice. Typical short IM native detection probes pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11738,6 +11744,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-502 — Experimental pending send can discard an emoji-modified draft
 
@@ -11750,7 +11758,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Compare the live editor draft with the captured draft before sending and before clearing; discard stale translation while retaining any modified text.
 - Verification: Independent source review traces onRecentEmojiPicked through insertEmoji into unguarded programmatic insertion. No actual user draft loss occurred.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11758,6 +11766,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-503 — Experimental IM controls initialize before participant identity
 
@@ -11770,7 +11780,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Initialize native controls after initIMFloater and verify the actual UI.
 - Verification: Independent source trace confirms the null-participant early return hides controls on every fresh P2P floater.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11778,6 +11788,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-504 — Experimental translation button callbacks use incompatible signatures
 
@@ -11790,7 +11802,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Use the actual LLButton callback signature and recompile production integration.
 - Verification: Independent compile of actual llfloaterimsession.cpp fails with two callback signature errors; model source compilation succeeds.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11798,6 +11810,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-505 — Experimental language enumeration mislabels unavailable local service
 
@@ -11810,7 +11824,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Return service_unavailable for an empty supportedLanguages list; retain observed sandbox limits.
 - Verification: Sandbox probe returns no languages; authorized unrestricted run returns 21. Missing-service response needs an explicit error.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11818,6 +11832,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-506 — Experimental language matching rejects regional system locales
 
@@ -11830,7 +11846,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Prefer exact match then match language and inferred script; test regional English and distinguish Chinese scripts.
 - Verification: Actual unrestricted probe incorrectly returns unsupported_target for en-IE despite supported English.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11838,6 +11854,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-507 — Experimental URL policy initially uses C++17-only UTF-8 literal conversion
 
@@ -11850,7 +11868,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Use byte-compatible Unicode parsing and run tests with production C++23, then resume the viewer build.
 - Verification: First full viewer build stops at 1590/2558 with char8_t conversion errors in the in-progress header. Earlier policy tests used C++17 and did not catch this.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11858,6 +11876,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-508 — Experimental cancelled send leaves reused conference editor read-only
 
@@ -11870,7 +11890,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Restore editor state during cancellation and refresh native panel visibility when initIMFloater rebinds the conversation.
 - Verification: Independent source trace confirms onClose does not destroy the floater in this path and focus callbacks decline to enable read-only editors. Wrong-recipient sending is separately ruled out by existing cancellation order.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11878,6 +11898,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-509 — Experimental translation rows consume the minimum-height chat area
 
@@ -11890,7 +11912,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Preserve the original minimum history/input area by adding the panel height to P2P resize limits and restoring original limits for conference reuse.
 - Verification: Source layout has fixed toolbar 25, translation 111 and editor 30 pixels plus borders, exhausting the original minimum. Runtime layout acceptance remains pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11898,6 +11920,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-510 — Native IM callbacks miscast a multiple-inheritance weak handle
 
@@ -11910,7 +11934,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Capture LLHandle<LLFloater> and perform the adjusting static_cast on retrieval in all native callbacks and the model hook, then repeat the exact offline fixture.
 - Verification: Fixture 69396 exits139. LLDB reproduces EXC_BAD_ACCESS in LLComboBox::add(this=null) on the first Arabic language entry; source confirms non-adjusting derived-handle access shifts this by the preceding observer base. Native framework/scanner tests pass independently.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11920,6 +11944,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-511 — Injected offline IM fixture reaches an uninitialized session manager
 
@@ -11932,12 +11958,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Use a logged-in P2P chat for full UI/network acceptance. Do not weaken normal session ownership to support an injected pre-login command.
 - Verification: Corrected69397 survives native language population and local synthetic generation. Later timeout dialog dismissal stops in existing LLIMMgr::leaveSession(this=null) called by onConfirmForceCloseError/onClose. LLDB establishes gIMMgr=null, not another native callback failure.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 - Resolution: Diagnostic fixture invokes an operation outside its supported initialization state; entry exists only in the temporary app copy. No production translation correction follows from this result. Full logged-in chat UI behavior remains unverified.
 
 ### History
 
 - 2026-11-19: Initial native callback crash PPD-510 is corrected and does not recur. Separate pre-login timeout cleanup crash is retained here and dismissed as an invalid fixture environment, with exact stack evidence. No login or IM sent to others.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-512 — Translated outgoing IM echo omits the sender's original wording
 
@@ -11950,7 +11978,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Preserve bilingual local history and translated-only packet regression coverage.
 - Verification: Owner initially confirms Japanese sending works on69398 but requests the original. New69401 owner screenshots show original English followed by bracketed French for two outgoing rows; local display portion is observed. Recipient-only transport remains covered by actual-body sanitizer tests, not independent recipient capture.
 - Owner verification: passed
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11964,6 +11992,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Acceptance-record harness initially rejected verified status with the stale reported confirmation field. Owner screenshots reproduce the display/usability symptoms and owner69404 acceptance verifies the repair; correct Confirmation to reproduced and rerun the harness before merge. No application source change.
 
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
+
 ## PPD-513 — Translated initialization queue survives chat close and conference reuse
 
 - Status: ready_for_owner
@@ -11975,13 +12005,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Confirm closing/reopening chats and conference reuse never release a prior initialization queue; automated source/sanitizer evidence does not replace owner acceptance.
 - Verification: Independent source review confirms addP2PSessionParticipants reuses the floater after onClose; queued native text/local-original metadata must not cross into another conversation.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-19: Registered before repair during owner follow-up; old69398 remains owner-controlled until logout. No automation sends messages.
 
 - 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-514 — Supported language selectors hide missing-model readiness
 
@@ -11994,13 +12026,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Confirm dropdown Download needed labels and readiness updates after model preparation in the logged-in viewer.
 - Verification: Owner screenshot shows French selected and a retained unsent draft with not_installed status; asks for clear Download needed indicators and automatic availability refresh.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-19: Registered before repair during owner follow-up; old69398 remains owner-controlled until logout. No automation sends messages.
 
 - 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-515 — IM send retains a session pointer across synchronous local-echo callbacks
 
@@ -12013,13 +12047,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Confirm sending and closing chats remain stable in the updated viewer; retain both sanitizer reproductions and passing corrected cases.
 - Verification: Actual production send-body ASan fixtures reproduce heap-use-after-free both for the retained model session and for UUID references to a destroyed caller. Reacquiring the session and owning ID copies pass135 checks/0 failures. Floater send and input callers also reacquire a base weak handle and check close generation. No owner crash attributed to this path.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-19: Registered before repair during callback-lifetime review of bilingual outgoing echo.
 
 - 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-516 — Persistent translation controls crowd the IM conversation
 
@@ -12032,7 +12068,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Preserve the accepted toolbar popup and per-chat choices; retain explicit narrow/torn-off stress-test limits.
 - Verification: Owner69401 screenshots show bilingual outgoing French working and the permanent three-row settings panel consuming the message area. Source review also finds upstream single-line collapse hides only body and toolbar, leaving the native settings sibling behind.
 - Owner verification: passed
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -12046,6 +12082,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Acceptance-record harness initially rejected verified status with the stale reported confirmation field. Owner screenshots reproduce the display/usability symptoms and owner69404 acceptance verifies the repair; correct Confirmation to reproduced and rerun the harness before merge. No application source change.
 
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
+
 ## PPD-517 — A delayed translation failure can open settings over another chat
 
 - Status: ready_for_owner
@@ -12057,13 +12095,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Require the owning conversation to be visible and expanded before opening settings.
 - Verification: Source review confirms translation continues after switching tabs; its later failure could open a popup and take focus from the active conversation. No owner incident attributed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-19: Registered during pre-delivery popup review before correction. eedc0db054 build exits0 but is not delivered or launched; proposed UI focus behavior is not owner-verified.
 
 - 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
 
 ## PPD-518 — Clicking the translation toolbar button again reopens its popup
 
@@ -12076,7 +12116,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Remember popup-close and button press/release frames so one mouse gesture dismisses once, while keyboard activation remains available.
 - Verification: Independent source review traces LLButton::handleMouseDown and ALPopover::onFocusLost; existing emoji helper compensates for the same event order. No owner incident attributed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -12085,3 +12125,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 (PPD-517/518): Before delivery, require visible expanded owner before opening; track popup-close and button press/release frames to suppress reopening from the same focus-loss click. A considered chrome-only fix was rejected by source inspection because the enclosing floater may take focus before child dispatch. Rebuild and existing widget/native regressions next.
 
 - 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
+
+- 2026-11-19: Owner explicitly instructs "commit all changes if any and push" after confirming the translation work is merged locally. Approve publication of the existing accepted69404 implementation and integration; retain this record's individual owner/stress verification limits. This is not approval for future changes or a release. [Publication scope](work/active/native-im-translation-experiment.md#owner-authorized-publication).
