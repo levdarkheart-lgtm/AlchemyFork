@@ -68,11 +68,11 @@ struct LLTextureCache
     struct Entry{S32 mImageSize=-1,mBodySize=0;};
     struct Responder:LLRefCount
     {
-        static inline int destroyed=0;
+        static inline int destroyed=0,total_callbacks=0;
         U8*owned=nullptr;int calls=0;bool success=false;S32 data_size=0;
         ~Responder(){if(owned)ll_aligned_free_16(owned);++destroyed;}
         void setData(U8*data,S32 size,S32,int,bool){owned=data;data_size=size;}
-        void completed(bool ok){++calls;success=ok;}
+        void completed(bool ok){++calls;++total_callbacks;success=ok;}
     };
     std::filesystem::path mHeaderDataFilePath;
     Entry indexed;bool exists=true;int removals=0;
@@ -128,8 +128,22 @@ void successful_rewrite(S32 old_body,S32 new_body)
 {
     Synthetic t;t.seed(old_body);std::vector<U8>data(new_body+600,73);LLTextureCacheRemoteWorker w;t.prepare(w,data);CHECK(w.doWrite());CHECK(w.mDataSize==S32(data.size()));CHECK(t.cache.indexed.mBodySize==new_body);CHECK(LLFile::size(io.body)==new_body);auto body=LLFile::getContents(io.body);CHECK(body==std::string(new_body,char(73)));CHECK(!io.events.empty()&&io.events.front()=="index-commit");CHECK(w.mRawImage==nullptr);
 }
-// @COMPLETION_CASES@
-int main()
+std::vector<std::pair<const char*,std::function<void()>>> completion_cases()
+{
+    return {
+        {"failed body write survives finish until cleanup",[]{Synthetic t;t.seed(100);io.fail_write=true;std::vector<U8>d(650,21);LLTextureCacheRemoteWorker w;t.prepare(w,d);w.mResponder=new LLTextureCache::Responder;CHECK(w.doWrite());CHECK(w.mDataSize==-1);w.finishWork(1,true);CHECK(w.mWriteData==nullptr);CHECK(w.mDataSize==-1);CHECK(t.cache.completed.size()==1&&!t.cache.completed.front().second);CHECK(w.mResponder->calls==0);w.endWork(1,false);CHECK(t.cache.removals==1);t.cache.settle();CHECK(w.mResponder->calls==1&&!w.mResponder->success);}},
+        {"failed header write survives finish until cleanup",[]{Synthetic t;t.seed(100);io.header_cap=20;std::vector<U8>d(650,21);LLTextureCacheRemoteWorker w;t.prepare(w,d);w.mResponder=new LLTextureCache::Responder;CHECK(w.doWrite());CHECK(w.mDataSize==-1);w.finishWork(1,true);CHECK(w.mDataSize==-1);w.endWork(1,false);CHECK(t.cache.removals==1);t.cache.settle();CHECK(w.mResponder->calls==1&&!w.mResponder->success);}},
+        {"successful write completion does not purge",[]{Synthetic t;t.seed(100);std::vector<U8>d(650,21);LLTextureCacheRemoteWorker w;t.prepare(w,d);w.mResponder=new LLTextureCache::Responder;CHECK(w.doWrite());w.finishWork(1,true);CHECK(w.mWriteData==nullptr);CHECK(w.mDataSize==0);CHECK(t.cache.completed.size()==1&&t.cache.completed.front().second);w.endWork(1,false);CHECK(t.cache.removals==0);t.cache.settle();CHECK(w.mResponder->calls==1&&w.mResponder->success);}},
+        {"aborted write keeps existing no-purge policy",[]{Synthetic t;LLTextureCacheWorker w;w.mCache=&t.cache;w.mDataSize=10;w.mResponder=new LLTextureCache::Responder;w.finishWork(1,false);CHECK(w.mDataSize==-1);w.endWork(1,true);CHECK(t.cache.removals==0);t.cache.settle();CHECK(w.mResponder->calls==1&&!w.mResponder->success);}},
+        {"successful read transfers buffer ownership",[]{Synthetic t;LLTextureCacheWorker w;w.mCache=&t.cache;w.mDataSize=8;w.mReadData=(U8*)ll_aligned_malloc_16(8);auto*read=w.mReadData;w.mResponder=new LLTextureCache::Responder;w.finishWork(0,true);CHECK(w.mReadData==nullptr);CHECK(w.mDataSize==0);CHECK(w.mResponder->owned==read&&w.mResponder->data_size==8);w.endWork(0,false);CHECK(t.cache.removals==0);t.cache.settle();CHECK(w.mResponder->calls==1&&w.mResponder->success);}},
+        {"failed read frees buffer and still purges",[]{Synthetic t;LLTextureCacheWorker w;w.mCache=&t.cache;w.mDataSize=-1;w.mReadData=(U8*)ll_aligned_malloc_16(8);w.mResponder=new LLTextureCache::Responder;w.finishWork(0,true);CHECK(w.mReadData==nullptr);CHECK(w.mDataSize==-1);CHECK(w.mResponder->owned==nullptr);w.endWork(0,false);CHECK(t.cache.removals==1);t.cache.settle();CHECK(w.mResponder->calls==1&&!w.mResponder->success);}},
+        {"aborted read retains existing cleanup semantics",[]{Synthetic t;LLTextureCacheWorker w;w.mCache=&t.cache;w.mDataSize=8;w.mReadData=(U8*)ll_aligned_malloc_16(8);w.mResponder=new LLTextureCache::Responder;w.finishWork(0,false);CHECK(w.mReadData==nullptr);CHECK(w.mDataSize==8);w.endWork(0,true);CHECK(t.cache.removals==0);t.cache.settle();CHECK(w.mResponder->calls==1&&!w.mResponder->success);}},
+        {"failure without responder still purges",[]{Synthetic t;LLTextureCacheWorker w;w.mCache=&t.cache;w.mDataSize=-1;w.finishWork(1,true);CHECK(w.mDataSize==-1);CHECK(t.cache.completed.empty());w.endWork(1,false);CHECK(t.cache.removals==1);}},
+        {"queued responder owns lifetime through failure settlement",[]{Synthetic t;LLTextureCacheWorker w;w.mCache=&t.cache;w.mDataSize=-1;w.mResponder=new LLTextureCache::Responder;int destroyed=LLTextureCache::Responder::destroyed,calls=LLTextureCache::Responder::total_callbacks;CHECK(w.mResponder->getNumRefs()==1);w.finishWork(1,true);CHECK(w.mResponder->getNumRefs()==2);w.endWork(1,false);w.mResponder=nullptr;CHECK(LLTextureCache::Responder::destroyed==destroyed);CHECK(LLTextureCache::Responder::total_callbacks==calls);t.cache.settle();CHECK(LLTextureCache::Responder::destroyed==destroyed+1);CHECK(LLTextureCache::Responder::total_callbacks==calls+1);CHECK(t.cache.removals==1);}}
+    };
+}
+
+int main(int argc,char**argv)
 {
     using Case=std::pair<const char*,std::function<void()>>;
     std::vector<Case>cases={
@@ -147,7 +161,11 @@ int main()
         {"offset writes remain rejected",[]{Synthetic t;t.seed(100);std::vector<U8>d(650,21);LLTextureCacheRemoteWorker w;t.prepare(w,d);w.mOffset=1;CHECK(w.doWrite());CHECK(w.mDataSize==-1);CHECK(io.events.empty());CHECK(LLFile::size(io.body)==100);}},
         {"unchanged cached header-only data skips IO",[]{Synthetic t;t.cache.indexed={10,0};std::vector<U8>d(10,21);LLTextureCacheRemoteWorker w;t.prepare(w,d);CHECK(w.doWrite());CHECK(io.events.size()==1);CHECK(!LLFile::isfile(io.body));}}
     };
-    // @APPEND_COMPLETION@
+    const std::string suite=argc>1?argv[1]:"all";
+    auto completion=completion_cases();
+    if(suite=="completion")cases=std::move(completion);
+    else if(suite=="all")cases.insert(cases.end(),completion.begin(),completion.end());
+    else if(suite!="body")return 2;
     int failures=0;for(auto&[name,run]:cases){try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){++failures;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     std::cout<<cases.size()<<" cases, "<<checks<<" checks, "<<failures<<" failures\n";return failures?1:0;
 }

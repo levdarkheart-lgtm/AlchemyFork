@@ -770,7 +770,7 @@ void LLTextureCacheWorker::finishWork(S32 param, bool completed)
             LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("tcwfw - write");
             // write
             mWriteData = NULL; // we never owned data
-            mDataSize = 0;
+            mDataSize = success ? 0 : -1; // endWork removes a failed cache entry.
         }
         mCache->addCompleted(mResponder, success);
     }

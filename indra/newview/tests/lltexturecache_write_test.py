@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--revision')
     parser.add_argument('--build-dir', type=Path, required=True)
     parser.add_argument('--config', default='Release')
+    parser.add_argument('--suite', choices=['body', 'completion', 'all'], default='all')
     parser.add_argument('--output-dir', type=Path)
     args = parser.parse_args()
     build = args.build_dir.resolve()
@@ -65,7 +66,7 @@ def main():
                        functions=[dict(signature=s, sha256=hashlib.sha256(b.encode()).hexdigest()) for s, b in zip(signatures, bodies)],
                        generated_sha256=hashlib.sha256(generated.encode()).hexdigest(), runs=[])
         result = None
-        for name, command in [('compile', compile_command), ('link', link_command), ('run', [str(exe)])]:
+        for name, command in [('compile', compile_command), ('link', link_command), ('run', [str(exe), args.suite])]:
             result = subprocess.run(command, cwd=build, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (output / f'{name}.stdout').write_text(result.stdout)
             (output / f'{name}.stderr').write_text(result.stderr)
