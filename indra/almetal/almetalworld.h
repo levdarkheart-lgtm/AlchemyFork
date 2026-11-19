@@ -3379,6 +3379,14 @@ public:
         const ALMetalWorldBaseLightingScene& scene,
         std::string* error = nullptr);
 
+    // Original RenderDeferredAtmospheric=false starts accumulation from
+    // transparent zero, then still runs local/projector/post-deferred work.
+    // Clear color only; carry the exact borrowed G-buffer depth unchanged.
+    // The G-buffer must outlive this target, as for borrow_depth above.
+    std::unique_ptr<ALMetalRenderTarget> renderZeroLighting(
+        const ALMetalRenderTarget& gbuffer,
+        std::string* error = nullptr);
+
     // Main-only, ready-input transaction. Shares one RGBA16F/depth pass for
     // base, optional modern sky, point and projector draws. All CPU inputs
     // are borrowed only through this call. No encoder survives the call.

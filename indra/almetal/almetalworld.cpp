@@ -26850,6 +26850,71 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderBaseLigh
     return renderBaseLightingInternal(scene, nullptr, error);
 }
 
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderZeroLighting(
+    const ALMetalRenderTarget& gbuffer, std::string* error)
+{
+    // Failure cannot leave an earlier prefix of this world transaction
+    // committable. Owned commands retain their normal abandonment behavior.
+    Impl::GBufferFailureScope failure{mImpl.get(), error};
+    const auto& input = gbuffer.descriptor();
+    const auto* depth = gbuffer.depthStencilTexture();
+    if (!mImpl || !mImpl->device || !input.width || !input.height ||
+        input.sample_count != 1 || input.color_attachment_count != 4 ||
+        input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
+        input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
+        (input.colors[2].format != ALMetalPixelFormat::rgb10a2_unorm &&
+         input.colors[2].format != ALMetalPixelFormat::rgba16_unorm) ||
+        (input.colors[3].format != ALMetalPixelFormat::rgba8_unorm &&
+         input.colors[3].format != ALMetalPixelFormat::rg11b10_float) ||
+        input.depth_stencil_format != ALMetalPixelFormat::depth32_float_stencil8 ||
+        !input.depth_stencil_shader_read || !sampleableTexture(depth))
+    {
+        setError(error, "Metal zero-light G-buffer is incompatible");
+        return nullptr;
+    }
+    for (unsigned attachment = 0; attachment < 4; ++attachment)
+    {
+        if (!sampleableTexture(gbuffer.colorTexture(attachment)))
+        {
+            setError(error, "Metal zero-light G-buffer attachment is unavailable");
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = input.width;
+    descriptor.height = input.height;
+    descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+    descriptor.colors[0].label = "Alchemy zero-light accumulation";
+    descriptor.label = "Alchemy native zero-light target";
+    auto output = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+    if (!output) return nullptr;
+    // This also verifies native device, dimensions, samples and retained depth
+    // usage before publishing the borrowed attachment; no depth copy occurs.
+    output = ALMetalRenderTarget::attachBorrowedDepth(
+        *mImpl->device, std::move(output), *depth, error);
+    if (!output) return nullptr;
+
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    auto* command = mImpl->acquireCommandBuffer(
+        "Alchemy native zero lighting", owned_command, error);
+    if (!command) return nullptr;
+    ALMetalRenderPassConfig config;
+    config.colors[0].load = ALMetalLoadAction::clear;
+    config.colors[0].store = ALMetalStoreAction::store;
+    config.colors[0].clear = {0., 0., 0., 0.};
+    // The returned owner carries depth for later passes, but this color-only
+    // operation never binds, clears, discards or otherwise touches it.
+    config.bind_depth_stencil = false;
+    auto pass = output->makeRenderPass(config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy zero-light color clear", error) : nullptr;
+    const bool encoded = encoder && encoder->end(error);
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error)) return nullptr;
+    failure.succeeded = true;
+    return output;
+}
+
 void ALMetalWorldGBufferRenderer::failNextMainLightingChainAfterBaseForTesting() noexcept
 {
     if (mImpl) mImpl->fail_main_lighting_after_base = true;
