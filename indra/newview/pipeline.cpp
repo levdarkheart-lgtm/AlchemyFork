@@ -16570,87 +16570,8 @@ void LLPipeline::releaseMetalImpostorTextures(const LLUUID& avatar_id)
 void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
                                             LLViewerTexture* texture)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->pass_active)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.complete)
-    {
-        return;
-    }
-    LLDrawable* drawable = face ? face->getDrawable() : nullptr;
-    LLViewerRegion* region = drawable ? drawable->getRegion() : nullptr;
-    LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
-    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-    if (!region || !buffer || !image ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
-        !buffer->prepareMetalBuffers(true) || !image->getMetalTexture() ||
-        buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0)
-    {
-        capture.markIncomplete(__LINE__);
-        capture.clearDraws();
-        return;
-    }
-
-    LLMatrix4a modelview;
-    LLMatrix4a inverse_modelview;
-    LLMatrix4a modelview_projection;
-    if (!buildMetalWorldDrawMatrices(
-            &region->mRenderMatrix, modelview, inverse_modelview,
-            modelview_projection))
-    {
-        capture.markIncomplete(__LINE__);
-        capture.clearDraws();
-        return;
-    }
-    ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
-    capture.retainGeometry(*buffer);
-    batch.vertices = buffer->getMetalVertexBuffer();
-    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
-    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
-    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
-    batch.vertex_count = buffer->getNumVerts();
-    batch.indices = buffer->getMetalIndexBuffer();
-    batch.index_type = buffer->getIndexStride() == 4
-        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-    batch.index_count = buffer->getNumIndices();
-    capture.retainImage(image);
-    batch.diffuse_textures[0] = image->getMetalTexture();
-    batch.texture_count = 1;
-    batch.alpha_mask = true;
-    batch.use_vertex_color = false;
-    batch.alpha_cutoff_bias = false;
-    batch.alpha_cutoff = 0.5f;
-    std::memcpy(batch.modelview_projection,
-                modelview_projection.getF32ptr(),
-                sizeof(batch.modelview_projection));
-    // treeF applies the hero-mirror plane to vary_position in eye space.
-    // The shared Metal cutout vertex path derives the same value from this
-    // matrix; leaving it zero retains every tree fragment at clip distance 0.
-    std::memcpy(batch.modelview, modelview.getF32ptr(),
-                sizeof(batch.modelview));
-
-    const F32* inverse = inverse_modelview.getF32ptr();
-    const F32* modelview_values = modelview.getF32ptr();
-    for (U32 column = 0; column < 3; ++column)
-    {
-        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
-        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
-        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
-        batch.rigged_normal_matrix[column][0] =
-            modelview_values[column * 4 + 0];
-        batch.rigged_normal_matrix[column][1] =
-            modelview_values[column * 4 + 1];
-        batch.rigged_normal_matrix[column][2] =
-            modelview_values[column * 4 + 2];
-    }
+    const U32 tree_capture_source_line = __LINE__;
+#include "pipeline_tree_capture_native.inl"
 }
 
 static void describe_missing_native_terrain_input(const char* role, U32 slot = 0)

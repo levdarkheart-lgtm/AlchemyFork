@@ -191,6 +191,7 @@ if(AL_BUILD_TESTS)
       tests/alhud_diagnostics_metal_test.cpp
       tests/alpipeline_buffer_publication_metal_test.cpp
       tests/alpipeline_hero_capture_readiness_test.cpp
+      tests/alpipeline_tree_capture_test.cpp
       tests/alpipeline_shadow_terrain_preflight_test.cpp
       tests/alterrainsurfacemaps_readiness_test.cpp
       tests/alshadow_height_publication_metal_test.mm

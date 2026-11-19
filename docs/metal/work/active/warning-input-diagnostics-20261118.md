@@ -1,6 +1,6 @@
 # Targeted warning input collection
 
-- State: ready_for_runtime (source/test preflight; exact committed identity pending)
+- State: runtime_complete; investigation and local repairs in progress
 - Owner: Codex warning audit integrator
 - Branch: `codex/log-warning-port-audit-20261118`, basea1d4d4645f; previous repairs103043ba16 retained locally.
 - Scope: PPD311/466 exact failing inputs and actual producer/consumer context. No renderer/fetch/fallback policy changes; no performance recording.
@@ -37,3 +37,18 @@ Independent review confirms source/context/exception/PII bounds. Earlier fixture
 ## Next action
 
 Commit coherent preflight locally, refresh appmetadata to exactsourceSHA, verify346ARM64/signature anddecoderidentity, launchexactcandidate with privateboundedlogs/inputdirectory and read-onlyagent/settings observer. Owner logsHome then Club. Do not start Xcode/replay/Overview/nativecapture telemetry or clear caches. ConfirmactualPID/source/region/decoder before interpreting newinputs. Keep allfixeslocal until explicitpushapproval; warn/input absence is not closure.
+
+
+## Observed runtime and owner-authorized continuation, 2026-11-19
+
+Exact source96f10353af /69331 was verified and launched at23:39:06UTC with OpenHTJ2K0.27.0, bounded opt-in diagnostics, a read-only LEAP observer and the existing AlchemyNext cache. Home was unavailable; the owner explicitly identified the starting location as the club. The owner subsequently authorized teleports among several places to seek rigging fallback. Earlier shorthand treating the first location as pre-club was corrected; later data is not all club-only. No Xcode/replay/performance recording was started.
+
+The owner reports broken floors after teleport in two preserved screenshots (PPD470). All42missing-mask callbacks have needs_aux0 and no auxiliary pixels despite valid primaryRGBA and success/final. Actual9production-body/realOpenHT tests reproduce pause→postCreate→resume losing auxiliary demand, as well as late auxiliary readiness (4cases/87assertions); this confirms PPD471 mechanisms, not each incident's full schedule. Agent owns a separate PPD471 worktree; root owns integration and pipeline.cpp.
+
+All exact rigging watcher predicates are zero through00:00:19UTC; no compressed skin files were written. PPD311/313 are not closed. Diagnostic category caps filled on initial traffic; missing producer records cannot establish no decode. Recycled handles and S8 channel serialization are separately registered as PPD472.
+
+Owner was released to log out after both screenshots, a complete log prefix and runtime/settings identity were preserved. The final log has Goodbye; PID74144 is absent. Complete log7,541,103bytes/SHA972950c7620bf531e969d839adc937fb42922e687c7ef889de2a1a15d66b575d,809WARNING/61sites/0ERROR/FATAL. Private artifact root is Alchemy-warning-inputs-wh3ienda with closed-run-01, skin-live-01, bake-live-01, late-aux-offline-01 and owner-floor evidence. Initial final-site parser omitted namespaced symbols; the corrected expression accounts for all809rows with zero unparsed records.
+
+[Runtime source map and current actions](../../research/warning-input-runtime-69331-20261119.md). No cache clearing, blanket retry, new viewer run or push.
+
+First runtime-doc harness failed only because CURRENT/ledger grew to161/181lines. Adjacent existing prose was joined without dropping history; recovery limits are restored to160/180. Original failed console and subsequent harness result remain retained.

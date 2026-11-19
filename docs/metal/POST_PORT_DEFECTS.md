@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-470 -->
+<!-- next-defect-id: PPD-475 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -8196,6 +8196,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 registered at source/log discovery before any cache repair. No new existing PPD for this exact mismatch was found. Source behavior is original-equivalent; data inconsistency and incomplete cache warmness remain real functional context, with origin and FPS contribution unproved. No cache/source/settings change was made.
 
+
+- 2026-11-19 current69331 startup repeats one body/index mismatch (29225actual/18786indexed bytes), using the same sampled purge/recovery. Existing cache was preserved; no new cause or cache-wide conclusion. See69331 runtime research note.
+
 ## PPD-341 — Private checkpoint analysis needs complete warning forms and precise sample bounds
 
 - Status: ready_for_owner
@@ -10798,3 +10801,99 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 Source guards date insertion with ASN1_TIME_check; invalid dates stay absent so existing validator rejects missing period, while valid epoch stays present. Actual class test mutates owned valid X509 before first lazy metadata read because OpenSSL already rejects some malformed DER clones. Projection control and integrated full suite pass; independent review confirms no stale date keys or validation bypass. [Audit evidence](work/active/log-warning-port-audit-20261118.md).
 
 - 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.
+
+
+## PPD-470 — Owner reports missing and black floor sections after teleport
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning/runtime integrator
+- Discovered: 2026-11-18
+- Original reference: Preserve complete world geometry/material rendering across region changes. Original1eb44 tree deferred draw and face indexed-render readiness contracts must be traced before repair; current pipeline.cpp captureMetalWorldTreeBatch16596 has a compound region/buffer/image/attribute/native-publication/extent guard.
+- Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Exact source96f10353af/viewer69331/PID74144. Owner screenshots23:54:49 and23:55:33 show missing/black/blue floor sections at the club after teleports; original bytes retained privately. Earlier23:49:48–54log has230incomplete native world-capture warnings, first invalidation pipeline.cpp16596 in native tree preflight,0batches retained. Screenshot-to-warning causality is not proved.
+- Next action: Preserve the broken live scene and timestamped inputs; trace original/current tree and scene/resource publication contracts. Identify the first failing predicate and whether floor batches are absent, rejected, incorrectly transformed or shaded before selecting a correction. Keep capture-completeness and lifetime guards intact.
+- Verification: Owner-visible visual failure reproduced in two supplied images on exact candidate. Native tree capture rejection also reproduced, but its exact compound predicate and connection to the floor are unknown. The legacy warning text saying retainedGL does not prove any OpenGL execution or fallback backend.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before repair. Owner expands runtime collection from club-only to several manual teleports seeking PPD311, then reports this separate broken-floor outcome. Viewer, camera, settings, cache and source binary are left unchanged for evidence. No fix/closure or forced restart.
+
+
+- 2026-11-19 owner clarifies the club is high in the sky and the missing floor is likely mesh/prim geometry, not terrain. A stable read-only copy of the post-logout region object cache contains one approximate volume bounding box beneath both screenshot observer positions; actual volume/texture decoding is ongoing. This is a candidate identity, not a broken-frame draw receipt. Later hero generated-height warnings remain separate.
+
+## PPD-471 — Requested bake auxiliary data can be omitted from successful final callbacks
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex bake lifecycle investigation
+- Discovered: 2026-11-18
+- Original reference: Original1eb44/current setLoadedCallback and doLoadedCallbacks bodies are identical. A callback that requires auxiliary mask pixels must not report successful final fulfillment from a primary-only raw or saved-raw generation. OpenHTJ2K is the sole pixel decoder.
+- Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md); private late-aux-offline-01 actual7body case with real OpenHT decoded five-channel bake passes3cases/51behavior assertions. Primary-only decode followed by lateaux request uses mHasAux history to skip refetch and can dispatch success/final with nullaux and delete callback. Current live run separately reproduces42mask warnings/consumer records, allneeds_aux0/auxnull and primaryRGBApresent; that exact state requires pause/publication-demand investigation.
+- Next action: Complete actual pause/unpause/postCreate/request-dedup reproduction matching live needs_aux0, preserve per-callback auxiliary requirements across pause/resume, and admit auxiliary redecode of complete formatted bytes when necessary. Register tests and verify no endless refetch of genuinely maskless content before repair integration.
+- Verification: Source-confirmed inherited callback-fulfillment defect in a contained actual-body/real decoder case. Live42needs_aux0 records are not the same as the initial needs_aux1 reproduction, so live cause remains qualified. All29old complete inputs decode valid1channelaux in87OpenHT requests; that does not prove live callback lifetime/progressive inputs.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before any production repair. Existing PPD466 appearance incident remains separate. Producer diagnostic budget64was consumed during initial club loading, so later consumer failures have no retained producer join; absence of a producer record is not absence of decode.
+
+
+- 2026-11-19 actual pauseLoadedCallbacks/postCreateTexture/unpauseLoadedCallbacks and real OpenHT decode reproduce the exact needs_aux0/nullaux/successfinal consumer state (4cases/87assertions). Per-callback auxiliary demand is not stored; publication while paused clears the aggregate, and resume restores only raw demand. Live producer/order/mHasAux history remains unknown, so this is a matching source mechanism rather than full incident causality. Local repair begins in Alchemy-bake-471-20261119 from96f10353af, with exclusive texture/fetch ownership and root integration.
+
+## PPD-472 — Warning input diagnostics suppress reused handles and stream channel counts as bytes
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex warning-input evidence qualification
+- Discovered: 2026-11-18
+- Original reference: Native diagnostic mechanism is new; preserve enough private request identity and exact numeric metadata to explain failures without credential paths/queries or behavioral changes. Original warning rows remain authoritative raw evidence.
+- Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Core terminal key uses handle+status, but handles recycle: a material403and later texture403can share it, suppressing the later core context below budget. Policy/range validation rejects the false join. Bake formatted_components is S8, producing literal0x05/0x04 instead of decimal text; raw bytes are retained and can be normalized losslessly.
+- Next action: On a future candidate, use per-terminal-operation diagnostic identity without URL secrets and cast channel counts to numeric types; test handle reuse across policy/request ranges and exact log serialization. Preserve current run unchanged and all caps/unknown joins. Do not restart only to relabel available evidence.
+- Verification: Diagnostic-only defects reproduced from current source/live immutable prefixes; no engine request or decoder malfunction follows from them. Existing64category limits also bound coverage, especially early bake/maptile traffic; do not count all logged403s as missing ordinary textures.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-18 registered before diagnostic repair. Original source/warnings/prefixes, guarded rejected joins and byte normalization history remain private. Current live binary stays96f10353af while the owner reproduces rendering/rigging symptoms.
+
+
+## PPD-473 — A loading tree texture can abort an entire native world view
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native world integrator
+- Discovered: 2026-11-19
+- Original reference: Original1eb44bbd1b LLDrawPoolTree::renderDeferred binds through ALTextureSlot::bindFastImpl and the default-image path while a requested image is not resident. Current captureMetalWorldTreeBatch requires the requested image's own native backing, unlike native tree-shadow fallback.
+- Evidence: [69331 runtime and source investigation](research/warning-input-runtime-69331-20261119.md); pipeline.cpp captureMetalWorldTreeBatch/endMetalWorldGBufferCapture, lldrawpooltree.cpp renderDeferred, altextureslot.cpp bindFastImpl and llviewertexture.cpp bindDefaultImage.
+- Next action: Execute actual capture fault cases, preserve original default binding and native lifetime ownership when requested backing is unavailable, and retain all irrecoverable geometry/resource completeness checks. Record the first failed tree predicate for a future recurrence.
+- Verification: Source proves one unready tree texture clears all shared view draws and prevents G-buffer publication. The230live tree-guard failures do not identify their exact failing predicate; connection to PPD470 floor images is unproved. Proposed correction is local and not yet integrated or built.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before production repair. Original tree producer allocates COLOR, so its smaller unrelated enum is not evidence of a layout defect. Trees.xml texture IDs do not overlap the earlier20ordinary403IDs. Do not weaken transaction guards or relabel stale retainedGL warning text as a real graphics backend.
+
+
+- 2026-11-19 local tree correction resolves a missing requested native image through the resident default, retaining its actual immutable generation. Deleted-source revival precedes activation, matching the existing native UI lifecycle; the original fast binder's literal ordering is not copied blindly. Irrecoverable pointers, streams, publication, extents and matrices retain whole-view rejection. New bounded first-predicate diagnostics identify main/hero/probe view without asset/account data. Actual-body baseline18cases/112checks fails4; private proposal18/122 passesASan/UBSan. Durable actual-inl Catch cases pass6/288 underASan/UBSan and the built llrender target (build0/test0). Full app/GPU/owner retest pending; PPD470 remains unproved.
+
+## PPD-474 — Three preferences checkboxes have no backing settings or consumers
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex warning-source audit
+- Discovered: 2026-11-19
+- Original reference: Both original1eb44 and current skin XML reference AlchemyCinematicModeHideHoverText, DoubleClickAttachmentAdd and DoubleClickWearableAdd; no matching setting declarations or C++ consumers exist in either inspected revision.
+- Evidence: [69331 runtime and source investigation](research/warning-input-runtime-69331-20261119.md); three lluictrl.cpp setControlName warnings and exact original/current search retained in private asset-live-02-final.
+- Next action: Trace the historical intended behavior and wire a meaningful existing feature/consumer contract before repairing controls. Adding unused declarations would only conceal the broken binding.
+- Verification: Current lookup fails and disconnects setting binding. This is an inherited UI contract defect; no effect on floor rendering, OpenHT decoding or measured frame time is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered at source-confirmed discovery checkpoint before any repair. Existing non-rendering functions must be retained; no dead setting or silent feature removal is authorized.

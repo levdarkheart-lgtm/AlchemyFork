@@ -1889,6 +1889,7 @@ if(AL_BUILD_VIEWER)
     pipeline_producer_source_drain_native.inl
     pipeline_producer_capability_native.inl
     pipeline_hero_capture_readiness_native.inl
+    pipeline_tree_capture_native.inl
     pipeline_shadow_terrain_preflight_native.inl
     pipeline_shadow_terrain_preflight_types_native.inl
     alterrainsurfacemaps_readiness_native.inl
