@@ -18,6 +18,20 @@
  positioning="relative">
     <floater.string name="call_btn_start">Conv_toolbar_open_call</floater.string>
     <floater.string name="call_btn_stop">Conv_toolbar_hang_up</floater.string>
+    <floater.string name="native_im_original">Original (translation off)</floater.string>
+    <floater.string name="native_im_system">System language</floater.string>
+    <floater.string name="native_im_detect">Detect language</floater.string>
+    <floater.string name="native_im_draft_changed">Not sent: draft changed during translation. Review and retry.</floater.string>
+    <floater.string name="native_im_incoming_unknown">Incoming language unclear; original message kept.</floater.string>
+    <floater.string name="native_im_ready">Apple Translation · this chat only</floater.string>
+    <floater.string name="native_im_translating">Translating before sending…</floater.string>
+    <floater.string name="native_im_sent">Translated message sent</floater.string>
+    <floater.string name="native_im_cancelled">Cancelled; draft kept</floater.string>
+    <floater.string name="native_im_blocked">Message not sent: disconnected or IM restricted.</floater.string>
+    <floater.string name="native_im_unavailable">Apple Translation requires macOS 26 or later.</floater.string>
+    <floater.string name="native_im_invalid_result">Not sent: empty or oversized translation. Shorten the draft.</floater.string>
+    <floater.string name="native_im_busy">Too many incoming translations; original messages kept.</floater.string>
+    <floater.string name="native_im_translation_label">[Translation]</floater.string>
     <floater.string
      name="collapseline_icon"
      value="Conv_collapse_to_one_line"/>
@@ -446,6 +460,39 @@
                         </layout_stack>
                     </layout_panel>
                 </layout_stack>
+            </layout_panel>
+            <layout_panel
+             name="native_im_translation_panel"
+             height="111"
+             auto_resize="false"
+             user_resize="false"
+             visible="false">
+                <text name="native_im_send_label" layout="topleft"
+                 follows="left|top" left="8" top="7" height="18" width="66">Send in:</text>
+                <combo_box name="native_im_outgoing" layout="topleft"
+                 follows="left|right|top" left="80" right="-8" top="3" height="23"
+                 tool_tip="Translate your draft before sending. Applies only to this conversation. Original text stays in the editor if translation fails." />
+                <check_box name="native_im_incoming_enabled" layout="topleft"
+                 follows="left|top" left="8" top="30" height="23" width="100"
+                 initial_value="false" label="Receive in:"
+                 tool_tip="Show incoming translations below original messages in this conversation. Transcript files keep the original text." />
+                <combo_box name="native_im_incoming" layout="topleft"
+                 follows="left|right|top" left="110" right="-8" top="30" height="23"
+                 tool_tip="Choose your reading language explicitly, or use your first preferred macOS language." />
+                <text name="native_im_source_label" layout="topleft"
+                 follows="left|top" left="8" top="61" height="18" width="66">Write in:</text>
+                <combo_box name="native_im_source" layout="topleft"
+                 follows="left|right|top" left="80" right="-8" top="57" height="23"
+                 tool_tip="The language you write in. Choose explicitly for short messages, or select Detect language." />
+                <button name="native_im_setup" layout="topleft"
+                 follows="left|top" left="8" top="84" height="22" width="105"
+                 label="Languages…" tool_tip="Prepare or download Apple language models on this Mac." />
+                <button name="native_im_cancel" layout="topleft"
+                 follows="left|top" left="119" top="84" height="22" width="62"
+                 label="Cancel" enabled="false" tool_tip="Cancel the pending send and keep your original draft." />
+                <text name="native_im_translation_status" layout="topleft"
+                 follows="left|right|top" left="188" right="-8" top="88" height="18"
+                 font="SansSerifSmall" wrap="false">Apple Translation · this chat only</text>
             </layout_panel>
             <layout_panel
              height="30"

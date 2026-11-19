@@ -628,9 +628,9 @@ void LLFloaterIMSessionTab::appendMessage(const LLChat& chat, const LLSD& args)
     if (chat.mMuted || !mChatHistory)
         return;
 
-    // Update the participant activity time
+    // Rendering an annotation on an existing message is not new activity.
     LLFloaterIMContainer* im_box = LLFloaterIMContainer::findInstance();
-    if (im_box)
+    if (im_box && !args["display_only_replay"].asBoolean())
     {
         im_box->setTimeNow(mSessionID, chat.mFromID);
     }

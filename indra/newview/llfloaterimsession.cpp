@@ -27,6 +27,14 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llfloaterimsession.h"
+#include "alnativeimtranslation.h"
+#include "llcheckboxctrl.h"
+#include "llcombobox.h"
+#include "llsdjson.h"
+#include "lltextbase.h"
+
+#include <functional>
+#include <map>
 
 #include "lldraghandle.h"
 #include "llnotificationsutil.h"
@@ -79,6 +87,297 @@ const F32 ME_TYPING_TIMEOUT = 4.0f;
 const F32 OTHER_TYPING_TIMEOUT = 9.0f;
 
 floater_showed_signal_t LLFloaterIMSession::sIMFloaterShowedSignal;
+
+namespace
+{
+    // All bridge calls and completions run on the viewer's main thread.
+    using NativeIMCompletion = std::function<void(const LLSD&)>;
+    std::map<uint64_t, NativeIMCompletion> sNativeIMCompletions;
+    uint64_t sNativeIMNextRequest = 0;
+
+    uint64_t nativeIMRequest(NativeIMCompletion completion)
+    {
+        const auto request = ++sNativeIMNextRequest;
+        sNativeIMCompletions.emplace(request, std::move(completion));
+        return request;
+    }
+
+    void nativeIMCancel(uint64_t request)
+    {
+        if (request)
+        {
+            sNativeIMCompletions.erase(request);
+            al_native_im_translation_cancel(request);
+        }
+    }
+
+    void nativeIMCompleted(uint64_t request, const char* json)
+    {
+        auto found = sNativeIMCompletions.find(request);
+        if (found == sNativeIMCompletions.end()) return;
+        auto completion = std::move(found->second);
+        sNativeIMCompletions.erase(found);
+        LLSD result;
+        if (!json || !LlsdFromJsonString(std::string_view(json), result))
+        {
+            result["ok"] = false;
+            result["error"] = "Invalid response from Apple Translation.";
+        }
+        completion(result);
+    }
+
+    std::string nativeIMProtectedMessage(std::string_view text)
+    {
+        LLSD pieces = LLSD::emptyArray();
+        for (const auto& segment : al::native_im_translation::protectMessageBody(text))
+        {
+            pieces.append(LLSD().with("text", segment.text).with("protected", segment.protected_text));
+        }
+        return LlsdToJson(pieces);
+    }
+}
+
+void LLFloaterIMSession::setNativeIMTranslationStatus(const std::string& status)
+{
+    getChild<LLTextBase>("native_im_translation_status")->setText(status);
+    getChild<LLTextBase>("native_im_translation_status")->setToolTip(status);
+}
+
+bool LLFloaterIMSession::usesNativeIMTranslation() const
+{
+    return mIsP2PChat && mSession && mOtherParticipantUUID.notNull() && mNativeIMOutgoing
+        && (!mNativeIMOutgoing->getValue().asString().empty()
+            || mNativeIMIncomingEnabled->getValue().asBoolean());
+}
+
+void LLFloaterIMSession::initNativeIMTranslation()
+{
+    auto* panel = getChild<LLView>("native_im_translation_panel");
+    updateNativeIMTranslationLayout();
+    if (!panel->getVisible()) return;
+
+    mNativeIMOutgoing = getChild<LLComboBox>("native_im_outgoing");
+    mNativeIMSource = getChild<LLComboBox>("native_im_source");
+    mNativeIMIncoming = getChild<LLComboBox>("native_im_incoming");
+    mNativeIMIncomingEnabled = getChild<LLCheckBoxCtrl>("native_im_incoming_enabled");
+    mNativeIMOutgoing->add(getString("native_im_original"), "");
+    mNativeIMOutgoing->selectFirstItem();
+    mNativeIMSource->add(getString("native_im_system"), "");
+    mNativeIMSource->add(getString("native_im_detect"), "@auto");
+    mNativeIMSource->selectFirstItem();
+    mNativeIMIncoming->add(getString("native_im_system"), "");
+    mNativeIMIncoming->selectFirstItem();
+    mNativeIMIncoming->setEnabled(false);
+    mNativeIMOutgoing->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
+    mNativeIMSource->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
+    mNativeIMIncoming->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
+    mNativeIMIncomingEnabled->setCommitCallback([this](LLUICtrl*, const LLSD&) { nativeIMTranslationChanged(); });
+    getChild<LLButton>("native_im_cancel")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
+        nativeIMCancel(mNativeIMSendRequest.id());
+        mNativeIMSendRequest.cancel();
+        mInputEditor->setReadOnly(false);
+        getChild<LLButton>("native_im_cancel")->setEnabled(false);
+        setNativeIMTranslationStatus(getString("native_im_cancelled"));
+    });
+    getChild<LLButton>("native_im_setup")->setClickedCallback([this](LLUICtrl*, const LLSD&) {
+        auto source = mNativeIMSource->getValue().asString();
+        if (source == "@auto") source.clear();
+        const auto target = mNativeIMOutgoing->getValue().asString();
+        al_native_im_translation_setup(source.c_str(), target.c_str());
+    });
+    if (!al_native_im_translation_available())
+    {
+        mNativeIMOutgoing->setEnabled(false);
+        mNativeIMSource->setEnabled(false);
+        mNativeIMIncomingEnabled->setEnabled(false);
+        getChild<LLButton>("native_im_setup")->setEnabled(false);
+        setNativeIMTranslationStatus(getString("native_im_unavailable"));
+        return;
+    }
+    const auto handle = getDerivedHandle<LLFloaterIMSession>();
+    mNativeIMLanguagesRequest = nativeIMRequest([handle](const LLSD& result) {
+        auto* self = handle.get();
+        if (!self || !self->mSession) return;
+        self->mNativeIMLanguagesRequest = 0;
+        if (!result["ok"].asBoolean())
+        {
+            self->setNativeIMTranslationStatus(result["error"].asString());
+            return;
+        }
+        for (const auto& language : llsd::inArray(result["languages"]))
+        {
+            self->mNativeIMOutgoing->add(language["name"].asString(), language["code"]);
+            self->mNativeIMSource->add(language["name"].asString(), language["code"]);
+            self->mNativeIMIncoming->add(language["name"].asString(), language["code"]);
+        }
+        self->mNativeIMSystemLanguage = result["system_language"].asString();
+        self->setNativeIMTranslationStatus(self->getString("native_im_ready"));
+    });
+    al_native_im_translation_languages(mNativeIMLanguagesRequest, nativeIMCompleted);
+}
+
+void LLFloaterIMSession::updateNativeIMTranslationLayout()
+{
+    auto* panel = getChild<LLView>("native_im_translation_panel");
+    if (!mNativeIMBaseMinHeight)
+    {
+        mNativeIMBaseMinWidth = getMinWidth();
+        mNativeIMBaseMinHeight = getMinHeight();
+    }
+    const bool visible = mIsP2PChat && mOtherParticipantUUID.notNull();
+    panel->setVisible(visible);
+    const S32 min_height = mNativeIMBaseMinHeight + (visible ? panel->getRect().getHeight() : 0);
+    setResizeLimits(mNativeIMBaseMinWidth, min_height);
+    if (getRect().getHeight() < min_height)
+    {
+        reshape(llmax(getRect().getWidth(), mNativeIMBaseMinWidth), min_height);
+    }
+}
+
+void LLFloaterIMSession::nativeIMTranslationChanged()
+{
+    // Changing a target never sends a queued draft under the new choice.
+    if (mNativeIMSendRequest.pending())
+    {
+        nativeIMCancel(mNativeIMSendRequest.id());
+        mNativeIMSendRequest.cancel();
+        mInputEditor->setReadOnly(false);
+        getChild<LLButton>("native_im_cancel")->setEnabled(false);
+    }
+    for (const auto request : mNativeIMReceiveRequests) nativeIMCancel(request);
+    mNativeIMReceiveRequests.clear();
+    mNativeIMIncoming->setEnabled(mNativeIMIncomingEnabled->getValue().asBoolean());
+    setNativeIMTranslationStatus(getString("native_im_ready"));
+}
+
+void LLFloaterIMSession::cancelNativeIMTranslation()
+{
+    nativeIMCancel(mNativeIMLanguagesRequest);
+    mNativeIMLanguagesRequest = 0;
+    if (mNativeIMSendRequest.pending() && mInputEditor)
+    {
+        // onClose also precedes P2P-to-conference floater reuse.
+        mInputEditor->setReadOnly(false);
+    }
+    nativeIMCancel(mNativeIMSendRequest.id());
+    mNativeIMSendRequest.cancel();
+    for (const auto request : mNativeIMReceiveRequests) nativeIMCancel(request);
+    mNativeIMReceiveRequests.clear();
+}
+
+bool LLFloaterIMSession::translateOutgoingIM(const std::string& message)
+{
+    if (!mNativeIMOutgoing || !mIsP2PChat || !mSession) return false;
+    if (mNativeIMSendRequest.pending()) return true;
+    const auto target = mNativeIMOutgoing->getValue().asString();
+    if (target.empty()) return false;
+    if (!RlvActions::canSendIM(mOtherParticipantUUID))
+    {
+        setNativeIMTranslationStatus(getString("native_im_blocked"));
+        return true;
+    }
+    const auto prepared = al::native_im_translation::prepareMessage(message);
+    const auto draft = mInputEditor->getText();
+    auto source = mNativeIMSource->getValue().asString();
+    if (source.empty()) source = mNativeIMSystemLanguage;
+    if (source == "@auto") source.clear();
+    const auto handle = getDerivedHandle<LLFloaterIMSession>();
+    // Capture the operation ID as well as the weak handle: chat UUIDs are reused.
+    const auto request = sNativeIMNextRequest + 1;
+    nativeIMRequest([handle, request, prepared, draft](const LLSD& result) {
+        auto* self = handle.get();
+        if (!self || !self->mSession || !self->mNativeIMSendRequest.finish(request)) return;
+        self->mInputEditor->setReadOnly(false);
+        self->getChild<LLButton>("native_im_cancel")->setEnabled(false);
+        if (self->mInputEditor->getText() != draft)
+        {
+            self->setNativeIMTranslationStatus(self->getString("native_im_draft_changed"));
+            return;
+        }
+        const auto translated = result["text"].asString();
+        if (!result["ok"].asBoolean())
+        {
+            self->setNativeIMTranslationStatus(result["error"].asString());
+            return;
+        }
+        if (!al::native_im_translation::isValidResult(prepared, translated, (MAX_MSG_BUF_SIZE * 5) - 1))
+        {
+            self->setNativeIMTranslationStatus(self->getString("native_im_invalid_result"));
+            return;
+        }
+        // Re-enter the existing send path, including its current RLVa checks.
+        if (gDisconnected || !RlvActions::canSendIM(self->mOtherParticipantUUID))
+        {
+            self->setNativeIMTranslationStatus(self->getString("native_im_blocked"));
+            return;
+        }
+        self->sendMsg(prepared.assemble(translated));
+        self = handle.get();
+        if (!self || !self->mSession) return;
+        if (self->mInputEditor->getText() == draft) self->mInputEditor->setText(LLStringUtil::null);
+        self->setNativeIMTranslationStatus(self->getString("native_im_sent"));
+    });
+    mNativeIMSendRequest.begin(request);
+    mInputEditor->setReadOnly(true);
+    setTyping(false);
+    getChild<LLButton>("native_im_cancel")->setEnabled(true);
+    setNativeIMTranslationStatus(getString("native_im_translating"));
+    const auto pieces = nativeIMProtectedMessage(prepared.body);
+    al_native_im_translate_segments(request, pieces.c_str(), source.c_str(), target.c_str(), nativeIMCompleted);
+    return true;
+}
+
+void LLFloaterIMSession::translateIncomingIM(const std::string& from, const LLUUID& from_id,
+                                            const std::string& original, bool is_region_msg)
+{
+    if (!usesNativeIMTranslation() || !mNativeIMIncomingEnabled->getValue().asBoolean()
+        || from_id != mOtherParticipantUUID || from_id == gAgentID || is_region_msg
+        || mSession->mMsgs.empty()) return;
+    auto& message = mSession->mMsgs.front();
+    if (message["message"].asString() != original || message["from_id"].asUUID() != from_id) return;
+    const S32 index = message["index"].asInteger();
+    if (mNativeIMReceiveRequests.size() >= 32)
+    {
+        setNativeIMTranslationStatus(getString("native_im_busy"));
+        return;
+    }
+    const auto target = mNativeIMIncoming->getValue().asString();
+    const auto prepared = al::native_im_translation::prepareMessage(original);
+    const auto handle = getDerivedHandle<LLFloaterIMSession>();
+    const auto request = sNativeIMNextRequest + 1;
+    nativeIMRequest([handle, request, index, original, from_id, prepared](const LLSD& result) {
+        auto* self = handle.get();
+        if (!self || !self->mSession || !self->mNativeIMReceiveRequests.erase(request)) return;
+        if (!result["ok"].asBoolean())
+        {
+            self->setNativeIMTranslationStatus(result["error_code"].asString() == "unknown_source"
+                ? self->getString("native_im_incoming_unknown") : result["error"].asString());
+            return;
+        }
+        const auto translated = result["text"].asString();
+        if (!al::native_im_translation::isValidResult(prepared, translated, 65535)) return;
+        if (translated == prepared.body) return;
+        for (auto& item : self->mSession->mMsgs)
+        {
+            if (item["index"].asInteger() == index && item["from_id"].asUUID() == from_id
+                && item["message"].asString() == original)
+            {
+                item["native_im_translation"] = prepared.assemble(translated);
+                // The original remains the transcript and notification text.
+                const auto position = self->mChatHistory->getScrollPosition();
+                const auto at_end = self->mChatHistory->isAtEnd();
+                self->mNativeIMDisplayReplay = true;
+                self->reloadMessages();
+                self->mNativeIMDisplayReplay = false;
+                self->mChatHistory->restoreScrollPosition(position, at_end);
+                return;
+            }
+        }
+    });
+    mNativeIMReceiveRequests.insert(request);
+    const auto pieces = nativeIMProtectedMessage(prepared.body);
+    al_native_im_translate_segments(request, pieces.c_str(), "", target.c_str(), nativeIMCompleted);
+}
 
 LLFloaterIMSession::LLFloaterIMSession(const LLUUID& session_id)
   : LLFloaterIMSessionTab(session_id),
@@ -344,6 +643,7 @@ void LLFloaterIMSession::sendMsgFromInputEditor(bool ooc_chat)
 
                 applyOOCClose(utf8_text);
                 applyMUPose(utf8_text);
+                if (translateOutgoingIM(utf8_text)) return;
                 sendMsg(utf8_text);
 
                 mInputEditor->setText(LLStringUtil::null);
@@ -428,6 +728,7 @@ void LLFloaterIMSession::sendMsg(const std::string& msg)
 
 LLFloaterIMSession::~LLFloaterIMSession()
 {
+    cancelNativeIMTranslation();
     mVoiceChannelStateChangeConnection.disconnect();
 
     LLVoiceClient::removeObserver(this);
@@ -462,6 +763,7 @@ void LLFloaterIMSession::initIMFloater()
     {
         mOtherParticipantUUID = other_party_id;
     }
+    updateNativeIMTranslationLayout();
 
     boundVoiceChannel();
 
@@ -538,6 +840,8 @@ bool LLFloaterIMSession::postBuild()
     //see LLFloaterIMPanel for how it is done (IB)
 
     initIMFloater();
+
+    initNativeIMTranslation();
 
     return result;
 }
@@ -794,6 +1098,7 @@ LLFloaterIMSession* LLFloaterIMSession::getInstance(const LLUUID& session_id)
 
 void LLFloaterIMSession::onClose(bool app_quitting)
 {
+    cancelNativeIMTranslation();
     setTyping(false);
 
     // The source of much argument and design thrashing
@@ -1005,6 +1310,10 @@ void LLFloaterIMSession::updateMessages()
             LLUUID from_id = msg["from_id"].asUUID();
             std::string from = msg["from"].asString();
             std::string message = msg["message"].asString();
+            if (msg.has("native_im_translation"))
+            {
+                message += "\n" + getString("native_im_translation_label") + " " + msg["native_im_translation"].asString();
+            }
             bool is_history = msg["is_history"].asBoolean();
             bool is_region_msg = msg["is_region_msg"].asBoolean();
 
@@ -1049,7 +1358,7 @@ void LLFloaterIMSession::updateMessages()
             }
 
             // Add the message to the chat log
-            appendMessage(chat);
+            appendMessage(chat, LLSD().with("display_only_replay", mNativeIMDisplayReplay));
             mLastMessageIndex = msg["index"].asInteger();
 
             // if it is a notification - next message is a notification history log, so skip it

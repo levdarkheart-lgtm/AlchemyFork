@@ -34,12 +34,17 @@
 #include "lltooldraganddrop.h"
 #include "llvoicechannel.h"
 #include "llvoiceclient.h"
+#include "alnativeimtranslationpolicy.h"
+
+#include <set>
 
 class LLAvatarName;
 class LLButton;
 class LLChatEntry;
 class LLTextEditor;
 class LLChatHistory;
+class LLComboBox;
+class LLCheckBoxCtrl;
 class LLInventoryItem;
 class LLInventoryCategory;
 
@@ -101,6 +106,11 @@ public:
     void sendMsgFromInputEditor(bool ooc_chat = false);
     void sendMsg(const std::string& msg);
 
+    // Native translation belongs to this live P2P conversation only.
+    bool usesNativeIMTranslation() const;
+    void translateIncomingIM(const std::string& from, const LLUUID& from_id,
+                             const std::string& original, bool is_region_msg);
+
     // callback for LLIMModel on new messages
     // route to specific floater if it is visible
     static void newIMCallback(const LLSD& data);
@@ -146,6 +156,25 @@ public:
 
     bool handleKeyHere(KEY key, MASK mask) override;
 private:
+
+    void initNativeIMTranslation();
+    void updateNativeIMTranslationLayout();
+    void nativeIMTranslationChanged();
+    bool translateOutgoingIM(const std::string& message);
+    void cancelNativeIMTranslation();
+    void setNativeIMTranslationStatus(const std::string& status);
+
+    LLComboBox* mNativeIMOutgoing = nullptr;
+    LLComboBox* mNativeIMSource = nullptr;
+    LLComboBox* mNativeIMIncoming = nullptr;
+    std::string mNativeIMSystemLanguage;
+    LLCheckBoxCtrl* mNativeIMIncomingEnabled = nullptr;
+    al::native_im_translation::RequestSlot mNativeIMSendRequest;
+    std::set<uint64_t> mNativeIMReceiveRequests;
+    uint64_t mNativeIMLanguagesRequest = 0;
+    bool mNativeIMDisplayReplay = false;
+    S32 mNativeIMBaseMinWidth = 0;
+    S32 mNativeIMBaseMinHeight = 0;
 
     /*virtual*/ void refresh() override;
 

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-498 -->
+<!-- next-defect-id: PPD-510 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -11650,3 +11650,211 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 - 2026-11-19 owner-authorized current checkpoint published by normal push0 to codex/apple-silicon-metal at a587257841; independent remote ref matches, preserved560bdf baseline ancestry and testedindra326ad879fe. Subsequent publication records are docs-only. Owner remains away and69390 water-band test is pending; ready_for_owner is not verified. No default-branch change/release/capture upload.
+
+## PPD-498 — Experimental Swift translation bridge exports have local visibility
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: Experiment based on 9e4654d84a; new alnativeimtranslation.swift C ABI declarations, not an inherited viewer defect.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Correct Swift C export visibility, relink the actual bridge probe, then build and verify the viewer.
+- Verification: First standalone C++ link fails on hidden/local private @_cdecl exports. Swift object compilation alone passed and did not prove C ABI linkage. Corrective test pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Bridge agent reports initial link failure before correcting export visibility. Local experiment only; no runtime IM or push.
+
+
+## PPD-499 — Experimental translated send uses floater after reentrant notification
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New LLFloaterIMSession::translateOutgoingIM success callback; existing sendMsg can synchronously emit message listeners.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Reacquire the weak floater handle after sendMsg before accessing the editor or status, and review all callback reentrancy.
+- Verification: Independent source review finds self dereferences after sendMsg; no runtime crash claimed. Corrective validation pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Independent policy agent identifies notification-driven close risk during actual outgoing local echo. Registered before repair.
+
+
+## PPD-500 — Experimental incoming annotations replay conversation activity and scroll
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New incoming completion calls reloadMessages; LLChatHistory::appendMessage scrolls self messages to end and LLFloaterIMSessionTab::appendMessage updates activity time.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Add display-only replay semantics that preserve scroll and do not change activity or issue alerts.
+- Verification: Independent source review traces both effects. No owner runtime acceptance yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered before repair; ordinary hidden replay already preserves unread count through hasFocus(), but activity and scroll still need correction.
+
+
+## PPD-501 — Experimental short-message language error offers an unavailable source selector
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New outgoing integration always passes automatic source detection; bridge unknown_source error suggests selecting source while floater initially has only target selectors.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Add a per-chat outgoing source selector defaulting to the system language with explicit-language and automatic options; make incoming error actionable.
+- Verification: Source review confirms there is no way to follow the original error advice. Typical short IM native detection probes pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Independent review identifies missing source-language control before repair. Incoming originals remain visible on detection failure.
+
+
+## PPD-502 — Experimental pending send can discard an emoji-modified draft
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New translated-send callback clears editor after success; existing recent-emoji insertion bypasses editor read-only state.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Compare the live editor draft with the captured draft before sending and before clearing; discard stale translation while retaining any modified text.
+- Verification: Independent source review traces onRecentEmojiPicked through insertEmoji into unguarded programmatic insertion. No actual user draft loss occurred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered before repair; editor read-only alone is insufficient protection against programmatic changes.
+
+## PPD-503 — Experimental IM controls initialize before participant identity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New postBuild calls initNativeIMTranslation before existing initIMFloater populates mOtherParticipantUUID.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Initialize native controls after initIMFloater and verify the actual UI.
+- Verification: Independent source trace confirms the null-participant early return hides controls on every fresh P2P floater.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Independent integration review reports issue before repair; local experiment only.
+
+## PPD-504 — Experimental translation button callbacks use incompatible signatures
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New cancel and setup setClickedCallback lambdas omit LLUICtrl and LLSD arguments.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Use the actual LLButton callback signature and recompile production integration.
+- Verification: Independent compile of actual llfloaterimsession.cpp fails with two callback signature errors; model source compilation succeeds.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Independent integration review reports issue before repair; local experiment only.
+
+## PPD-505 — Experimental language enumeration mislabels unavailable local service
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New Swift languages endpoint returns ok with an empty language list when the sandbox denies access to Apple Translation.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Return service_unavailable for an empty supportedLanguages list; retain observed sandbox limits.
+- Verification: Sandbox probe returns no languages; authorized unrestricted run returns 21. Missing-service response needs an explicit error.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Native probe records issue before repair; no messages sent to others.
+
+## PPD-506 — Experimental language matching rejects regional system locales
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New Swift match initially relies solely on Locale.Language.isEquivalent; en and en-IE are not equivalent.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Prefer exact match then match language and inferred script; test regional English and distinguish Chinese scripts.
+- Verification: Actual unrestricted probe incorrectly returns unsupported_target for en-IE despite supported English.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Native probe records issue before repair; no messages sent to others.
+
+## PPD-507 — Experimental URL policy initially uses C++17-only UTF-8 literal conversion
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New header URL scanner initially initializes string_view from u8 literals; production viewer uses C++23 with char8_t.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Use byte-compatible Unicode parsing and run tests with production C++23, then resume the viewer build.
+- Verification: First full viewer build stops at 1590/2558 with char8_t conversion errors in the in-progress header. Earlier policy tests used C++17 and did not catch this.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Full production build records failure before corrective compilation; no application launched.
+
+## PPD-508 — Experimental cancelled send leaves reused conference editor read-only
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: Existing addP2PSessionParticipants calls onClose then reuses floater_id for conference; new cancellation initially leaves translated-send read-only state and P2P control visibility unchanged.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Restore editor state during cancellation and refresh native panel visibility when initIMFloater rebinds the conversation.
+- Verification: Independent source trace confirms onClose does not destroy the floater in this path and focus callbacks decline to enable read-only editors. Wrong-recipient sending is separately ruled out by existing cancellation order.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered before repair during final lifecycle review; no actual user conference modified.
+
+## PPD-509 — Experimental translation rows consume the minimum-height chat area
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex native IM translation experiment
+- Discovered: 2026-11-19
+- Original reference: New fixed-height native translation panel adds 111 pixels while floater_im_session retains the original 190-pixel minimum.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Preserve the original minimum history/input area by adding the panel height to P2P resize limits and restoring original limits for conference reuse.
+- Verification: Source layout has fixed toolbar 25, translation 111 and editor 30 pixels plus borders, exhausting the original minimum. Runtime layout acceptance remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19: Registered before repair during final layout review; no original group-chat minimum should change.
