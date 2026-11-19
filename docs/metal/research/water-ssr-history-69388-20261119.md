@@ -195,3 +195,16 @@ Ordinary harness first rejects the missing next-ID counter advance when497 is
 registered; counter is corrected to498 and the subsequent33-file checks pass.
 The first producer-runner Unicode failure and broader far-row fixture failure
 remain in the preceding history. No assertions or policy are silently waived.
+
+## Owner publication authorization before scene retest
+
+On2026-11-19 the owner states: “I’m not home so I will test it in a while,
+mean while commit this and push it.” This explicitly authorizes the current
+checkpoint before the pending69390 water test and supersedes the prior push
+hold for that existing scope. It does not supply a visual result or authorize
+future fixes, default-branch changes, release publication or capture uploads.
+PPD-013 remains investigating/owner result failed for69388; PPD-497 remains
+ready_for_owner/pending for69390. OpenHTJ2K and all retained unknowns remain.
+The normal publication target is the established codex/apple-silicon-metal
+branch. Preserve the separately published69277 checkpoint history and require
+final indra tree326ad879fe933432fc6e03f0e1e1437345098d3e, exactly candidate69390.

@@ -161,7 +161,7 @@ reported behavior. PPD-003 limits the existing lighting-failure diagnostics.
 - Next action: Retain qualified counter-only69386 for next combined candidate; owner runtime verification of changed counters remains pending. Investigate new495/496 failures; keep PPD002 incident attribution separate and preserve tested69384 artifact.
 - Verification: Refreshed bounded observer exercised its repeat branch only at intentional69384 logout. After viewerexit0, integrated actual counter bodies pass5cases1741checks normalCatch2/ASan/UBSan; exactoriginal controls fail383/252/2/131checks. Fullapp69386/source7a2709d086 qualification passes wrapper build,21selectedCTest/API/GPU,strict3645zero,346ARM64/signature/ownedimports. This fixes warning visibility, not an attributed freeze or GPU completion.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 After a successful G-buffer capture, the next continuous transaction resets
 local/projector failed-frame counters. A repeated lighting failure can therefore
@@ -189,6 +189,9 @@ counter: some incomplete G-buffer retries can accumulate to their threshold.
 - 2026-11-19 closed69384 owner tour positive; two repeated-retention observations source-joined to intentional post-snapshot logout. Afterexit0, root source-integrated revieweda305f1f17b. Initial normal compilation failed on Catch2 logical-expression syntax, corrected only test parentheses. Normal newview_tests/lighting_retry_counters_test passes0; actual-bodyASan/UBSan5cases1741checks pass. Exact original controls all compile0, return42 with383/252/2/131failedchecks respectively. Existing attempted gates/product invalidation/lifecycle resets unchanged; actual commit streak is CPU submission status, not GPU completion. Full app/static checks pending; no runtime assertion for this later source. [Closed run and counter proof](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up).
 
 - 2026-11-19 full counter-only69386/source7a2709d08674ee0eae81aabe9819ec287648eb5e/indra6772b628d6aeb3c7711a542f84673820989c4fa3 qualifies locally: doctor0,14-step wrapperReleasebuild0,21selectedCTest/API/GPU0,strict3645/0blockers/0scanerrors,346ARM64/deepstrictsignature/3owned-host directimport checks0,harness0. Exact stable app preserved separately with executable SHA256a82ebb294485e1cc7789518e217f2474d8b5e6671173d981e6965f81ef171868; no viewer launch or push. Owner69384 run predates this warning-only repair. Private counter-qualified-receipt.json retains commands/results/log hashes. Ready_for_owner is scoped to counter correctness, not a freeze resolution.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-004 — Missing native impostor data invalidates unrelated world batches
 
@@ -615,10 +618,10 @@ inference. No running viewer or published music backend was changed.
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class3/deferred/waterHazeV.glsl passes full clip-space float4; waterHazeF.glsl divides interpolated XY/W in the fragment. Native haze pre-divides before perspective interpolation.
 - Evidence: [Owner images and original water investigation](work/active/water-angle-artifacts.md); [69388 capture and SSR coordinate follow-up](research/water-ssr-history-69388-20261119.md).
-- Next action: Investigate the camera-relative sharp noisy water boundary reported in69388; preserve the previously verified homogeneous-interpolation correction and determine whether this is the same producer or another water path. Cross-reference PPD015 without asserting attribution. Conditional checkpoint merge/push is held until this new artifact is resolved or explicitly dispositioned by the owner.
+- Next action: Investigate the camera-relative sharp noisy water boundary reported in69388; preserve the previously verified homogeneous-interpolation correction and determine whether this is the same producer or another water path. Cross-reference PPD015 without asserting attribution. Owner now explicitly authorizes publishing the existing checkpoint before the scene retest; keep the water-band result pending and do not infer approval for future changes.
 - Verification: Locala6f4e8ff41/Water Haze Fix26.4.0.68894 built and verified346ARM64/signature/strict-source. Identical physical GPU test executable fails8checks with old shader, passes171318assertions with corrected library;32197existing water/world assertions/4cases also pass, with API/GPU validation. Original shader math restored. Owner tests the exact launched candidate and confirms "fixed.you can commit and push it"; scene acceptance and scoped push approval are explicit.
 - Owner verification: failed
-- Push approval: not_granted
+- Push approval: granted
 
 Broad diagonal bands appear/disappear when the avatar/camera turns. Further
 rotation changes much of the visible shallow surface to blue water. This is
@@ -660,6 +663,9 @@ offset, disabled quality feature or changed depth admission.
 - 2026-11-19 reopened on owner-reported water-band recurrence in exact69388/source97cb7ff705. Three owner screenshots13:47:17/13:47:32/13:47:45 at ThreeFathom(21,154,21) show a sharp noisy/dark near-water region against pale far water; owner confirms it moves as the camera turns. Existing013clip4 haze correction was accepted/published earlier; that history remains intact and no source regression or cause is yet proved. PPD015 eye/agent-coordinate mismatch remains a separate source-confirmed candidate, not this artifact's attribution. Register before new repair; source/visual/capture audits begin read-only while the owner keeps the viewer open. Latest water verification failed, so reopened scope has no push approval; prior older013publication approval remains in history. Owner's broader checkpoint merge/push instruction is conditional on the review and is held for this newly reported artifact. Raw screenshots remain private outside Git; no shader/settings changes, new capture, restart or push yet.
 
 - 2026-11-19 owner logs out normally after two complete device-all-queues captures stopped/error0. Late trace replays with band visible, after-wave pixels are finite. Rounded geometry analysis excludes external wave/flat/fade/ring boundaries for the sampled seam under stated bounds. Separate PPD-497 producer/consumer history-row inconsistency is physically reproduced/corrected in a focused regression; its link to this band still requires the owner scene retest. No old haze correction revert or PPD-015 change. [Capture/source/limits](research/water-ssr-history-69388-20261119.md).
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
@@ -2489,7 +2495,7 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Next action: Build the integrated candidate, then retest modern-to-legacy environment/teleport transitions for current-world and camera progress. Keep PPD081 steady exposure and other PPD002 freezes separate.
 - Verification: Actual sky-blend/native producer/admission reproduction fails 20 of 155 baseline assertions and passes 236 corrected assertions across five cases with API/GPU validation and ASan/UBSan. Full pipeline compilation passes. Exact owner-run environment/incident cause remains unproved.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -2501,6 +2507,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-083 — Owner reports a tint in neutral-looking scene surfaces
 
@@ -7545,7 +7554,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Trace inverse-bind production/decoding and finite-product overflow with contained asset/matrix cases before choosing a repair. Preserve the guard against nonfinite GPU inputs and do not suppress the warning or claim bind-space fallback preserves intended mesh shape.
 - Verification:70throttled notices represent at least6700palette calls by the last notice, not unique avatars. All16bounded diagnostics have finite world XYZ/W;10have nonfinite inverse XYZ and6finite inverse/world operands with nonfinite XYZ product. Asset/producer identity and numerical cause are unresolved. No measured FPS attribution or reported visible deformation in this session.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -7561,6 +7570,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19 Exact69377 closed owner tour has0skinning-utility nonfinite/fallback or saved skininputevents within diagnosticcoverage. Separate56unknown animation-joint warnings use original-identical tolerant lookup/deserialization and are not this skinpalette emitter. No runtime fallback operands were collected; defect remainsopen. [Allsites](research/warning-runtime-69377-source-audit-20261119.md).
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-312 — PNG stderr warnings expose an unverified interlace/metadata path
 
@@ -8230,7 +8242,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner runs candidate69343 with the retained AlchemyNext cache and checks startup/loading across ordinary logouts. Preserve any new mismatch and its write sequence; do not clear the cache. Interrupted-write recovery remains a separate qualification limit.
 - Verification: A real LLFile shorter rewrite reproduces the inherited stale-tail producer mechanism. The combined producer/completion suite passes26cases/153checks underASan/UBSan after five baseline producer failures; candidate69343 is built and qualified. Exact historical mismatch causality and runtime recovery remain unproved.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -8247,6 +8259,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Cold startup logs one mismatch392480actual/156632expected bytes at07:19:09UTC; warm logs three156633/46570,63504/18631,380388/151795 at07:29:12, both before first world. Existing code schedules removal of those entries. Four known entries, not a warning storm or proved frame-critical cost. Warm image decoding later falls nearly to zero while the FPS decline persists.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-341 — Private checkpoint analysis needs complete warning forms and precise sample bounds
 
@@ -10813,7 +10828,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner-test the matching local candidate through texture loading/teleport and retry recovery. Retain old generation/raw/age/lifetime guarantees and controlled failure cases; real driver-failure injection and owner appearance attribution remain unverified. Keep fixes local pending explicit push approval.
 - Verification: Local repair passes original/focused negative controls and32actual-body ASan/UBSan case executions/342checks across both thread-check modes; integrated CTest drivers2/2 pass. Matching Release69328 build0;51native image cases/8790assertions pass with Metal API/GPU validation,346ARM64/signature pass. Controlled scheduling/storage does not prove a real driver failure or owner scene recovery.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -10827,6 +10842,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.
 
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-468 — Certificate validity parser misreads GeneralizedTime as UTCTime
 
 - Status: ready_for_owner
@@ -10838,7 +10856,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner-test the matching candidate startup trust-bundle scan; expect all121bundled roots valid at the recorded timestamp. Contained helper/real-class tests pass; endpoint connectivity is a separate untested claim. Keep certificate expiry/hostname/crypto checks and local-only approval boundary.
 - Verification: Local validated conversion passes8time encoding/pivot/offset rows plus malformed/null and all121shipped roots. Actual integrated certificate suite13cases/828assertions passes, including full metadata/validator comparison at the recorded date. Release69328 build/346ARM64/signature pass; no owner runtime/bundle-load log retest or endpoint acceptance claimed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -10848,6 +10866,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-469 — Malformed certificate start date can become a valid epoch sentinel
 
@@ -10860,7 +10881,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner-test the combined local candidate; retain actual malformed-before/after rejection, valid epoch and121root regressions. No live malformed endpoint was observed or tested. Keep the fix local pending explicit push approval.
 - Verification: Local metadata guard passes projected actual-block15checks after6baseline failures; real class suite13cases/828assertions covers malformed before/after fields, missing-period rejection and valid Unix epoch, plus all121valid shipped roots. Shared suite counted once. Matching Release69328 build/346ARM64/signature pass; no runtime malformed endpoint was observed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -10870,6 +10891,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 repair committed locally as `103043ba1645fcc445f8ff9155d63fdd259e2e41`; matching metadata-refresh candidate26.4.0.69329 embeds that SHA, same tested source. No repair push or owner runtime acceptance; ready_for_owner stays open.
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-470 — Owner reports missing and black floor sections after teleport
 
@@ -10912,7 +10936,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner checks avatar appearance and bake masks in candidate69343 while teleporting to the club. Preserve fresh consumer/producer diagnostics on recurrence; the original64category cap still limits coverage. Keep PPD466 and exact incident scheduling open.
 - Verification: Matching actual pause/publication/resume with real OpenHT reproduces needs_aux0/nullaux/successfinal. Corrected callback suite30cases/67checks and whole consumer22cases/244checks passASan/UBSan; actual OpenHT engine/channel tests3cases/56assertions pass. Candidate69343 is built; live appearance recovery and each historical ordering are not yet verified.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -10929,6 +10953,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Exact69377 observed63bakeproducer events/57assets,28requestedaux all1component;0missing-mask consumer event. No sameasset primary-only→laterrequestedaux transition captured and64-key cap boundscoverage, so no late-demand closure. [Run/limits](research/world-turn-freeze-69377-20261119.md).
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-472 — Warning input diagnostics suppress reused handles and stream channel counts as bytes
 
 - Status: ready_for_owner
@@ -10940,7 +10967,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Use the bounded opt-in diagnostics in candidate69343 for any owner recurrence, checking terminal event identity and numeric channel serialization. Preserve policy/range/time validation and capped/unknown joins.
 - Verification: Actual diagnostic admission/serialization tests pass with recycled handles and S8 channels (asset55/76checks,HTTP6/7 off/on) after targeted baseline failures. Candidate69343 includes the repair. Default-off behavior and64category caps remain; no global operation identity or complete runtime coverage is claimed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -10953,6 +10980,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-473 — A loading tree texture can abort an entire native world view
 
 - Status: ready_for_owner
@@ -10964,7 +10994,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner retests club teleport in candidate69343. If a capture is rejected, inspect the new first-predicate and view diagnostic. Retain completeness/lifetime guards and PPD470 until floor recovery is directly confirmed.
 - Verification: Actual tree capture body tests pass6cases/288assertions after four private baseline failures, with resident default generation leases and irrecoverable guard controls. Final69343 build and31targeted CTests pass. Historical230tree rejections still lack a predicate/view join, so their floor causality remains unknown.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -10977,6 +11007,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-474 — Three preferences checkboxes have no backing settings or consumers
 
 - Status: ready_for_owner
@@ -10988,7 +11021,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Build and owner-test the meaningful attachment Add/Replace combo, wearable tree/gallery double-click/Ctrl policy, and restored cinematic toggle/HUD/text/voice/UI behavior including mouselook and fly/sit transitions.
 - Verification: Real archived consumers are restored, not inert setting declarations. Inventory actual-body300 checks passes vs79 baseline failures. Final cinematic155 checks (including16 real movement-owner checks) and mouselook97 checks pass after prerelease483/484 repairs. No restored-mode candidate has been launched; owner acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11004,6 +11037,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
 
 - Status: ready_for_owner
@@ -11015,7 +11051,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner retests the high-altitude club floor across teleports using candidate69343. On recurrence, retain object/camera/group and view-rejection inputs; do not disable object-cache occlusion or assume the candidate prim is the missing floor.
 - Verification: Actual cached-admission schedule passes5920checks underASan/UBSan after42baseline failures, covering all16schedule phases and known-zero/pending/hidden-parent controls. Actual Metal query/texture provider tests pass9cases/1369assertions with API/GPU validation. Candidate69343 is built; PPD470 incident attribution and visual recovery remain pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11028,6 +11064,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-476 — Auxiliary-only duplicate delivery bypasses the texture size limit
 
 - Status: ready_for_owner
@@ -11039,7 +11078,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the whole-consumer oversize/saved-copy controls in candidate69343 and review any new auxiliary-only path against the existing size contract. Owner appearance testing is pending; do not infer a historical oversized asset.
 - Verification: Actual whole processFetchResults/queue/callback/cleanup22cases/244checks passASan/UBSan. Five baseline failures and one validity-reset mutation failure are retained. Candidate69343 includes the size and stale-validity correction; generic auxiliary channel/sampling contracts are unchanged.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11050,6 +11089,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Controlled same-quality primary/aux4097pixel data can reach success/final through the new path, whereas the original duplicate path discards it. No live oversized asset or relation to42missing-mask incidents is claimed. Different auxiliary component counts and per-channel dimensions are not rejected merely because they differ from primary data; the generic decode API permits up to4aux channels.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-477 — Failed cache writes lose the state needed to remove their entry
 
@@ -11062,7 +11104,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Deliver only the corrected serial-worker cleanup in candidate69343 together with PPD478. Retain failed-write/optional-cache/late-retirement controls; never deliver the superseded337c9647c8 patch alone.
 - Verification: Corrected completed-failed-write invalidation runs in finishWork before later queued writes and responder delivery. Actual producer/finish/end bodies with real LLFile/LLPointer pass26cases/153checks underASan/UBSan; full app69343 builds. The superseded delayed-cleanup attempt and its failures remain in history. No live mismatch attribution or general read-cleanup safety claim.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11078,6 +11120,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-478 — Deferred failed-writer cleanup can remove a newer cache entry
 
 - Status: ready_for_owner
@@ -11089,7 +11134,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain failedA→successful sameUUIDB→lateA cleanup controls with and without responders and deliver corrected candidate69343. Owner cache/loading evaluation is pending; preserve genuine abort/read policies.
 - Verification: Both overlap controls preserve B after correctivec5102a03b0. Combined26cases/153checks passASan/UBSan, versus six expected failures in the rejected completion baseline13/63. Source/lock-order peer review and candidate69343 build pass. No viewer using the rejected patch was launched; this is not general cache-generation safety.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11100,6 +11145,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Initial local337c9647c8/agent3ad35e passes22ordinary cases but fails one additional overlap case. No candidate with that patch has been launched. The prior one-active-fetch-map assumption did not cover scheduled-deletion workers and is withdrawn.
 
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-479 — Included renderer test fragments lack per-file CTest ownership
 
@@ -11112,7 +11160,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the18explicit fragment registrations, hidden-case filters and empty stray guard. Owner runtime evaluation uses candidate69343; future included ordinary test fragments must receive per-file ownership.
 - Verification: Exact Catch listing accounts for69ordinary strays in18fragments. All18fragment entries plus empty stray pass19/19; final combined candidate checks pass31/31. Original69342aggregate12/13 and successful69case/443396assertion body run remain retained. No runtime renderer output change or visual fix follows from this harness repair.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11125,6 +11173,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-480 — Home login shows black instead of an available last-location image
 
 - Status: ready_for_owner
@@ -11136,7 +11187,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Build the integrated candidate and owner-test Home/URL login with missing Home image and valid last-location snapshot, including UseStartScreen opt-out. Keep post-login world and HUD delays separate.
 - Verification: Actual current loader fallback suite21 cases/114 checks passes vs12 baseline failures; real saved PNG decodes to3456×2168 with7126547 nonblack pixels and expands4096². Full TU compiles. No active account/image/cache file changed. Owner visual acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11146,6 +11197,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-481 — Media plugin receives its load response outside the loading state
 
@@ -11158,7 +11212,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Build and owner-test media/navigation/shutdown; retain numeric prior-state/owner metadata for any unexpected handshake. Do not attribute the69343 row or world/HUD symptom without actual state/instance evidence.
 - Verification: Actual parent queue/receive/shutdown/idle plus child idle/shutdown controlled-boundary suite18 cases/163 checks passes. Final field-only baseline misses5 checks; prior17-case functional baseline has28 failures. Full parent TU compiles. Real69343 wrong-state row remains causally unjoined.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11172,6 +11226,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-482 — Shutdown reaches queued-request and TextureFetch worker residue cleanup
 
@@ -11204,7 +11261,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner-test restored cinematic mode across enter/exit mouselook, including enabling mode during a pending visibility pop. Retain balanced original visibility stack and verify full UI restoration.
 - Verification: Full actual LLAgent UI/camera/window/mode/floater/LLView visibility bodies reproduce the failing sequence. Final97 checks pass after484; earlier functional95-check proof fails32 baseline checks, and isolated guards fail2/18. Production agent object compiles. Live UI acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11214,6 +11271,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-484 — Cinematic visibility snapshots can strand newly active movement controls
 
@@ -11226,7 +11286,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner-test fly/sit activation while cinematic hides the movement panel, then exit mode and verify current action controls are visible through their ordinary owners.
 - Verification: Real movement owner16 checks fails2 on snapshot baseline and passes corrected; final cinematic155 checks fails14 baseline and passes; mouselook97 fails5 baseline and passes. Counts overlap and must not be added as unique assertions. Source mode/agent objects compile; no live closure.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11236,6 +11296,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-485 — Adaptive decoder setting promises an unsupported fixed-maximum comparison
 
@@ -11248,7 +11311,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Clarify the setting description without changing defaults, numeric limits or downstream safety. Keep any loading-performance repair separate and verify the integrated candidate.
 - Verification: Source and the passing existing scheduler test require adaptive=false to clamp6→2 and recover2→6 with the downstream ceiling. Current setting still promises a fixed-maximum comparison, which is inaccurate. No decoder liveness or HUD causal defect is established by this wording mismatch.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11258,6 +11321,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Following486 the description now names memory/decoded-image backlog limits, rather than implying main/GPU credit pressure still directly controls decode starts. Numeric worker limits/default remain unchanged.
 
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-486 — Main-owner pressure independently restricts background decoding
 
@@ -11270,7 +11336,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Qualify the integrated app and owner-test loading/HUD/camera/teleport under actual CPU/memory pressure. Compare exact decode-ahead bytes/limits and native publication throughput; retain soft coverage and unmeasured-share caveats.
 - Verification: Actual CPU budget/controller and worker/ownership/burst controls pass; final490extends the same budget suite to57cases6060assertions. Controlled real-worker burst admits6 versus2 under exact old policy; all6callbacks and estimates drain. No viewer FPS/loading/visible freeze acceptance yet.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11287,6 +11353,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Exact69377 observed decoder min2/normal4/max6/adaptive1, limits4/5/6 and ceiling6,23610submitted/started/completed with0active/wait/estimates final; no lookahead-limit event in sampledcensus. Owner general textures/HUDs loading much better. This is positive combined runtime evidence, not isolated policy gain, low-memory-bound qualification or freeze recovery. [Run/limits](research/world-turn-freeze-69377-20261119.md).
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-487 — Native texture upload worker remains gated by a disabled legacy OpenGL setting
 
 - Status: ready_for_owner
@@ -11298,7 +11367,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Verify the final source-pinned app starts its native worker and records actual worker posts during owner loading/teleport, then evaluate whole-viewer latency and shutdown. Preserve explicit new-key opt-out.
 - Verification: Exact69343 had zero worker posts. New packaged native default, full actual startup-call/initializer/constructor plus width selection pass38CPUchecks; realnative startup/retirement/width101assertions6unique cases pass withAPI/GPUvalidation. New default-enabled app not yet owner-tested.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11313,6 +11382,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Exact69377 runtime native texture worker enabled1 and36420actual posts with0synchronous creates observed; owner reports much-better texture/HUD loading. This confirms activation in the owner tour, not isolated speed/FPS benefit or allfeatureacceptance. [Run/limits](research/world-turn-freeze-69377-20261119.md).
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-488 — Native upload continuation may lose fetched-image ownership during shutdown
 
 - Status: ready_for_owner
@@ -11324,7 +11396,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Build final integrated worker activation and owner-test load/teleport/logout with publication diagnostics, preserving current source/macro cleanup and exactly-once release.
 - Verification: Actual queue/template/fetched/native cleanup controlled fixture27cases260checks passes perdebugcopy mode versus8baseline failures. Native101assertions/6cases includes realGLlast-owner cleanup, startup and worker width; actual fetched destructor is a controlled count boundary. Independent source/closure/exception/token review passes; live acceptance pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11337,6 +11409,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Exact69377 enabled-native-worker run exits after Goodbye11:18:35UTC; no worker-shutdown warning/ERROR/FATAL observed. Main-thread registry release/destructor identities are not exposed in these logs, so absence does not independently prove all ownership invariants. [Closedrun](research/world-turn-freeze-69377-20261119.md).
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-489 — Native image batch flush assumes one worker but pool width is overridable
 
 - Status: ready_for_owner
@@ -11348,7 +11423,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Keep the fixed single native batch owner in the integrated candidate and verify live startup/posts/shutdown alongside independent6maximum decoder pool.
 - Verification: ActualCommonControl persisted override8 causes2baseline assertion failures; corrected native filter101assertions6cases passes. Source-derived startup38checks passes versus2width failures; CPU/GPU validation does not establish live loading speed.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11361,6 +11436,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Exact69377 nativeworker run records36674workeruploads/3190batchcommits/0failures in final typedcensus; constructor remains explicitfixed1. No saved-width override changed in the owner account; runtime result supplements component checks without claiming fullshutdown/race proof. [Closedrun](research/world-turn-freeze-69377-20261119.md).
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-490 — Time-bounded texture publication also has a main-busy one-item ceiling
 
 - Status: ready_for_owner
@@ -11372,7 +11450,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Build the complete parallel streaming candidate, then compare loading/HUD sharpness and camera/world responsiveness with actual upload throughput and frame pacing under the retained time/count/byte/completion bounds.
 - Verification: Same actual test source/header with exact old production budget has75failures; corrected focused7cases261assertions/full57cases6060assertions passes ASan/UBSan. Sole actual caller/timer byte-identical, native bounds/low-memory progress/optional-scene behavior retained; peer source/test review passes. No viewer gain/closure.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11385,6 +11463,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Exact69377 owner general loading positive, native create_pending returns0/retries0; cumulativeposts/bytes are not elapsed throughput or latency. A938downscale queue remains atfinalsample, so no all-pipeline drainclaim. Freeze recurrence staysseparate002/464. [Closedrun](research/world-turn-freeze-69377-20261119.md).
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-491 — Statistics preferences include credential-bearing settings in logs and payload
 
 - Status: ready_for_owner
@@ -11396,7 +11477,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Sanitize optional preference telemetry before both logging/debugserialization and HTTP-body use using an explicit non-sensitive settings contract. Reproduce with synthetic secrets/nested values and preserve ordinary numeric/Boolean graphics/performance statistics. Do not change credentials, account files or send requests during tests.
 - Verification: Actual inherited exporter skips declared strings but permits nested string values in LLSD controls. Corrected actual exporter/consumer/addToMessage/tail plus real LLSD/XML fixture passes51cases277checks underASan/UBSan versus88baseline failures. Full viewerStatsTU syntax and source peer review pass; root normalCMake target/CTest pass. No actual account/credential setting changed or request sent by validation.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11407,6 +11488,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 - 2026-11-19 Exact69377 shutdown preferences packet11:18:33UTC is structurally screened without decoding/exporting scalar values: only8allowed graphics numeric/Boolean fields and2integer poolwidths, emptyaccount map,0unknownkeys/typeviolations. This exercises optional preferencestrue productionpath positively; other telemetry/private metadata are not declared anonymous. [Closedrun](research/world-turn-freeze-69377-20261119.md).
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-492 — Selected mirror advertises another owner's completed radiance
 
@@ -11419,7 +11503,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Qualify the uniform producer against successful publication owner/epoch; retain same-owner completed refresh, native coherence guards and original selection/math. Actual-body controls and combined build pass; owner-test exact69381 turning/walking/TP with fresh bounded diagnostics.
 - Verification: Source counterexample: camera selection changesA→B while renderProbes defers or B is occluded; ready(A) still advertisesB, native exact-owner fill rejects and ordinary base lighting silently returns. Runtime linkage to PPD002/464 remains unproved. The actual uniform body now passes135assertions/6cases versus14baseline failures, with downstream guards unchanged; full candidate build and owner freeze retest remain pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11430,6 +11514,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 combined source434f4df20a/indra e9803807 builds0 as69381; separately cloned exactexe1143f9af5216 passes12focusedCTest/API+GPUvalidation,346ARM64/deepstrictsignature, owned directimports andstrict3638/0blockers/0errors. Source SHA verified in cache/header/executable. No newviewer/profile/capture launch or runtimefreezeverification; ready_for_owner only, no push. [Full artifact/commands/limits](research/world-turn-freeze-69377-20261119.md#qualified-offline-candidate69381).
 
 - 2026-11-19 exact69384 completed normalexit0. Owner Home→club→Home reports no noticed freezes/issues after source0bac repair; good bounded acceptance, no exact incident owner-identity join or every-freeze closure. [Closed runtime evidence](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up). All proposed fixes remain local; no push approval.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-493 — Logout snapshot failure is latched as saved
 
@@ -11442,7 +11529,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Trace original/current saveFinalSnapshot and native snapshot production; latch successful saves only and preserve exact-current frame/target guard. Do not select arbitrary retries, stale frames or overwrite an existing last image on failure.
 - Verification: At11:18:33 final snapshot request is followed by native world snapshot did-not-complete-exactly and raw save failure, then LogoutRequest. Current frame9542 has no completed world/UI/presentation product. Caller ignores saveSnapshot false and sets mSavedFinalSnapshot, suppressing future attempts. Actual failure is recorded; cause of missing native products is unproved and separate from PPD480 last-image loading fallback. Result-only caller repair passes actual-body68checks/12cases versus12baseline failures; missing native products and owner final-image retest remain unresolved.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11459,6 +11546,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 exact69384 completed normalexit0. Native normal logout snapshot and exact fresh nonblack last-image PNG verified; previously failed producer root cause and next-login image UI remain unproved. [Closed runtime evidence](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up). All proposed fixes remain local; no push approval.
 
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
 ## PPD-494 — Atmospheric shader disabled leaves no native lighting target
 
 - Status: ready_for_owner
@@ -11470,7 +11560,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Supply an explicit native transparent-zero lighting color owner with current GBuffer depth when atmospheric lighting is disabled, then retain existing local/projector/post chain and native failure guards. Qualify actual caller branches and GPU clear/depth/accumulation; do not force the setting on or reuse old world.
 - Verification: Current false skips the only native base-light producer; local/projector require base/main-ready and composition requires successful base/local/projector. This source counterexample blocks world/exact snapshot instead of original darker local/emissive scene. Actual69377 control value was not observed, so no freeze/logout-failure attribution. No repair/runtime acceptance yet.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11483,6 +11573,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 finalcombined69384/source0bacb370fa/indra8f350bf47e builds0(173steps) andpasses20selectedCTest/API+GPUvalidation, strict3641/0blocking/0errors,346ARM64/deepstrictsignature/owneddirectimports. Source/header/executableverified; prior69381preserved. CPU/nativeproof supports source repair, actual69377flag remainsunknown andruntimeincidentunattributed. Ownerrequestsallfixescombined; ready_for_owner only. [Artifact and capturesequence](research/world-turn-freeze-69377-20261119.md#qualified-combined-candidate69384).
 
 - 2026-11-19 exact69384 completed normalexit0. Actual69384 RenderDeferredAtmospheric1 leaves supported false-setting repair unexercised; retain CPU/GPU qualification and ready_for_owner scope. [Closed runtime evidence](research/world-turn-freeze-69377-20261119.md#closed-owner-run69384-and-offline-follow-up). All proposed fixes remain local; no push approval.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-495 — One texture decode failure during69384 owner tour
 
@@ -11514,7 +11607,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Derive native render texture mip count from requested live dimensions and mip policy for both allocation/adoption; make bump resize retry compare actual backing dimensions. Owner retest qualified69388 for bump warnings/material loading and scene stability; keep actual failed69384 dimensions unknown and retain malformed-adoption guards.
 - Verification: All six warnings classify as native mip count exceeds current dimensions before compute/commit/adopt. Source reproducer: generated8×8 has4levels; resize to2×2 leaves cached4 while maximum is2, and both factory/adopt reuse the stale count. Retained old native backing also suppresses retry because the existing check compares changed logical dimensions only. Actual runtime dimensions and same-asset recovery remain unknown. Original1eb derives levels from current destination dimensions; no intentional partial render chain producer found. Repair in progress.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11525,6 +11618,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 isolated19c5d5f327 integrated as97cb7ff705 after root source review. Private metalRenderMipLevelCount derives requested full chain or level0 from current live extent/mip policy for factory and adoption, leaving published mMipLevels/global setters intact. Both bump lookup and generation gates now test actual native backing dimensions through hasMetalTextureSize, permitting retry after a failed resized replacement. Native actual-class/generator3cases4800assertions pass with Metal API/GPU validation: shrink/regrow, rectangular/NPOT/discard, retained leased owner/readback, canceled candidate, media1level and incompatible descriptors. Exact original factory/adoption expression controls compile0 and each fail2cases/2checks as expected; finally restoration verified by SHA. One premature selector invocation used the prior binary before build completion, matched no tests/exit2 and is excluded; actual post-build run passes. Full app qualification in progress; not owner-runtime verified.
 
 - 2026-11-19 final69388/source97cb7ff705a17fb2dde73da737230f3cf97d91c4/indra65fb19d0eafb8471e60c89dfaf634aebf93603b5 qualifies:1312-step wrapperReleasebuild0,27selectedCTest/API/GPU0,strict3645/0blockers/0errors,346ARM64/deepstrictsignature/3owned-host importchecks0. Exact executable SHA256a3051a443a6afd892e5b73eb5c7c645aa4990d8b7f6de456fd7d6fbbabbbebd8; stable texture-fixes-69388 manifest and private ppd496-qualified-receipt.json. Original counter-only69386 and owner-tested69384 preserved. Owner explicitly authorizes launch/manual login, with live logs next; not a runtime/visual closure or push approval.
+
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 ## PPD-497 — SSR history reverses already preserved world rows
 
@@ -11537,7 +11633,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Build/verify a separate candidate with the physically qualified identity-row publisher, then retest the owner water-band camera turns. Keep PPD-013 incident acceptance and PPD-015 separate; an explicit above-water geometry→published-history→consumer fixture remains unexecuted.
 - Verification: Native geometry negates GL clip Y before positive Metal viewport, deliberately retaining GL lower-row storage; display alone flips at CAMetalLayer boundary. SSR projection/source_uv retain the same GL normalized Y. Actual history publisher nevertheless reads source(height-1-targetY), reversing paired color/depth. Pipeline supplies the unflipped sharp target, so no intervening display conversion cancels this reversal. Existing synthetic2x2 publication test asserts the flip and does not cover actual geometry-to-consumer contract. Minimal identity-row correction passes actual rendered-geometry history regression (158checks/2cases/fourHDR-Zvariants), same final executable fails17checks with frozen old library; broad world/water36426checks/1case and four related CTests pass with API/GPU validation. Candidate build and owner band retest remain pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -11550,3 +11646,6 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 far-landmark follow-up reads and requires actual source[0]depth1 before comparing unchanged history row0; independent review passes. Rebuilt broad world/water now passes36426assertions/1case, plus four registered SSR/water/haze/base-light CTests0. Final identical test executable again gives old-library17/158failures/native42 and corrected158/2/native0, exact library restored; API/GPU validation observed. Full viewer build and owner-band acceptance next; no publication.
 
 - 2026-11-19 source dc781c61db/indra326ad879fe qualifies separate69390: wrapperReleasebuild0,346ARM64/deepstrictsignature,strict3645zero and3owned-directimportchecks0; compiled/test/app shaderhashesmatchbf2a3b…, exactexe42fcf45f… embeds testedsource. Stable69388 hashunchanged. Manual owner-water retest prepared without capture/validation/profile; actualsceneacceptance and explicit497pushapproval pending. Do not close013 from this qualification.
+
+- 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
