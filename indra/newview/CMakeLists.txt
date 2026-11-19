@@ -2635,6 +2635,7 @@ if(AL_BUILD_TESTS)
     newview_tests
     PROJECT ${test_project}
     SOURCES
+      tests/alnativeimtranslationhandle_test.cpp
       tests/alprobeupdateadmission_test.cpp
       tests/alnativeframeplan_test.cpp
       tests/alnativeframeplan_completion_test.mm

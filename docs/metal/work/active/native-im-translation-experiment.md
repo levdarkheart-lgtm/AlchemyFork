@@ -37,11 +37,13 @@ Primary sources: [TranslationSession initializer](https://developer.apple.com/do
 - PPD-498: initial standalone bridge link fails because private Swift C exports
   have local visibility; corrected export visibility and retest pending.
 
-## Outstanding
+## Delivery state
 
-Build complete viewer, run native translation without sending an IM, verify
-bundle and controls, exercise failure/cancel/lifetime, and document actual
-language availability. Owner runtime IM acceptance remains distinct from builds.
+Implemented locally; native approach is viable. Full Release build, native
+Spanish/Japanese translation and protection/lifetime tests pass. Owner acceptance
+using normal logged-in one-to-one IM remains pending; no test message was sent
+to another person. The original checkout and preserved water candidate remain
+separate. All new controls are per live chat, with defaults off.
 
 ## Implementation and corner cases
 
@@ -96,3 +98,67 @@ PPD-499–504 fixes are integrated; UI source compilation found/repaired callbac
 signature and participant-initialization ordering defects. Production history,
 session-tab and model translation units independently compile. No owner IM,
 network-delivery or runtime scroll acceptance claimed.
+
+## Final callback correction and UI test limits
+
+The first offline UI fixture exposed PPD-510, an actual new native callback bug:
+LLHandle::getDerivedHandle reinterprets the UI base pointer, while this IM floater
+has a voice-observer base before the UI base. LLDB stopped in LLComboBox::add
+with a null receiver at the first supported-language entry. Source repair
+`0cfff83edc` uses LLHandle<LLFloater> and an adjusting static_cast in all native
+callbacks and the model hook. The corrected 69397 fixture survives language
+population and local synthetic IM creation. A production HeadlessUI/LLFloater/
+LLVoiceClientStatusObserver regression passes 14 assertions in two cases,
+including destruction and reopened-chat isolation.
+
+The diagnostic copy differs only in bundle identity/signature, temporary login
+menu entries invoking the existing synthetic-message generator and conversations
+floater, and disabled transcript defaults. Original and fixture `__TEXT,__text`
+section digests match; signed full-binary digests differ as expected. Fixture
+receipt: `/tmp/alchemy-im-offline-qa-20261119/fixture-handle-fix.json`. Native model
+setup UI was separately observed to report English→Japanese languages ready.
+
+The pre-login fixture cannot qualify normal chat operation: gIMMgr is initialized
+only after login. Synthetic sessions time out without a server; dismissing that
+fixture timeout reaches existing leaveSession(this=null), PPD-511, retained as an
+invalid diagnostic environment. No production menu or session ownership change
+was made for it. Do not report a logged-in UI, transcript, scroll, actual network
+send/receive or live two-chat independence pass from this fixture. No logged-in
+region/profile scene gate passed; only preflight UI was inspected. The fixture
+and temporary native setup processes are stopped. Normal owner viewer was not
+terminated or used to send an IM.
+
+## Final validation summary
+
+- App implementation checkpoint: 0cfff83edc; Release69397. Later test/record
+  commits retain the same translation implementation; final build identity and
+  hashes are recorded in the local evidence receipt.
+- Required doctor0 on M1Max/64GiB/macOS26.5.2/Xcode26.6. Configure and complete
+  Release wrapper builds pass; first char8_t failure and callback crash remain
+  recorded, not erased.
+- Native real API: 195 checks/0 failures, including English↔Spanish,
+  English↔Japanese, auto incoming recognition, short messages, regional language
+  identity, Chinese script distinction, mixed protected text, and cancellation.
+- Pure policy: 699 checks/0 failures, C++23 ASan+UBSan, exact conservative URI
+  tokens, all protocols, email/code/UUID/Markdown/newlines and emotes.
+- Nine focused CTest processes pass: native policy/bridge/live, real handle
+  lifetime, and five existing chat/emoji/text/URL suites. The handle test has
+  14 assertions/two cases; all counts overlap where noted.
+- Tool suite183 passes/one existing optional skip, using isolated PyYAML6.0.3
+  plus existing system packages. Initial missing-PyYAML and sandbox Darwin
+  notification errors are retained; no repository tool behavior was changed.
+- App346ARM64 Mach-O/zero invalid slices; deep strict signature passes.
+  Strict source inventory3647files/925informational/zero blockers/errors.
+  Harness33required-files passes. Main/owned-host direct imports are inspected
+  separately; no renderer parity or performance claim follows from this work.
+
+## Owner check when using the experiment
+
+Open a normal one-to-one IM. Choose Send in, choose Write in explicitly when
+needed, and enable Receive in with the desired reading language. Choose a
+second chat to verify it retains independent defaults. Languages opens Apple's
+model preparation; missing models never send the untranslated draft. Check
+cancellation, error recovery, links, emotes and received originals/annotations.
+Closing a chat resets its choices; minimizing retains them. Groups/conferences
+have no native translation controls. Full owner acceptance and pushing remain
+unapproved.

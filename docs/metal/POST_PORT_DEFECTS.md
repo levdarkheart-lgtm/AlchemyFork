@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-511 -->
+<!-- next-defect-id: PPD-512 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -11653,7 +11653,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-498 — Experimental Swift translation bridge exports have local visibility
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11669,9 +11669,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Bridge agent reports initial link failure before correcting export visibility. Local experiment only; no runtime IM or push.
 
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-499 — Experimental translated send uses floater after reentrant notification
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11687,9 +11690,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Independent policy agent identifies notification-driven close risk during actual outgoing local echo. Registered before repair.
 
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-500 — Experimental incoming annotations replay conversation activity and scroll
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11705,9 +11711,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Registered before repair; ordinary hidden replay already preserves unread count through hasFocus(), but activity and scroll still need correction.
 
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-501 — Experimental short-message language error offers an unavailable source selector
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11723,9 +11732,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Independent review identifies missing source-language control before repair. Incoming originals remain visible on detection failure.
 
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-502 — Experimental pending send can discard an emoji-modified draft
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11740,9 +11752,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered before repair; editor read-only alone is insufficient protection against programmatic changes.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-503 — Experimental IM controls initialize before participant identity
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11757,9 +11772,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Independent integration review reports issue before repair; local experiment only.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-504 — Experimental translation button callbacks use incompatible signatures
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11774,9 +11792,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Independent integration review reports issue before repair; local experiment only.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-505 — Experimental language enumeration mislabels unavailable local service
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11791,9 +11812,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Native probe records issue before repair; no messages sent to others.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-506 — Experimental language matching rejects regional system locales
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11808,9 +11832,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Native probe records issue before repair; no messages sent to others.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-507 — Experimental URL policy initially uses C++17-only UTF-8 literal conversion
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11825,9 +11852,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Full production build records failure before corrective compilation; no application launched.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-508 — Experimental cancelled send leaves reused conference editor read-only
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11842,9 +11872,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered before repair during final lifecycle review; no actual user conference modified.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-509 — Experimental translation rows consume the minimum-height chat area
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11859,9 +11892,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered before repair during final layout review; no original group-chat minimum should change.
 
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
 ## PPD-510 — Native IM callbacks miscast a multiple-inheritance weak handle
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex native IM translation experiment validation
 - Discovered: 2026-11-19
@@ -11877,3 +11913,24 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: CUA reports app quit; controlled process receipt confirms exit 139. Logged-out world/region screenshot gate never passed; only login/preflight evidence was observed.
 
 - 2026-11-19 (PPD-510): Debugger and LLHandle source establish the native callback as the cause, superseding the initial unproved pre-login attribution. Fix in progress; no global handle-framework rewrite.
+
+
+- 2026-11-19: Correction integrated locally; full viewer build and focused native/policy/handle checks pass as applicable. Actual logged-in per-chat UI/network acceptance remains pending; see experiment note for exact limits. No closure or push approval inferred.
+
+## PPD-511 — Injected offline IM fixture reaches an uninitialized session manager
+
+- Status: dismissed
+- Confirmation: reproduced
+- Owner: Codex native IM translation experiment validation
+- Discovered: 2026-11-19
+- Original reference: Private temporary login menu exposes existing logged-in synthetic IM command before gIMMgr is initialized; normal production login menu does not expose it.
+- Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
+- Next action: Use a logged-in P2P chat for full UI/network acceptance. Do not weaken normal session ownership to support an injected pre-login command.
+- Verification: Corrected69397 survives native language population and local synthetic generation. Later timeout dialog dismissal stops in existing LLIMMgr::leaveSession(this=null) called by onConfirmForceCloseError/onClose. LLDB establishes gIMMgr=null, not another native callback failure.
+- Owner verification: pending
+- Push approval: not_granted
+- Resolution: Diagnostic fixture invokes an operation outside its supported initialization state; entry exists only in the temporary app copy. No production translation correction follows from this result. Full logged-in chat UI behavior remains unverified.
+
+### History
+
+- 2026-11-19: Initial native callback crash PPD-510 is corrected and does not recur. Separate pre-login timeout cleanup crash is retained here and dismissed as an invalid fixture environment, with exact stack evidence. No login or IM sent to others.
