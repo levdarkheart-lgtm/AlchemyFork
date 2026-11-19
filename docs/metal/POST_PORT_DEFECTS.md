@@ -612,15 +612,15 @@ inference. No running viewer or published music backend was changed.
 
 ## PPD-013 — Water coverage forms camera-angle-dependent bands
 
-- Status: investigating
-- Confirmation: source_confirmed
+- Status: verified
+- Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class3/deferred/waterHazeV.glsl passes full clip-space float4; waterHazeF.glsl divides interpolated XY/W in the fragment. Native haze pre-divides before perspective interpolation.
 - Evidence: [Owner images and original water investigation](work/active/water-angle-artifacts.md); [69388 capture and SSR coordinate follow-up](research/water-ssr-history-69388-20261119.md).
-- Next action: Investigate the camera-relative sharp noisy water boundary reported in69388; preserve the previously verified homogeneous-interpolation correction and determine whether this is the same producer or another water path. Cross-reference PPD015 without asserting attribution. Owner now explicitly authorizes publishing the existing checkpoint before the scene retest; keep the water-band result pending and do not infer approval for future changes.
-- Verification: Locala6f4e8ff41/Water Haze Fix26.4.0.68894 built and verified346ARM64/signature/strict-source. Identical physical GPU test executable fails8checks with old shader, passes171318assertions with corrected library;32197existing water/world assertions/4cases also pass, with API/GPU validation. Original shader math restored. Owner tests the exact launched candidate and confirms "fixed.you can commit and push it"; scene acceptance and scoped push approval are explicit.
-- Owner verification: failed
+- Next action: Retain the homogeneous haze and SSR-history coordinate regressions. The owner confirms the reported camera-relative water band is gone in69390; preserve failed69388 history. PPD-015 remains separate and uncorrected.
+- Verification: Historical68894 homogeneous haze correction remains owner-verified with171318GPUchecks. Reopened69388 band is visible in saved full-display capture; pre-fix SSR history reversed already lower-row world data. Corrected69390/source dc781c61db passes158producer checks versus17old-library failures,36426world/water checks and4relatedAPI/GPU CTests, build/static/signature qualification. Same exact executable42fcf45f88e8 tested by owner after login; owner states the shadow band is gone/fixed. Normal logout exit0 at17:31:06.476937UTC; no ERROR/FATAL or SSR publication failures in the closed run. This is bounded incident acceptance, not whole-viewer parity.
+- Owner verification: passed
 - Push approval: granted
 
 Broad diagonal bands appear/disappear when the avatar/camera turns. Further
@@ -666,6 +666,8 @@ offset, disabled quality feature or changed depth admission.
 
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
+- 2026-11-19 owner tests exact69390/source dc781c61db/exe42fcf45f88e8 after manual login and confirms "its gone, the shadow band artifact, fixed". Actual launch sentinel records normalexit0 at17:31:06.476937UTC; final log74WARN/25previously source-mapped sites,0ERROR/FATAL,0SSR-history-publication warnings. Mark this incident/correction verified and owner passed; earlier failed69388 retest and all frozen controls remain. Owner explicitly approves committing/pushing the verification record. No additional GPU capture, settings change, paired-original screenshot or global port-correctness assurance. [Closed owner result](research/water-ssr-history-69388-20261119.md#owner-retest-passed69390).
 
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
@@ -11624,15 +11626,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-497 — SSR history reverses already preserved world rows
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex integrator
 - Discovered: 2026-11-19
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLPipeline::copyScreenSpaceReflections copies sharp screen color and scene depth without reversing rows; class3/deferred/screenSpaceReflUtil.glsl projects GL clip XY/W directly to normalized texture coordinates.
 - Evidence: [69388 water capture and source proof](research/water-ssr-history-69388-20261119.md); actual69388 source almetal_builtin.metal present_gl_rows, water vertex, ssr_project/source_uv and ssr_history_fragment; pipeline sharp-target publication. Private Alchemy-water-69388-q7dnx5l4 preserves two complete display captures, stopped/error0, normal viewer exit0 and after-wave RGBA16Float export.
-- Next action: Build/verify a separate candidate with the physically qualified identity-row publisher, then retest the owner water-band camera turns. Keep PPD-013 incident acceptance and PPD-015 separate; an explicit above-water geometry→published-history→consumer fixture remains unexecuted.
-- Verification: Native geometry negates GL clip Y before positive Metal viewport, deliberately retaining GL lower-row storage; display alone flips at CAMetalLayer boundary. SSR projection/source_uv retain the same GL normalized Y. Actual history publisher nevertheless reads source(height-1-targetY), reversing paired color/depth. Pipeline supplies the unflipped sharp target, so no intervening display conversion cancels this reversal. Existing synthetic2x2 publication test asserts the flip and does not cover actual geometry-to-consumer contract. Minimal identity-row correction passes actual rendered-geometry history regression (158checks/2cases/fourHDR-Zvariants), same final executable fails17checks with frozen old library; broad world/water36426checks/1case and four related CTests pass with API/GPU validation. Candidate build and owner band retest remain pending.
-- Owner verification: pending
+- Next action: Preserve the corrected publisher and rendered-geometry regressions. Owner69390 water-band retest passed and logout completed normally; no additional correction is required for this incident. Keep PPD-015 and other open warnings separate.
+- Verification: Native geometry negates GL clip Y before positive Metal viewport, deliberately retaining GL lower-row storage; display alone flips at CAMetalLayer boundary. SSR projection/source_uv retain the same GL normalized Y. The pre-fix history publisher reads source(height-1-targetY), reversing paired color/depth. Pipeline supplies the unflipped sharp target, so no intervening display conversion cancels this reversal. The original synthetic2x2 publication test asserted the flip and missed the actual geometry-to-consumer contract. Minimal identity-row correction passes actual rendered-geometry history regression (158checks/2cases/fourHDR-Zvariants), same final executable fails17checks with frozen old library; broad world/water36426checks/1case and four related CTests pass with API/GPU validation. Separate69390 build/static/signature qualification passes; owner logs in and confirms the band is gone/fixed, then logs out normally with exit0.
+- Owner verification: passed
 - Push approval: granted
 
 ### History
@@ -11650,3 +11652,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
 - 2026-11-19 owner-authorized current checkpoint published by normal push0 to codex/apple-silicon-metal at a587257841; independent remote ref matches, preserved560bdf baseline ancestry and testedindra326ad879fe. Subsequent publication records are docs-only. Owner remains away and69390 water-band test is pending; ready_for_owner is not verified. No default-branch change/release/capture upload.
+
+- 2026-11-19 owner tests exact69390/source dc781c61db/exe42fcf45f88e8 after manual login and confirms "its gone, the shadow band artifact, fixed". Actual launch sentinel records normalexit0 at17:31:06.476937UTC; final log74WARN/25previously source-mapped sites,0ERROR/FATAL,0SSR-history-publication warnings. Mark this incident/correction verified and owner passed; earlier failed69388 retest and all frozen controls remain. Owner explicitly approves committing/pushing the verification record. No additional GPU capture, settings change, paired-original screenshot or global port-correctness assurance. [Closed owner result](research/water-ssr-history-69388-20261119.md#owner-retest-passed69390).

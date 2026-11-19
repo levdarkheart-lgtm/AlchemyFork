@@ -229,3 +229,46 @@ it is removed before the final merge's successful whitespace/harness checks.
 Private publication/ receipts retain push argv/status, remote refs and source
 identity. Five unrelated notes in the original owner checkout remain byte-for-byte
 unchanged and untracked. No viewer login or water-band acceptance is inferred.
+
+## Owner retest passed69390
+
+Owner returns and manually logs into the preserved candidate69390, then states
+“its gone, the shadow band artifact, fixed.” The executable remains
+42fcf45f88e8b8ad9835d89fe7cf1f632e300414c087a06ed4914348e2460cb3,
+engine dc781c61db97ec8bff51c0f1605fa57986ba0ac5, indra326ad879fe933432fc6e03f0e1e1437345098d3e.
+The single renderer correction since the reproduced69388 band preserves SSR
+history color/depth rows. Combined source proof, unchanged-executable old/new
+physical controls and the owner's successful retest verify PPD-013/497 for
+this incident. PPD-015 is unchanged and remains a separate open concern.
+
+The same viewer process50773 was left at manual login from15:02UTC until the
+owner returned; idle observer completed its bounded window. Its original state
+is preserved and a read-only bounded observer resumes for login. Native started
+state and first complete presentation occur at17:27:50UTC. Lifetime decoder and
+publication counts include that long idle; they are not throughput measurements.
+Owner subsequently logs out. Actual launch sentinel records normal exit0 at
+2026-11-19T17:31:06.476937Z; no forced close or crash inference is involved.
+
+Closed log is5,731,395bytes/17,333rows, SHA256
+0e2a75da9b648ddb3b0e93c88f9e2161a64bd6bfc1b43282b7a28aa402021fb4.
+All74warnings across25sites were already mapped in the69388 source audit;
+there are zero ERROR/FATAL messages, SSR-history publication failures,
+decode495 or bump496 failures in this bounded run. Two retained-world records
+follow successful snapshot/logout and match intentional shutdown reuse; no
+active-scene retention failure is observed.
+Three separate stderr PNG warnings match known PPD-312 classes. Existing
+HTTP403/404/timeouts and material status−1 failures remain recorded,
+not cleared by a successful water test. Native final snapshot readback completes
+at17:31:04UTC. No earlier snapshot/asset cause or blanket port correctness is
+inferred. Private final-owner-retest.json and independent asset/lifecycle
+receipts preserve prefix/full hashes, counts and safe source mappings.
+
+No fresh active LEAP sample is available; an observer false without a sample
+is not a claim the owner stayed logged out. A native Open dialog is active
+at UI preflight and is left untouched. No scene screenshot or controlled
+reference/profile comparison is taken. The owner's exact-candidate acceptance
+is recorded as such, together with the existing physical/source proof.
+
+Owner explicitly authorizes committing and pushing this verification record.
+Source is unchanged from the already published/tested326ad879fe indra tree;
+this follow-up changes documentation only. No new build, capture or release.
