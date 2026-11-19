@@ -26,6 +26,7 @@ target_sources(
   PUBLIC
     FILE_SET HEADERS
       FILES
+        alimagedecodeestimate.h
         alimagedecodescheduler.h
         alj2clayout.h
         llimage.h

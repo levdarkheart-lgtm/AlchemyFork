@@ -163,6 +163,7 @@ void LLImageDecodeThread::updateConcurrency(const ALImageDecodeScheduler::Pressu
         mHaveStatsLog = true;
         mLastStatsLog = now;
         mLastLoggedLimit = stats.current;
+        const auto ahead = ALNativeFrameBudget::instance().snapshot();
         LL_INFOS("ImageDecode") << "Decode admission: adaptive=" << stats.adaptive
             << " limit=" << stats.current << " minimum=" << stats.minimum
             << " normal=" << stats.baseline << " maximum=" << stats.maximum
@@ -189,6 +190,16 @@ void LLImageDecodeThread::updateConcurrency(const ALImageDecodeScheduler::Pressu
             << " system_cpu_busy=" << pressure.system_busy
             << " main_thread_cpu_busy=" << pressure.main_thread_busy
             << " thermal=" << pressure.thermal_level << " low_power=" << pressure.low_power
+            << " ahead_headroom_known=" << ahead.decode_ahead_headroom_known
+            << " ahead_target_bytes=" << ahead.decode_ahead_target_bytes
+            << " ahead_release_bytes=" << ahead.decode_ahead_release_bytes
+            << " ahead_queued_raw_bytes=" << ahead.streaming.queued_input_bytes
+            << " ahead_active_estimates=" << ahead.decode_estimates_in_flight
+            << " ahead_active_estimated_bytes=" << ahead.decode_estimated_bytes_in_flight
+            << " ahead_unknown_estimates=" << ahead.decode_unknown_estimates_in_flight
+            << " ahead_pressure_bytes=" << ahead.decode_ahead_pressure_bytes
+            << " ahead_pressure_saturated=" << ahead.decode_ahead_pressure_saturated
+            << " ahead_limited=" << ahead.decode_ahead_pressure
             << " reason=" << stats.transition_reason << LL_ENDL;
     }
 }
