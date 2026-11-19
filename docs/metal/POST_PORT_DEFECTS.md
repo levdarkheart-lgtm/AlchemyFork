@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-497 -->
+<!-- next-defect-id: PPD-498 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -609,16 +609,16 @@ inference. No running viewer or published music backend was changed.
 
 ## PPD-013 — Water coverage forms camera-angle-dependent bands
 
-- Status: verified
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-12
 - Original reference: `1eb44bbd1bdc76d0100c75699bad1fb337e8cb45`, class3/deferred/waterHazeV.glsl passes full clip-space float4; waterHazeF.glsl divides interpolated XY/W in the fragment. Native haze pre-divides before perspective interpolation.
-- Evidence: [Owner images and water investigation](work/active/water-angle-artifacts.md).
-- Next action: Publish the owner-accepted PPD-013 correction and retain its regression evidence; reopen on recurrence. Keep PPD-015 separate and uncorrected.
+- Evidence: [Owner images and original water investigation](work/active/water-angle-artifacts.md); [69388 capture and SSR coordinate follow-up](research/water-ssr-history-69388-20261119.md).
+- Next action: Investigate the camera-relative sharp noisy water boundary reported in69388; preserve the previously verified homogeneous-interpolation correction and determine whether this is the same producer or another water path. Cross-reference PPD015 without asserting attribution. Conditional checkpoint merge/push is held until this new artifact is resolved or explicitly dispositioned by the owner.
 - Verification: Locala6f4e8ff41/Water Haze Fix26.4.0.68894 built and verified346ARM64/signature/strict-source. Identical physical GPU test executable fails8checks with old shader, passes171318assertions with corrected library;32197existing water/world assertions/4cases also pass, with API/GPU validation. Original shader math restored. Owner tests the exact launched candidate and confirms "fixed.you can commit and push it"; scene acceptance and scoped push approval are explicit.
-- Owner verification: passed
-- Push approval: granted
+- Owner verification: failed
+- Push approval: not_granted
 
 Broad diagonal bands appear/disappear when the avatar/camera turns. Further
 rotation changes much of the visible shallow surface to blue water. This is
@@ -656,6 +656,10 @@ offset, disabled quality feature or changed depth admission.
   process path and3s stability verified. Owner retests and reports "fixed.you
   can commit and push it". Mark verified/owner passed and approve PPD-013
   publication; no separate PPD-015 implementation or HUD repair approved.
+
+- 2026-11-19 reopened on owner-reported water-band recurrence in exact69388/source97cb7ff705. Three owner screenshots13:47:17/13:47:32/13:47:45 at ThreeFathom(21,154,21) show a sharp noisy/dark near-water region against pale far water; owner confirms it moves as the camera turns. Existing013clip4 haze correction was accepted/published earlier; that history remains intact and no source regression or cause is yet proved. PPD015 eye/agent-coordinate mismatch remains a separate source-confirmed candidate, not this artifact's attribution. Register before new repair; source/visual/capture audits begin read-only while the owner keeps the viewer open. Latest water verification failed, so reopened scope has no push approval; prior older013publication approval remains in history. Owner's broader checkpoint merge/push instruction is conditional on the review and is held for this newly reported artifact. Raw screenshots remain private outside Git; no shader/settings changes, new capture, restart or push yet.
+
+- 2026-11-19 owner logs out normally after two complete device-all-queues captures stopped/error0. Late trace replays with band visible, after-wave pixels are finite. Rounded geometry analysis excludes external wave/flat/fade/ring boundaries for the sampled seam under stated bounds. Separate PPD-497 producer/consumer history-row inconsistency is physically reproduced/corrected in a focused regression; its link to this band still requires the owner scene retest. No old haze correction revert or PPD-015 change. [Capture/source/limits](research/water-ssr-history-69388-20261119.md).
 
 ## PPD-014 — Automatic CI spends unwanted runs and manual releases select incompatible jobs
 
@@ -11521,3 +11525,26 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 isolated19c5d5f327 integrated as97cb7ff705 after root source review. Private metalRenderMipLevelCount derives requested full chain or level0 from current live extent/mip policy for factory and adoption, leaving published mMipLevels/global setters intact. Both bump lookup and generation gates now test actual native backing dimensions through hasMetalTextureSize, permitting retry after a failed resized replacement. Native actual-class/generator3cases4800assertions pass with Metal API/GPU validation: shrink/regrow, rectangular/NPOT/discard, retained leased owner/readback, canceled candidate, media1level and incompatible descriptors. Exact original factory/adoption expression controls compile0 and each fail2cases/2checks as expected; finally restoration verified by SHA. One premature selector invocation used the prior binary before build completion, matched no tests/exit2 and is excluded; actual post-build run passes. Full app qualification in progress; not owner-runtime verified.
 
 - 2026-11-19 final69388/source97cb7ff705a17fb2dde73da737230f3cf97d91c4/indra65fb19d0eafb8471e60c89dfaf634aebf93603b5 qualifies:1312-step wrapperReleasebuild0,27selectedCTest/API/GPU0,strict3645/0blockers/0errors,346ARM64/deepstrictsignature/3owned-host importchecks0. Exact executable SHA256a3051a443a6afd892e5b73eb5c7c645aa4990d8b7f6de456fd7d6fbbabbbebd8; stable texture-fixes-69388 manifest and private ppd496-qualified-receipt.json. Original counter-only69386 and owner-tested69384 preserved. Owner explicitly authorizes launch/manual login, with live logs next; not a runtime/visual closure or push approval.
+
+## PPD-497 — SSR history reverses already preserved world rows
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex integrator
+- Discovered: 2026-11-19
+- Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLPipeline::copyScreenSpaceReflections copies sharp screen color and scene depth without reversing rows; class3/deferred/screenSpaceReflUtil.glsl projects GL clip XY/W directly to normalized texture coordinates.
+- Evidence: [69388 water capture and source proof](research/water-ssr-history-69388-20261119.md); actual69388 source almetal_builtin.metal present_gl_rows, water vertex, ssr_project/source_uv and ssr_history_fragment; pipeline sharp-target publication. Private Alchemy-water-69388-q7dnx5l4 preserves two complete display captures, stopped/error0, normal viewer exit0 and after-wave RGBA16Float export.
+- Next action: Build/verify a separate candidate with the physically qualified identity-row publisher, then retest the owner water-band camera turns. Keep PPD-013 incident acceptance and PPD-015 separate; an explicit above-water geometry→published-history→consumer fixture remains unexecuted.
+- Verification: Native geometry negates GL clip Y before positive Metal viewport, deliberately retaining GL lower-row storage; display alone flips at CAMetalLayer boundary. SSR projection/source_uv retain the same GL normalized Y. Actual history publisher nevertheless reads source(height-1-targetY), reversing paired color/depth. Pipeline supplies the unflipped sharp target, so no intervening display conversion cancels this reversal. Existing synthetic2x2 publication test asserts the flip and does not cover actual geometry-to-consumer contract. Minimal identity-row correction passes actual rendered-geometry history regression (158checks/2cases/fourHDR-Zvariants), same final executable fails17checks with frozen old library; broad world/water36426checks/1case and four related CTests pass with API/GPU validation. Candidate build and owner band retest remain pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before implementation after independent source reviews during offline69388 water capture inspection. Captured actual SSR config=(1,1,0,0), optics.z approximately0.080 and roughness0.350; rounded typed UI values are not exported raw constants. Seam localizes inside the wave field, away from external patch/fade/ring boundaries under explicit conservative rounding assumptions. Water-glint shadow modulation cannot explain its contrast in the sampled zero-alpha region; SSR remains a candidate, not proved owner-incident cause. Raw captures stay private, stable69388 is preserved and conditional merge/push remains held.
+
+- 2026-11-19 PPD-497 minimal local publisher correction preserves original rows and updates the stale source_uv comment, with original/source/consumer mapping recorded before repair. Frozen exact69388 source/metallib copies preserved privately. Physical actual-geometry regression is in progress; no passing test/build, owner-band attribution or runtime repair claimed.
+
+- 2026-11-19 actual rendered-world→history regression passes158assertions/2cases/fourHDR-Zvariants with corrected shader; identical executable/seed/frozen69388 library fails17assertions across2cases, including896misplacedcolor/depthpixels pergeometryvariant. API/GPU validation observed. Native42→0 and corrected-library restoration verified despite later private-runner UTF8 decoding error; raw logs retained/CPU-only receipts verified. Broader world/water run first fails1of36424 at a leftover flipped far-row test expectation; explicit actual-source depth landmark added before correcting that test coordinate, production unchanged. Rebuild/retest pending; owner-band causation/retest remains unknown.
+
+- 2026-11-19 far-landmark follow-up reads and requires actual source[0]depth1 before comparing unchanged history row0; independent review passes. Rebuilt broad world/water now passes36426assertions/1case, plus four registered SSR/water/haze/base-light CTests0. Final identical test executable again gives old-library17/158failures/native42 and corrected158/2/native0, exact library restored; API/GPU validation observed. Full viewer build and owner-band acceptance next; no publication.

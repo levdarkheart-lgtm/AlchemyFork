@@ -6946,9 +6946,8 @@ static float2 almetal_ssr_project(
 
 static float2 almetal_ssr_source_uv(float2 gl_uv)
 {
-    // The native history publisher reverses Metal's top row into the
-    // lower-row-first contract expected by the ported SSR math. Keep that
-    // coordinate unchanged: a second origin conversion would invert history.
+    // World rendering and history publication retain GL lower-row storage.
+    // Projection already addresses that storage; only presentation flips Y.
     return gl_uv;
 }
 
@@ -14429,8 +14428,9 @@ fragment ALMetalWorldSSRHistoryOutput almetal_world_ssr_history_fragment(
     texture2d<float> scene_depth [[texture(1)]])
 {
     const uint2 target = uint2(input.position.xy);
-    const uint2 source = uint2(
-        target.x, scene_color.get_height() - 1u - target.y);
+    // The sharp world target already uses the GL rows addressed by SSR.
+    // Preserve paired color/depth coordinates, as the original screen copy did.
+    const uint2 source = target;
     ALMetalWorldSSRHistoryOutput output;
     output.scene_color = scene_color.read(source);
     output.scene_depth = scene_depth.read(source).r;

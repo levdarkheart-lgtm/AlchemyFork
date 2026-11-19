@@ -12463,7 +12463,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // Final-color publication is opt-in because only the continuously
         // advancing main-world path needs to sample combined depth. Prove
         // that the ordinary retained target stays private, then publish the
-        // exact HDR color/depth pair with the historical GL row convention.
+        // exact HDR color/depth pair without changing its existing GL rows.
         std::unique_ptr<ALMetalRenderTarget> ssr_history;
         error.clear();
         CHECK_FALSE(renderer->updateScreenSpaceReflectionHistory(
@@ -12478,6 +12478,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         REQUIRE(opaque_forward_history_source);
         CHECK(opaque_forward_history_source->descriptor()
                   .depth_stencil_shader_read);
+        std::array<float, 32 * 32> ssr_source_depth{};
+        REQUIRE(opaque_forward_history_source->depthStencilTexture()->readback(
+            *device, 0, 0, {}, ssr_source_depth.data(), 32 * sizeof(float),
+            &error));
+        REQUIRE(std::abs(ssr_source_depth[0] - 1.f) < 0.0001f);
         REQUIRE(renderer->updateScreenSpaceReflectionHistory(
             *opaque_forward_history_source, opaque_forward_scene.hdr, ssr_history, &error));
         INFO(error);
@@ -12496,10 +12501,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *device, 0, 0, {}, ssr_history_depth.data(), 32 * 4,
             &error));
         INFO(error);
-        CHECK(ssr_history_color[7 * 32 + 8] != 0);
-        CHECK(std::abs(ssr_history_depth[7 * 32 + 8] - 0.625f) <
+        CHECK(ssr_history_color[24 * 32 + 8] != 0);
+        CHECK(std::abs(ssr_history_depth[24 * 32 + 8] - 0.625f) <
               0.0001f);
-        CHECK(std::abs(ssr_history_depth[31 * 32] - 1.f) < 0.0001f);
+        CHECK(std::abs(ssr_history_depth[0] - ssr_source_depth[0]) < 0.0001f);
         ALMetalRenderTarget* retained_ssr_history = ssr_history.get();
         REQUIRE(renderer->updateScreenSpaceReflectionHistory(
             *opaque_forward_history_source, opaque_forward_scene.hdr, ssr_history, &error));
@@ -23791,7 +23796,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
     }
 }
 
-TEST_CASE("almetal: native final color publishes coherent SSR history", "[almetal]")
+TEST_CASE("almetal: native final color publishes coherent SSR history", "[almetal][ssr-history]")
 {
     @autoreleasepool
     {
@@ -23818,9 +23823,9 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
         INFO(error);
         REQUIRE(source);
 
-        // Metal row zero is the top row. The history publisher deliberately
-        // reverses it so the retained data matches glReadPixels' historical
-        // lower-row-first layout consumed by the existing SSR math.
+        // Uploads address native rows directly. Publication preserves those
+        // rows; the rendered-geometry case below independently establishes
+        // their relationship to world-space landmarks and GL projection.
         const std::array<std::uint8_t, 16> source_pixels{{
             255,   0,   0, 255,   0, 255,   0, 255,
               0,   0, 255, 255, 255, 255, 255, 255,
@@ -23894,11 +23899,7 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
             *device, 0, 0, {}, history_depth.data(), 2 * sizeof(float),
             &error));
         INFO(error);
-        const std::array<std::uint8_t, 16> expected_pixels{{
-              0,   0, 255, 255, 255, 255, 255, 255,
-            255,   0,   0, 255,   0, 255,   0, 255,
-        }};
-        CHECK(history_pixels == expected_pixels);
+        CHECK(history_pixels == source_pixels);
         for (float depth : history_depth)
         {
             CHECK(std::abs(depth - 0.625f) < 0.0001f);
@@ -23909,6 +23910,204 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
             *source, false, history, &error));
         INFO(error);
         CHECK(history.get() == retained_history);
+    }
+}
+
+TEST_CASE("almetal: rendered world landmarks retain their color and depth rows in SSR history",
+          "[almetal][ssr-history][ssr-history-geometry]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = createFrameDataRenderer(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 64, height = 32;
+        // Two actual opaque meshes, deliberately asymmetric in projected Y
+        // and depth. Their landmark rows are established before publication;
+        // no uploaded image or duplicated history shader supplies the oracle.
+        const std::array<std::array<float, 4>, 8> positions{{
+            {{-.75f, -.875f, -.5f, 1.f}},
+            {{ .75f, -.875f, -.5f, 1.f}},
+            {{ .75f, -.375f, -.5f, 1.f}},
+            {{-.75f, -.375f, -.5f, 1.f}},
+            {{-.50f,  .250f,  .5f, 1.f}},
+            {{ .50f,  .250f,  .5f, 1.f}},
+            {{ .50f,  .750f,  .5f, 1.f}},
+            {{-.50f,  .750f,  .5f, 1.f}},
+        }};
+        const std::array<std::array<float, 2>, 8> texcoords{};
+        const std::array<std::array<std::uint8_t, 4>, 8> colors{{
+            {{255, 0, 0, 255}}, {{255, 0, 0, 255}},
+            {{255, 0, 0, 255}}, {{255, 0, 0, 255}},
+            {{0, 0, 255, 255}}, {{0, 0, 255, 255}},
+            {{0, 0, 255, 255}}, {{0, 0, 255, 255}},
+        }};
+        constexpr std::size_t uv_offset = sizeof(positions);
+        constexpr std::size_t color_offset = uv_offset + sizeof(texcoords);
+        std::array<std::uint8_t, color_offset + sizeof(colors)> vertex_bytes{};
+        std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
+        std::memcpy(vertex_bytes.data() + uv_offset, texcoords.data(), sizeof(texcoords));
+        std::memcpy(vertex_bytes.data() + color_offset, colors.data(), sizeof(colors));
+        const std::array<std::uint16_t, 12> index_values{{
+            0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7,
+        }};
+        const auto buffer = [&](const void* bytes, std::size_t size)
+        {
+            ALMetalBufferDescriptor descriptor;
+            descriptor.length = size;
+            descriptor.storage = ALMetalStorageMode::shared;
+            auto result = ALMetalBuffer::create(*device, descriptor, &error);
+            INFO(error);
+            REQUIRE(result);
+            REQUIRE(result->write(0, bytes, size, &error));
+            return result;
+        };
+        auto vertices = buffer(vertex_bytes.data(), vertex_bytes.size());
+        auto indices = buffer(index_values.data(), sizeof(index_values));
+        ALMetalTextureDescriptor white_descriptor;
+        white_descriptor.width = white_descriptor.height = 1;
+        white_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        auto white = ALMetalTexture::create(*device, white_descriptor, &error);
+        REQUIRE(white);
+        const std::array<std::uint8_t, 4> white_pixel{{255, 255, 255, 255}};
+        auto upload = device->makeCommandBuffer("SSR landmark diffuse input", &error);
+        REQUIRE(upload);
+        REQUIRE(white->upload(*upload, 0, 0, {}, white_pixel.data(), white_pixel.size(), &error));
+        REQUIRE(upload->commitAndWait(&error));
+
+        ALMetalWorldSimpleBatch batch;
+        batch.vertices = vertices.get();
+        batch.vertex_count = positions.size();
+        batch.texcoord_offset = uv_offset;
+        batch.color_offset = color_offset;
+        batch.normal_offset = vertex_bytes.size() + 16; // Fullbright consumes no normal stream.
+        batch.indices = indices.get();
+        batch.index_count = index_values.size();
+        batch.diffuse_textures[0] = white.get();
+        batch.texture_count = 1;
+        batch.impostor_fullbright = true;
+        for (unsigned axis = 0; axis < 4; ++axis)
+        {
+            batch.modelview_projection[axis * 4 + axis] = 1.f;
+            batch.modelview[axis * 4 + axis] = 1.f;
+        }
+
+        // Independent decoding of the documented R11G11B10 storage, needed
+        // only for readback. Authored landmark channels are exact zero/one.
+        const auto unsigned_float = [](std::uint32_t bits, unsigned mantissa_bits)
+        {
+            const unsigned exponent = bits >> mantissa_bits;
+            const unsigned mantissa = bits & ((1u << mantissa_bits) - 1u);
+            if (exponent == 0)
+                return std::ldexp(float(mantissa), -14 - int(mantissa_bits));
+            if (exponent == 31)
+                return std::numeric_limits<float>::infinity();
+            return std::ldexp(1.f + float(mantissa) / float(1u << mantissa_bits),
+                              int(exponent) - 15);
+        };
+        for (bool hdr : {false, true}) for (bool reverse : {false, true})
+        {
+            CAPTURE(hdr, reverse);
+            ALMetalWorldGBufferScene empty_scene;
+            empty_scene.width = width;
+            empty_scene.height = height;
+            empty_scene.hdr = hdr;
+            empty_scene.normal_hdr = true;
+            empty_scene.reverse_z = reverse;
+            auto gbuffer = renderer->render(empty_scene, &error);
+            INFO(error);
+            REQUIRE(gbuffer);
+            auto lighting = zeroLinearTarget(*device, gbuffer.get(), &error);
+            // The real reverse-Z owner takes an already reversed projection;
+            // forward-Z accepts GL clip depth and maps it in the vertex stage.
+            batch.modelview_projection[10] = reverse ? -.5f : 1.f;
+            batch.modelview_projection[14] = reverse ? .5f : 0.f;
+            ALMetalWorldOpaquePostDeferredScene scene;
+            scene.gbuffer = gbuffer.get();
+            scene.composed_lighting = lighting.get();
+            scene.batches = &batch;
+            scene.batch_count = 1;
+            scene.width = width;
+            scene.height = height;
+            scene.hdr = hdr;
+            scene.reverse_z = reverse;
+            scene.publish_screen_space_reflection_history = true;
+            auto source = renderer->renderOpaquePostDeferred(scene, &error);
+            INFO(error);
+            REQUIRE(source);
+            REQUIRE(source->descriptor().colors[0].format == ALMetalPixelFormat::rgba16_float);
+            std::array<std::uint16_t, width * height * 4> source_color{};
+            std::array<float, width * height> source_depth{};
+            REQUIRE(source->colorTexture(0)->readback(*device, 0, 0, {},
+                source_color.data(), width * 8, &error));
+            REQUIRE(source->depthStencilTexture()->readback(*device, 0, 0, {},
+                source_depth.data(), width * sizeof(float), &error));
+            const auto color = [&](std::size_t pixel, unsigned channel)
+            {
+                return float(std::bit_cast<_Float16>(source_color[pixel * 4 + channel]));
+            };
+            constexpr std::size_t lower = 6 * width + width / 2;
+            constexpr std::size_t upper = 24 * width + width / 2;
+            constexpr std::size_t gap = 16 * width + width / 2;
+            // Geometry projected at negative GL Y occupies the lower-index
+            // native rows. This is the producer contract, not a history copy.
+            REQUIRE(color(lower, 0) == 1.f);
+            REQUIRE(color(lower, 1) == 0.f);
+            REQUIRE(color(lower, 2) == 0.f);
+            REQUIRE(color(upper, 0) == 0.f);
+            REQUIRE(color(upper, 1) == 0.f);
+            REQUIRE(color(upper, 2) == 1.f);
+            REQUIRE(std::abs(source_depth[lower] - (reverse ? .75f : .25f)) < 1.e-6f);
+            REQUIRE(std::abs(source_depth[upper] - (reverse ? .25f : .75f)) < 1.e-6f);
+            REQUIRE(source_depth[gap] == (reverse ? 0.f : 1.f));
+            REQUIRE(color(gap, 0) == 0.f);
+            REQUIRE(color(gap, 2) == 0.f);
+
+            std::unique_ptr<ALMetalRenderTarget> history;
+            REQUIRE(renderer->updateScreenSpaceReflectionHistory(*source, hdr, history, &error));
+            INFO(error);
+            REQUIRE(history);
+            REQUIRE(history->descriptor().colors[0].format == (hdr
+                ? ALMetalPixelFormat::rg11b10_float : ALMetalPixelFormat::rgba8_unorm));
+            std::array<float, width * height> history_depth{};
+            REQUIRE(history->colorTexture(1)->readback(*device, 0, 0, {},
+                history_depth.data(), width * sizeof(float), &error));
+            std::array<std::uint32_t, width * height> history_hdr{};
+            std::array<std::uint8_t, width * height * 4> history_sdr{};
+            if (hdr)
+                REQUIRE(history->colorTexture(0)->readback(*device, 0, 0, {},
+                    history_hdr.data(), width * sizeof(std::uint32_t), &error));
+            else
+                REQUIRE(history->colorTexture(0)->readback(*device, 0, 0, {},
+                    history_sdr.data(), width * 4, &error));
+            unsigned color_mismatches = 0, depth_mismatches = 0;
+            for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+            {
+                bool different = false;
+                for (unsigned channel = 0; channel < 3; ++channel)
+                {
+                    const std::uint32_t packed = history_hdr[pixel];
+                    const float actual = hdr
+                        ? unsigned_float((packed >> (channel == 2 ? 22u : channel * 11u)) &
+                            (channel == 2 ? 0x3ffu : 0x7ffu), channel == 2 ? 5u : 6u)
+                        : float(history_sdr[pixel * 4 + channel]) / 255.f;
+                    different |= !std::isfinite(actual) || std::abs(actual - color(pixel, channel)) > 1.e-6f;
+                }
+                color_mismatches += different;
+                depth_mismatches += !std::isfinite(history_depth[pixel]) ||
+                    std::abs(history_depth[pixel] - source_depth[pixel]) > 1.e-6f;
+            }
+            CAPTURE(color_mismatches, depth_mismatches);
+            CHECK(color_mismatches == 0);
+            CHECK(depth_mismatches == 0);
+            CHECK(std::abs(history_depth[lower] - (reverse ? .75f : .25f)) < 1.e-6f);
+            CHECK(std::abs(history_depth[upper] - (reverse ? .25f : .75f)) < 1.e-6f);
+        }
     }
 }
 
