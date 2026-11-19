@@ -2184,11 +2184,31 @@ if(AL_BUILD_VIEWER)
   )
 
   if(DARWIN)
+    # Translation is Swift-only. An isolated archive keeps C/C++ al::flags
+    # out of swiftc; all frameworks and Swift runtimes remain system supplied.
+    execute_process(COMMAND xcrun --find swiftc OUTPUT_VARIABLE al_im_swiftc
+      OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    execute_process(COMMAND xcrun --sdk macosx --show-sdk-path OUTPUT_VARIABLE al_im_sdk
+      OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    get_filename_component(al_im_swift_bin "${al_im_swiftc}" DIRECTORY)
+    set(al_im_swift_runtime "${al_im_swift_bin}/../lib/swift/macosx")
+    set(al_im_translation_archive "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libalnativeimtranslation.a")
+    add_custom_command(OUTPUT "${al_im_translation_archive}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
+      COMMAND "${al_im_swiftc}" -parse-as-library -swift-version 5
+        -target arm64-apple-macosx26.0 -sdk "${al_im_sdk}" -O -g
+        -emit-library -static -module-name AlchemyNativeIMTranslation
+        "${CMAKE_CURRENT_SOURCE_DIR}/alnativeimtranslation.swift" -o "${al_im_translation_archive}"
+      DEPENDS alnativeimtranslation.swift alnativeimtranslation.h VERBATIM)
+    add_custom_target(alnativeimtranslation DEPENDS "${al_im_translation_archive}")
+    add_dependencies(${AL_VIEWER_BINARY_NAME} alnativeimtranslation)
     find_library(IOSURFACE_FRAMEWORK IOSurface)
     find_library(COREGRAPHICS_FRAMEWORK CoreGraphics)
     target_link_libraries(
       ${AL_VIEWER_BINARY_NAME}
-      PRIVATE almetal ${IOSURFACE_FRAMEWORK} ${COREGRAPHICS_FRAMEWORK}
+      PRIVATE almetal "${al_im_translation_archive}" ${IOSURFACE_FRAMEWORK} ${COREGRAPHICS_FRAMEWORK}
+        "-L${al_im_swift_runtime}" "-L/usr/lib/swift" "-Wl,-rpath,/usr/lib/swift"
+        "-framework AppKit" "-framework SwiftUI" "-framework Translation" "-framework NaturalLanguage"
     )
   endif()
 
@@ -2515,6 +2535,22 @@ elseif(AL_BUILD_TESTS)
 endif()
 
 if(AL_BUILD_TESTS)
+  add_executable(alnativeimtranslationpolicy_test tests/alnativeimtranslationpolicy_test.cpp)
+  target_link_libraries(alnativeimtranslationpolicy_test PRIVATE al::flags)
+  add_test(NAME newview/native_im_translation_policy COMMAND alnativeimtranslationpolicy_test)
+  if(TARGET alnativeimtranslation)
+    add_executable(alnativeimtranslation_test tests/alnativeimtranslation_test.mm)
+    set_source_files_properties(tests/alnativeimtranslation_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_include_directories(alnativeimtranslation_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_dependencies(alnativeimtranslation_test alnativeimtranslation)
+    target_link_libraries(alnativeimtranslation_test PRIVATE al::flags "${al_im_translation_archive}"
+      "-L${al_im_swift_runtime}" "-L/usr/lib/swift" "-Wl,-rpath,/usr/lib/swift"
+      "-framework AppKit" "-framework SwiftUI" "-framework Translation" "-framework NaturalLanguage")
+    add_test(NAME newview/native_im_translation_bridge COMMAND alnativeimtranslation_test)
+    set_tests_properties(newview/native_im_translation_bridge PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 45)
+    add_test(NAME newview/native_im_translation_live COMMAND alnativeimtranslation_test --live)
+    set_tests_properties(newview/native_im_translation_live PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 45)
+  endif()
   set_source_files_properties(tests/alnativeframeplan_completion_test.mm
     PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set(
@@ -2599,6 +2635,7 @@ if(AL_BUILD_TESTS)
     newview_tests
     PROJECT ${test_project}
     SOURCES
+      tests/alnativeimtranslationhandle_test.cpp
       tests/alprobeupdateadmission_test.cpp
       tests/alnativeframeplan_test.cpp
       tests/alnativeframeplan_completion_test.mm
@@ -2911,6 +2948,25 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN AND Python3_Interpreter_FOUND)
     find_package(Threads REQUIRED)
+    # Exercise the real send body while capturing network and local-echo
+    # boundaries, so the original wording can never leak into IM packets.
+    set(native_im_echo_source "${CMAKE_CURRENT_BINARY_DIR}/native_im_echo_generated.cpp")
+    add_custom_command(OUTPUT "${native_im_echo_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/alnativeimtranslationecho_test.py"
+        --emit-source "${native_im_echo_source}"
+      DEPENDS llimview.cpp alnativeimtranslationpolicy.h ../llmessage/lldbstrings.h
+        tests/alnativeimtranslationecho_test.py tests/alnativeimtranslationecho_test.cpp
+      VERBATIM)
+    add_executable(alnativeimtranslationecho_test "${native_im_echo_source}")
+    target_link_libraries(alnativeimtranslationecho_test PRIVATE al::flags)
+    target_compile_features(alnativeimtranslationecho_test PRIVATE cxx_std_23)
+    target_include_directories(alnativeimtranslationecho_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(alnativeimtranslationecho_test PRIVATE
+      -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(alnativeimtranslationecho_test PRIVATE -fsanitize=address,undefined)
+    add_test(NAME newview/native_im_translation_echo COMMAND alnativeimtranslationecho_test)
+    set_tests_properties(newview/native_im_translation_echo PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
     # Generate only the current producer/completion bodies; the normal target
     # supplies real LLFile and dependencies for Ninja and Xcode alike.
     set(cache_write_contract_source "${CMAKE_CURRENT_BINARY_DIR}/lltexturecache_write_contract_generated.cpp")

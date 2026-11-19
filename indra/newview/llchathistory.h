@@ -125,6 +125,11 @@ class LLChatHistory final : public LLUICtrl
         void appendMessage(const LLChat& chat, const LLSD &args = LLSD(), const LLStyle::Params& input_append_params = LLStyle::Params());
         /*virtual*/ void clear() override;
 
+        // Preserve the reading position when an existing message is annotated.
+        S32 getScrollPosition();
+        bool isAtEnd();
+        void restoreScrollPosition(S32 position, bool at_end);
+
 // [SL:KB] - Patch: Chat-Alerts | Checked: 2012-08-27 (Catznip-3.3)
     public:
         enum EParseHighlightType

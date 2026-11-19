@@ -25,6 +25,7 @@
  */
 
 #include "llviewerprecompiledheaders.h"
+#include "alnativeimtranslation.h"
 
 #include <filesystem>
 
@@ -1950,6 +1951,8 @@ void LLAppViewer::flushLFSIO()
 
 bool LLAppViewer::cleanup()
 {
+    // Suppress native translation callbacks before any viewer/UI teardown.
+    al_native_im_translation_shutdown();
 #if LL_DARWIN
     // Close our own capture and CPU writer before viewer/global teardown.
     // Pending native commands remain pending in diagnostics; no GPU drain is added.

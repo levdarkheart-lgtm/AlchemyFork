@@ -1339,6 +1339,33 @@ void LLChatHistory::clear()
     mLastFromID = LLUUID::null;
 }
 
+S32 LLChatHistory::getScrollPosition()
+{
+    // Complete pending text layout before reading or restoring the scrollbar.
+    mEditor->getTextBoundingRect();
+    return mEditor->getScrollContainer()->getDocPosVertical();
+}
+
+bool LLChatHistory::isAtEnd()
+{
+    mEditor->getTextBoundingRect();
+    return mEditor->scrolledToEnd();
+}
+
+void LLChatHistory::restoreScrollPosition(S32 position, bool at_end)
+{
+    mEditor->getTextBoundingRect();
+    auto* scroller = mEditor->getScrollContainer();
+    if (at_end)
+    {
+        scroller->goToBottom();
+    }
+    else
+    {
+        scroller->setDocPosVertical(position);
+    }
+}
+
 void LLChatHistory::appendMessage(const LLChat& chat, const LLSD &args, const LLStyle::Params& input_append_params)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
@@ -1352,9 +1379,10 @@ void LLChatHistory::appendMessage(const LLChat& chat, const LLSD &args, const LL
         return;
 
     bool from_me = chat.mFromID == gAgent.getID();
+    const bool display_only_replay = args["display_only_replay"].asBoolean();
     mEditor->setPlainText(use_plain_text_chat_history);
 
-    if (mNotifyAboutUnreadMsg && !mEditor->scrolledToEnd() && !from_me && !chat.mFromName.empty())
+    if (!display_only_replay && mNotifyAboutUnreadMsg && !mEditor->scrolledToEnd() && !from_me && !chat.mFromName.empty())
     {
         mUnreadChatSources.insert(chat.mFromName);
         mMoreChatPanel->setVisible(true);
@@ -1825,7 +1853,7 @@ void LLChatHistory::appendMessage(const LLChat& chat, const LLSD &args, const LL
     mEditor->blockUndo();
 
     // automatically scroll to end when receiving chat from myself
-    if (from_me)
+    if (from_me && !display_only_replay)
     {
         mEditor->setCursorAndScrollToEnd();
     }

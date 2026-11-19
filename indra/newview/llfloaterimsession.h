@@ -34,12 +34,20 @@
 #include "lltooldraganddrop.h"
 #include "llvoicechannel.h"
 #include "llvoiceclient.h"
+#include "alnativeimtranslationpolicy.h"
+#include "alpopover.h"
+#include "llframetimer.h"
+
+#include <set>
+#include <limits>
 
 class LLAvatarName;
 class LLButton;
 class LLChatEntry;
 class LLTextEditor;
 class LLChatHistory;
+class LLComboBox;
+class LLCheckBoxCtrl;
 class LLInventoryItem;
 class LLInventoryCategory;
 
@@ -99,7 +107,12 @@ public:
     void reloadMessages(bool clean_messages = false);
     static void onSendMsg(LLUICtrl*, void*);
     void sendMsgFromInputEditor(bool ooc_chat = false);
-    void sendMsg(const std::string& msg);
+    void sendMsg(const std::string& msg, const std::string& local_original = {});
+
+    // Native translation belongs to this live P2P conversation only.
+    bool usesNativeIMTranslation() const;
+    void translateIncomingIM(const std::string& from, const LLUUID& from_id,
+                             const std::string& original, bool is_region_msg);
 
     // callback for LLIMModel on new messages
     // route to specific floater if it is visible
@@ -146,6 +159,41 @@ public:
 
     bool handleKeyHere(KEY key, MASK mask) override;
 private:
+
+    void initNativeIMTranslation();
+    void updateNativeIMTranslationLayout();
+    void showNativeIMTranslationSettings();
+    void updateNativeIMTranslationButton();
+    void nativeIMTranslationChanged();
+    void refreshNativeIMLanguageReadiness();
+    void applyNativeIMLanguageReadiness();
+    void updateNativeIMReadinessStatus();
+    bool nativeIMLanguageMenuOpen() const;
+    bool translateOutgoingIM(const std::string& message);
+    void cancelNativeIMTranslation();
+    void setNativeIMTranslationStatus(const std::string& status);
+
+    LLComboBox* mNativeIMOutgoing = nullptr;
+    LLPanel* mNativeIMSettingsPanel = nullptr;
+    LLButton* mNativeIMSettingsButton = nullptr;
+    ALPopoverSlot mNativeIMSettingsPopover;
+    U32 mNativeIMSettingsCloseFrame = std::numeric_limits<U32>::max();
+    U32 mNativeIMSettingsPressFrame = std::numeric_limits<U32>::max();
+    U32 mNativeIMSettingsReleaseFrame = std::numeric_limits<U32>::max();
+    std::string mNativeIMStatusText;
+    LLComboBox* mNativeIMSource = nullptr;
+    LLComboBox* mNativeIMIncoming = nullptr;
+    std::string mNativeIMSystemLanguage;
+    LLCheckBoxCtrl* mNativeIMIncomingEnabled = nullptr;
+    al::native_im_translation::RequestSlot mNativeIMSendRequest;
+    std::set<uint64_t> mNativeIMReceiveRequests;
+    uint64_t mNativeIMLanguagesRequest = 0;
+    LLSD mNativeIMLanguageReadiness;
+    std::string mNativeIMAppliedLanguages;
+    LLFrameTimer mNativeIMReadinessTimer;
+    bool mNativeIMReadinessPending = false;
+    bool mNativeIMStatusIsReadiness = false;
+    bool mNativeIMDisplayReplay = false;
 
     /*virtual*/ void refresh() override;
 
@@ -201,6 +249,7 @@ private:
 
     bool mSessionInitialized;
     LLSD mQueuedMsgsForInit;
+    U64 mSessionCloseGeneration = 0;
 
     uuid_vec_t mInvitedParticipants;
     uuid_vec_t mPendingParticipants;

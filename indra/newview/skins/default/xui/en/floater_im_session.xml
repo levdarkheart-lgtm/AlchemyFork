@@ -18,6 +18,41 @@
  positioning="relative">
     <floater.string name="call_btn_start">Conv_toolbar_open_call</floater.string>
     <floater.string name="call_btn_stop">Conv_toolbar_hang_up</floater.string>
+    <floater.string name="native_im_original">Original (translation off)</floater.string>
+    <floater.string name="native_im_system">System language</floater.string>
+    <floater.string name="native_im_detect">Detect language</floater.string>
+    <floater.string name="native_im_draft_changed">Not sent: draft changed during translation. Review and retry.</floater.string>
+    <floater.string name="native_im_incoming_unknown">Incoming language unclear; original message kept.</floater.string>
+    <floater.string name="native_im_ready">Apple Translation · this chat only</floater.string>
+    <floater.string name="native_im_translating">Translating before sending…</floater.string>
+    <floater.string name="native_im_sent">Translated message sent</floater.string>
+    <floater.string name="native_im_queued">Translated; waiting for chat</floater.string>
+    <floater.string name="native_im_checking_models">Checking language models…</floater.string>
+    <floater.string name="native_im_models_unknown">Models unavailable; retry</floater.string>
+    <floater.string name="native_im_models_ready">Ready to translate</floater.string>
+    <floater.string name="native_im_detect_ready">Language detected when sent</floater.string>
+    <floater.string name="native_im_incoming_ready">Incoming language detected</floater.string>
+    <floater.string name="native_im_download_needed">Download needed · Languages…</floater.string>
+    <floater.string name="native_im_not_sent_download">Not sent · Download needed</floater.string>
+    <floater.string name="native_im_incoming_download">Incoming · Download needed</floater.string>
+    <floater.string name="native_im_pair_unsupported">Language pair unavailable</floater.string>
+    <floater.string name="native_im_download_badge"> — Download needed</floater.string>
+    <floater.string name="native_im_unsupported_badge"> — Unavailable</floater.string>
+    <floater.string name="native_im_outgoing_tooltip">Translate your draft before sending. Download needed means models are missing for Write in → Send in. Open Languages… to prepare them; readiness refreshes automatically. Your original wording and the sent translation stay in your chat. The recipient receives only the translation.</floater.string>
+    <floater.string name="native_im_detect_tooltip">The source language is detected when you send. Model availability depends on that detected language, so download badges are shown only after choosing a Write in language. If translation cannot finish, your draft stays in the editor.</floater.string>
+    <floater.string name="native_im_incoming_pair_tooltip">Download badges assume the sender writes in the Send in language. Incoming messages are detected individually; other languages may need other models. Open Languages… to prepare a pair.</floater.string>
+    <floater.string name="native_im_incoming_detect_tooltip">Choose your reading language or your first macOS language. Incoming languages are detected individually, so model availability is checked when a message arrives. Selecting Send in also shows model readiness for that expected peer language.</floater.string>
+    <floater.string name="native_im_cancelled">Cancelled; draft kept</floater.string>
+    <floater.string name="native_im_blocked">Message not sent: disconnected or IM restricted.</floater.string>
+    <floater.string name="native_im_unavailable">Apple Translation requires macOS 26 or later.</floater.string>
+    <floater.string name="native_im_invalid_result">Not sent: empty or oversized translation. Shorten the draft.</floater.string>
+    <floater.string name="native_im_busy">Too many incoming translations; original messages kept.</floater.string>
+    <floater.string name="native_im_translation_label">[Translation]</floater.string>
+    <floater.string name="native_im_settings_title">Translation · this chat</floater.string>
+    <floater.string name="native_im_settings_summary">Send: [SEND]
+Receive: [RECEIVE]
+[STATUS]</floater.string>
+    <floater.string name="native_im_receive_off">Off</floater.string>
     <floater.string
      name="collapseline_icon"
      value="Conv_collapse_to_one_line"/>
@@ -250,6 +285,23 @@
                    name="pay_btn"
                    tool_tip="Pay this avatar"
                    top="1"
+                   width="31" />
+                  <button
+                   follows="top|left"
+                   height="25"
+                   image_hover_unselected="Toolbar_Middle_Over"
+                   image_selected="Toolbar_Middle_Selected"
+                   image_unselected="Toolbar_Middle_Off"
+                   font="SansSerifSmall"
+                   label="A/文"
+                   pad_left="1"
+                   pad_right="1"
+                   layout="topleft"
+                   left_pad="2"
+                   name="native_im_translation_btn"
+                   tool_tip="Translation settings for this chat"
+                   top="1"
+                   visible="false"
                    width="31" />
                 </panel>
                 <panel
@@ -588,4 +640,43 @@
             </layout_panel>
         </layout_stack>
     </view>
+    <panel
+     name="native_im_translation_panel"
+     layout="topleft"
+     left="0"
+     top="0"
+     width="420"
+     height="150"
+     background_visible="false"
+     visible="false">
+        <text name="native_im_send_label" layout="topleft"
+         follows="left|top" left="8" top="12" height="18" width="100">Send in:</text>
+        <combo_box name="native_im_outgoing" layout="topleft"
+         follows="left|right|top" left="114" right="-8" top="8" height="23"
+         tool_tip="Translate your draft before sending. Applies only to this conversation. Original text stays in the editor if translation fails." />
+        <check_box name="native_im_incoming_enabled" layout="topleft"
+         follows="left|top" left="8" top="35" height="23" width="100"
+         initial_value="false" label="Receive in:"
+         tool_tip="Show incoming translations below original messages in this conversation. Transcript files keep the original text." />
+        <combo_box name="native_im_incoming" layout="topleft"
+         follows="left|right|top" left="114" right="-8" top="35" height="23"
+         tool_tip="Choose your reading language explicitly, or use your first preferred macOS language." />
+        <text name="native_im_source_label" layout="topleft"
+         follows="left|top" left="8" top="66" height="18" width="100">Write in:</text>
+        <combo_box name="native_im_source" layout="topleft"
+         follows="left|right|top" left="114" right="-8" top="62" height="23"
+         tool_tip="The language you write in. Choose explicitly for short messages, or select Detect language." />
+        <button name="native_im_setup" layout="topleft"
+         follows="left|top" left="8" top="91" height="22" width="105"
+         label="Languages…" tool_tip="Prepare or download Apple language models on this Mac." />
+        <button name="native_im_cancel" layout="topleft"
+         follows="left|top" left="119" top="91" height="22" width="85"
+         label="Cancel send" enabled="false" tool_tip="Cancel the pending send and keep your original draft." />
+        <button name="native_im_done" layout="topleft"
+         follows="right|top" right="-8" top="91" height="22" width="65"
+         label="Done" tool_tip="Close settings. Your choices apply immediately to this chat." />
+        <text name="native_im_translation_status" layout="topleft"
+         follows="left|right|top" left="8" right="-8" top="122" height="20"
+         font="SansSerifSmall" wrap="false">Apple Translation · this chat only</text>
+    </panel>
 </floater>

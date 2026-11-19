@@ -28,6 +28,7 @@
 
 #include "llimview.h"
 #include "alchattimestamp.h"
+#include "alnativeimtranslationpolicy.h"
 
 #include "llavatarnamecache.h"  // IDEVO
 #include "llavataractions.h"
@@ -1716,6 +1717,25 @@ void LLIMModel::proccessOnlineOfflineNotification(
 void LLIMModel::addMessage(const LLUUID& session_id, const std::string& from, const LLUUID& from_id,
                            const std::string& utf8_text, bool log2file /* = true */, bool is_region_msg, /* = false */ U32 time_stamp /* = 0 */)
 {
+    LLFloaterIMSession* floater = LLFloaterIMSession::findInstance(session_id);
+    if (floater && floater->usesNativeIMTranslation())
+    {
+        // Preserve the original transcript and deliver normal notifications now.
+        // Native translation is an asynchronous annotation of this chat only;
+        // local echoes also bypass the global translator to retain the sent text.
+        const LLHandle<LLFloater> floater_handle = floater->getHandle();
+        processAddingMessage(session_id, from, from_id, utf8_text, log2file, is_region_msg, time_stamp);
+
+        // Message listeners can close the conversation while processing it.
+        floater = static_cast<LLFloaterIMSession*>(floater_handle.get());
+        if (floater && floater->usesNativeIMTranslation() && from_id.notNull()
+            && from != SYSTEM_FROM && from != INTERACTIVE_SYSTEM_FROM)
+        {
+            floater->translateIncomingIM(from, from_id, utf8_text, is_region_msg);
+        }
+        return;
+    }
+
     if (gSavedSettings.getBOOL("TranslateChat") && (from != SYSTEM_FROM))
     {
         const std::string from_lang = ""; // leave empty to trigger autodetect
@@ -1926,10 +1946,15 @@ void LLIMModel::sendLeaveSession(const LLUUID& session_id, const LLUUID& other_p
 
 //*TODO this method is better be moved to the LLIMMgr
 void LLIMModel::sendMessage(const std::string& utf8_text,
-                     const LLUUID& im_session_id,
-                     const LLUUID& other_participant_id,
-                     EInstantMessage dialog)
+                     const LLUUID& im_session_id_arg,
+                     const LLUUID& other_participant_id_arg,
+                     EInstantMessage dialog,
+                     const std::string& local_original)
 {
+    // Callers can pass floater members. Local-echo callbacks may destroy that
+    // floater, so own the IDs used by subsequent speaker/recent-people updates.
+    const LLUUID im_session_id = im_session_id_arg;
+    const LLUUID other_participant_id = other_participant_id_arg;
     std::string name;
     bool sent = false;
     LLAgentUI::buildFullname(name);
@@ -2039,7 +2064,18 @@ void LLIMModel::sendMessage(const std::string& utf8_text,
         // Do we have to replace the /me's here?
         std::string from;
         LLAgentUI::buildFullname(from);
-        LLIMModel::getInstance()->addMessage(im_session_id, from, gAgentID, utf8_text);
+        if (!local_original.empty())
+        {
+            // Only this local history row contains the original. Every packet
+            // above still carries utf8_text, the translated recipient message.
+            // Avoid the global translation service re-translating our own echo.
+            LLIMModel::getInstance()->processAddingMessage(im_session_id, from, gAgentID,
+                al::native_im_translation::formatOutgoingEcho(local_original, utf8_text), true, false, 0);
+        }
+        else
+        {
+            LLIMModel::getInstance()->addMessage(im_session_id, from, gAgentID, utf8_text);
+        }
 
         //local echo for the legacy communicate panel
         std::string history_echo;
@@ -2056,6 +2092,8 @@ void LLIMModel::sendMessage(const std::string& utf8_text,
     }
 
     // Add the recipient to the recent people list.
+    // The local-echo signal above may close/recreate this session.
+    session = LLIMModel::getInstance()->findIMSession(im_session_id);
     bool is_not_group_id = LLGroupMgr::getInstance()->getGroupData(other_participant_id) == NULL;
 
     if (is_not_group_id)
