@@ -305,3 +305,37 @@ frames, following the existing emoji helper's event-order precedent. A chrome-on
 approach was rejected before rebuild because the parent floater can take focus
 first. Initial eedc0db054 Release49-action build exits0, not delivered/launched;
 widget placement/popover CTests2/2 pass. Final source-pinned rebuild follows.
+
+
+### Popup delivery —69404
+
+Final source `7d607c955ab8b027a745bf5406b537f0640d99bb`, indra
+`6cfca54e0398bb26d97ac33c39941a3ead123512`. Cached configure and required
+Release wrapper exit0,49 Ninja actions. Version26.4.0.69404 binary SHA256
+`1a8758659155dfe6cb9015cc41b5184d2f12f85827cf8c2ff5ffcf7c90b2e068`.
+Exact app remains `build-native-im-translation/newview/Release/Alchemy Metal IM Translation.app`.
+App verification reports346ARM64/zeroinvalid; direct deep strict codesign exits0.
+Strict source audit exits0 with3647files/925informational/zero blockers/errors.
+
+Twelve registered CTest processes pass: ALPopover/ALPlace2 plus native bridge,
+live translation, policy, actual-send-body sanitizer, real UI handles and five
+chat/emoji/text/URL processes10. No new mirrored UI tests added. XML parse and
+out-of-main_stack/hiddenpanel/original190minheight checks pass. Independent final
+source review finds no ownership or focus blocker. Same-frame suppression follows
+the existing emoji-helper precedent; two distinct close/open gestures within one
+frame can be treated as one. Actual popup appearance, button legibility at narrow
+width, detach/collapse and per-chat acceptance await the owner.
+
+Receipt/logs: ignored
+`artifacts/metal/native-im-translation-20261119/popup-69404/receipt.json`.
+Previous69401 bundle preserved beside previous69398. Exact69404 opened with
+`open -n <app> --args --multiple --set AutoLogin false`, exit0; observed PID34771
+with exact executable path. No automated login, IM, scene capture or profiling.
+Owner's earlier request to start the checked replacement remains in effect.
+
+Next owner check: A/文 after Pay opens configuration, Done/Escape/outside click
+or toolbar re-click dismisses, choices/translation persist, full chat area and
+single-line collapse are restored. Compare narrow hosted and torn-off widths;
+failed send in an inactive chat must retain its draft without taking focus.
+PPD-516–518 stay ready_for_owner and local. Overall renderer/performance gates
+remain unchanged; no push or product-complete claim.

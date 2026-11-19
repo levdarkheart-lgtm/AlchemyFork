@@ -11944,7 +11944,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Original reference: Native translated-send completion passes only translated text to existing sendMsg/LLIMModel::sendMessage; the local echo therefore contains only recipient-language text.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
 - Next action: Confirm local original plus bracketed translation in a logged-in chat, while recipient receives only the target text.
-- Verification: Owner confirms Japanese sending works on69398 and supplies a screenshot showing only Japanese in the outgoing chat row; asks for bilingual local echo. No repair yet.
+- Verification: Owner initially confirms Japanese sending works on69398 but requests the original. New69401 owner screenshots show original English followed by bracketed French for two outgoing rows; local display portion is observed. Recipient-only transport remains covered by actual-body sanitizer tests, not independent recipient capture.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -11953,6 +11953,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Registered owner's local-echo request before implementation. Separate French missing-model report matches expected not_installed status; French download is in progress, and no owner IM will be sent automatically.
 
 - 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
+
+- 2026-11-19: Owner69401 screenshots confirm local original-plus-French echo. New request concerns settings clutter (PPD-516); no push authorization inferred.
 
 ## PPD-513 — Translated initialization queue survives chat close and conference reuse
 
@@ -12013,7 +12015,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-516 — Persistent translation controls crowd the IM conversation
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -12030,9 +12032,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 (PPD-516): Popup repair implemented with existing ALPopover. Persistent per-chat controls return to a hidden root panel before popup destruction; async translation does not depend on popup visibility. Adaptive142/177-pixel toolbar layouts retain all existing actions at the original minimum. First syntax attempt failed because LLUICtrlFactory::create requires an lvalue params block; corrected exact Release syntax check exits0. Full updated build and visual owner acceptance pending.
 
+- 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
+
 ## PPD-517 — A delayed translation failure can open settings over another chat
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -12047,9 +12051,11 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19: Registered during pre-delivery popup review before correction. eedc0db054 build exits0 but is not delivered or launched; proposed UI focus behavior is not owner-verified.
 
+- 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
+
 ## PPD-518 — Clicking the translation toolbar button again reopens its popup
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -12065,3 +12071,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Registered during pre-delivery popup review before correction. eedc0db054 build exits0 but is not delivered or launched; proposed UI focus behavior is not owner-verified.
 
 - 2026-11-19 (PPD-517/518): Before delivery, require visible expanded owner before opening; track popup-close and button press/release frames to suppress reopening from the same focus-loss click. A considered chrome-only fix was rejected by source inspection because the enclosing floater may take focus before child dispatch. Rebuild and existing widget/native regressions next.
+
+- 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
