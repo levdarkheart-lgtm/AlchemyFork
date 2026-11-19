@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-483 -->
+<!-- next-defect-id: PPD-485 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10688,6 +10688,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 owner states world, textures and HUD loading were much faster before completion of Apple-first architecture. Preserve this as an owner-reported regression; no matched historical/current timing or exact HUD asset identity yet. Black progress-screen complaint also clarified: owner expects the saved last-location/frame image during login. Current69343 initStartTexture emits Bitmap load failed before decode, but requestedHome versusLast image selection and missing-file reason still require source/file verification. No decoder, upload or architecture-causality claim.
 
+- 2026-11-19 offline source/log audit finds no terminal global decode deadlock: all38,870submitted jobs start/finish,0cancelled, while early queue waits reach28seconds before sampling and the new native downstream governor frequently selects2decoders. Ready-upload and main-owner debt coexist; aggregate ceilings do not identify the pictured HUD. ExistingHTTP/bake categories cap early, and no per-HUD asset/discard/demand state was recorded. Begin a separate bounded default-off HUD texture metadata observation at the real HUD-boost/demand owner, preserving all fetch/decode/upload priorities and budgets. Distinct metadata-state keys must exclude frame/time, use a separate HUDcategory so maptiles cannot consume it, and avoid usernames/locations/URLs/data. This evidence repair must not be presented as a HUD-loading fix or unmeasured concurrency improvement.
+
 ## PPD-464 — Owner reports brief unresponsiveness just after club teleport
 
 - Status: investigating
@@ -11114,6 +11116,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 registered from the complete closed-run reconciliation before repair. Raw protocol/log data remains private; no new requests, plugin restart, viewer action or code change selected.
 
+- 2026-11-19 actual parent receiveMessage/receiveMessageEarly/requestShutdown/errorState plus idle queue-drain/GOODBYE-to-DONE bodies reproduce8cases/67checks with11baseline failures. A valid response queued during LOADING, followed by explicit shutdown, is drained after state becomesGOODBYE orEXITING and incorrectly entersERROR/CLEANUP, skipping graceful shutdown_plugin or its exit wait. Independent source review confirms this cancellation ordering; no fast-response-before-LOADING or child late-initialization defect is established. Authorize narrow parent-only obsolete load-response handling inGOODBYE/EXITING, retaining all active/unexpected state errors and normal load handling. Actual69343 row has no recorded state/instance, so this mechanism is not declared its cause.
+
+- 2026-11-19 parent source review also identifies a potential queued hello completion meeting the same explicit closing-state guard. This is registered as a sibling handshake-cancellation edge under481 before any additional repair. Require actual legal pre-hello queue→shutdown→drain reproduction and bundled-child shutdown contract review before broadening the parent guard. Do not relax active-state hello validation or edit an unproved asynchronous child path.
+
 ## PPD-482 — Shutdown reaches queued-request and TextureFetch worker residue cleanup
 
 - Status: investigating
@@ -11130,3 +11136,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-19 registered at final-run discovery before any repair. All current/original emitting functions resolve and match. No cache corruption, race or engine cause is inferred from residue counts alone.
+
+
+## PPD-483 — Restored cinematic mode can reveal hidden floaters across mouselook
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex PPD474 UI integration
+- Discovered: 2026-11-19
+- Original reference: Archived cinematic mode hides floaters through LLViewerWindow::setUIVisibility(false). Current LLAgent::endAnimationUpdateUI still unconditionally shows UI before pushing mouselook visibility, then pops that stack on exit. The restored mode must preserve its hidden-floater ownership across camera transitions while retaining normal mouselook behavior.
+- Evidence: [69343 follow-up work](research/warning-runtime-69343-20261119.md); private closed-warning-audit/ppd474-cinematic-peer-review/initial-review retains source path from local d781f738c4 (integrated48b9cddb5f) and actual LLFloaterView hide/show/push/pop implementation.
+- Next action: Reproduce the cinematic-enter→mouselook-enter/leave→cinematic-exit sequence with actual mode/agent gate and visibility-owner bodies, then guard mouselook UI unhide while cinematic remains enabled. Also cover mode activation during an outstanding mouselook transition and preserve push/pop balance and final restoration.
+- Verification: Source sequence open floater→cinematic hides/saves it→mouselook calls setUIVisibility(true) and clears saved-hidden list→pushVisible(false)→exit pops visible=true reveals it although mode remains enabled. Existing139mode/hover fixture stops at window visibility and does not execute this owner transition. No candidate with the restored mode has been launched; controlled reproduction/correction pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 independent source review blocks cinematic restoration acceptance before candidate build. Other default-off/native HUD/text/voice/menu consumers have no actionable review finding. Preserve the initial local implementation and review; no warning suppression or unbalanced visibility stack repair is authorized.
+
+
+## PPD-484 — Cinematic visibility snapshots can strand newly active movement controls
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex PPD474 UI integration
+- Discovered: 2026-11-19
+- Original reference: Archived cinematic exit requests UI/chiclet/movement visibility true. Local restoration d781f738c4/48b9cddb5f instead snapshots three booleans. Real setStandStopFlyingMode updates action buttons and requests panel visibility on fly/sit events; that request is suppressed while cinematic mode is enabled.
+- Evidence: [69343 follow-up work](research/warning-runtime-69343-20261119.md); independent source review of alcinematicmode.cpp and llmoveview.cpp563–630, event owners215/247; current139check fixture only verifies the newly invented snapshot contract.
+- Next action: Reproduce mode enter with inactive movement panel, fly/sit activation during cinematic, then exit. Restore the archived visible-on-exit contract through current UI owners instead of retaining stale snapshots. Update controlled tests to verify current actions and original exit behavior, including the PPD483 real mouselook caller sequence.
+- Verification: Source proves _restoreMovement=false can be captured, a real movement action becomes visible internally while panel visibility remains suppressed, then mode exit explicitly restores false with no regular reevaluation. The source owner is event-driven, so the action can remain hidden until another update. No candidate with this unapproved restoration has been launched; actual-body red proof/correction remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before correction. The unrequested snapshot improvement is rejected for delivery; retain its history/tests and independent finding. Prefer original mode semantics rather than adding a general visibility restoration framework. PPD483 balanced-stack correction remains necessary under either exit contract.
