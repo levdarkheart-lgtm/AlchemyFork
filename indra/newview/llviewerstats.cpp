@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "alrendercapabilities.h"
+#include "alsafepreferencetelemetry.h"
 
 #include "llviewerstats.h"
 #include "llviewerthrottle.h"
@@ -816,8 +817,9 @@ void send_viewer_stats(bool include_preferences)
     if (include_preferences)
     {
         bool diffs_only = true; // only log preferences that differ from default
-        body["preferences"]["settings"] = gSavedSettings.asLLSD(diffs_only);
-        body["preferences"]["settings_per_account"] = gSavedPerAccountSettings.asLLSD(diffs_only);
+        // This body is logged and posted: extensible preference storage is not
+        // a safe telemetry schema, even when only nondefault values are used.
+        body["preferences"] = ALSafePreferenceTelemetry::build(gSavedSettings.asLLSD(diffs_only));
     }
 
     body["MinimalSkin"] = false;
