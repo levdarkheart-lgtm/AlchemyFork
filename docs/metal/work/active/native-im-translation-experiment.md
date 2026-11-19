@@ -416,3 +416,17 @@ publication. Canonical docs/harness/whitespace checks and exact remote-ref/sourc
 verification are recorded in ignored artifacts/metal/native-im-translation-20261119/publication-20261119.
 Normal push targets codex/apple-silicon-metal; main remains separate. Retain the
 source branch and earlier owner-verified water checkpoint ancestry.
+
+### Publication observed
+
+Normal push exits0 and advances codex/apple-silicon-metal from07b689d17f to
+c9b1652263e1b2df81119e8c332db25811cc2178. Independent git ls-remote returns
+that exact head; main remains65c39b7bad. The application tree is still exactly
+6cfca54e0398bb26d97ac33c39941a3ead123512, matching69404 built7d607c955a;
+publication is not a new viewer build. Both translation6584985804 and the prior
+owner-verified water checkpoint07b689d17f are ancestors. Documentation/harness
+33required files and whitespace checks pass. Tracked files are clean; the clean
+nested engineering worktree remains local/untracked and was not added or pushed.
+A read-only outgoing22-file review finds no unrelated changes or raw artifacts;
+retained stress/evidence limits remain. No runtime/IM/default-branch/release action.
+Private publication-20261119/ receipts retain exact source/ref checks and status.
