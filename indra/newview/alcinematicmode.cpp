@@ -28,9 +28,6 @@
 #include "llviewerwindow.h"
 
 bool ALCinematicMode::_enabled = false;
-bool ALCinematicMode::_restoreUI = true;
-bool ALCinematicMode::_restoreChiclets = true;
-bool ALCinematicMode::_restoreMovement = false;
 
 // static
 void ALCinematicMode::toggle()
@@ -40,11 +37,6 @@ void ALCinematicMode::toggle()
     LL_INFOS() << "Toggling Cinematic Mode" << LL_ENDL;
     if (!_enabled)
     {
-        // The current UI owner handles both navigation-bar styles and floaters.
-        // Restore prior visibility on exit instead of enabling hidden controls.
-        _restoreUI = gViewerWindow->getUIVisibility();
-        _restoreChiclets = LLChicletBar::getInstance()->getVisible();
-        _restoreMovement = LLPanelStandStopFlying::getInstance()->getVisible();
         _enabled = true;
         gViewerWindow->setUIVisibility(false);
         LLChicletBar::getInstance()->setVisible(false);
@@ -53,9 +45,11 @@ void ALCinematicMode::toggle()
     else
     {
         _enabled = false;
-        gViewerWindow->setUIVisibility(_restoreUI);
-        LLChicletBar::getInstance()->setVisible(_restoreChiclets);
-        LLPanelStandStopFlying::getInstance()->setVisible(_restoreMovement);
+        // Preserve the archived visible-on-exit contract. Movement/IM state
+        // can change while hidden; the current owners expose that live state.
+        gViewerWindow->setUIVisibility(true);
+        LLChicletBar::getInstance()->setVisible(true);
+        LLPanelStandStopFlying::getInstance()->setVisible(true);
     }
     LLHUDText::refreshAllObjectText();
 }

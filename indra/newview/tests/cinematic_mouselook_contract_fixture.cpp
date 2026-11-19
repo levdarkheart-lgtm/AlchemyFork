@@ -259,10 +259,9 @@ void cinematic_first()
             s.balanced();
         }
         ALCinematicMode::toggle();
-        check(!ALCinematicMode::isEnabled() && window.getUIVisibility() == !ui_hidden, "cinematic exit restores prior interface visibility");
-        check(s.open.getVisible() == !ui_hidden && !s.hidden.getVisible() && s.minimap.getVisible() == !ui_hidden, "cinematic exit restores only originally visible floaters");
-        if (ui_hidden) window.setUIVisibility(true);
-        check(s.open.getVisible() && !s.hidden.getVisible() && s.minimap.getVisible(), "preexisting manual UI hide can still restore its saved floaters");
+        check(!ALCinematicMode::isEnabled() && window.getUIVisibility(), "cinematic exit follows archived visible interface contract");
+        check(s.open.getVisible() && !s.hidden.getVisible() && s.minimap.getVisible(), "current UI owner restores only its saved-visible floaters on mode exit");
+        check(floater_view.mHiddenFloaters.empty(), "visible exit drains current owner's saved-hidden list");
     }
 }
 void cinematic_during_pending_pop()
@@ -288,6 +287,7 @@ void cinematic_during_pending_pop()
     s.balanced();
     ALCinematicMode::toggle();
     check(s.open.getVisible() && !s.hidden.getVisible() && s.minimap.getVisible(), "cinematic exit restores pre-mouselook visible state after pending pop");
+    check(LLChicletBar::getInstance()->getVisible(), "mode exit does not strand chiclets hidden by the pending mouselook transition");
     check(floater_view.mHiddenFloaters.empty(), "successful restoration drains saved-hidden list");
     }
 }

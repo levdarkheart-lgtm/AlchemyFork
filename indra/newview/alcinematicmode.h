@@ -25,9 +25,6 @@
 class ALCinematicMode
 {
     static bool _enabled;
-    static bool _restoreUI;
-    static bool _restoreChiclets;
-    static bool _restoreMovement;
 public:
     static void toggle();
     static bool isEnabled() { return _enabled; }
