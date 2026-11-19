@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-479 -->
+<!-- next-defect-id: PPD-480 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -10995,3 +10995,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before corrective repair. Initial477 source remains retained in local history; independent review blocks its acceptance until cleanup ownership is corrected. Controlled removal establishes the ordering defect; actual runtime occurrence is not claimed. No active cache mutation or push.
 
 - 2026-11-19 c5102a03b0/330fcff4ce corrects cleanup ownership without adding state or a generation framework. Both responder and null-responder failedA→successfulB→lateAend paths now preserveB; normal write/read/abort/callback ownership controls pass. Rejected initial completion13cases/63checks has6expected failures; corrected combined26/153 haszero. Actual queue-lock→header/ID/file cleanup and corruption fallback have no inspected reverse header→queue/worker wait. Independent review verifies source/bodies and retained evidence. Read cleanup remains original; this is not a general cache-generation safety claim. No viewer using the rejected patch was launched.
+
+
+## PPD-479 — Included renderer test fragments lack per-file CTest ownership
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex final regression integration
+- Discovered: 2026-11-19
+- Original reference: ALAddTestBinary registers source-file stems and expects stray_cases to run no remaining ordinary cases. Included .inl cases receive their fragment filename tag, not their including translation unit's tag. This is test registration, not a renderer output defect.
+- Evidence: [69331 investigation/final candidate qualification](research/warning-input-runtime-69331-20261119.md); private final-candidate-ctest.log has12/13pass, stray_cases executes69cases/443396assertions successfully but correctly fails expected-exit2 versus actual0.
+- Next action: Explicitly register included fragment files containing ordinary cases as header-only SOURCES, preserving their Catch file tags and the stray guard. Keep hidden-only cost cases manual; verify per-fragment entries and an empty stray filter.
+- Verification: All69unowned cases pass in this run; their missing registration means ordinary per-file CTest execution did not own them. Do not suppress the guard, change its expected exit or relabel the failed aggregate as passing. No code/visual regression is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-19 registered before repair during final candidate checks. The staged69342app has not been launched; its verification receipt remains pending/superseded until the harness correction is integrated and retested. Existing native query/texture tests and the other12selected CTests passed separately.
+
+- 2026-11-19 exact Catch listing maps69ordinary strays to18included fragments;26total fragments contain95cases. Register those18as HEADER_FILE_ONLY SOURCES, preserving existing per-file tags/~[.] filters and leaving8hidden-only cost fragments manual. No runtime source or test body changes. Actual normal per-fragment execution and empty stray guard pass19/19; original12/13failed aggregate and successful443396/69assertions are retained. The staged69342app is superseded before any owner launch; final identity refresh includes this CMake correction.

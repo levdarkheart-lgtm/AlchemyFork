@@ -139,3 +139,10 @@ PPD477 first restored deferred failed-write cleanup, but independent review and 
 Root adds an emit-only mode to the durable script and a normal generated CMake executable linked to current llcommon/al::flags with sanitizers. This removes generator-specific metadata discovery from normal test registration; the manual configured-Ninja red/green path is retained. The normal Release target and registered CTest pass26/153 here. Xcode generation itself has not been executed. A final cache delta/application identity refresh follows the successful23047d5f7dfull build.
 
 PPD474 history confirms the three orphan controls once had real archived consumers. The attachment option can reuse an existing live policy; wearable/cinematic restoration needs real behavior, rather than dummy declarations. That open UI issue is inherited before1eb44 and is kept separate from this floor/bake/cache candidate.
+
+
+## Final regression registration correction (PPD479)
+
+Final69342build,346ARM64slice check, strictsource3626files/0blockers/0errors and deep strict signature pass. The targeted CTest aggregate initially reports12/13: the stray guard runs69existing included cases successfully (443396assertions) but correctly fails because no normal per-file entry owns them. Catch's fragment filename tags differ from the including .cpp filename. An exact listing maps those69ordinary cases to18fragments; add them as HEADER_FILE_ONLY SOURCES rather than disabling the guard or duplicating compilation. All18per-fragment entries plus the now-empty stray guard pass19/19. Eight hidden-only cost fragments and10hidden cases within mixed fragments stay manual.
+
+The69342bundle/sourceceed0ef5fb and its failed-aggregate receipt are preserved, never launched. A metadata-only application refresh follows this CMake correction; runtime renderer/cache/texture code is unchanged. The final artifact identity and qualification receipt are saved privately under candidates/. This is a test coverage repair, not evidence of a new visual defect.

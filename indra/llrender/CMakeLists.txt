@@ -210,6 +210,31 @@ if(AL_BUILD_TESTS)
       tests/almetal_tessellation_invariants_test.mm
       tests/alprimitiveplot_test.cpp
     )
+    # Catch tags included cases with the fragment's filename. Register their
+    # ordinary cases explicitly; the including .cpp cannot own those tags.
+    # They remain includes, so never compile the fragments a second time.
+    set(llrender_native_case_fragments
+      tests/alpipeline_animated_gpu_records_native.inl
+      tests/alpipeline_attachment_palette_native.inl
+      tests/alpipeline_body_palette_native.inl
+      tests/alpipeline_dependency_topology_native.inl
+      tests/alpipeline_early_visibility_native.inl
+      tests/alpipeline_group_bounds_promotion_native.inl
+      tests/alpipeline_local_light_values_native.inl
+      tests/alpipeline_main_light_encoding_native.inl
+      tests/alpipeline_producer_drain_native.inl
+      tests/alpipeline_producer_preparation_native.inl
+      tests/alpipeline_shadow_membership_native.inl
+      tests/alpipeline_source_cache_lifetime_native.inl
+      tests/alpipeline_source_miss_census_native.inl
+      tests/alpipeline_source_recipes_native.inl
+      tests/alpipeline_static_restoration_native.inl
+      tests/alpipeline_static_visibility_commands_native.inl
+      tests/alpipeline_terrain_pass_context_native.inl
+      tests/alpipeline_terrain_preflight_native.inl
+    )
+    set_source_files_properties(${llrender_native_case_fragments} PROPERTIES HEADER_FILE_ONLY TRUE)
+    list(APPEND llrender_native_test_sources ${llrender_native_case_fragments})
   endif()
   al_add_test_binary(
     llrender_tests
