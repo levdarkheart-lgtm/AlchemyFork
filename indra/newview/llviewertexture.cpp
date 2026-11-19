@@ -1788,6 +1788,7 @@ bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease 
     auto mainq = LLImageGLThread::sEnabledTextures
         ? mMainQueue.lock() : nullptr;
     bool posted = false;
+    U64 upload_owner = 0;
     if (mainq)
     {
         // Until the worker's texture publishes, the image goes on reporting the one
@@ -1796,97 +1797,116 @@ bool LLViewerFetchedTexture::postNativeTextureUpload(ALNativeFrameBudget::Lease 
         // callback below, whether or not a texture came of it.
         LLPointer<LLImageGL> gl_image = mGLTexturep;
         gl_image->beginUpload(mRawImage->getComponents());
-        posted = mainq->postTo(
-            mImageQueue,
-            // work to be done on LLImageGL worker thread
+        upload_owner = gl_image->retainUploadOwner(
 #if LL_IMAGEGL_THREAD_CHECK
-            [this, data, data_copy, size, category = mBoostLevel, credit]()
-            {
-                mGLTexturep->mActiveThread = LLThread::currentID();
-                //verify data is unmodified
-                llassert(data == mRawImage->getData());
-                llassert(mRawImage->getDataSize() == size);
-                llassert(memcmp(data, data_copy, size) == 0);
+            [this, data_copy]() { delete[] data_copy; unref(); });
 #else
-            [this, category = mBoostLevel, credit]()
-            {
+            [this]() { unref(); });
 #endif
-                // Admission is retained by the native command through GPU completion.
-                LLImageGL::NativeUploadCreditScope admission(credit);
-                const bool created = createTexture(0, category);
+        if (upload_owner)
+        {
+            // The main-owned registry releases this reference even if shutdown
+            // closes the reply queue or discards an unpublished callback.
+            ref();
+            try
+            {
+                posted = mainq->postTo(
+                    mImageQueue,
+                    // work to be done on LLImageGL worker thread
+#if LL_IMAGEGL_THREAD_CHECK
+                    [this, data, data_copy, size, category = mBoostLevel, credit]()
+                    {
+                        mGLTexturep->mActiveThread = LLThread::currentID();
+                        //verify data is unmodified
+                        llassert(data == mRawImage->getData());
+                        llassert(mRawImage->getDataSize() == size);
+                        llassert(memcmp(data, data_copy, size) == 0);
+#else
+                    [this, category = mBoostLevel, credit]()
+                    {
+#endif
+                        // Admission is retained by the native command through GPU completion.
+                        LLImageGL::NativeUploadCreditScope admission(credit);
+                        const bool created = createTexture(0, category);
 
 #if LL_IMAGEGL_THREAD_CHECK
-                //verify data is unmodified
-                llassert(data == mRawImage->getData());
-                llassert(mRawImage->getDataSize() == size);
-                llassert(memcmp(data, data_copy, size) == 0);
+                        //verify data is unmodified
+                        llassert(data == mRawImage->getData());
+                        llassert(mRawImage->getDataSize() == size);
+                        llassert(memcmp(data, data_copy, size) == 0);
 #endif
-                return created;
-            },
-            // callback to be run on main thread
+                        return created;
+                    },
+                    // callback to be run on main thread
 #if LL_IMAGEGL_THREAD_CHECK
-                [this, gl_image, data, data_copy, size](bool created)
-            {
-                mGLTexturep->mActiveThread = LLThread::currentID();
-                llassert(data == mRawImage->getData());
-                llassert(mRawImage->getDataSize() == size);
-                llassert(memcmp(data, data_copy, size) == 0);
-                delete[] data_copy;
+                        [this, gl_image, upload_owner, data, data_copy, size](bool created)
+                    {
+                        if (!gl_image->ownsUploadOwner(upload_owner)) return;
+                        mGLTexturep->mActiveThread = LLThread::currentID();
+                        llassert(data == mRawImage->getData());
+                        llassert(mRawImage->getDataSize() == size);
+                        llassert(memcmp(data, data_copy, size) == 0);
 #else
-                [this, gl_image](bool created)
-                {
+                        [this, gl_image, upload_owner](bool created)
+                        {
+                            if (!gl_image->ownsUploadOwner(upload_owner)) return;
 #endif
-                // The worker is done, but its texture publishes only after the
-                // shared Metal command batch commits. Finish then: ending the
-                // snapshot, or clearing mNeedsCreateTexture and letting the next
-                // upload start, must not run ahead of publication.
-                auto finish = [this, gl_image](bool succeeded)
-                {
-                    if (succeeded)
-                    {
-                        // A no-op when syncTexName published the new texture.
-                        gl_image->endUpload();
-                        postCreateTexture();
-                        mCreateQueuedFrame = 0;
-                    }
-                    else
-                    {
-                        // Keep the decoded pixels and original request age on
-                        // either creation or batch-publication failure. Nothing
-                        // replaces the previously visible native generation.
-                        gl_image->cancelUpload();
-                        gTextureList.queueCreateTexture(this, true);
-                    }
-                    unref();
-                };
-                if (created)
-                {
-                    gl_image->afterPublish(std::move(finish));
-                }
-                else
-                {
-                    finish(false);
-                }
-            });
-        if (posted)
-        {
-            // Taken once the post has succeeded, as LLImageGL::analyzeAlpha takes its
-            // own: the callback that lets it go runs on this thread's queue, so not
-            // before this returns, and no reference is taken and dropped again when
-            // the post fails.
-            ref();
+                        // The worker is done, but its texture publishes only after the
+                        // shared Metal command batch commits. Finish then: ending the
+                        // snapshot, or clearing mNeedsCreateTexture and letting the next
+                        // upload start, must not run ahead of publication.
+                        auto finish = [this, gl_image, upload_owner](bool succeeded)
+                        {
+                            if (!gl_image->ownsUploadOwner(upload_owner)) return;
+                            if (succeeded)
+                            {
+                                // A no-op when syncTexName published the new texture.
+                                gl_image->endUpload();
+                                postCreateTexture();
+                                mCreateQueuedFrame = 0;
+                            }
+                            else
+                            {
+                                // Keep the decoded pixels and original request age on
+                                // either creation or batch-publication failure. Nothing
+                                // replaces the previously visible native generation.
+                                gl_image->cancelUpload();
+                                gTextureList.queueCreateTexture(this, true);
+                            }
+                            gl_image->releaseUploadOwner(upload_owner);
+                        };
+                        if (created)
+                        {
+                            gl_image->afterPublish(std::move(finish));
+                        }
+                        else
+                        {
+                            finish(false);
+                        }
+                    });
+            }
+            catch (...)
+            {
+                // A synchronous queue/callback allocation failure accepted no
+                // worker. Restore the snapshot and release on its main owner,
+                // while preserving the queue's original exception.
+                gl_image->cancelUpload();
+                gl_image->releaseUploadOwner(upload_owner);
+                throw;
+            }
         }
-        else
+        if (!posted)
         {
             // No worker owns this attempt. Restore the published format tuple
             // before the caller can retry through synchronous creation.
             gl_image->cancelUpload();
+            if (upload_owner) gl_image->releaseUploadOwner(upload_owner);
         }
     }
     if (!posted)
     {
 #if LL_IMAGEGL_THREAD_CHECK
-        delete[] data_copy;
+        if (!upload_owner) delete[] data_copy;
 #endif
     }
     return posted;

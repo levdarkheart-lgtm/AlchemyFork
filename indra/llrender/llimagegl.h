@@ -251,6 +251,12 @@ public:
     void afterPublish(std::function<void()> fn);
     // As above, with whether every queued native generation committed successfully.
     void afterPublish(std::function<void(bool)> fn);
+    // Main-thread ownership of a fetched upload, independent of worker replies.
+    // Cleanup releases abandoned owners after the worker joins, without running
+    // the fetched texture's publication/failure callback on another thread.
+    U64 retainUploadOwner(std::function<void()> release);
+    bool ownsUploadOwner(U64 token) const;
+    void releaseUploadOwner(U64 token = 0);
 
     // Read back a raw image for this discard level, if it exists
     bool readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compressed_ok) const;
@@ -486,6 +492,8 @@ private:
     U32 mPublishesPending = 0;
     bool mPublishesSucceeded = true;
     std::vector<std::function<void(bool)>> mOnPublished;
+    std::function<void()> mUploadOwnerRelease;
+    U64 mUploadOwnerToken = 0;
 
     // Geometry of the currently published texture, captured when an off-thread
     // upload begins overwriting the members with the *next* texture's geometry.
@@ -743,7 +751,7 @@ public:
 class LLImageGLThread : public LLSimpleton<LLImageGLThread>, LL::ThreadPool
 {
 public:
-    // follows gSavedSettings "RenderGLMultiThreadedTextures"
+    // follows gSavedSettings "RenderMetalMultiThreadedTextures"
     static bool sEnabledTextures;
     // follows gSavedSettings "RenderGLMultiThreadedMedia"
     static bool sEnabledMedia;

@@ -2325,3 +2325,91 @@ TEST_CASE_METHOD(llimage_native_data,
         CHECK(actual == expected);
     }
 }
+
+TEST_CASE_METHOD(llimage_native_data,
+                 "LLImageGL: fetched upload owners retire once on the main cleanup owner",
+                 "[LLImageGL][almetal][native-image-coverage][native-upload-owner]")
+{
+    struct TrackedImage final : LLImageGL
+    {
+        int& destroyed;
+        bool& destroyed_on_owner;
+        std::thread::id owner = std::this_thread::get_id();
+        TrackedImage(int& count, bool& on_owner)
+            : LLImageGL(false), destroyed(count), destroyed_on_owner(on_owner) {}
+        ~TrackedImage() override
+        {
+            ++destroyed;
+            destroyed_on_owner = std::this_thread::get_id() == owner;
+        }
+    };
+    const auto owner = std::this_thread::get_id();
+    int released = 0, destroyed = 0;
+    bool release_on_owner = false, destroyed_on_owner = false;
+    LLPointer<LLImageGL> image = new TrackedImage(destroyed, destroyed_on_owner);
+    REQUIRE(image->getNumRefs() == 1);
+    REQUIRE(image->retainUploadOwner([&]
+    {
+        ++released;
+        release_on_owner = std::this_thread::get_id() == owner;
+    }));
+    CHECK(image->getNumRefs() == 2);
+    image->releaseUploadOwner();
+    CHECK(released == 1);
+    CHECK(release_on_owner);
+    CHECK(image->getNumRefs() == 1);
+    image->releaseUploadOwner();
+    CHECK(released == 1);
+    REQUIRE(image->retainUploadOwner([&]
+    {
+        ++released;
+        release_on_owner = std::this_thread::get_id() == owner;
+    }));
+    image->beginUpload();
+    image = nullptr;
+    CHECK(destroyed == 0); // The main-owned registry retains the real image.
+    LLImageGL::cleanupClass();
+    CHECK(released == 2);
+    CHECK(release_on_owner);
+    CHECK(destroyed == 1);
+    CHECK(destroyed_on_owner);
+    LLImageGL::cleanupClass();
+    CHECK(released == 2);
+    CHECK(destroyed == 1);
+}
+
+TEST_CASE_METHOD(llimage_native_data,
+                 "LLImageGL: native startup starts a texture worker without a GL window",
+                 "[LLImageGL][almetal][native-image-coverage][native-texture-worker-startup]")
+{
+    REQUIRE_FALSE(LLImageGLThread::instanceExists());
+    LLImageGL::initClass(nullptr, 1, false, false, false);
+    CHECK_FALSE(LLImageGLThread::instanceExists());
+    CHECK_FALSE(LLImageGLThread::sEnabledTextures);
+    CHECK_FALSE(LLImageGLThread::sEnabledMedia);
+
+    LLImageGL::initClass(nullptr, 1, false, true, false);
+    REQUIRE(LLImageGLThread::instanceExists());
+    CHECK(LLImageGLThread::sEnabledTextures);
+    CHECK_FALSE(LLImageGLThread::sEnabledMedia);
+    CHECK(LL::ThreadPoolBase::getWidth("LLImageGL", 0) == 1);
+    const auto main = std::this_thread::get_id();
+    std::atomic<bool> ran{false}, off_main{false};
+    REQUIRE(LLImageGLThread::instance().post([&]
+    {
+        off_main.store(std::this_thread::get_id() != main);
+        ran.store(true);
+    }));
+    LLImageGLThread::instance().close();
+    CHECK(ran.load());
+    CHECK(off_main.load());
+    LLImageGL::cleanupClass();
+    CHECK_FALSE(LLImageGLThread::instanceExists());
+
+    LLImageGL::setMetalTextureAuthority(false);
+    LLImageGL::initClass(nullptr, 1, false, true, false);
+    CHECK_FALSE(LLImageGLThread::sEnabledTextures);
+    CHECK_FALSE(LLImageGLThread::sEnabledMedia);
+    LLImageGL::cleanupClass();
+    LLImageGL::setMetalTextureAuthority(true);
+}

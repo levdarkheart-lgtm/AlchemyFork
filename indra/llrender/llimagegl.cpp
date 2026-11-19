@@ -187,6 +187,9 @@ namespace
         std::shared_ptr<std::atomic<U8>> mMetalCompletion;
     };
     std::vector<PendingPublish> sPendingPublishes;
+    // Main-thread owner references must survive a dropped postTo continuation
+    // or publication callback. This list is drained only after the worker joins.
+    std::vector<LLPointer<LLImageGL>> sUploadOwners;
 
     bool publication_ready(const PendingPublish& pending)
     {
@@ -426,9 +429,21 @@ void LLImageGL::cleanupClass()
     {
         pending.mImage->mOnPublished.clear();
         pending.mImage->mPublishesPending = 0;
-        pending.mImage->endUpload();
+        if (pending.mImage->mUploadOwnerRelease)
+            pending.mImage->cancelUpload();
+        else
+            pending.mImage->endUpload();
     }
     sPendingPublishes.clear();
+
+    while (!sUploadOwners.empty())
+    {
+        LLPointer<LLImageGL> image = sUploadOwners.back();
+        image->mOnPublished.clear();
+        image->mPublishesPending = 0;
+        image->cancelUpload();
+        image->releaseUploadOwner();
+    }
 
 
 }
@@ -2236,6 +2251,43 @@ void LLImageGL::afterPublish(std::function<void(bool)> fn)
         return;
     }
     mOnPublished.push_back(std::move(fn));
+}
+
+U64 LLImageGL::retainUploadOwner(std::function<void()> release)
+{
+    llassert(on_main_thread());
+    llassert(!mUploadOwnerRelease);
+    if (mUploadOwnerRelease || !release) return 0;
+    try
+    {
+        sUploadOwners.emplace_back(this);
+    }
+    catch (...)
+    {
+        return 0;
+    }
+    mUploadOwnerRelease = std::move(release);
+    if (++mUploadOwnerToken == 0) ++mUploadOwnerToken;
+    return mUploadOwnerToken;
+}
+
+bool LLImageGL::ownsUploadOwner(U64 token) const
+{
+    llassert(on_main_thread());
+    return token != 0 && token == mUploadOwnerToken && bool(mUploadOwnerRelease);
+}
+
+void LLImageGL::releaseUploadOwner(U64 token)
+{
+    llassert(on_main_thread());
+    if (token != 0 && !ownsUploadOwner(token)) return;
+    LLPointer<LLImageGL> keep_alive(this);
+    std::function<void()> release;
+    release.swap(mUploadOwnerRelease);
+    sUploadOwners.erase(std::remove_if(sUploadOwners.begin(), sUploadOwners.end(),
+        [this](const LLPointer<LLImageGL>& image) { return image.get() == this; }),
+        sUploadOwners.end());
+    if (release) release();
 }
 
 // static

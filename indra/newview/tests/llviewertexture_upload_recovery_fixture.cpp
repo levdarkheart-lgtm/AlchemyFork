@@ -7,6 +7,9 @@
 #include <iostream>
 #include <memory>
 #include <queue>
+#include <sstream>
+#include <algorithm>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -18,10 +21,14 @@
 #endif
 #define LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE
 #define LL_PROFILE_ZONE_SCOPED
+#define LL_PROFILE_ZONE_NAMED(...)
+#define LL_INFOS(...) std::ostringstream()
+#define LL_ENDL std::endl
 #define llassert(value) assert(value)
 using S8 = signed char;
 using S32 = int;
 using U32 = unsigned;
+using U64 = unsigned long long;
 using U16 = unsigned short;
 using U8 = unsigned char;
 struct LLThread { static int currentID() { return 1; } };
@@ -33,47 +40,50 @@ template<class T> struct LLPointer
     LLPointer() = default;
     LLPointer(T* input) : value(input) {}
     T* operator->() const { return value; }
+    T* get() const { return value; }
 };
-struct Queue
+struct WeakQueueBase : std::enable_shared_from_this<WeakQueueBase>
 {
-    bool reject = false;
-    bool worker_thread=false;
+    std::weak_ptr<struct Queue> getWeak();
+};
+namespace LL
+{
+class WorkQueueBase : public WeakQueueBase
+{
+    using super = WeakQueueBase;
+public:
+    using weak_t = std::weak_ptr<struct ::Queue>;
+    template<class C, class F, class R> struct MakeReplyLambda;
+    template<class C, class F> static auto makeReplyLambda(C&&, F&&);
+    template<class C, class F, class... A> bool postTo(weak_t, C&&, F&&, A&&...);
+    template<class... A> static bool postMaybe(weak_t, A&&...);
+};
+}
+struct Queue : LL::WorkQueueBase
+{
+    bool reject=false, worker_thread=false, throw_post=false;
     std::queue<std::function<void()>> work;
-    template<class F, class C>
-    bool postTo(std::weak_ptr<Queue> target, F callable, C callback)
-    {
-        const auto destination = target.lock();
-        if (!destination || destination->reject) return false;
-        destination->work.push([this, callable, callback]() mutable
-        {
-            if constexpr (std::is_void_v<std::invoke_result_t<F>>)
-            {
-                callable();
-                work.push(std::move(callback));
-            }
-            else
-            {
-                auto result = callable();
-                work.push([callback, result]() mutable { callback(result); });
-            }
-        });
-        return true;
-    }
+    bool post(std::function<void()> call) { if(throw_post)throw std::runtime_error("queue allocation boundary");if(reject)return false;work.push(std::move(call));return true; }
     void one()
     {
         assert(!work.empty());
-        auto call = std::move(work.front()); work.pop();
-        const bool previous=main_thread; main_thread=!worker_thread;
-        call(); main_thread=previous;
+        auto call=std::move(work.front());work.pop();
+        const bool previous=main_thread;main_thread=!worker_thread;
+        call();main_thread=previous;
     }
 };
+std::weak_ptr<Queue> WeakQueueBase::getWeak() { return std::static_pointer_cast<Queue>(shared_from_this()); }
+namespace LL
+{
+// @ACTUAL_POST_TO@
+}
 struct ALNativeFrameBudget
 {
     using Lease = std::shared_ptr<int>;
     static ALNativeFrameBudget& instance() { static ALNativeFrameBudget value; return value; }
     void setPendingPublications(std::size_t) {}
 };
-struct LLImageGLThread { static inline bool sEnabledTextures = true; };
+struct LLImageGLThread { static inline bool sEnabledTextures = true; static void deleteSingleton() { assert(main_thread); } };
 struct RawImage;
 struct LLImageGL
 {
@@ -103,6 +113,12 @@ struct LLImageGL
     int mHasExplicitFormat=0, mNeedsAlphaAndPickMask=0, mHasMipMaps=0, mMipLevels=0;
     int mCategory=0, mTextureMemory=0;
     std::atomic<int> mGLTextureCreated{0};
+    static void cleanupClass();
+    U64 retainUploadOwner(std::function<void()>);
+    bool ownsUploadOwner(U64) const;
+    void releaseUploadOwner(U64 token=0);
+    std::function<void()> mUploadOwnerRelease;
+    U64 mUploadOwnerToken=0;
     void beginUpload();
     void beginUpload(S8);
     void queuePublish(UploadCompletion);
@@ -133,8 +149,9 @@ struct LLImageGL
             mCategory,mTextureMemory,mGLTextureCreated.load()};
     }
 };
-struct PendingPublish { LLPointer<LLImageGL> image; LLImageGL::UploadCompletion token; };
+struct PendingPublish { LLPointer<LLImageGL> mImage; LLImageGL::UploadCompletion mMetalCompletion; };
 std::vector<PendingPublish> sPendingPublishes;
+std::vector<LLPointer<LLImageGL>> sUploadOwners;
 struct LLViewerFetchedTexture;
 struct TextureList
 {
@@ -160,7 +177,8 @@ struct LLViewerFetchedTexture
     S32 mRawDiscardLevel=2;
     bool save_raw=false;
     void ref() { ++refs; }
-    void unref() { --refs; assert(refs>=1); }
+    int zero_releases=0;
+    void unref() { assert(main_thread);--refs;assert(refs>=0);if(refs==0)++zero_releases; }
     void setActive() { ++finalized; }
     void rebuildSculptVolumes() {}
     bool needsToSaveRawImage() const { return save_raw; }
@@ -182,8 +200,7 @@ bool LLImageGL::syncMetalToMainThread()
 {
     // Actual worker createTexture selects this boundary and queues registration
     // before WorkQueue posts its reply. Actual queuePublish body runs on main.
-    main_queue.lock()->work.push([this]{ queuePublish({}); });
-    return true;
+    return LL::WorkQueueBase::postMaybe(main_queue, [this]{ queuePublish({}); });
 }
 void TextureList::queueCreateTexture(LLViewerFetchedTexture* texture, bool preserve_age)
 {
@@ -226,6 +243,7 @@ struct Context
         texture.mGLTexturep=&image; texture.mMainQueue=main; texture.mImageQueue=worker;
         image.main_queue=main; worker->worker_thread=true; main_thread=true;
     }
+    ~Context() { main_thread=true; LLImageGL::cleanupClass(); }
     void post()
     {
         CHECK(texture.postNativeTextureUpload({})); CHECK(texture.refs==2);
@@ -254,6 +272,17 @@ int main()
 {
     using Case=std::pair<const char*, std::function<void()>>;
     const std::vector<Case> cases={
+        {"closed main queue drops failure reply but cleanup releases owner",[]{ Context c; c.image.create_succeeds=false; CHECK(c.texture.postNativeTextureUpload({})); c.main->reject=true;c.worker->one();CHECK(c.texture.refs==2);CHECK(c.main->work.empty());LLImageGL::cleanupClass();CHECK(c.texture.refs==1);CHECK(c.texture.finalized==0);CHECK(gTextureList.retries==0);LLImageGL::cleanupClass();CHECK(c.texture.refs==1); }},
+        {"closed main queue drops successful worker continuation safely",[]{ Context c;CHECK(c.texture.postNativeTextureUpload({}));c.main->reject=true;c.worker->one();CHECK(c.texture.refs==2);LLImageGL::cleanupClass();CHECK(c.texture.refs==1);CHECK(c.texture.mRawImage);CHECK(c.texture.finalized==0); }},
+        {"cleanup abandons registered publication without invoking fetch callback",[]{ Context c;const auto original=c.image.metadata();c.post();c.queued();c.reply();CHECK(c.texture.refs==2);CHECK(c.image.mOnPublished.size()==1);LLImageGL::cleanupClass();CHECK(c.texture.refs==1);CHECK(c.image.mOnPublished.empty());CHECK(c.image.metadata()==original);CHECK(c.texture.finalized==0);CHECK(gTextureList.retries==0); }},
+        {"last external owner leaves; shutdown releases final ref on main",[]{ Context c;CHECK(c.texture.postNativeTextureUpload({}));c.texture.unref();CHECK(c.texture.refs==1);c.main->reject=true;c.worker->one();CHECK(c.texture.zero_releases==0);LLImageGL::cleanupClass();CHECK(c.texture.refs==0);CHECK(c.texture.zero_releases==1);LLImageGL::cleanupClass();CHECK(c.texture.zero_releases==1); }},
+        {"expired worker post releases owner and metadata",[]{ Context c;const auto original=c.image.metadata();c.worker.reset();CHECK(!c.texture.postNativeTextureUpload({}));CHECK(c.texture.refs==1);CHECK(c.image.metadata()==original);LLImageGL::cleanupClass();CHECK(c.texture.refs==1); }},
+        {"expired main queue leaves synchronous owner unchanged",[]{ Context c;c.main.reset();CHECK(!c.texture.postNativeTextureUpload({}));CHECK(c.texture.refs==1);CHECK(!c.image.mUploadInFlight);CHECK(c.texture.mRawImage); }},
+        {"queued reply after cleanup cannot use released fetched owner",[]{ Context c;c.image.create_succeeds=false;CHECK(c.texture.postNativeTextureUpload({}));c.worker->one();c.texture.unref();LLImageGL::cleanupClass();CHECK(c.texture.refs==0);CHECK(c.texture.zero_releases==1);c.reply();CHECK(c.texture.refs==0);CHECK(c.texture.finalized==0);CHECK(gTextureList.retries==0); }},
+        {"stale reply cannot consume a newer upload owner",[]{ Context c;c.image.create_succeeds=false;CHECK(c.texture.postNativeTextureUpload({}));c.worker->one();LLImageGL::cleanupClass();CHECK(c.texture.refs==1);CHECK(c.texture.postNativeTextureUpload({}));c.worker->one();CHECK(c.texture.refs==2);c.reply();CHECK(c.texture.refs==2);CHECK(gTextureList.retries==0);c.reply();c.failed(); }},
+        {"synchronous queue throw restores metadata and releases owner before rethrow",[]{ Context c;const auto original=c.image.metadata();c.worker->throw_post=true;bool threw=false;try{c.texture.postNativeTextureUpload({});}catch(const std::runtime_error& error){threw=std::string(error.what())=="queue allocation boundary";}CHECK(threw);CHECK(c.texture.refs==1);CHECK(c.image.metadata()==original);CHECK(!c.image.mUploadInFlight);CHECK(c.worker->work.empty());CHECK(sUploadOwners.empty());CHECK(gTextureList.retries==0); }},
+        {"cleanup during moved publication callbacks cannot revive a retired owner",[]{ Context c;c.post();c.queued();c.image.afterPublish([&](bool){LLImageGL::cleanupClass();CHECK(c.texture.refs==0);});c.reply();c.texture.unref();c.image.finishPublish(true);CHECK(c.texture.refs==0);CHECK(c.texture.zero_releases==1);CHECK(c.texture.finalized==0); }},
+        {"normal publication then cleanup releases no reference twice",[]{ Context c;c.post();c.queued();c.reply();c.image.finishPublish(true);c.passed();LLImageGL::cleanupClass();CHECK(c.texture.refs==1);CHECK(c.texture.finalized==1); }},
         {"creation false retains raw and retries",[]{ Context c; c.image.create_succeeds=false; c.post(); c.reply(); c.failed(); }},
         {"pending commit failure retains raw and retries",[]{ Context c; c.post(); c.queued(); c.reply(); CHECK(c.texture.refs==2); c.image.finishPublish(false); c.failed(); }},
         {"settled commit failure retains raw and retries",[]{ Context c; c.post(); c.queued(); c.image.finishPublish(false); c.reply(); c.failed(); }},
