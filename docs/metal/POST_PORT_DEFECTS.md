@@ -2483,6 +2483,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-19 Integrated5ccf34ee27 preserves original fixed EV0 (1,0,0,1) production through the reachable transition: current main HDR exposure owner runs even when adaptation is disabled; prior history is null and EV bounds are zero in that branch. Dynamic parameters/history and current frame/epoch admission stay intact. Root focused CTest passes with Metal API/GPU validation; test duration95.13s is correctness-test wall time, not viewer cost. No stale target exemption or shader simplification. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-083 — Owner reports a tint in neutral-looking scene surfaces
 
@@ -10975,6 +10977,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Integrated9ab5452147/9fb0c859d4 restore real inventory controls and source-derived tests. Integrated48b9cddb5f restores archived cinematic mode/menu/AltShiftC/default-off/native-visible consumers, then df39e03c9a and06f798cb44 correct registered483/484 findings before delivery. Final hover defaultfalse, attachment existing U32 Add0/Replace1 contract and wearable defaulttrue match archived intent. Independent reviews pass; full app build pending. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
 
@@ -11116,6 +11120,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Integrateda455cf7897 retains requested Home PNG/legacyBMP selection, then tries existing grid/account last-location PNG once after primary file/decode failure for a non-LAST selection. LAST direct selection, opt-out and texture-publication ownership remain intact; native allocation failure does not trigger fallback. Original source confirms inherited gap but does not date the owner-reported regression. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-481 — Media plugin receives its load response outside the loading state
 
@@ -11139,6 +11145,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 parent source review also identifies a potential queued hello completion meeting the same explicit closing-state guard. This is registered as a sibling handshake-cancellation edge under481 before any additional repair. Require actual legal pre-hello queue→shutdown→drain reproduction and bundled-child shutdown contract review before broadening the parent guard. Do not relax active-state hello validation or edit an unproved asynchronous child path.
 
 - 2026-11-19 Integrated81abcb7d47 handles only obsolete hello/load responses after explicit GOODBYE/EXITING, retaining normal CONNECTED/LOADING handling and all active-state errors. No child production change or fast-response race claim. Integrated92c6e963eb records numeric prior state and owner presence before existing unexpected-response error transitions, without URLs/names/pointers. Queued legal HELLO uses STATE_CONNECTED, not LAUNCHED. Child no-instance shutdown retains existing12s deadline; offline fixture does not prove poll-thread raw-owner lifetime synchronization. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
 ## PPD-482 — Shutdown reaches queued-request and TextureFetch worker residue cleanup
@@ -11180,6 +11188,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Integrateddf39e03c9a guards entering-mouselook setUIVisibility(true) while cinematic is enabled and reapplies mode hiding after the balanced pop. Covers mode enabled during an outstanding mouselook transition without changing normal mode-off behavior. Initial139-check fixture did not cover this owner caller; its blind spot and failure are retained. Independent peer source review passes. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-484 — Cinematic visibility snapshots can strand newly active movement controls
 
@@ -11199,6 +11209,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before correction. The unrequested snapshot improvement is rejected for delivery; retain its history/tests and independent finding. Prefer original mode semantics rather than adding a general visibility restoration framework. PPD483 balanced-stack correction remains necessary under either exit contract.
 
 - 2026-11-19 Integrated06f798cb44 removes all three unrequested visibility snapshots and restores archived exit requests true through existing window/chiclet/movement owners. Mode flag updates before owner callbacks so reentrant camera paths see current state. Registered483 guards remain intact. No candidate containing the rejected snapshot restoration was launched; initial snapshot-specific green fixture was insufficient. [Integrated offline follow-up](research/warning-followup-integration-20261119.md).
+
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
 
 
 ## PPD-485 — Adaptive decoder setting promises an unsupported fixed-maximum comparison
@@ -11225,7 +11237,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-486 — Main-owner pressure independently restricts background decoding
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex decoder admission correction
 - Discovered: 2026-11-19
@@ -11246,10 +11258,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Requested actual-worker burst proof is integrated3b90ce2242: controlled128retained pixelbuffers/64KiBlogicalbytes and known8GiB headroom, actual previous production ceiling admits2workers versus new6;43assertions old5fail→new0. Both controls drain all6callbacks/estimates. Fullworker18cases452assertions0; boundaries/known omissions and no whole-viewer speed claim retained.
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-487 — Native texture upload worker remains gated by a disabled legacy OpenGL setting
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native streaming integration
 - Discovered: 2026-11-19
@@ -11268,10 +11282,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Root38-check final startup/width contract passes after489; explicit new native key is independent of legacyfalse and supports opt-out. Actual native initClass with null window/Metal authority, disable path and native-only path are qualified by101assertions/6matched physical cases including488/489. No live default-enabled viewer has run; final integrated app build/static/owner test remain.
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-488 — Native upload continuation may lose fetched-image ownership during shutdown
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native upload lifecycle
 - Discovered: 2026-11-19
@@ -11288,10 +11304,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Integratedc5b94dd44c (agentdbccb85251): main-owned GL keepalive/release registry balances fetched refs/debug buffers even if continuation/publication is dropped. Matching attempt tokens guard both queued reply entry and moved publication finish before any raw-this access; synchronous post exceptions restore/release onmain then rethrow. Exact27cases260checks0 perdebug macro versus baseline27/224/8fail; native93assertions/5unique cases withAPI/GPUvalidation, including realGLlast-owner destruction but fetched destructor remains controlled-count boundary. Independent review initially missed SUBSYSTEM_CLEANUP macro, then verified actual2849cleanup after priorworkerjoin/mainqueue drains; missing-call concern withdrawn. First move-only-function assumption and initial token/exception gaps were corrected before delivery; intermediate failures retained. Final peer passes; no runtime closure.
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-489 — Native image batch flush assumes one worker but pool width is overridable
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native upload lifecycle
 - Discovered: 2026-11-19
@@ -11308,10 +11326,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Integratedd7539fb296 (agent5d51247cf8): existing pool API fixes native image batch owner width1, preserving independent decoder parallelism. Physical CommonControl override8 produces8workers/2baseline assertion failures; corrected matched native filter101assertions/6unique cases0 withAPI/GPUvalidation. Source-derived exact window/init/constructor and actual ThreadPoolBase width expression separately38checks old2fail→new0. No account file mutation; no performance optimum or live incidence claimed.
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
 
 ## PPD-490 — Time-bounded texture publication also has a main-busy one-item ceiling
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native streaming integration
 - Discovered: 2026-11-19
@@ -11328,9 +11348,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 Integrated4fd1876f34 tests +df61f82e5b production guard. Final7cases261assertions and full57cases6060assertions old75fail→new0 underASan/UBSan; earlier55/6019proof retained/superseded by extra41completion-count checks. Native count/frame/in-flight bytes, copied lease retirement, lowOS/process1progress, oversize/drain and optional/scene controls pass. Callerfile/timer branches byte-identical; independent source/test review passes. Final app and coupled owner runtime acceptance pending.
 
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
+
+
 ## PPD-491 — Statistics preferences include credential-bearing settings in logs and payload
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex statistics privacy repair
 - Discovered: 2026-11-19
@@ -11346,3 +11369,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before correction. Preserve closed raw evidence privately; do not delete owner logs or mutate credential settings. The running3be26b full build remains source-frozen; implement independently, then integrate/rebuild the affected source before candidate qualification. No external request, credential rotation or publication is authorized by this record.
 
 - 2026-11-19 integratedc71b9c39f1 (agent5fc9389976) after the3be26b full1472-step Release build completed0. Explicit24field/type graphics/performance schema plus3named integer pool widths replaces raw preference-map export; account envelope remains empty. Unknown keys, nested/string/UUID/binary values, invalid Boolean shapes and nonfinite reals are rejected. The same safe body reaches actualINFO/debugXML/HTTP sinks; other statistics/session placement remain unchanged. Original1eb/69343/3be exporter and telemetry tail are byte-identical. Synthetic-only tests and scoped peer review; no whole-packet anonymity or successful prior server receipt claim. New normal generator-independentCMake source target is registered before final incremental source-qualified build.
+
+- 2026-11-19 final integrated candidate69377/source74d9264b1f is separately cloned and statically qualified: fullbuild0,39selectedCTest invocations0 withAPI/GPUvalidation,183tools(1optional skip), strict3637/0blockers/0errors,346ARM64 files anddeepstrictsignature/source/OpenHTprovenance pass. Owner verification remains pending and push not_granted; no new viewer launch or runtime acceptance. [Exact candidate, commands and limits](research/warning-followup-integration-20261119.md#qualified-candidate69377).
