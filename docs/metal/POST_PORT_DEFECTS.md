@@ -11447,7 +11447,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-494 — Atmospheric shader disabled leaves no native lighting target
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrator
 - Discovered: 2026-11-19
@@ -11465,3 +11465,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 backend0eef007590→root68e75ac0f4 implements renderZeroLighting with existing pooledRGBA16F/borrowed exact GBufferdepth, color-only clear pass, existing command/lease/failure-prefix rules. Root actual base prelude and both main/probe dispatch restore false mode; true order/mapguard/math unchanged. Actual CPU18cases194checks each diagnostics off/on passASan/UBSan. Exact old caller fails32/50checks, oldprelude37/46, combined47/68; private controls compile all actual snippets. Two independent source reviews noactionablefinding. Isolated backend/test ARM64objects compile0; root normal native targetbuild inprogress, no GPU/runtime acceptance yet.
 
 - 2026-11-19 root native validation initially fails1of511assertions because the new test reverses the fixture's normal_hdr/hdr arguments, causing local-light format mismatch; no production relaxation. Corrected only fixture argument order and added failure context. Rerun passes641assertions/3cases with actual Metal API+GPU validation:8format/reverse combinations preserve exactRGBAzero, depth/stencil/allGBufferstores; local/projector continuation positive, malformedinput/prefixcancel/retry controls pass. Production native method unchanged after review. Root fullcombinedapp build/owner verification stillpending.
+
+- 2026-11-19 finalcombined69384/source0bacb370fa/indra8f350bf47e builds0(173steps) andpasses20selectedCTest/API+GPUvalidation, strict3641/0blocking/0errors,346ARM64/deepstrictsignature/owneddirectimports. Source/header/executableverified; prior69381preserved. CPU/nativeproof supports source repair, actual69377flag remainsunknown andruntimeincidentunattributed. Ownerrequestsallfixescombined; ready_for_owner only. [Artifact and capturesequence](research/world-turn-freeze-69377-20261119.md#qualified-combined-candidate69384).

@@ -277,3 +277,55 @@ resources; filter publication commits before updating generation. Conditional
 device-change reset is unpaired, but the current SDL production device is assigned
 only at construction and retained by context switches. No normal camera/resize
 source counterexample was found; do not infer runtime recovery or weaken guards.
+
+## Qualified combined candidate69384
+
+Built source **0bacb370fa298fa497505a9f374b3fd13666fc16**, indra
+**8f350bf47e4ded73f90aa238dea5ac34ea88e9e9**, version26.4.0.69384,
+CFBundleVersion26.4.0d69384. Stable app:
+`/Users/dekstroza/Alchemy-warning-inputs-wh3ienda/candidates/Alchemy Metal Functional Fixes 69384.app`,
+executable `Contents/MacOS/Alchemy Metal Warning Inputs`, SHA256
+**27f1595ae6e49a2aca0b508eaff988699b150c74cabe1a4a4e10727396567c2a**.
+It includes every earlier69377/69381 confirmed local correction plus494 and
+expanded493 failure inputs.69377/69381 executable hashes are independently
+unchanged. User returned and explicitly requests inclusion of all confirmed
+fixes plus a procedure to capture the freeze. No push approval or push.
+
+On the sameM1Max/64GiB/macOS26.5.2/Xcode26.6: full173-step wrapperReleasebuild0;
+20selectedCTest invocations0 with actual Metal API/GPU validation; strict3641
+source files/0blockers/0errors/923informational; exact stable app346ARM64/0invalid
+slices, deepstrictsignature0 and all3owned-host directimport checks0. Header/
+cache/executable contain the full built source SHA. Private canonical manifest
+`functional-fixes-69384.json`, `continued-artifact.json`, final-continued-* logs
+and detail preserve exact results. Full command filter and source/hashes are
+retained in the qualification receipt; no runtime/FPS/complete-port assertion.
+
+Next run is prepared privately as `Alchemy-freeze-69384-xjxh4etn`: manual owner
+login, Home request only, existing graphics/cache/account data retained and
+OpenHTJ2Konly. Live read-only controls additionally include
+RenderDeferredAtmospheric and RenderMetalMainLightingRenderPass, removing those
+unobserved policy operands from another freeze. No fixed-location/paired visual
+comparison is asserted; actual arrival must be independently observed. All
+build/test/capture work ends before launch/measurement; source stays frozen.
+
+Capture sequence:
+
+1. Log in normally atHome; after arrival turn/walk as usual. The bounded watcher
+   records fresh retained-world base stage/frame, attempt/readiness/coherence and
+   exposed policy controls; user marks a visible freeze and whether menus respond.
+   Automatic >=0.1s unchanged-background events receive private byte cutoffs,
+   explicitly not owner reports. Full-prefix copying is deferred until after the
+   run to avoid repeated I/O in the event. No GPU wait/sample/profiler is added.
+2. If rendering stopped at a CPU readiness/producer branch, inspect that exact
+   frame and source prerequisite. A post-event GPU trace cannot recreate work the
+   CPU never encoded. The snapshot failure appends the same stamped base/coherence
+   context without depending on a missing world-UI target.
+3. If current products are encoded/published and the cause remains GPU/presentation,
+   use the saved short device-all-queue display-interval capture procedure with
+   healthy and stalled context. Existing launch-time quiet capture is timed, not
+   first-retention-triggered; no UI/LEAP arm/pre-event buffer is claimed. Mark
+   native capture overhead and exclude disturbed periods from FPS inference.
+
+No connected69384 observation or capture has occurred at this qualification
+checkpoint. The launch sentinel will retain Popen.wait and exact exit status;
+private run.json is the subsequent authoritative runtime record.
