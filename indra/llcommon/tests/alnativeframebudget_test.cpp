@@ -48,7 +48,7 @@ Budget::Limits smallScene()
 }
 
 TEST_CASE("Decode ahead remains available under main-only CPU or GPU wait pressure",
-          "[native-frame-budget][decode-ahead][PPD-486]")
+          "[native-frame-budget][decode-ahead][PPD-486][PPD-490]")
 {
     constexpr auto GiB = std::uint64_t{1024} * 1024 * 1024;
     for (bool gpu_wait : {false, true})
@@ -68,14 +68,15 @@ TEST_CASE("Decode ahead remains available under main-only CPU or GPU wait pressu
         CHECK(budget.snapshot().scene_publications_in_flight == 0);
         CHECK(budget.snapshot().preparation_in_flight == 0);
         for (unsigned current : {2u, 4u, 6u}) CHECK(budget.decodeCeiling(2, current, 6) == 6);
-        // Main ownership still throttles optional work and upload pacing.
+        // Main ownership still throttles optional work. The upload caller
+        // retains its elapsed-time bound independently of this policy.
         CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 10));
         CHECK_FALSE(budget.tryAcquire(Budget::Work::hero_probe, 0, 10));
         CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 10));
         auto upload = budget.tryAcquire(Budget::Work::upload, 4, 10);
         REQUIRE(upload);
-        CHECK(upload.reason == Budget::Reason::progress);
-        CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 4, 10));
+        CHECK(upload.reason == Budget::Reason::admitted);
+        CHECK(budget.tryAcquire(Budget::Work::upload, 4, 10));
         CHECK(budget.snapshot().main_busy);
     }
 }
@@ -363,17 +364,17 @@ TEST_CASE("Native frame budget progresses oversized uploads without permitting c
 }
 
 TEST_CASE("Native frame budget shares main and streaming debt while guaranteeing aged view progress",
-          "[native-frame-budget]")
+          "[native-frame-budget][PPD-490]")
 {
     Budget budget(small());
     auto input = frame(10);
     input.required_main_cpu_ns = 45'000'000;
     budget.beginFrame(input);
-    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Main pressure still paces upload/probes, not parallel decoding.
+    CHECK(budget.decodeCeiling(2, 4, 6) == 6); // Main pressure still paces optional views, not parallel decoding.
     auto upload = budget.tryAcquire(Budget::Work::upload, 4, 10);
     REQUIRE(upload);
-    CHECK(upload.reason == Budget::Reason::progress);
-    CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 4, 10));
+    CHECK(upload.reason == Budget::Reason::admitted);
+    CHECK(budget.tryAcquire(Budget::Work::upload, 4, 10));
     CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 10));
     auto ordinary = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 7);
     auto hero = budget.tryAcquire(Budget::Work::hero_probe, 0, 7);
@@ -1550,7 +1551,7 @@ TEST_CASE("Preparation byte admission rejects unknown oversize and overflowing c
 }
 
 TEST_CASE("Closed main GPU pressure coordinates the next early admission without replaying measurements",
-          "[native-frame-budget][main-gpu-history][PPD-409]")
+          "[native-frame-budget][main-gpu-history][PPD-409][PPD-490]")
 {
     Budget budget(smallScene());
     auto input = frame(10);
@@ -1578,8 +1579,8 @@ TEST_CASE("Closed main GPU pressure coordinates the next early admission without
     CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 11));
     auto upload = budget.tryAcquire(Budget::Work::upload, 4, 11);
     REQUIRE(upload);
-    CHECK(upload.reason == Budget::Reason::progress);
-    CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 4, 11));
+    CHECK(upload.reason == Budget::Reason::admitted);
+    CHECK(budget.tryAcquire(Budget::Work::upload, 4, 11));
     auto aged_scene = budget.tryAcquire(Budget::Work::scene_publication, 1, 8);
     auto aged_probe = budget.tryAcquire(Budget::Work::ordinary_probe, 0, 8);
     auto aged_hero = budget.tryAcquire(Budget::Work::hero_probe, 0, 8);
@@ -1781,4 +1782,153 @@ TEST_CASE("Unique allocation fallback saturates and never claims unsupported com
     input.os_available_bytes = 0;
     ++input.frame; budget.beginFrame(input);
     CHECK(budget.snapshot().memory_pressure); // Existing OS/process guards still apply.
+}
+
+TEST_CASE("Busy main CPU and GPU waits preserve bounded upload count capacity",
+          "[native-frame-budget][PPD-490]")
+{
+    for (bool gpu_wait : {false, true}) for (bool completion_count : {false, true})
+    {
+        INFO("main GPU wait=" << gpu_wait << ", completion count limit=" << completion_count);
+        auto limits = small();
+        limits.uploads_per_frame = completion_count ? 5 : 3;
+        limits.uploads_in_flight = completion_count ? 3 : 5;
+        limits.upload_bytes_per_frame = limits.upload_bytes_in_flight = 100;
+        Budget budget(limits);
+        auto input = frame(10);
+        input.os_available_bytes = input.process_headroom_bytes = 8ULL * 1024 * 1024 * 1024;
+        input.required_main_cpu_ns = gpu_wait ? 5'000'000 : 45'000'000;
+        budget.beginFrame(input);
+        if (gpu_wait) REQUIRE(budget.recordRequiredMainGpuWait(10, 41'000'000, 1'000'000));
+        REQUIRE(budget.snapshot().main_busy); REQUIRE_FALSE(budget.snapshot().memory_pressure);
+        std::vector<Budget::Lease> uploads;
+        for (unsigned i = 0; i < 3; ++i)
+        {
+            auto upload = budget.tryAcquire(Budget::Work::upload, 4, 10);
+            CHECK(upload); CHECK(upload.reason == Budget::Reason::admitted);
+            if (upload) uploads.push_back(std::move(upload.credit));
+        }
+        CHECK(budget.snapshot().uploads_this_frame == 3);
+        CHECK(budget.snapshot().uploads_in_flight == 3);
+        CHECK(budget.snapshot().upload_bytes_this_frame == 12);
+        auto fourth = budget.tryAcquire(Budget::Work::upload, 4, 10);
+        CHECK_FALSE(fourth);
+        CHECK(fourth.reason == (completion_count ? Budget::Reason::in_flight : Budget::Reason::frame_work));
+        uploads.clear();
+        CHECK(budget.snapshot().uploads_in_flight == 0);
+        CHECK(budget.snapshot().upload_bytes_in_flight == 0);
+        auto after_retirement = budget.tryAcquire(Budget::Work::upload, 4, 10);
+        if (completion_count) CHECK(after_retirement); // Retirement releases the independent live count.
+        else CHECK_FALSE(after_retirement); // Retirement cannot refill today's frame count.
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 10));
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::hero_probe, 0, 10));
+        CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 10));
+        ++input.frame; budget.beginFrame(input);
+        CHECK(budget.tryAcquire(Budget::Work::upload, 4, 11));
+    }
+}
+
+TEST_CASE("Busy upload submission keeps frame bytes and completion bytes independently bounded",
+          "[native-frame-budget][PPD-490]")
+{
+    for (bool gpu_wait : {false, true}) for (bool completion_limit : {false, true})
+    {
+        INFO("main GPU wait=" << gpu_wait << ", completion byte limit=" << completion_limit);
+        auto limits = small();
+        limits.uploads_per_frame = limits.uploads_in_flight = 4;
+        limits.upload_bytes_per_frame = completion_limit ? 100 : 10;
+        limits.upload_bytes_in_flight = completion_limit ? 10 : 100;
+        Budget budget(limits);
+        auto input = frame(10);
+        input.os_available_bytes = input.process_headroom_bytes = 8ULL * 1024 * 1024 * 1024;
+        input.required_main_cpu_ns = gpu_wait ? 5'000'000 : 45'000'000;
+        budget.beginFrame(input);
+        if (gpu_wait) REQUIRE(budget.recordRequiredMainGpuWait(10, 41'000'000, 1'000'000));
+        REQUIRE(budget.snapshot().main_busy); REQUIRE_FALSE(budget.snapshot().memory_pressure);
+        auto first = budget.tryAcquire(Budget::Work::upload, 6, 10); REQUIRE(first);
+        auto second = budget.tryAcquire(Budget::Work::upload, 4, 10); CHECK(second);
+        CHECK(budget.snapshot().upload_bytes_this_frame == 10);
+        CHECK(budget.snapshot().upload_bytes_in_flight == 10);
+        auto denied = budget.tryAcquire(Budget::Work::upload, 1, 10);
+        CHECK_FALSE(denied);
+        CHECK(denied.reason == (completion_limit ? Budget::Reason::in_flight : Budget::Reason::frame_work));
+        auto completion_owner = first.credit;
+        first.credit.reset();
+        CHECK(budget.snapshot().upload_bytes_in_flight == 10); // A copied completion lease still owns bytes.
+        if (completion_limit)
+        {
+            ++input.frame; budget.beginFrame(input);
+            auto still_full = budget.tryAcquire(Budget::Work::upload, 1, 11);
+            CHECK_FALSE(still_full); CHECK(still_full.reason == Budget::Reason::in_flight);
+            completion_owner.reset();
+            CHECK(budget.snapshot().upload_bytes_in_flight == 4);
+            auto replacement = budget.tryAcquire(Budget::Work::upload, 6, 11); CHECK(replacement);
+            CHECK(budget.snapshot().upload_bytes_in_flight == 10);
+            CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 1, 11));
+        }
+        else
+        {
+            completion_owner.reset();
+            CHECK(budget.snapshot().upload_bytes_in_flight == 4);
+            auto frame_full = budget.tryAcquire(Budget::Work::upload, 1, 10);
+            CHECK_FALSE(frame_full); CHECK(frame_full.reason == Budget::Reason::frame_work);
+        }
+        second.credit.reset();
+        CHECK(budget.snapshot().uploads_in_flight == 0);
+        CHECK(budget.snapshot().upload_bytes_in_flight == 0);
+    }
+}
+
+TEST_CASE("Low OS or process memory preserves the one-upload progress lane",
+          "[native-frame-budget][PPD-490]")
+{
+    for (bool process_pressure : {false, true})
+    {
+        auto limits = small();
+        limits.uploads_per_frame = limits.uploads_in_flight = 4;
+        limits.upload_bytes_per_frame = limits.upload_bytes_in_flight = 100;
+        Budget budget(limits);
+        auto input = frame(10);
+        input.os_available_bytes = process_pressure ? 8ULL * 1024 * 1024 * 1024 : 0;
+        input.process_headroom_bytes = process_pressure ? 0 : 8ULL * 1024 * 1024 * 1024;
+        budget.beginFrame(input);
+        REQUIRE(budget.snapshot().memory_pressure); REQUIRE_FALSE(budget.snapshot().main_busy);
+        auto first = budget.tryAcquire(Budget::Work::upload, 4, 10); REQUIRE(first);
+        CHECK(first.reason == Budget::Reason::progress);
+        auto second = budget.tryAcquire(Budget::Work::upload, 4, 10);
+        CHECK_FALSE(second); CHECK(second.reason == Budget::Reason::memory_pressure);
+        first.credit.reset();
+        auto still_one = budget.tryAcquire(Budget::Work::upload, 4, 10);
+        CHECK_FALSE(still_one); CHECK(still_one.reason == Budget::Reason::memory_pressure);
+        ++input.frame; budget.beginFrame(input);
+        auto next = budget.tryAcquire(Budget::Work::upload, 4, 11); REQUIRE(next);
+        CHECK(next.reason == Budget::Reason::progress);
+    }
+}
+
+TEST_CASE("Busy upload admission preserves oversized exclusivity and shutdown progress",
+          "[native-frame-budget][PPD-490]")
+{
+    Budget budget(small());
+    auto input = frame(10); input.required_main_cpu_ns = 45'000'000;
+    budget.beginFrame(input); REQUIRE(budget.snapshot().main_busy);
+    auto oversized = budget.tryAcquire(Budget::Work::upload, 64, 10); REQUIRE(oversized);
+    CHECK(budget.snapshot().upload_bytes_in_flight == 64);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 1, 10));
+    ++input.frame; budget.beginFrame(input);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::upload, 1, 11));
+    auto completion = oversized.credit; oversized.credit.reset();
+    CHECK(budget.snapshot().upload_bytes_in_flight == 64);
+    completion.reset();
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+    auto normal = budget.tryAcquire(Budget::Work::upload, 4, 11); REQUIRE(normal);
+    CHECK(normal.reason == Budget::Reason::admitted);
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::ordinary_probe, 0, 11));
+    CHECK_FALSE(budget.tryAcquire(Budget::Work::scene_publication, 1, 11));
+    budget.beginDrain();
+    auto draining = budget.tryAcquire(Budget::Work::upload, 4, 11); REQUIRE(draining);
+    CHECK(draining.reason == Budget::Reason::admitted);
+    normal.credit.reset(); draining.credit.reset();
+    CHECK(budget.snapshot().uploads_in_flight == 0);
+    CHECK(budget.snapshot().upload_bytes_in_flight == 0);
 }
