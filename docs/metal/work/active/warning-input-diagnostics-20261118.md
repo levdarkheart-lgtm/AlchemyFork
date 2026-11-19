@@ -1,9 +1,9 @@
 # Targeted warning input collection
 
-- State: runtime_complete; investigation and local repairs in progress
+- State: runtime_complete; candidate69343 ready_for_owner; connected retest pending
 - Owner: Codex warning audit integrator
 - Branch: `codex/log-warning-port-audit-20261118`, basea1d4d4645f; previous repairs103043ba16 retained locally.
-- Scope: PPD311/466 exact failing inputs and actual producer/consumer context. No renderer/fetch/fallback policy changes; no performance recording.
+- Scope: Initial PPD311/466 input collection, followed by owner-authorized investigation and local functional repairs. Capture policy was unchanged during the observed run; no performance recording.
 
 Owner offers manual Home login then Club teleport. Prepare observations before launch so the run can resolve gaps left by317warnings/37sites. Raw artifacts remain local/private under `/Users/dekstroza/Alchemy-home-69277-rqs_6lzz/analysis/warning-inputs-preflight-01` and `warning-input-diagnostics-04`.
 
@@ -34,7 +34,7 @@ Doctor0. Firstconfigure1because newtesttargets lacked requiredal::flags; fixedta
 
 Independent review confirms source/context/exception/PII bounds. Earlier fixture alias/helper-path compile failures and strictpreprocess byte comparison failure dueonly3__LINE__offsets are preserved with corrected retests. No launch or runtime correctness acceptance yet.
 
-## Next action
+## Initial preflight next action (completed)
 
 Commit coherent preflight locally, refresh appmetadata to exactsourceSHA, verify346ARM64/signature anddecoderidentity, launchexactcandidate with privateboundedlogs/inputdirectory and read-onlyagent/settings observer. Owner logsHome then Club. Do not start Xcode/replay/Overview/nativecapture telemetry or clear caches. ConfirmactualPID/source/region/decoder before interpreting newinputs. Keep allfixeslocal until explicitpushapproval; warn/input absence is not closure.
 
@@ -54,3 +54,14 @@ Owner was released to log out after both screenshots, a complete log prefix and 
 First runtime-doc harness failed only because CURRENT/ledger grew to161/181lines. Adjacent existing prose was joined without dropping history; recovery limits are restored to160/180. Original failed console and subsequent harness result remain retained.
 
 Local functional repairs313/471/472/473/475/476 are integrated. PPD475 fixes a reproduced pre-instantiation starvation mechanism without disabling known occlusion. PPD476 preserves existing size limits and saved-copy/GPU metadata on the new callback path. Runtime findings and prerelease regressions remain in the linked research note/register. Combined app build/verification is next; no in-world fix acceptance or new launch is claimed.
+
+
+## Final local handoff, 2026-11-19
+
+Candidate26.4.0.69343 is ready_for_owner, built from8f1ef9bd8aafa4efff409b2ed3fe28b5eb1f7e50 / indra2971b311a67318a9d68b8e70dbb990e07ac64403. Stable app: `/Users/dekstroza/Alchemy-warning-inputs-wh3ienda/candidates/Alchemy Metal Functional Fixes 69343.app`; executable SHAa29c0eb8c44acbb6f35efbbd5b7554421930490c09c210e4605a6f95662524a9. Exact full source identity is embedded and verified. Observed69331 and superseded69342 apps are preserved separately; neither candidate69342 nor69343 has been launched.
+
+PPD313/340/471/472/473/475/476/477/478/479 repairs pass final build0,31/31targeted CTests,346ARM64slice check0, separate deep strict signature0 and strictsource3626files/0blockers/0errors. Actual source-body regressions, CPU99cases/1489assertions, OpenHT3/56, native query/texture9/1369 with Metal API/GPU validation, and183tool tests/1optional skip pass. Initial environment/registration failures and rejected477 completion are retained. [Full commands, limits and evidence](../../research/warning-input-runtime-69331-20261119.md#final-candidate-69343).
+
+Complete-product advancement is functional correctness of teleport object admission, appearance auxiliary-mask fulfillment and cache persistence, with original behavior and resource guards retained. The object-floor incident PPD470, nonfinite rigging cause PPD311, runtime appearance attribution PPD466, server asset failures and inherited preference restoration PPD474 remain open. No owner acceptance, performance gain or product completion is claimed. OpenHTJ2K remains the sole pixel decoder; existing AlchemyNext cache is retained.
+
+Next is the owner-controlled club teleport/appearance retest of this exact stable app, including identity/decoder/location gate and bounded recurrence diagnostics. Viewer remains closed after the observed normal logout. No new launch, cache clearing, performance recording or push. The following handoff commit changes documentation only; record it separately without rebuilding or relabeling the artifact sourceSHA.

@@ -7551,14 +7551,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-313 — Skin default and empty-input paths violate initialization/indexing contracts
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex integrated skin-source audit
 - Discovered: 2026-11-16
 - Original reference: Exact350b803597 and original1eb44bbd1b LLMeshSkinInfo constructors/fromLLSD/updateHash are byte-identical. llmodel.cpp1486–1510 leaves LLMatrix4a bind shape uninitialized; optional-field absence1549 precedes bind-pose composition1597. updateHash1687 indexes inverse[0] even when empty; llvoavatar.cpp10886 forms palette[0] after a possible zero-size resize.
 - Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); private analysis-skin-source-review.md/functions/excerpts/receipt preserve exact source comparisons and bounded callsites.
-- Next action: Add actual CPU construction/default/missing-field/count-mismatch and zero-palette cases, then repair initialization/empty indexing without changing valid skin matrices, asset admission or current finite stabilization. Keep malformed numeric input semantics and PPD311 live cause separate.
-- Verification: Source proves conditional uninitialized bind-pose input and empty-vector precondition violations. Inverse locals themselves assign all16lanes; bind-pose composition writes a separate vector, so missing bind shape is not an explanation for the observed nonfinite inverse coefficients. Normal inspected output/input owners do not alias. No executed reproduction, live occurrence, crash or FPS attribution for these subcases.
+- Next action: Owner tests candidate69343 with ordinary and rigged attachments; retain PPD311 until its actual nonfinite inverse input is captured. Do not treat the default/empty repairs as the numerical fallback cause.
+- Verification: Local source8f1ef9bd8a is built and bundle-qualified as69343. Actual llprimitive99cases/1489assertions and avatar packing32checks pass; valid hash15304216647550519859 is unchanged. Baseline default/empty failures and UBSan proof are retained. No live occurrence or numerical fallback causality is established.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7567,6 +7567,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered before repair. Bounded source comparison exits0; no tests/builds/viewer or application edits performed. Existing palette stabilization tests do not cover LLMeshSkinInfo decoding/default/empty contracts. Numeric hash uses lround then S32 narrowing; do not call a session hash collision or multiplication bug without focused evidence.
 
 - 2026-11-19 local initialization/empty-contract repair integrated as b04b7ff22e (agentbaad19b5af): optional bind shape defaults to identity; empty inverse hash avoids element0; zero avatar palette uses data(). Original valid matrices/hash quantization and finite stabilization remain unchanged. Actual llprimitive target passes1489assertions/99cases including valid hash15304216647550519859; actual avatar packing/cache cases pass32checks after baseline UBSan empty indexing. This is not the cause of PPD311 nonfinite inverse data. Full combined application build and owner acceptance pending.
+
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Source proves conditional uninitialized bind-pose input and empty-vector precondition violations. Inverse locals themselves assign all16lanes; bind-pose composition writes a separate vector, so missing bind shape is not an explanation for the observed nonfinite inverse coefficients. Normal inspected output/input owners do not alias. No executed reproduction, live occurrence, crash or FPS attribution for these subcases.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
 ## PPD-314 — Multi-scene evaluation lacks continuous timestamped wall-frame telemetry
 
@@ -8183,14 +8187,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-340 — Startup texture-cache bodies disagree with index size metadata
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex Home asset/cache audit
 - Discovered: 2026-11-17
 - Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 and current lltexturecache.cpp1855–1874 perform the same startup1/256 entry validation, compare LLFile::size with entries[idx].mBodySize and mark/remove a mismatching entry. This is inherited cache behavior, not a demonstrated selector regression.
 - Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private selector-home-checkpoint-69228-20261117T0733Z/log-audit source/whitelisted mismatch receipts, original run logs retained privately.
-- Next action: Preserve caches and evidence. If mismatches recur, audit cache body writes/index updates and interrupted shutdown recovery before any repair. Do not wipe caches, generalize four sampled entries to the whole cache, or attribute the settled FPS decline to these warnings without evidence.
-- Verification: Cold startup logs one mismatch392480actual/156632expected bytes at07:19:09UTC; warm logs three156633/46570,63504/18631,380388/151795 at07:29:12, both before first world. Existing code schedules removal of those entries. Four known entries, not a warning storm or proved frame-critical cost. Warm image decoding later falls nearly to zero while the FPS decline persists.
+- Next action: Owner runs candidate69343 with the retained AlchemyNext cache and checks startup/loading across ordinary logouts. Preserve any new mismatch and its write sequence; do not clear the cache. Interrupted-write recovery remains a separate qualification limit.
+- Verification: A real LLFile shorter rewrite reproduces the inherited stale-tail producer mechanism. The combined producer/completion suite passes26cases/153checks underASan/UBSan after five baseline producer failures; candidate69343 is built and qualified. Exact historical mismatch causality and runtime recovery remain unproved.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8205,6 +8209,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 source follow-up finds an inherited producer mismatch: updateEntry can commit a smaller body size, then doWrite overwrites the UUID body from offset0 via LLFile::write without truncation (macOS openO_WRONLY|O_CREAT). A successful shorter rewrite leaves an old tail that exact startup validation later rejects. Relevant producer/file-helper bodies match original1eb44; no retained per-entry write sequence proves this caused29225/18786. Register this mechanism before a narrow producer repair; active cache remains untouched by the investigation.
 
 - 2026-11-19 producer repair integrated as79d7a7b711 (agent2e504b7e05): replace only positive-length complete body prefixes with truncate-on-open and require exact header/body byte counts. Header random writes, header-only entries, global LLFile semantics, cache format and active files are unchanged by the investigation. Actual producer+realLLFile temporary-file controls reproduce5baseline failures and pass corrected shorter/repeated-shrink/growth/short-write/open-error cases. Completion cleanup is qualified by PPD477/478; full combined real-file suite26cases/153checks passes. Relevant original producer/file bodies match1eb44. The exact historical write behind the observed size mismatch remains unknown.
+
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Cold startup logs one mismatch392480actual/156632expected bytes at07:19:09UTC; warm logs three156633/46570,63504/18631,380388/151795 at07:29:12, both before first world. Existing code schedules removal of those entries. Four known entries, not a warning storm or proved frame-critical cost. Warm image decoding later falls nearly to zero while the FPS decline persists.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
 ## PPD-341 — Private checkpoint analysis needs complete warning forms and precise sample bounds
 
@@ -10818,7 +10826,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve complete world geometry/material rendering across region changes. Original1eb44 tree deferred draw and face indexed-render readiness contracts must be traced before repair; current pipeline.cpp captureMetalWorldTreeBatch16596 has a compound region/buffer/image/attribute/native-publication/extent guard.
 - Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Exact source96f10353af/viewer69331/PID74144. Owner screenshots23:54:49 and23:55:33 show missing/black/blue floor sections at the club after teleports; original bytes retained privately. Earlier23:49:48–54log has230incomplete native world-capture warnings, first invalidation pipeline.cpp16596 in native tree preflight,0batches retained. Screenshot-to-warning causality is not proved.
-- Next action: Preserve the broken live scene and timestamped inputs; trace original/current tree and scene/resource publication contracts. Identify the first failing predicate and whether floor batches are absent, rejected, incorrectly transformed or shaded before selecting a correction. Keep capture-completeness and lifetime guards intact.
+- Next action: Owner retests high-altitude club object floors across teleports in exact candidate69343. PPD473 and475 repair independently proved mechanisms; if the symptom recurs, capture its new first-predicate/view and object/camera/group state. The original run is closed with evidence preserved; do not treat later terrain warnings as the floor cause.
 - Verification: Owner-visible visual failure reproduced in two supplied images on exact candidate. Native tree capture rejection also reproduced, but its exact compound predicate and connection to the floor are unknown. The legacy warning text saying retainedGL does not prove any OpenGL execution or fallback backend.
 - Owner verification: pending
 - Push approval: not_granted
@@ -10832,16 +10840,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 PPD475 independently reproduces cached-object admission starvation and is locally repaired; the candidate prim's conservative cache bounds contain both observed avatar positions, while actual camera/group state is unrecorded. This strengthens the investigation but does not establish incident causality. PPD473 loading-tree default binding is also repaired separately. Combined candidate is being prepared for a club teleport retest; the owner floor report stays open.
 
+- 2026-11-19 final candidate69343 is ready for owner evaluation after build/bundle and31targeted CTest passes. The saved candidate box is ordinary prim geometry with valid production-unpacked mesh data; actual top diffuse/material content and broken-frame floor identity remain unknown. No new viewer launch or floor-recovery claim.
+
 ## PPD-471 — Requested bake auxiliary data can be omitted from successful final callbacks
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex bake lifecycle investigation
 - Discovered: 2026-11-18
 - Original reference: Original1eb44/current setLoadedCallback and doLoadedCallbacks bodies are identical. A callback that requires auxiliary mask pixels must not report successful final fulfillment from a primary-only raw or saved-raw generation. OpenHTJ2K is the sole pixel decoder.
 - Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md); private late-aux-offline-01 actual7body case with real OpenHT decoded five-channel bake passes3cases/51behavior assertions. Primary-only decode followed by lateaux request uses mHasAux history to skip refetch and can dispatch success/final with nullaux and delete callback. Current live run separately reproduces42mask warnings/consumer records, allneeds_aux0/auxnull and primaryRGBApresent; that exact state requires pause/publication-demand investigation.
-- Next action: Complete actual pause/unpause/postCreate/request-dedup reproduction matching live needs_aux0, preserve per-callback auxiliary requirements across pause/resume, and admit auxiliary redecode of complete formatted bytes when necessary. Register tests and verify no endless refetch of genuinely maskless content before repair integration.
-- Verification: Source-confirmed inherited callback-fulfillment defect in a contained actual-body/real decoder case. Live42needs_aux0 records are not the same as the initial needs_aux1 reproduction, so live cause remains qualified. All29old complete inputs decode valid1channelaux in87OpenHT requests; that does not prove live callback lifetime/progressive inputs.
+- Next action: Owner checks avatar appearance and bake masks in candidate69343 while teleporting to the club. Preserve fresh consumer/producer diagnostics on recurrence; the original64category cap still limits coverage. Keep PPD466 and exact incident scheduling open.
+- Verification: Matching actual pause/publication/resume with real OpenHT reproduces needs_aux0/nullaux/successfinal. Corrected callback suite30cases/67checks and whole consumer22cases/244checks passASan/UBSan; actual OpenHT engine/channel tests3cases/56assertions pass. Candidate69343 is built; live appearance recovery and each historical ordering are not yet verified.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10854,16 +10864,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 local repair integrated as950908bc10 (agent5e852fe3bd): per-callback auxiliary demand survives pause/resume, actual auxiliary quality gates fulfillment, completed/active primary-only workers admit auxiliary redecode from retained encoded bytes, and validated successful four-channel content terminates auxiliary requests without a retry loop. Retained formatted data follows existing worker lifetime/0.1second idle cleanup; no new cache/pool. Actual30cases/67checks passASan/UBSan against23baseline failures, prior upload16/171 passes, real OpenHT600byte progressiveRGBA control passes. Independent review found/fixed partial-maskless progress and both callback-clear paths. Whole consumer tests add duplicate/color queue coverage; PPD476 records/corrects a discovered size-validation gap before delivery. GPU/appearance recovery and live scheduling attribution remain pending.
 
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Source-confirmed inherited callback-fulfillment defect in a contained actual-body/real decoder case. Live42needs_aux0 records are not the same as the initial needs_aux1 reproduction, so live cause remains qualified. All29old complete inputs decode valid1channelaux in87OpenHT requests; that does not prove live callback lifetime/progressive inputs.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
 ## PPD-472 — Warning input diagnostics suppress reused handles and stream channel counts as bytes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex warning-input evidence qualification
 - Discovered: 2026-11-18
 - Original reference: Native diagnostic mechanism is new; preserve enough private request identity and exact numeric metadata to explain failures without credential paths/queries or behavioral changes. Original warning rows remain authoritative raw evidence.
 - Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Core terminal key uses handle+status, but handles recycle: a material403and later texture403can share it, suppressing the later core context below budget. Policy/range validation rejects the false join. Bake formatted_components is S8, producing literal0x05/0x04 instead of decimal text; raw bytes are retained and can be normalized losslessly.
-- Next action: On a future candidate, use per-terminal-operation diagnostic identity without URL secrets and cast channel counts to numeric types; test handle reuse across policy/request ranges and exact log serialization. Preserve current run unchanged and all caps/unknown joins. Do not restart only to relabel available evidence.
-- Verification: Diagnostic-only defects reproduced from current source/live immutable prefixes; no engine request or decoder malfunction follows from them. Existing64category limits also bound coverage, especially early bake/maptile traffic; do not count all logged403s as missing ordinary textures.
+- Next action: Use the bounded opt-in diagnostics in candidate69343 for any owner recurrence, checking terminal event identity and numeric channel serialization. Preserve policy/range/time validation and capped/unknown joins.
+- Verification: Actual diagnostic admission/serialization tests pass with recycled handles and S8 channels (asset55/76checks,HTTP6/7 off/on) after targeted baseline failures. Candidate69343 includes the repair. Default-off behavior and64category caps remain; no global operation identity or complete runtime coverage is claimed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10874,16 +10888,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 local repair integrated ascfa794a54f (agent17670c1c90). Enabled HTTP observations use an atomic terminal-boundary event key, so recycled handles/status do not suppress a later boundary; original64category cap remains. S8 channel count is cast numerically. Actual diagnostic prefix and asset/decode off/on checks passASan/UBSan (asset55/76,HTTP6/7); prior source fails targeted reuse/serialization cases. This is not a global operation identity or complete uncapped coverage. Capture rejection text also removes the stale retainedGL claim and names main/hero/probe view.
 
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Diagnostic-only defects reproduced from current source/live immutable prefixes; no engine request or decoder malfunction follows from them. Existing64category limits also bound coverage, especially early bake/maptile traffic; do not count all logged403s as missing ordinary textures.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
 ## PPD-473 — A loading tree texture can abort an entire native world view
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex native world integrator
 - Discovered: 2026-11-19
 - Original reference: Original1eb44bbd1b LLDrawPoolTree::renderDeferred binds through ALTextureSlot::bindFastImpl and the default-image path while a requested image is not resident. Current captureMetalWorldTreeBatch requires the requested image's own native backing, unlike native tree-shadow fallback.
 - Evidence: [69331 runtime and source investigation](research/warning-input-runtime-69331-20261119.md); pipeline.cpp captureMetalWorldTreeBatch/endMetalWorldGBufferCapture, lldrawpooltree.cpp renderDeferred, altextureslot.cpp bindFastImpl and llviewertexture.cpp bindDefaultImage.
-- Next action: Execute actual capture fault cases, preserve original default binding and native lifetime ownership when requested backing is unavailable, and retain all irrecoverable geometry/resource completeness checks. Record the first failed tree predicate for a future recurrence.
-- Verification: Source proves one unready tree texture clears all shared view draws and prevents G-buffer publication. The230live tree-guard failures do not identify their exact failing predicate; connection to PPD470 floor images is unproved. Proposed correction is local and not yet integrated or built.
+- Next action: Owner retests club teleport in candidate69343. If a capture is rejected, inspect the new first-predicate and view diagnostic. Retain completeness/lifetime guards and PPD470 until floor recovery is directly confirmed.
+- Verification: Actual tree capture body tests pass6cases/288assertions after four private baseline failures, with resident default generation leases and irrecoverable guard controls. Final69343 build and31targeted CTests pass. Historical230tree rejections still lack a predicate/view join, so their floor causality remains unknown.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10893,6 +10911,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19 local tree correction resolves a missing requested native image through the resident default, retaining its actual immutable generation. Deleted-source revival precedes activation, matching the existing native UI lifecycle; the original fast binder's literal ordering is not copied blindly. Irrecoverable pointers, streams, publication, extents and matrices retain whole-view rejection. New bounded first-predicate diagnostics identify main/hero/probe view without asset/account data. Actual-body baseline18cases/112checks fails4; private proposal18/122 passesASan/UBSan. Durable actual-inl Catch cases pass6/288 underASan/UBSan and the built llrender target (build0/test0). Full app/GPU/owner retest pending; PPD470 remains unproved.
+
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Source proves one unready tree texture clears all shared view draws and prevents G-buffer publication. The230live tree-guard failures do not identify their exact failing predicate; connection to PPD470 floor images is unproved. Proposed correction is local and not yet integrated or built.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
 ## PPD-474 — Three preferences checkboxes have no backing settings or consumers
 
@@ -10916,14 +10938,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-475 — Cached object admission can starve after conservative occlusion outcomes
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex cached-object admission investigation
 - Discovered: 2026-11-19
 - Original reference: Original1eb44 LLVOCache front/back selection and two-frame recent-visibility admission contract compared with native LLOcclusionCullingGroup query outcomes. Camera-inside avoids issuing a query; native Expired results are unavailable, not evidence of occlusion.
 - Evidence: [69331 runtime investigation](research/warning-input-runtime-69331-20261119.md); private floor-cache-admission-audit-01 actual cache cull/selectBack/add/process, culler classes and group check/do/earlyFail/recent/needs bodies.
-- Next action: Review the exact unknown/inside visibility contract, preserve known-zero occlusion and ordinary pending-query behavior, and implement bounded conservative progress through the existing admission owner. Retest all16schedule phases and both front/back selection paths; do not disable object-cache occlusion globally.
-- Verification: Actual-body controlled schedule reproduces zero object admission over2048frames for one of16LODhash phases with camera-inside bounds or repeated Expired tickets. Ready-positive admits all16; Ready-zero correctly admits none.112scenarios execute underASan/UBSan without runtime errors. Simple query-acquisition/capture refusal alone does not starve in this fixture because back selection makes progress. This is not yet attribution to the owner floor or its candidate box.
+- Next action: Owner retests the high-altitude club floor across teleports using candidate69343. On recurrence, retain object/camera/group and view-rejection inputs; do not disable object-cache occlusion or assume the candidate prim is the missing floor.
+- Verification: Actual cached-admission schedule passes5920checks underASan/UBSan after42baseline failures, covering all16schedule phases and known-zero/pending/hidden-parent controls. Actual Metal query/texture provider tests pass9cases/1369assertions with API/GPU validation. Candidate69343 is built; PPD470 incident attribution and visual recovery remain pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10934,16 +10956,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 narrow repair integrated as7758d8fedc (agent4671590836). DISCARD_QUERY already zeroes its ticket; move the existing discarded-visible resolution outside the valid-ticket gate and report Expired/forgotten conservative visibility to the cache caller. Fresh groups, pending tickets, known-zero occlusion, hidden parents and per-camera state stay protected. No new visibility state, timer or global disabling. Actual durable5920checks passASan/UBSan against42baseline failures; independent review found no remaining issue. Real Metal query/texture provider selection passes1369assertions/9cases with API/GPU validation. Owner club-floor confirmation remains pending.
 
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Actual-body controlled schedule reproduces zero object admission over2048frames for one of16LODhash phases with camera-inside bounds or repeated Expired tickets. Ready-positive admits all16; Ready-zero correctly admits none.112scenarios execute underASan/UBSan without runtime errors. Simple query-acquisition/capture refusal alone does not starve in this fixture because back selection makes progress. This is not yet attribution to the owner floor or its candidate box.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
 ## PPD-476 — Auxiliary-only duplicate delivery bypasses the texture size limit
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex PPD471 integration review
 - Discovered: 2026-11-19
 - Original reference: processFetchResults rejects reconstructed full dimensions above MAX_IMAGE_SIZE4096 on its normal upload path. PPD471 adds a callback-only duplicate path before that validation. OpenHT permits dimensions up to its wider wrapper limit, so decoder success does not establish the4096consumer limit.
 - Evidence: [69331 investigation and repair integration](research/warning-input-runtime-69331-20261119.md); private processFetchResults whole-body14case source comparison and additional boundary probes.
-- Next action: Apply the existing oversize failure contract to the new auxiliary-only path before retaining callback data, preserving the existing native image/generation and metadata. Test actual whole consumer/upload-queue bodies, including same-quality oversized data, full-size reconstruction and normal raw/aux controls.
-- Verification: Controlled same-quality primary/aux4097pixel data can reach success/final through the new path, whereas the original duplicate path discards it. No live oversized asset or relation to42missing-mask incidents is claimed. Different auxiliary component counts and per-channel dimensions are not rejected merely because they differ from primary data; the generic decode API permits up to4aux channels.
+- Next action: Retain the whole-consumer oversize/saved-copy controls in candidate69343 and review any new auxiliary-only path against the existing size contract. Owner appearance testing is pending; do not infer a historical oversized asset.
+- Verification: Actual whole processFetchResults/queue/callback/cleanup22cases/244checks passASan/UBSan. Five baseline failures and one validity-reset mutation failure are retained. Candidate69343 includes the size and stale-validity correction; generic auxiliary channel/sampling contracts are unchanged.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10953,17 +10979,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 local repair integrated asde0ce5052d (agentafd5e89078). Callback-only duplicates check reconstructed full size before validity/retention; oversize follows existing missing-asset cancellation/fetch-stop contract without changing published GPU/full dimensions. Clear stale incoming raw validity before destruction so rejected bytes cannot replace a valid saved copy. Actual whole-consumer/upload-queue/callback/cleanup22cases244checks passASan/UBSan; baseline has5expected failures, removing only validity reset has1expected saved-copy failure. Independent review confirms the saved-level1/incoming0 fixture matches the actual replacement policy. Generic auxiliary channels/sampling dimensions remain unchanged.
 
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Controlled same-quality primary/aux4097pixel data can reach success/final through the new path, whereas the original duplicate path discards it. No live oversized asset or relation to42missing-mask incidents is claimed. Different auxiliary component counts and per-channel dimensions are not rejected merely because they differ from primary data; the generic decode API permits up to4aux channels.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
 ## PPD-477 — Failed cache writes lose the state needed to remove their entry
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex texture-cache producer review
 - Discovered: 2026-11-19
 - Original reference: Original1eb44/current LLTextureCacheWorker::finishWork reports write failure, then sets mDataSize0; later endWork removes the cache entry only if mDataSize<0. Actual LLWorkerClass finishRequest/checkWork ordering runs those boundaries in that order.
 - Evidence: [Warning runtime/cache investigation](research/warning-input-runtime-69331-20261119.md); lltexturecache.cpp finishWork/endWork and llworkerthread.cpp WorkRequest::finishRequest/checkWork.
-- Next action: Execute actual worker completion/cleanup cases and preserve a failed write's negative state until entry cleanup while retaining success/read/abort ownership and callback behavior. Keep optional cache failure independent of successful texture decode.
-- Verification: Source proves failed write state is erased before the intended per-entry invalidation check. No retained live failure proves this caused an observed mismatch. Positive short cache writes require exact-byte rejection in the PPD340 producer scope; callbackCacheWrite intentionally settles optional-cache waiting and must not turn cache failure into a texture/network failure.
+- Next action: Deliver only the corrected serial-worker cleanup in candidate69343 together with PPD478. Retain failed-write/optional-cache/late-retirement controls; never deliver the superseded337c9647c8 patch alone.
+- Verification: Corrected completed-failed-write invalidation runs in finishWork before later queued writes and responder delivery. Actual producer/finish/end bodies with real LLFile/LLPointer pass26cases/153checks underASan/UBSan; full app69343 builds. The superseded delayed-cleanup attempt and its failures remain in history. No live mismatch attribution or general read-cleanup safety claim.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10977,16 +11006,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 corrective ownership repair integrated asc5102a03b0 (agent330fcff4ce). For completed failed writes, finishWork invalidates while still on the serial cache queue, before responder delivery/any later writer, then clears the handled sentinel. The ordinary write reset is restored; genuine cache abort, read and optional-fetch behavior remain original. Initial337c9647c8 delayed-removal implementation is superseded and retained, not approved for delivery. Full26/153 source-body/real-file suite and full cache TU compile pass; peer review finds no remaining scoped writer issue. Root's generated normal CMake executable also passes26/153 underASan/UBSan.
 
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Source proves failed write state is erased before the intended per-entry invalidation check. No retained live failure proves this caused an observed mismatch. Positive short cache writes require exact-byte rejection in the PPD340 producer scope; callbackCacheWrite intentionally settles optional-cache waiting and must not turn cache failure into a texture/network failure.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
+
 ## PPD-478 — Deferred failed-writer cleanup can remove a newer cache entry
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex cache lifetime integration review
 - Discovered: 2026-11-19
 - Original reference: Cache writes serialize on one LLQueuedThread, but fetch deleteRequest removes A from its UUID map before its deferred cache handle retires, so B can write the same UUID before late A endWork. Initial PPD477 repair restores delayed UUID-only removal without operation ownership.
 - Evidence: [Warning/cache repair investigation](research/warning-input-runtime-69331-20261119.md); private ppd340-477-independent-review-01 seven-step source trace and ppd477-cleanup-repair-01/late-cleanup-overlap actual-body23case/125check red proof.
-- Next action: Complete failed-write invalidation on the serial cache worker before later queued writes execute; clear the handled failure state so late endWork cannot delete a replacement. Preserve genuinely aborted-work policy and optional-cache callback completion. Test failed A→successful sameUUID B→late A cleanup, null responder and read/success/abort cases.
-- Verification: Initial local337c9647c8/agent3ad35e passes22ordinary cases but fails one additional overlap case. No candidate with that patch has been launched. The prior one-active-fetch-map assumption did not cover scheduled-deletion workers and is withdrawn.
+- Next action: Retain failedA→successful sameUUIDB→lateA cleanup controls with and without responders and deliver corrected candidate69343. Owner cache/loading evaluation is pending; preserve genuine abort/read policies.
+- Verification: Both overlap controls preserve B after correctivec5102a03b0. Combined26cases/153checks passASan/UBSan, versus six expected failures in the rejected completion baseline13/63. Source/lock-order peer review and candidate69343 build pass. No viewer using the rejected patch was launched; this is not general cache-generation safety.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10996,17 +11029,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 c5102a03b0/330fcff4ce corrects cleanup ownership without adding state or a generation framework. Both responder and null-responder failedA→successfulB→lateAend paths now preserveB; normal write/read/abort/callback ownership controls pass. Rejected initial completion13cases/63checks has6expected failures; corrected combined26/153 haszero. Actual queue-lock→header/ID/file cleanup and corruption fallback have no inspected reverse header→queue/worker wait. Independent review verifies source/bodies and retained evidence. Read cleanup remains original; this is not a general cache-generation safety claim. No viewer using the rejected patch was launched.
 
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): Initial local337c9647c8/agent3ad35e passes22ordinary cases but fails one additional overlap case. No candidate with that patch has been launched. The prior one-active-fetch-map assumption did not cover scheduled-deletion workers and is withdrawn.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.
 
 ## PPD-479 — Included renderer test fragments lack per-file CTest ownership
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Codex final regression integration
 - Discovered: 2026-11-19
 - Original reference: ALAddTestBinary registers source-file stems and expects stray_cases to run no remaining ordinary cases. Included .inl cases receive their fragment filename tag, not their including translation unit's tag. This is test registration, not a renderer output defect.
 - Evidence: [69331 investigation/final candidate qualification](research/warning-input-runtime-69331-20261119.md); private final-candidate-ctest.log has12/13pass, stray_cases executes69cases/443396assertions successfully but correctly fails expected-exit2 versus actual0.
-- Next action: Explicitly register included fragment files containing ordinary cases as header-only SOURCES, preserving their Catch file tags and the stray guard. Keep hidden-only cost cases manual; verify per-fragment entries and an empty stray filter.
-- Verification: All69unowned cases pass in this run; their missing registration means ordinary per-file CTest execution did not own them. Do not suppress the guard, change its expected exit or relabel the failed aggregate as passing. No code/visual regression is inferred.
+- Next action: Retain the18explicit fragment registrations, hidden-case filters and empty stray guard. Owner runtime evaluation uses candidate69343; future included ordinary test fragments must receive per-file ownership.
+- Verification: Exact Catch listing accounts for69ordinary strays in18fragments. All18fragment entries plus empty stray pass19/19; final combined candidate checks pass31/31. Original69342aggregate12/13 and successful69case/443396assertion body run remain retained. No runtime renderer output change or visual fix follows from this harness repair.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -11015,3 +11051,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before repair during final candidate checks. The staged69342app has not been launched; its verification receipt remains pending/superseded until the harness correction is integrated and retested. Existing native query/texture tests and the other12selected CTests passed separately.
 
 - 2026-11-19 exact Catch listing maps69ordinary strays to18included fragments;26total fragments contain95cases. Register those18as HEADER_FILE_ONLY SOURCES, preserving existing per-file tags/~[.] filters and leaving8hidden-only cost fragments manual. No runtime source or test body changes. Actual normal per-fragment execution and empty stray guard pass19/19; original12/13failed aggregate and successful443396/69assertions are retained. The staged69342app is superseded before any owner launch; final identity refresh includes this CMake correction.
+
+- 2026-11-19 pre-final qualification retained for history (superseded by the final result below): All69unowned cases pass in this run; their missing registration means ordinary per-file CTest execution did not own them. Do not suppress the guard, change its expected exit or relabel the failed aggregate as passing. No code/visual regression is inferred.
+
+- 2026-11-19 final local qualification: source8f1ef9bd8a / indra2971b311a6, version26.4.0.69343, executable SHAa29c0eb8c44a. Full build0; final targeted CTest31/31;346ARM64slice check0; separate deep strict signature0; strict source3626files/0blockers/0errors. Status ready_for_owner, owner verification pending and push not_granted. [Final artifact, commands and limits](research/warning-input-runtime-69331-20261119.md#final-candidate-69343). No new viewer launch or visual acceptance.

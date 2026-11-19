@@ -1,6 +1,6 @@
 # Warning-input runtime investigation — build69331
 
-The owner reproduced broken floor sections after teleport (PPD470) and42missing bake masks (PPD471). Rigging fallback did not recur in this bounded run. Investigation and local repairs continue; this is not a port-correctness or performance acceptance.
+The owner reproduced broken object-floor sections after teleport (PPD470) and42missing bake masks (PPD471). Rigging fallback did not recur in this bounded run. Local candidate69343 is built and ready for owner testing; floor recovery, the numerical rigging cause and server asset denials remain unverified. This is not a port-correctness or performance acceptance.
 
 ## Exact run
 
@@ -30,7 +30,7 @@ PPD474: Three inherited preferences XML bindings have no declared settings or co
 
 ## Current work and acceptance
 
-Root owns `pipeline.cpp`, defect register and ledgers. Separate PPD471 agent owns texture/fetch changes in a persistent worktree. Independent source reviews cover tree binding and floor source/transform lifetime. Complete warning-site explanation reconciliation continues from the [69277 audit](log-warning-port-audit-20261118.md) plus newly observed sites. Repairs remain local, unaccepted by owner and unpushed; full builds and actual tests cannot close visual defects by themselves.
+Root owns integration, `pipeline.cpp`, the defect register and ledgers. Independent agent changes and source reviews are integrated; no source ownership remains pending. All warning sites are reconciled with the [69277 audit](log-warning-port-audit-20261118.md) and the complete source map below. The [final candidate](#final-candidate-69343) remains local, unaccepted by the owner and unpushed; full builds and actual tests cannot close visual defects by themselves. Earlier checkpoints below retain their original pending/failed qualifications in chronological order.
 
 
 ## Complete final-run warning source map
@@ -146,3 +146,41 @@ PPD474 history confirms the three orphan controls once had real archived consume
 Final69342build,346ARM64slice check, strictsource3626files/0blockers/0errors and deep strict signature pass. The targeted CTest aggregate initially reports12/13: the stray guard runs69existing included cases successfully (443396assertions) but correctly fails because no normal per-file entry owns them. Catch's fragment filename tags differ from the including .cpp filename. An exact listing maps those69ordinary cases to18fragments; add them as HEADER_FILE_ONLY SOURCES rather than disabling the guard or duplicating compilation. All18per-fragment entries plus the now-empty stray guard pass19/19. Eight hidden-only cost fragments and10hidden cases within mixed fragments stay manual.
 
 The69342bundle/sourceceed0ef5fb and its failed-aggregate receipt are preserved, never launched. A metadata-only application refresh follows this CMake correction; runtime renderer/cache/texture code is unchanged. The final artifact identity and qualification receipt are saved privately under candidates/. This is a test coverage repair, not evidence of a new visual defect.
+
+
+## Final candidate 69343
+
+**Ready for owner evaluation, not yet launched.** This candidate advances teleport/loading correctness, bake-mask fulfillment, skin default/empty contracts and cache persistence. It does not establish that the photographed club floor recovered, explain the original nonfinite rigging input or prove whole-viewer parity/performance.
+
+- Source commit: `8f1ef9bd8aafa4efff409b2ed3fe28b5eb1f7e50`.
+- Source `indra` tree: `2971b311a67318a9d68b8e70dbb990e07ac64403`.
+- Branch/worktree: `codex/log-warning-port-audit-20261118`, `/Users/dekstroza/Programming/AI/Secondlife/Alchemy-warning-audit-20261118`.
+- Version: `26.4.0.69343`; stable app: `/Users/dekstroza/Alchemy-warning-inputs-wh3ienda/candidates/Alchemy Metal Functional Fixes 69343.app`.
+- Executable: `Contents/MacOS/Alchemy Metal Warning Inputs`, SHA256 `a29c0eb8c44acbb6f35efbbd5b7554421930490c09c210e4605a6f95662524a9`; full source SHA embedded and checked.
+- Private qualification receipt: `candidates/functional-fixes-69343.json` under the run root above. The stable APFS clone is separate from mutable build output.
+- Pixel decoder: mandatory OpenHTJ2K0.27.0. OpenJPEG is header/encoding support only. Existing `/Users/dekstroza/Library/Caches/AlchemyNext/` was retained; investigation and synthetic tests did not alter active cache files.
+
+All commands below exited0 on the M1 Max/64GiB/macOS26.5.2/Xcode26.6 host. Paths are relative to the worktree; evidence logs are relative to the private run root's `analysis/` directory. Component checks were performed through the integrated repair series; the final build/31CTest/bundle/source checks qualify the exact69343 candidate. They are not a new connected viewer session.
+
+| Check | Command or selected target | Observed evidence |
+| --- | --- | --- |
+| Host | `tools/metal/doctor.sh` | exit0; host and toolchain as above |
+| Final Release build | `AL_METAL_BUILD_DIR=build-Darwin-warning-audit AL_METAL_CONFIG=Release tools/metal/build.sh build` | `qualified-candidate-build.log`; exit0 |
+| Final targeted CTest | Command below | `69343-ctest.log`;31/31pass,12.64seconds |
+| Bundle architecture | `tools/metal/verify_app.sh <stable69343app>` | `69343-verify-app.log`;346Mach-O files,0invalid non-arm64 |
+| Bundle signature | `codesign --verify --deep --strict --verbose=2 <stable69343app>` | `69343-codesign.log`; valid on disk and satisfies designated requirement |
+| Strict source gate | `python3 tools/metal/audit_gl.py --mode strict --json --output <69343-strict.json>` |3626files/0blockers/0errors/916informational; static proof only |
+| Native query/texture providers | `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 build-Darwin-warning-audit/llrender/Release/llrender_tests '[#alquerypool_metal_lifecycle_test],[#alquerypool_metal_diagnostics_test],[#alnative_texture_publication_test]' --reporter compact` | `fixes-native-query-texture-tests.log`;9cases/1369assertions; API/GPU validation enabled |
+| Actual OpenHT codec | `build-Darwin-warning-audit/llimage/Release/llimage_tests '[alopenhtj2k]' --reporter compact` | `fixes-openht-only-tests.log`;3cases/56assertions |
+| Actual CPU primitive/skin target | `build-Darwin-warning-audit/llprimitive/Release/llprimitive_tests --reporter compact` | `skin313-root-built-tests.log`;99cases/1489assertions; valid skin hash unchanged |
+| Tools | Prepared `tool-venv/bin/python -m unittest discover -s tools/metal/tests -v` | `fixes-tools-tests-venv.log`;183tests,1optional skip; initial missing-PyYAML failure retained |
+
+```sh
+ctest --test-dir build-Darwin-warning-audit -C Release -R '(llrender_tests/(alpipeline_.*_native|alpipeline_tree_capture_test|stray_cases)$|newview/(texture_cache_write_contract|texture_fetch_results_contract|vocache_admission_contract|texture_aux_recovery|avatar_palette_contract|warning_diagnostics_|warning_asset_inputs|texture_upload_recovery_))' --output-on-failure
+```
+
+Actual production-body regression suites retain the failed baseline/mutation controls: tree6cases/288assertions; callback30cases/67checks; whole fetch consumer22cases/244checks; avatar packing32checks; cache admission5920checks; cache writer/completion26cases/153checks with real LLFile/LLPointer. Standalone memory-sensitive fixtures run under ASan/UBSan. Counts overlap component and CTest executions and must not be summed into a claimed unique whole-viewer test total. The superseded unsafe PPD477 cleanup and the69342 stray-registration failure remain documented; neither candidate was launched.
+
+The mandatory register keeps PPD313/340/471/472/473/475/476/477/478/479 at `ready_for_owner`, with owner verification pending and push approval not_granted. PPD470 remains investigating: the high-altitude floor is object geometry, and the offline ordinary box prim is a candidate rather than an identified broken-frame draw. PPD311 numerical rigging cause, PPD466 appearance incident attribution, ordinary texture/material server failures and PPD474 historical preference restoration remain open. The zero-rigging result is bounded nonreproduction. No blanket retry, cache wipe, new GPU profile, FPS result or push is implied.
+
+**Next executable action:** use only this stable69343 app for the owner-controlled club teleport/appearance retest, verifying its executable/source/decoder and actual location first. On a recurring floor failure, correlate the new capture predicate/view with object/camera/group state; on rigging fallback retain the exact skin/product records and saved input if emitted. Do not start a new viewer or repeat builds merely to qualify the following documentation-only handoff commit. The private receipt records that commit separately and checks its `indra` tree remains identical to the built source.
