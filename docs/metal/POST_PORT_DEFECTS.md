@@ -11937,7 +11937,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-512 — Translated outgoing IM echo omits the sender's original wording
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reported
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -11945,7 +11945,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
 - Next action: Confirm local original plus bracketed translation in a logged-in chat, while recipient receives only the target text.
 - Verification: Owner initially confirms Japanese sending works on69398 but requests the original. New69401 owner screenshots show original English followed by bracketed French for two outgoing rows; local display portion is observed. Recipient-only transport remains covered by actual-body sanitizer tests, not independent recipient capture.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -11955,6 +11955,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19: Local323a21242e/69401 Release build, app/signature/strict gates and10focusedCTest processes pass. Native342, policy716 and actual-send135 sanitizer checks pass as applicable; exact app launched at owner request PID19174. Owner logged-in follow-up acceptance and push approval remain pending.
 
 - 2026-11-19: Owner69401 screenshots confirm local original-plus-French echo. New request concerns settings clutter (PPD-516); no push authorization inferred.
+
+- 2026-11-19: Owner accepts69404 ("this is fine") and authorizes committing/merging all translation work into codex/apple-silicon-metal. Earlier owner screenshots establish original-plus-French local echo; candidate build/tests and popup source review retained. Mark this bounded display/usability repair verified and owner passed. Other stress-case records retain their individual evidence limits; push remains not_granted.
 
 ## PPD-513 — Translated initialization queue survives chat close and conference reuse
 
@@ -12015,7 +12017,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-516 — Persistent translation controls crowd the IM conversation
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reported
 - Owner: Codex native IM translation experiment
 - Discovered: 2026-11-19
@@ -12023,7 +12025,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Evidence: [Native IM experiment](work/active/native-im-translation-experiment.md).
 - Next action: Put per-chat settings behind a top-toolbar button with a dismissible popup; restore normal chat height and preserve selected translation settings while the popup is closed.
 - Verification: Owner69401 screenshots show bilingual outgoing French working and the permanent three-row settings panel consuming the message area. Source review also finds upstream single-line collapse hides only body and toolbar, leaving the native settings sibling behind.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -12033,6 +12035,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 (PPD-516): Popup repair implemented with existing ALPopover. Persistent per-chat controls return to a hidden root panel before popup destruction; async translation does not depend on popup visibility. Adaptive142/177-pixel toolbar layouts retain all existing actions at the original minimum. First syntax attempt failed because LLUICtrlFactory::create requires an lvalue params block; corrected exact Release syntax check exits0. Full updated build and visual owner acceptance pending.
 
 - 2026-11-19: Local7d607c955a/69404 Release build exits0 (49actions); popup/placement plus native/chat12CTest processes pass;346ARM64/signature/strict zero pass. Exact app launched PID34771 with manual login at owner request. Source review covers ownership/focus/geometry; live popup appearance and narrow/torn-off interaction remain owner-pending. No push.
+
+- 2026-11-19: Owner accepts69404 ("this is fine") and authorizes committing/merging all translation work into codex/apple-silicon-metal. Earlier owner screenshots establish original-plus-French local echo; candidate build/tests and popup source review retained. Mark this bounded display/usability repair verified and owner passed. Other stress-case records retain their individual evidence limits; push remains not_granted.
 
 ## PPD-517 — A delayed translation failure can open settings over another chat
 

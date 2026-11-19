@@ -339,3 +339,30 @@ single-line collapse are restored. Compare narrow hosted and torn-off widths;
 failed send in an inactive chat must retain its draft without taking focus.
 PPD-516–518 stay ready_for_owner and local. Overall renderer/performance gates
 remain unchanged; no push or product-complete claim.
+
+
+## Owner acceptance and local integration —2026-11-19
+
+Owner accepts69404: "this is fine, commit all work and merge it into branch this
+work started off". This explicitly authorizes local integration into
+`codex/apple-silicon-metal`; it does not request a push. PPD-512 local bilingual
+echo and516 popup usability are verified/owner passed. Other individual race,
+incoming and model stress conditions retain the narrower evidence already recorded.
+
+All implementation was already committed through934a03e816. This acceptance
+record is committed before integration. Starting base remains exact9e4654d84a.
+Fetched target07b689d17f is one documentation-only commit beyond that base,
+confirming owner water acceptance (PPD-013/497); preserve those records and its
+research note. Canonical docs overlap and are reconciled without changing code.
+Local target checkout was stale18e576cec0, clean in tracked files; advance it
+fast-forward to fetched target before merging the experiment with a merge commit.
+Five unrelated untracked research notes and the nested experiment worktree stay
+untouched. No generated bundles, private receipts or test artifacts are committed.
+
+Integration acceptance: merged indra tree equals tested69404 tree
+`6cfca54e0398bb26d97ac33c39941a3ead123512`; source whitespace/docs harness pass;
+all experiment commits and current target are ancestors. Existing12focused checks
+and full candidate qualification apply to identical application source. Do not
+rebuild/restart or send IMs during this Git-only task. Experiment branch and exact
+running candidate are preserved. Remote publication requires a later explicit
+push request. Overall renderer/performance release gates remain unchanged.
