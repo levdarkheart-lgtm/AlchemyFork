@@ -41,6 +41,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <future>
@@ -1063,5 +1064,60 @@ namespace
             delete mThread; mThread = nullptr;
         }
         CHECK(diagnostics.copy().size() == 3);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: retained ready bytes permit a bounded six-worker burst with ample headroom",
+        "[LLImageDecodeThread][PPD-486][decode-ahead-burst]")
+    {
+        ALNativeFrameBudget budget;
+        ALNativeFrameBudget::FrameInputs input;
+        input.frame = 1;
+        input.os_available_bytes = input.process_headroom_bytes = 8ULL * 1024 * 1024 * 1024;
+        budget.beginFrame(input);
+        // Retain real controlled pixel buffers throughout the experiment.
+        // Their logical primary bytes are the downstream input; the viewer's
+        // publication queue/codec/GPU owners are outside this worker fixture.
+        const std::vector<std::array<U8, 512>> retained_ready(128);
+        ALNativeFrameBudget::StreamingBacklog ready;
+        ready.queued_requests = retained_ready.size();
+        for (const auto& pixels : retained_ready) ready.queued_input_bytes += pixels.size();
+        REQUIRE(ready.queued_requests >= ALNativeFrameBudget::Limits{}.uploads_in_flight);
+        REQUIRE(ready.queued_input_bytes == 64 * 1024);
+        budget.updateStreaming(ready);
+        CHECK_FALSE(budget.snapshot().memory_pressure);
+
+        auto& estimates = ALNativeFrameBudget::instance();
+        REQUIRE(estimates.snapshot().decode_estimates_in_flight == 0);
+        mThread = new LLImageDecodeThread(true, limits(4, 6), false);
+        mThread->updateFrameAdmission(budget);
+        const auto admitted_limit = mThread->getDecodeStats().current;
+        REQUIRE(admitted_limit >= 2); REQUIRE(admitted_limit <= 6);
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        std::set<U32> ids;
+        for (unsigned i = 0; i < 6; ++i)
+        {
+            const auto id = mThread->decodeImage(new costed_image(gate), 2, false,
+                                                new counting_responder(completed));
+            REQUIRE(id != 0); REQUIRE(ids.insert(id).second);
+        }
+        // The exact original ceiling control reaches two; do not wait for
+        // six under that control and turn a policy failure into a timeout.
+        REQUIRE(gate->waitFor(admitted_limit));
+        const auto running = mThread->getDecodeStats();
+        CHECK(admitted_limit == 6);
+        CHECK(running.active == 6);
+        CHECK(running.waiting == 0);
+        CHECK(estimates.snapshot().decode_estimates_in_flight == 6);
+        CHECK(estimates.snapshot().decode_estimated_bytes_in_flight == 6 * 128 * 64 * 4 * 5);
+        CHECK(completed->copy().empty());
+        gate->release(); mThread->shutdown();
+        CHECK(mThread->getPending() == 0);
+        CHECK(mThread->getDecodeStats().completed == 6);
+        CHECK(estimates.snapshot().decode_estimates_in_flight == 0);
+        CHECK(estimates.snapshot().decode_estimated_bytes_in_flight == 0);
+        check_failed_once(completed, ids); // Pixels/codec are controlled boundaries.
     }
 }
