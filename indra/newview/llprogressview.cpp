@@ -430,8 +430,6 @@ void LLProgressView::initStartTexture(S32 location_id, bool is_in_production)
         }
     }
 
-    LLPointer<LLImageFormatted> start_image_frmted = LLImageFormatted::createFromType(image_codec);
-
     // Turn off start screen to get around the occasional readback
     // driver bug
     if (!gSavedSettings.getBOOL("UseStartScreen"))
@@ -439,13 +437,15 @@ void LLProgressView::initStartTexture(S32 location_id, bool is_in_production)
         LL_INFOS("AppInit") << "Bitmap load disabled" << LL_ENDL;
         return;
     }
-    else if (!start_image_frmted->load(temp_str))
+    const auto load_start_image = [](const std::string& filename, U8 codec)
     {
-        LL_WARNS("AppInit") << "Bitmap load failed" << LL_ENDL;
-        gStartTexture = NULL;
-    }
-    else
-    {
+        LLPointer<LLImageFormatted> start_image_frmted = LLImageFormatted::createFromType(codec);
+        if (!start_image_frmted->load(filename))
+        {
+            LL_WARNS("AppInit") << "Bitmap load failed" << LL_ENDL;
+            return false;
+        }
+
         gStartImageWidth = start_image_frmted->getWidth();
         gStartImageHeight = start_image_frmted->getHeight();
 
@@ -453,7 +453,7 @@ void LLProgressView::initStartTexture(S32 location_id, bool is_in_production)
         if (!start_image_frmted->decode(raw, 0.0f))
         {
             LL_WARNS("AppInit") << "Bitmap decode failed" << LL_ENDL;
-            gStartTexture = NULL;
+            return false;
         }
         else
         {
@@ -461,6 +461,15 @@ void LLProgressView::initStartTexture(S32 location_id, bool is_in_production)
             raw->expandToPowerOfTwo();
             gStartTexture = LLViewerTextureManager::getLocalTexture(raw.get(), false);
         }
+        // File selection succeeded; native publication keeps its existing owner.
+        return true;
+    };
+
+    if (!load_start_image(temp_str, image_codec) && (S32)START_LOCATION_ID_LAST != location_id)
+    {
+        LL_INFOS("AppInit") << "Loading last-location startup bitmap after Home image failure" << LL_ENDL;
+        load_start_image(gDirUtilp->getLindenUserDir() + gDirUtilp->getDirDelimiter() +
+            LLStartUp::getScreenLastFilename(), IMG_CODEC_PNG);
     }
 
     if (gStartTexture.isNull())
