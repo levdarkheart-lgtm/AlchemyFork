@@ -2079,6 +2079,21 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
         if (mNeedsAux && mAuxRawImage.notNull() && mRawImage->getDataSize() > 0 &&
             fetch_discard >= 0 && current_discard >= 0 && fetch_discard >= current_discard)
         {
+            // Callback-only data obeys the same full-size limit as a new upload.
+            // Keep the published image's dimensions while checking this result.
+            const S32 full_width = mRawImage->getWidth() << fetch_discard;
+            const S32 full_height = mRawImage->getHeight() << fetch_discard;
+            if (full_width > MAX_IMAGE_SIZE || full_height > MAX_IMAGE_SIZE)
+            {
+                mIsRawImageValid = false;
+                destroyRawImage();
+                LL_WARNS() << "oversize, setting as missing" << LL_ENDL;
+                setIsMissingAsset();
+                mRawDiscardLevel = INVALID_DISCARD_LEVEL;
+                mIsFetching = false;
+                mLastPacketTimer.reset();
+                return false;
+            }
             mIsRawImageValid = true;
             return true;
         }
