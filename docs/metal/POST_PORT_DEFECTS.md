@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-560 -->
+<!-- next-defect-id: PPD-566 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12405,6 +12405,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner confirmation/publication approval: after starting the exact staged69445 build, owner states "looks good ...verified" and "you can commit and push". Mark this implemented maintenance repair verified, Owner verification passed and Push approval granted; preserve prior discovery, failures and component evidence. Broader residual work and PPD556 stay open. [Exact scope and retained limits](research/maintenance-candidate-69445-20261121.md#owner-acceptance-and-publication-approval).
 
+- 2026-11-21 owner asks whether the original geometry allowance finding is fixed. Clarification: verified status covers only the truthful priority-geometry interface repair accepted in69445. Required traversal remains owner-serial, object creation has its own allowance, and required/deferrable geometry decomposition plus combined scheduling remain unimplemented. No end-to-end geometry deadline or frame-spike fix is claimed. Preserve this broader work in the active ledger rather than treating the rename as its completion.
+
 
 ## PPD-531 — Queued retries can sleep the serial worker ahead of ready work
 
@@ -12576,6 +12578,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
 
 - 2026-11-21 owner confirmation/publication approval: after starting the exact staged69445 build, owner states "looks good ...verified" and "you can commit and push". Mark this implemented maintenance repair verified, Owner verification passed and Push approval granted; preserve prior discovery, failures and component evidence. Broader residual work and PPD556 stay open. [Exact scope and retained limits](research/maintenance-candidate-69445-20261121.md#owner-acceptance-and-publication-approval).
+
+- 2026-11-21 owner asks whether differing earlier-admission/pacing accounting is fixed. It is not: verified537 covers only the live regular MainWorkTime setting. Earlier-wait/queue-age correlation and any safe slack-service redesign remain unimplemented/unmeasured in the active ledger. No callback service was inserted into an active render transaction and no practical lost-slack cost is claimed.
 
 
 ## PPD-538 — Foreground file backlog throttle sleeps on undifferentiated queue entries
@@ -13028,14 +13032,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-556 — Generic scheduled request admission can block at queue capacity
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Queued worker scheduling
 - Discovered: 2026-11-21
 - Original reference: Bounded service admission must not block its own consumer while retrying accepted work. Current generic LLQueuedThread request/retry and housekeeping paths still call WorkSchedule::post with blocking pushIfOpen; newer cache handoffs use nonblocking tryPost.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent asset review traces llqueuedthread postRequest/updateQueue to WorkSchedule and ThreadSafeQueue capacity1,048,576. A self-post can wait for capacity only this consumer can free.
-- Next action: Prove saturation behavior with a bounded deterministic fixture, then establish nonblocking foreground admission and progress-preserving retry/wake handling without dropping accepted work or creating an unbounded overflow. No current saturation is established.
-- Verification: Conditional source-level capacity hazard. Existing ordinary retry/generation/shutdown tests do not exercise a completely full schedule; no current executable stall or FPS attribution.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13048,6 +13052,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 final candidate69445: normal55CPU/56native checks pass, but none proves full-capacity accepted-request progress. Keep investigating; housekeeping admission alone is repaired. The request-owned scheduling/nonfatal caller admission design and tiny-capacity acceptance tests remain next executable work in the ledger. No current owner saturation is established.
 
 - 2026-11-21 owner accepts Maintenance69445 and authorizes committing/pushing that candidate, including the already qualified nonblocking housekeeping change. This does not establish or accept a full-capacity request/retry repair. Keep Status investigating and Owner verification pending for the unresolved contract; future repair publication remains unapproved. See [candidate acceptance](research/maintenance-candidate-69445-20261121.md#owner-acceptance-and-publication-approval).
+
+- 2026-11-21 owner activates the proper bounded repair after accepting/publishing69445. Caller audit at629984ee37 confirms separate request-owned scheduling, independently notified bounded callbacks, capacity charged until request reaping, nonfatal WorkerClass/cache/LFS/audio admission and exact responder/shutdown semantics are required. Upstream408fd6c has the same capacity dependency and is not a bounded fix. Callback notifications must not acquire another worker's request-data lock from cache completion. New work stays local pending owner test/approval; prior publication approval covers69445 only. [Implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 implementation checkpoint: Local a27fb1a57e replaces request/retry/wake tickets with one reusable node per registered request and separate bounded nonblocking service admission/native notification; callers roll back busy/closed outcomes without fabricated completion. Actual629984 tiny-capacity baseline fails2expected cases/12assertions; modified actual core passes793assertions/18cases under ASan/UBSan. Final read-only reviews find no blocker. Full application qualification and new owner acceptance remain pending; no current owner saturation/FPS claim. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
 
 ## PPD-557 — Retained CPU routing fixtures do not establish bounds capability
@@ -13120,3 +13130,137 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
 
 - 2026-11-21 owner confirmation/publication approval: after starting the exact staged69445 build, owner states "looks good ...verified" and "you can commit and push". Mark this implemented maintenance repair verified, Owner verification passed and Push approval granted; preserve prior discovery, failures and component evidence. Broader residual work and PPD556 stay open. [Exact scope and retained limits](research/maintenance-candidate-69445-20261121.md#owner-acceptance-and-publication-approval).
+
+
+## PPD-560 — Unconsumed deferred and terrain-detail settings survive native preferences
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Native preferences maintenance
+- Discovered: 2026-11-21
+- Original reference: Upstream408fd6c pipeline already fixes deferred rendering true; RenderTerrainDetail has no corresponding reader. Native pipeline owns deferred rendering directly. These two saved/debug settings and feature masks have no current production key consumer.
+- Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); independent629984ee37 census of66current graphics/scene bindings and all quoted-key readers/writers, pipeline.cpp18851 and upstreampipeline1456.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before implementation. Legacy names alone are not removal evidence: media/mesh, native shader cache and atmospheric RLVa references remain live.
+
+- 2026-11-21 implementation checkpoint: Local960bd3644a removes both orphan definitions, masks/comments and adds exact profile-retirement names. All66live ordinary bindings and native quality/preset behavior remain. Final actual-method preferences344checks and packaging pass; source review confirms no unsupported feature removal. Final app/owner checks pending. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+
+## PPD-561 — Native pacing settings retain obsolete OpenGL descriptions
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Native preferences maintenance
+- Discovered: 2026-11-21
+- Original reference: Upstream408fd6c settings_alchemy2295/2350 describe NVIDIA threaded OpenGL and a fixed1ms reply drain. Current ALFrameFences uses Metal serial waits and MainWorkTime is live.
+- Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); AlchemyRenderMaxFramesAhead/PacingSlackWork comments, native endFrame waits, half-minimum-eight pacing samples and live regular reply setting.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before help-text correction. Preserve active controls and document current native policy without repeating unmeasured historic FPS claims.
+
+- 2026-11-21 implementation checkpoint: Local960bd3644a corrects both native pacing descriptions to actual serial-wait/slack behavior and live regular work budget, preserving values/defaults/policy. Source review and preferences checks pass; owner acceptance pending. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+
+## PPD-562 — Asynchronous texture-priority admission reports success when rejected
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Texture service admission maintenance
+- Discovered: 2026-11-21
+- Original reference: Current updateRequestPriority ignores tryPost rejection and always returns true. A queued UUID-only lookup can also reach a replacement worker after request turnover; priority belongs to the exact requested worker lifecycle.
+- Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); lltexturefetch.cpp3257 callback/return, existing worker generation and bounded service queue.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction. Existing ordinary fetch-demand maintenance remains a progress fallback; the explicit service contract must still report truthfully and never apply an old request to a replacement.
+
+- 2026-11-21 implementation checkpoint: Local a27fb1a57e reports actual tryPost admission and retains exact pointer+immutable generation through a lifecycle pin claimed under the request-map lock. Denial, closure and consumption release pins; deletion waits without map/work lock inversion. Actual caller admission/scheduling tests and final source review pass. Full application/owner checks pending. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+
+## PPD-563 — Obsolete automatic GPU classification retains unreachable OpenGL benchmark controls
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Native feature classification maintenance
+- Discovered: 2026-11-21
+- Original reference: Upstream408fd6c loadGPUClass594–803 owns automatic GL bandwidth classification and Radeon workarounds. Current native loadGPUClass returns class3/Metal renderer/unknown bandwidth before the obsolete path.
+- Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md);629984ee37 llfeaturemanager.cpp379–817 and five exact unused settings GPUBenchmarkResult/SkipBenchmark/RenderClass1MemoryBandwidth/RenderCPUBasis/ALMesaRDNA35SettingsRestored.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before removal after scoped preference audit. Native capabilities are initialized before feature classification; no GL fallback or arbitrary benchmark-driven quality policy is introduced.
+
+- 2026-11-21 root preflight syntax01 exits1 for all three application TUs because an ad-hoc argument filter leaves a Clang PCH include as a main input (pragma-system-header-outside-header), before useful source qualification. Preserve viewer-syntax-01.json/stderr and correct the filter to strip both -Xclang include forms; normal CMake flags remain authoritative and unchanged. The retired benchmark option also leaves an unmapped-options whitelist entry; remove it with its command declaration.
+
+- 2026-11-21 implementation checkpoint: Local960bd3644a retires automatic legacy classifier helpers, child startup/command consumers and five orphan settings; native class3/actual renderer/unknown bandwidth remain. Quality/default/preset/manual native benchmark source is byte-identical to accepted base. Corrected viewer syntax02 passes4actual Release TUs; final preferences344checks and packaging pass. Final normal app/owner qualification pending. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+
+## PPD-564 — Full-admission worker fixture constructs an invalid zero-capacity queue
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Bounded worker test integration
+- Discovered: 2026-11-21
+- Original reference: The native worker test must fill a valid positive-capacity queue to exercise transient busy admission. The core explicitly rejects invalid zero capacities.
+- Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); core-tests-01.log passes5/6scopes and fails the new worker fixture on ASSERT(request_capacity && callback_capacity), with27/28assertions otherwise passing.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before fixture correction. Preserve positive-capacity validation and the failed test log rather than weakening production configuration to satisfy a test.
+
+- 2026-11-21 implementation checkpoint: Local a27fb1a57e corrects the fixture to positive capacity1 plus an accepted retained blocker, then tests busy ownership/rollback, reaping/deletion and closed rejection. Actual integrated core-tests02 passes9/9scopes,0skip; real scheduler+worker sanitizer run passes793assertions/18cases. Original failure retained; production capacity validation unchanged. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+
+## PPD-565 — Human-readable support report omits its native backend field
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Native diagnostics presentation maintenance
+- Discovered: 2026-11-21
+- Original reference: Upstream408fd6c llappviewer3903/4085 reports the actual GL version. Native getViewerInfo already exposes RENDERER_BACKEND=Metal but the human-readable formatter still emits AboutOGL and not the native backend.
+- Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); current llappviewer4049/4239 and AboutOGL localized strings. The structured OPENGL_VERSION field truthfully says not present and may remain for API compatibility.
+- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before presentation cleanup. Preserve the existing LLSD API schema and actual manual native benchmark; do not rename live graphics features merely for legacy vocabulary.
+
+- 2026-11-21 implementation checkpoint: Local960bd3644a reports AboutRenderer using RENDERER_BACKEND=Metal and removes unused AboutOGL resources across11locales. English base fallback is retained without fabricated translations. Structured OPENGL_VERSION=not present, native GPU identity, privacy/location filtering and other report data remain. Corrected Release syntax and final source review pass; owner UI verification pending. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
+
+- 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).

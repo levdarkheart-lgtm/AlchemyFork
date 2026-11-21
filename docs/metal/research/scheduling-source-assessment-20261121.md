@@ -8,6 +8,13 @@ viewer process, decoder, build or live collection was changed.
 This is the retained initial audit. The owner subsequently authorized implementation;
 current repairs, candidate evidence and explicit residuals are maintained in the
 [production convergence ledger](../work/active/production-convergence-20261121.md).
+In particular, finding 5 is resolved as PPD-538 in owner-accepted Maintenance 69445:
+the queue-count-based foreground sleep is removed and empty housekeeping coalesced.
+Its historical activation rate remains unknown. The later
+[PPD-556 repair](../work/active/ppd556-bounded-scheduling-20261121.md) adds bounded,
+nonblocking LFS producer admission and safe busy-write retries. The original
+mechanisms and recommendations below describe the inspected baseline, not an
+assertion that every item remains present in current source.
 
 ## Source identity and evidence limits
 
@@ -40,12 +47,12 @@ they are fixed.
 | --- | --- | --- |
 | 1. Cache-write priority | Actual disconnected contract; PPD-528. Fetch asks for priority, but the copied request list is unused. | Design real admission priority/fairness or immutable write payload ownership. The current queue has no priority API; this is not a one-line promotion. |
 | 2. General pool | Shipped width is one; three is only the constructor fallback. Invalid signed overrides are unchecked; PPD-529. | Validate overrides and expose effective width/origin first. Measure queue age by category before widening or separating jobs. |
-| 3. Asset handoffs | Fast-cache gating, main-frame cache responders and polling-based decode collection are present. | Measure completion-to-consumption and lock/read delays; use bounded ready-result delivery and worker-owned I/O with generation-safe publication where justified. |
-| 4. Geometry allowance | `updateGeom()` does not use the supplied time; creation/partition/rebuild/update work has no end-to-end deadline. PPD-530 retains the interface mismatch. | Attribute required and deferrable work before changing deadlines. Extract immutable computation; preserve owner-side lifecycle/publication. |
-| 5. LFS foreground sleep | The conditional 10–100 ms sleep is real. Its operand is queue entries, including housekeeping, rather than measured disk demand. | Count activations and elapsed sleep. Coalesce empty housekeeping; replace demonstrated foreground stalls with bounded producer backpressure. No current activation is proved. |
+| 3. Asset handoffs | Baseline fast-cache gating, main-frame responders and polling-based decode collection are confirmed. | **Implemented PPD-532/533, accepted 69445:** bounded async fast-cache I/O, direct pinned cache→fetch service and bounded decoded-ready delivery. Main-list fallback under denied service admission, frame-triggered HTTP and end-to-end latency measurement remain; publication stays on its owner. |
+| 4. Geometry allowance | Baseline `updateGeom()` ignores the supplied time; geometry work has no end-to-end deadline. | **Partially addressed PPD-530, accepted 69445:** misleading argument removed and required traversal explicitly named `updatePriorityGeometry()`. Required/deferrable decomposition and combined scheduling remain unimplemented. Preserve owner lifecycle/publication while extracting immutable preparation. |
+| 5. LFS foreground sleep | Baseline conditional 10–100 ms sleep is confirmed; its operand counts queue entries, including housekeeping. | **Resolved PPD-538, accepted 69445:** foreground sleep removed and empty housekeeping coalesced. Original activation rate remains unknown. PPD-556 adds bounded, nonblocking producer admission and busy-write retry. |
 | 6. Render concurrency | Existing preparation/overlap covers restricted paths; substantial scene mutation/culling/sorting/encoding retains one owner. | Select coarse immutable work using exclusive costs and requested/eligible/admitted/launched counters. Preserve failed small-job experiments and positive bounded overlap evidence. |
 | 7. Fixed budgets | Values match source and can make admission rate depend on application FPS. They also bound memory and ownership. | Evaluate denials, oldest age and service capacity. Preserve hard bounds, fairness and oversized-item progress; do not raise all limits together. |
-| 8. Main replies/pacing | Regular drain latches 1 ms; extra end-of-frame work exists. Earlier admission waits feed different accounting. | Correlate main-queue age with both wait sites. Service replies only at safe ownership boundaries; arbitrary callbacks inside rendering can reenter mutable scene state. |
+| 8. Main replies/pacing | Baseline regular drain latches 1 ms; extra pacing work and separate earlier-wait accounting are confirmed. | **Partially addressed PPD-537, accepted 69445:** regular setting is live. Earlier-wait/slack accounting and queue-age correlation remain unchanged/unmeasured; broader issue is open. Add service only outside active render transactions. |
 | 9. Render CPU candidates | ResourcePlan ownership temporaries, recurring lighting allocations and serialized cached PSO construction are present. | Treat hit-path construction and frame-page reuse as measured experiments. Prewarm predictable PSOs before attempting archive-lock concurrency. |
 
 ## Exact source checks and qualifications

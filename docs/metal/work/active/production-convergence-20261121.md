@@ -191,6 +191,13 @@ or first-live-decode evidence.
 
 ## Explicit remaining engineering actions
 
+This table records the boundary at accepted69445. Subsequent PPD-556 implementation
+and Scheduling69450 evidence are retained in the [new execution ledger](ppd556-bounded-scheduling-20261121.md).
+Use the [canonical active priorities](metal-port.md#outstanding-work-in-priority-order)
+for current status; the historical556row below is not a claim that its repair is
+still unimplemented. Geometry scheduling and earlier GPU-wait accounting remain
+open beyond the narrower accepted interface/setting fixes.
+
 | Item | Current boundary and next executable action |
 | --- | --- |
 | PPD556 full schedule | Conditional million-entry self-post capacity hazard, no observed saturation. Foreground housekeeping now uses retryable tryPost, so it cannot wait before unpausing. Remaining request/retry/wake design needs one reusable request-owned deadline entry, a separate bounded callback queue and explicit nonfatal admission handling across callers; preserve4-urgent fairness. Test tiny-capacity retry/wake/admission/paused shutdown, not a larger queue or dropped work. |
