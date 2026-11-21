@@ -368,6 +368,7 @@ if(AL_BUILD_TESTS)
       tests/llstring_utf_test.cpp
       tests/llthread_test.cpp
       tests/llqueuedthread_test.cpp
+      tests/llworkerthread_test.cpp
       tests/threadpool_test.cpp
       tests/lltimer_test.cpp
       tests/lltrace_test.cpp

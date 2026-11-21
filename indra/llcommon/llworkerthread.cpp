@@ -34,8 +34,9 @@
 //============================================================================
 // Run on MAIN thread
 
-LLWorkerThread::LLWorkerThread(const std::string& name, bool threaded, bool should_pause) :
-    LLQueuedThread(name, threaded, should_pause)
+LLWorkerThread::LLWorkerThread(const std::string& name, bool threaded, bool should_pause,
+                             size_t request_capacity, size_t callback_capacity) :
+    LLQueuedThread(name, threaded, should_pause, request_capacity, callback_capacity)
 {
     mDeleteMutex = new LLMutex();
 }
@@ -142,7 +143,6 @@ LLWorkerThread::handle_t LLWorkerThread::addWorkRequest(LLWorkerClass* workercla
     bool res = addRequest(req);
     if (!res)
     {
-        LL_ERRS() << "add called after LLWorkerThread::cleanupClass()" << LL_ENDL;
         req->deleteRequest();
         handle = nullHandle();
     }
@@ -206,7 +206,7 @@ LLWorkerClass::LLWorkerClass(LLWorkerThread* workerthread, const std::string& na
       mWorkerClassName(name),
       mRequestHandle(LLWorkerThread::nullHandle()),
       mMutex(),
-      mWorkFlags(0)
+      mWorkFlags(WCF_WORK_FINISHED)
 {
     if (!mWorkerThread)
     {
@@ -293,9 +293,9 @@ bool LLWorkerClass::yield()
 //----------------------------------------------------------------------------
 
 // calls startWork, adds doWork() to queue
-void LLWorkerClass::addWork(S32 param)
+bool LLWorkerClass::addWork(S32 param)
 {
-    mMutex.lock();
+    LLMutexLock lock(&mMutex);
     llassert_always(!(mWorkFlags & (WCF_WORKING|WCF_HAVE_WORK)));
     if (mRequestHandle != LLWorkerThread::nullHandle())
     {
@@ -308,7 +308,17 @@ void LLWorkerClass::addWork(S32 param)
     clearFlags(WCF_WORK_FINISHED|WCF_WORK_ABORTED);
     setFlags(WCF_HAVE_WORK);
     mRequestHandle = mWorkerThread->addWorkRequest(this, param);
-    mMutex.unlock();
+    if (mRequestHandle == LLWorkerThread::nullHandle())
+    {
+        clearFlags(WCF_HAVE_WORK);
+        // No WorkRequest was accepted, so no owner completion will follow.
+        // This is quiescent and deletable, but is not an aborted demand: the
+        // caller may retry admission when capacity becomes available.
+        endWork(param, true);
+        setFlags(WCF_WORK_FINISHED);
+        return false;
+    }
+    return true;
 }
 
 void LLWorkerClass::abortWork(bool autocomplete)
@@ -402,6 +412,18 @@ void LLWorkerClass::scheduleDelete()
     {
         mWorkerThread->deleteWorker(this);
     }
+}
+
+void LLWorkerClass::discardUnaccepted()
+{
+    {
+        LLMutexLock lock(&mMutex);
+        llassert_always(mRequestHandle == LLWorkerThread::nullHandle());
+        llassert_always(!(mWorkFlags & (WCF_HAVE_WORK | WCF_WORKING | WCF_DELETE_REQUESTED)));
+        llassert_always(mWorkFlags & WCF_WORK_FINISHED);
+        setFlags(WCF_DELETE_REQUESTED);
+    }
+    delete this;
 }
 
 //============================================================================

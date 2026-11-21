@@ -86,6 +86,7 @@ protected:
 
     bool mValid;
     bool mDone;
+    bool mWAVFinalized;
     LLAtomicS32 mBytesRead;
     LLUUID mUUID;
 
@@ -166,6 +167,7 @@ LLVorbisDecodeState::LLVorbisDecodeState(const LLUUID &uuid, const std::string &
 {
     mDone = false;
     mValid = false;
+    mWAVFinalized = false;
     mBytesRead = -1;
     mUUID = uuid;
     mInFilep = NULL;
@@ -417,7 +419,7 @@ bool LLVorbisDecodeState::finishDecode()
         return true; // We've finished
     }
 
-    if (mFileHandle == LLLFSThread::nullHandle())
+    if (!mWAVFinalized)
     {
         ov_clear(&mVF);
 
@@ -490,9 +492,26 @@ bool LLVorbisDecodeState::finishDecode()
             mValid = false;
             return true; // we've finished
         }
+        mWAVFinalized = true;
+    }
+
+    if (mFileHandle == LLLFSThread::nullHandle())
+    {
         mBytesRead = -1;
+        LLLFSThread::Admission admission;
         mFileHandle = LLLFSThread::sLocal->write(mOutFilename, &mWAVBuffer[0], 0, static_cast<S32>(mWAVBuffer.size()),
-                             new WriteResponder(this));
+                             new WriteResponder(this), &admission);
+        if (mFileHandle == LLLFSThread::nullHandle())
+        {
+            if (admission == LLLFSThread::Admission::BUSY)
+            {
+                // The existing owner-side completion poll retries admission;
+                // the Vorbis stream and WAV contents are finalized only once.
+                return false;
+            }
+            mValid = false;
+            return true;
+        }
     }
 
     if (mFileHandle != LLLFSThread::nullHandle())

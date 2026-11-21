@@ -207,6 +207,9 @@ namespace LL
         static void error(const std::string& msg);
         static std::string makeName(const std::string& name);
         void callWork(const Work& work);
+        // Owner services sometimes need actual progress, rather than runOne's
+        // open/closed result. A failed queue try-lock must not count as a call.
+        bool runOneReady();
 
     private:
         virtual Work pop_() = 0;

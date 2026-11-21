@@ -104,12 +104,16 @@ bool LL::WorkQueueBase::runPending()
 
 bool LL::WorkQueueBase::runOne()
 {
-    Work work;
-    if (tryPop_(work))
-    {
-        callWork(work);
-    }
+    runOneReady();
     return ! done();
+}
+
+bool LL::WorkQueueBase::runOneReady()
+{
+    Work work;
+    if (!tryPop_(work)) return false;
+    callWork(work);
+    return true;
 }
 
 bool LL::WorkQueueBase::runUntil(const TimePoint& until)

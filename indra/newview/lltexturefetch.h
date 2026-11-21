@@ -269,7 +269,6 @@ protected:
 
     // Overrides from the LLThread tree
     // Locks:  Ct
-    bool runCondition() override;
 
 private:
     // Threads:  Ttf

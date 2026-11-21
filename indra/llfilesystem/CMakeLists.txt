@@ -35,7 +35,7 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     llfilesystem_tests
     PROJECT llfilesystem
-    SOURCES tests/lldir_test.cpp tests/lldiriterator_test.cpp
+    SOURCES tests/lldir_test.cpp tests/lldiriterator_test.cpp tests/lllfsthread_test.cpp
     LIBRARIES llfilesystem llmath llcommon
   )
 endif()

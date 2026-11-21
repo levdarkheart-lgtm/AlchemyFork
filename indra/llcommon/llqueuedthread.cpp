@@ -36,20 +36,78 @@
 //============================================================================
 
 // MAIN THREAD
-LLQueuedThread::LLQueuedThread(const std::string& name, bool threaded, bool should_pause) :
+LLQueuedThread::LLQueuedThread(const std::string& name, bool threaded, bool should_pause,
+                               size_t request_capacity, size_t callback_capacity) :
     LLThread(name),
-    mIdleThread(true),
-    mNextHandle(0),
-    mStarted(false),
     mThreaded(threaded),
-    mRequestQueue(name, 1024 * 1024)
+    mStarted(false),
+    mIdleThread(true),
+    mRequestQueue(name, callback_capacity, *this),
+    mNextHandle(0),
+    mRequestCapacity(request_capacity)
 {
-    llassert(threaded); // not threaded implementation is deprecated
+    llassert(threaded); // foreground pumping is retained only for contained owners
+    llassert_always(request_capacity && callback_capacity);
+    if (mThreaded && should_pause) pause();
+}
 
-    // The thread starts when the owner calls start(), once the object is made.
-    if (mThreaded && should_pause)
+LLQueuedThread::ServiceQueue::ServiceQueue(const std::string& name, size_t capacity,
+                                         LLQueuedThread& owner) :
+    // LLQueuedThread owns close/drain/join; an independent LLApp queue listener
+    // must not tear down this member outside that lifecycle.
+    LL::WorkQueue(name, capacity, false), mOwner(owner)
+{
+}
+
+bool LLQueuedThread::ServiceQueue::post(const Work& work) { return tryPost(work); }
+bool LLQueuedThread::ServiceQueue::post(Work&& work) { return tryPost(std::move(work)); }
+
+bool LLQueuedThread::ServiceQueue::tryPost(const Work& work)
+{
+    if (mOwner.isAdmissionClosed() || !LL::WorkQueue::tryPost(work)) return false;
+    mOwner.notifyWork();
+    return true;
+}
+
+bool LLQueuedThread::ServiceQueue::tryPost(Work&& work)
+{
+    if (mOwner.isAdmissionClosed() || !LL::WorkQueue::tryPost(std::move(work))) return false;
+    mOwner.notifyWork();
+    return true;
+}
+
+void LLQueuedThread::ServiceQueue::close()
+{
+    // Linearize callback admission before allowing the owner to finish its drain.
+    LL::WorkQueue::close();
+    mOwner.beginShutdown();
+}
+
+bool LLQueuedThread::ServiceQueue::processOne()
+{
+    return runOneReady();
+}
+
+void LLQueuedThread::notifyWork() noexcept
+{
+    if (!mWakePending.exchange(true, std::memory_order_acq_rel)) mWakeEvent.release();
+}
+
+void LLQueuedThread::consumeNotification() noexcept
+{
+    if (mWakeEvent.try_acquire()) mWakePending.store(false, std::memory_order_release);
+}
+
+void LLQueuedThread::waitForWork(const TimePoint& deadline)
+{
+    if (deadline == TimePoint::max())
     {
-        pause();
+        mWakeEvent.acquire();
+        mWakePending.store(false, std::memory_order_release);
+    }
+    else if (mWakeEvent.try_acquire_until(deadline))
+    {
+        mWakePending.store(false, std::memory_order_release);
     }
 }
 
@@ -73,15 +131,20 @@ LLQueuedThread::~LLQueuedThread()
     // ~LLThread() will be called here
 }
 
-void LLQueuedThread::shutdown()
+void LLQueuedThread::beginShutdown()
 {
-    lockData();
-    mShutdownStarted = true;
-    unlockData();
+    {
+        LLMutexLock lock(mRunCondition);
+        mShutdownStarted.store(true, std::memory_order_release);
+        mThreadedUpdatePending = false;
+    }
     setQuitting();
     unpause();
-    // A nonempty queue must close too. Existing tickets drain on the owner;
-    // retries observe quitting and finish aborted instead of posting again.
+    notifyWork();
+}
+
+void LLQueuedThread::shutdown()
+{
     mRequestQueue.close();
     if (mThreaded)
     {
@@ -95,29 +158,22 @@ void LLQueuedThread::shutdown()
                            << " to stop before releasing its requests" << LL_ENDL;
                 warned = true;
             }
-            // Destruction cannot safely free a request still in processRequest.
-            // This drain runs no foreground callbacks and needs no frame polling.
             ms_sleep(1);
         }
     }
-    else
-    {
-        mStatus = STOPPED;
-    }
+    // A never-started or failed owner has no concurrent consumer. Settle its
+    // accepted callbacks/requests too, before deleting storage they may pin.
+    processPending();
 
-    lockData();
+    LLMutexLock lock(mRunCondition);
     while (auto* entry = mRequestHash.pop_element())
     {
         auto* req = static_cast<QueuedRequest*>(entry);
-        if (req->getStatus() == STATUS_QUEUED)
-        {
-            req->setStatus(STATUS_ABORTED);
-            req->finishRequest(false);
-        }
-        llassert_always(req->getStatus() != STATUS_INPROGRESS);
+        llassert_always(req->getStatus() != STATUS_INPROGRESS && !req->mScheduled);
+        --mRegisteredRequests;
         req->deleteRequest();
     }
-    unlockData();
+    llassert_always(mActiveRequests == 0 && mRegisteredRequests == 0 && mSchedule.empty());
 }
 
 //----------------------------------------------------------------------------
@@ -141,37 +197,27 @@ size_t LLQueuedThread::update(F32 max_time_ms)
 size_t LLQueuedThread::updateQueue(F32 max_time_ms)
 {
     LL_PROFILE_ZONE_SCOPED;
-    // Frame Update
     if (mThreaded)
     {
-        // Most queued-thread owners have no housekeeping. The fetch owner
-        // opts in; repeated frame polls coalesce while its callback is queued
-        // or executing, rather than manufacturing a file/cache backlog.
-        if (!isQuitting() && hasThreadedUpdate() &&
-            !mThreadedUpdatePending.exchange(true, std::memory_order_acq_rel))
+        bool notify = false;
+        if (!isAdmissionClosed() && hasThreadedUpdate())
         {
-            // Housekeeping is a retryable hint. Never wait for queue capacity
-            // on the foreground owner, especially before unpausing service.
-            const bool posted = mRequestQueue.tryPost([this]()
-                {
-                    LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qt - update");
-                    mIdleThread = false;
-                    if (!isQuitting()) threadedUpdate();
-                    mIdleThread = true;
-                    mThreadedUpdatePending.store(false, std::memory_order_release);
-                });
-            if (!posted) mThreadedUpdatePending.store(false, std::memory_order_release);
+            LLMutexLock lock(mRunCondition);
+            if (!mShutdownStarted && !mThreadedUpdatePending && !mHousekeepingActive)
+            {
+                mThreadedUpdatePending = true;
+                notify = true;
+            }
         }
-
-        if(getPending() > 0)
-        {
-            unpause();
-        }
+        if (notify) notifyWork();
+        if (getPending()) unpause();
     }
     else
     {
-        mRequestQueue.runFor(std::chrono::microseconds((int) (max_time_ms*1000.f)));
-        threadedUpdate();
+        const auto until = TimePoint::clock::now() + std::chrono::duration_cast<TimePoint::duration>(
+            std::chrono::duration<double, std::milli>(llclamp(max_time_ms, 0.f, 1000.f)));
+        while (TimePoint::clock::now() < until && processOne()) {}
+        if (!isAdmissionClosed()) threadedUpdate();
     }
     return getPending();
 }
@@ -192,7 +238,8 @@ void LLQueuedThread::incQueue()
 // May be called from any thread
 size_t LLQueuedThread::getPending()
 {
-    return mRequestQueue.size();
+    LLMutexLock lock(mRunCondition);
+    return mActiveRequests + mRequestQueue.size() + size_t(mThreadedUpdatePending) + size_t(mServiceActive);
 }
 
 // MAIN thread
@@ -244,15 +291,7 @@ void LLQueuedThread::waitOnPending(F32 max_time_sec)
 // MAIN thread
 void LLQueuedThread::printQueueStats()
 {
-    auto size = mRequestQueue.size();
-    if (size > 0)
-    {
-        LL_INFOS() << llformat("Pending Requests:%d ", mRequestQueue.size()) << LL_ENDL;
-    }
-    else
-    {
-        LL_INFOS() << "Queued Thread Idle" << LL_ENDL;
-    }
+    LL_INFOS() << mName << " pending work: " << getPending() << LL_ENDL;
 }
 
 // MAIN thread
@@ -273,35 +312,33 @@ LLQueuedThread::handle_t LLQueuedThread::generateHandle()
 bool LLQueuedThread::addRequest(QueuedRequest* req)
 {
     LL_PROFILE_ZONE_SCOPED;
-    lockData();
-    if (mShutdownStarted || isQuitting() || mRequestHash.find(req->getHashKey()))
     {
-        unlockData();
-        return false;
+        LLMutexLock lock(mRunCondition);
+        if (isAdmissionClosed() || mRegisteredRequests == mRequestCapacity ||
+            mRequestHash.find(req->getHashKey())) return false;
+        llassert_always(mNextGeneration != std::numeric_limits<U64>::max());
+        llassert_always(mNextScheduleOrder != std::numeric_limits<U64>::max());
+        const auto generation = mNextGeneration + 1;
+        // The only scheduling allocation occurs before ownership transfer.
+        const auto [position, inserted] = mSchedule.emplace(
+            ScheduleKey{TimePoint::clock::now(), mNextScheduleOrder + 1},
+            RequestIdentity{req->getHashKey(), generation});
+        llassert_always(inserted);
+        ++mNextGeneration;
+        ++mNextScheduleOrder;
+        req->mGeneration = generation;
+        req->mSchedulePosition = position;
+        req->mScheduled = true;
+        req->mImmediatePending = true;
+        req->mUrgentPending = false;
+        req->mWakeRequested = false;
+        req->setStatus(STATUS_QUEUED);
+        mRequestHash.insert(req);
+        ++mRegisteredRequests;
+        ++mActiveRequests;
     }
-    llassert_always(mNextGeneration != std::numeric_limits<U64>::max());
-    req->mGeneration = ++mNextGeneration;
-    req->mScheduleGeneration = 1;
-    req->mScheduled = true;
-    req->mImmediatePending = true;
-    req->setStatus(STATUS_QUEUED);
-    mRequestHash.insert(req);
-    const auto handle = req->getHashKey();
-    const auto generation = req->mGeneration;
-    unlockData();
-
-    if (postRequest(handle, generation, 1, false, TimePoint::clock::now())) return true;
-    lockData();
-    auto* current = static_cast<QueuedRequest*>(mRequestHash.find(handle));
-    const bool still_owned = current && current->mGeneration == generation;
-    if (still_owned)
-    {
-        mRequestHash.erase(current);
-        current->setStatus(STATUS_UNKNOWN);
-    }
-    unlockData();
-    // A simultaneous shutdown may already have consumed the accepted request.
-    return !still_owned;
+    notifyWork();
+    return true;
 }
 
 // MAIN thread
@@ -326,8 +363,7 @@ bool LLQueuedThread::waitForResult(LLQueuedThread::handle_t handle, bool auto_co
             res = req->getStatus() == STATUS_COMPLETE;
             if (auto_complete)
             {
-                mRequestHash.erase(handle);
-                req->deleteRequest();
+                eraseRequestLocked(req);
 //              check();
             }
             done = true;
@@ -410,8 +446,7 @@ bool LLQueuedThread::completeRequest(handle_t handle)
 #if _DEBUG
 //      LL_INFOS() << llformat("LLQueuedThread::Completed req [%08d]",handle) << LL_ENDL;
 #endif
-        mRequestHash.erase(handle);
-        req->deleteRequest();
+        eraseRequestLocked(req);
 //      check();
         res = true;
     }
@@ -442,155 +477,191 @@ bool LLQueuedThread::check()
 //============================================================================
 // Runs on its OWN thread
 
-bool LLQueuedThread::postRequest(handle_t handle, U64 generation, U64 schedule,
-                                 bool urgent, const TimePoint& when)
+void LLQueuedThread::scheduleRequestLocked(QueuedRequest* req, const TimePoint& when, bool urgent)
 {
-    return mRequestQueue.post([this, handle, generation, schedule, urgent]()
-        { dispatchRequest(handle, generation, schedule, urgent); }, when);
+    llassert_always(!req->mScheduled && !req->mScheduleNode.empty());
+    llassert_always(mNextScheduleOrder != std::numeric_limits<U64>::max());
+    req->mScheduleNode.key() = {urgent ? TimePoint::min() : when, ++mNextScheduleOrder};
+    const auto inserted = mSchedule.insert(std::move(req->mScheduleNode));
+    llassert_always(inserted.inserted);
+    req->mSchedulePosition = inserted.position;
+    req->mScheduled = true;
+    req->mImmediatePending = urgent || when <= TimePoint::clock::now();
+    req->mUrgentPending = urgent;
 }
 
-// Any thread. The data lock serializes wake publication with the transition
-// from INPROGRESS to a timed retry, closing the notification-before-retry race.
 void LLQueuedThread::wakeRequest(handle_t handle, bool urgent)
 {
-    lockData();
-    auto* req = static_cast<QueuedRequest*>(mRequestHash.find(handle));
-    if (!req || mShutdownStarted)
     {
-        unlockData();
-        return;
+        LLMutexLock lock(mRunCondition);
+        auto* req = static_cast<QueuedRequest*>(mRequestHash.find(handle));
+        if (!req || isAdmissionClosed()) return;
+        if (req->getStatus() == STATUS_INPROGRESS)
+        {
+            req->mWakeRequested = true;
+            return; // the active owner cannot be asleep
+        }
+        if (req->getStatus() != STATUS_QUEUED || req->mUrgentPending ||
+            (!urgent && req->mImmediatePending)) return;
+        req->mScheduleNode = mSchedule.extract(req->mSchedulePosition);
+        req->mScheduled = false;
+        scheduleRequestLocked(req, TimePoint::clock::now(), urgent);
     }
-    if (req->getStatus() == STATUS_INPROGRESS)
-    {
-        req->mWakeRequested = true;
-        unlockData();
-        return;
-    }
-    if (req->getStatus() != STATUS_QUEUED ||
-        (urgent ? req->mUrgentPending : req->mImmediatePending))
-    {
-        unlockData();
-        return;
-    }
-    const U64 generation = req->mGeneration;
-    llassert_always(req->mScheduleGeneration != std::numeric_limits<U64>::max());
-    const U64 schedule = ++req->mScheduleGeneration;
-    req->mScheduled = true;
-    req->mImmediatePending = true;
-    req->mUrgentPending = urgent;
-    unlockData();
-    if (!postRequest(handle, generation, schedule, urgent,
-                     urgent ? TimePoint::min() : TimePoint::clock::now()))
-    {
-        // A closed queue is drained by shutdown, which retains every request
-        // until the worker has stopped. No request pointer escaped the lock.
-        llassert(mRequestQueue.isClosed());
-    }
+    notifyWork();
+}
+
+void LLQueuedThread::eraseRequestLocked(QueuedRequest* req)
+{
+    llassert_always(!req->mScheduled && req->getStatus() != STATUS_INPROGRESS &&
+                   req->getStatus() != STATUS_QUEUED);
+    mRequestHash.erase(req);
+    --mRegisteredRequests;
+    req->deleteRequest();
 }
 
 void LLQueuedThread::finishRequestLocked(QueuedRequest* req, bool complete)
 {
-    req->mScheduled = false;
+    llassert_always(!req->mScheduled);
     req->mImmediatePending = false;
     req->mUrgentPending = false;
+    req->mWakeRequested = false;
     req->setStatus(complete ? STATUS_COMPLETE : STATUS_ABORTED);
+    --mActiveRequests;
     req->finishRequest(complete);
-    if (req->getFlags() & FLAG_AUTO_COMPLETE)
-    {
-        mRequestHash.erase(req);
-        req->deleteRequest();
-    }
+    if (req->getFlags() & FLAG_AUTO_COMPLETE) eraseRequestLocked(req);
 }
 
-// The worker is the sole dispatcher. Resolving both identities while locked
-// makes stale initial, delayed, woken and promoted tickets harmless, including
-// after completion, auto-deletion and reuse of a 32-bit public handle.
-void LLQueuedThread::dispatchRequest(handle_t handle, U64 generation, U64 schedule, bool urgent)
+bool LLQueuedThread::processOne()
 {
-    lockData();
-    auto* req = static_cast<QueuedRequest*>(mRequestHash.find(handle));
-    if (!req || req->mGeneration != generation ||
-        req->mScheduleGeneration != schedule || !req->mScheduled ||
-        req->getStatus() != STATUS_QUEUED)
+    QueuedRequest* req = nullptr;
+    bool housekeeping = false;
     {
-        unlockData();
-        return;
+        LLMutexLock lock(mRunCondition);
+        auto position = mSchedule.begin();
+        const auto now = TimePoint::clock::now();
+        const bool stopping = isAdmissionClosed();
+        if (position != mSchedule.end() && !stopping && mUrgentBurst >= 4 &&
+            position->first.first == TimePoint::min())
+        {
+            const auto normal = mSchedule.upper_bound({TimePoint::min(), std::numeric_limits<U64>::max()});
+            if (normal != mSchedule.end() && normal->first.first <= now) position = normal;
+        }
+        const bool ready = position != mSchedule.end() && (stopping || position->first.first <= now);
+        const bool callbacks = mRequestQueue.size() != 0;
+        const bool update = mThreadedUpdatePending && !stopping;
+        if ((callbacks || update) && (mPreferService || !ready))
+        {
+            housekeeping = update && (mPreferHousekeeping || !callbacks);
+            if (housekeeping)
+            {
+                mThreadedUpdatePending = false;
+                mHousekeepingActive = true;
+            }
+            mPreferHousekeeping = !housekeeping;
+            mPreferService = false;
+            mServiceActive = true;
+        }
+        else if (ready)
+        {
+            const auto [handle, generation] = position->second;
+            req = static_cast<QueuedRequest*>(mRequestHash.find(handle));
+            llassert_always(req && req->mGeneration == generation && req->mScheduled &&
+                            req->getStatus() == STATUS_QUEUED);
+            const bool urgent = req->mUrgentPending;
+            req->mScheduleNode = mSchedule.extract(position);
+            req->mScheduled = false;
+            req->mImmediatePending = false;
+            req->mUrgentPending = false;
+            mUrgentBurst = urgent ? llmin(mUrgentBurst + 1, 4u) : 0;
+            mPreferService = true;
+            req->setStatus(STATUS_INPROGRESS);
+        }
+        else return false;
+        mIdleThread = false;
     }
-    if (urgent && mUrgentBurst >= 4 && !mShutdownStarted)
+    bool processed = true;
+    if (req)
     {
-        // Yield to normal tickets already ready. Promotion is bounded even
-        // when many urgent tickets were admitted before the first could run.
-        const U64 next = ++req->mScheduleGeneration;
-        req->mUrgentPending = false;
-        unlockData();
-        postRequest(handle, generation, next, false, TimePoint::clock::now());
-        return;
+        mRequestQueue.invoke([this, req] { processRequest(req); });
     }
-    mUrgentBurst = urgent ? mUrgentBurst + 1 : 0;
-    req->mScheduled = false;
-    req->mImmediatePending = false;
-    req->mUrgentPending = false;
-    mIdleThread = false;
-    if ((req->getFlags() & FLAG_ABORT) || mShutdownStarted || isQuitting())
+    else
     {
-        finishRequestLocked(req, false);
-        unlockData();
-        mIdleThread = true;
-        return;
+        if (housekeeping) mRequestQueue.invoke([this] { if (!isAdmissionClosed()) threadedUpdate(); });
+        else processed = mRequestQueue.processOne();
+        LLMutexLock lock(mRunCondition);
+        mServiceActive = false;
+        mHousekeepingActive = false;
     }
-    req->setStatus(STATUS_INPROGRESS);
-    req->mWakeRequested = false;
-    unlockData();
-    processRequest(req);
+    mIdleThread = true;
+    return processed;
+}
+
+void LLQueuedThread::processPending()
+{
+    while (processOne()) {}
 }
 
 void LLQueuedThread::processRequest(QueuedRequest* req)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    const bool complete = req->processRequest();
-    // A request remains INPROGRESS (and therefore undeletable) until this
-    // owner has inspected its event hint and published the terminal/retry state.
-    const bool waits_for_wake = !complete && req->waitsForWake();
-    lockData();
-    if (complete || (req->getFlags() & FLAG_ABORT) || mShutdownStarted || isQuitting())
+    bool complete = false;
+    bool waits_for_wake = false;
+    try
     {
-        finishRequestLocked(req, complete && !(req->getFlags() & FLAG_ABORT) &&
-                            !mShutdownStarted && !isQuitting());
-        unlockData();
+        if (!isAdmissionClosed() && !(req->getFlags() & FLAG_ABORT))
+        {
+            complete = req->processRequest();
+            waits_for_wake = !complete && req->waitsForWake();
+        }
+    }
+    catch (...)
+    {
+        LLMutexLock lock(mRunCondition);
+        finishRequestLocked(req, false);
+        throw;
+    }
+    LLMutexLock lock(mRunCondition);
+    if (complete || (req->getFlags() & FLAG_ABORT) || isAdmissionClosed())
+    {
+        finishRequestLocked(req, complete && !(req->getFlags() & FLAG_ABORT) && !isAdmissionClosed());
     }
     else
     {
         using namespace std::chrono_literals;
         const auto delay = req->mWakeRequested ? 0ms : (waits_for_wake ? 250ms : 16ms);
-        const auto handle = req->getHashKey();
-        const U64 generation = req->mGeneration;
-        llassert_always(req->mScheduleGeneration != std::numeric_limits<U64>::max());
-        const U64 schedule = ++req->mScheduleGeneration;
-        req->setStatus(STATUS_QUEUED);
-        req->mScheduled = true;
-        req->mImmediatePending = delay == 0ms;
         req->mWakeRequested = false;
-        unlockData();
-        // This is a timestamp in the schedule, never a sleeping callback.
-        postRequest(handle, generation, schedule, false, TimePoint::clock::now() + delay);
+        req->setStatus(STATUS_QUEUED);
+        scheduleRequestLocked(req, TimePoint::clock::now() + delay, false);
     }
-    mIdleThread = true;
 }
 
-// virtual
+LLQueuedThread::TimePoint LLQueuedThread::nextDeadline()
+{
+    LLMutexLock lock(mRunCondition);
+    // Recheck after the last failed pump. A producer also leaves a semaphore
+    // token, so work published between this snapshot and wait cannot be lost.
+    if (mShutdownStarted || mRequestQueue.size() || mThreadedUpdatePending)
+        return TimePoint::clock::now();
+    return mSchedule.empty() ? TimePoint::max() : mSchedule.begin()->first.first;
+}
+
 void LLQueuedThread::run()
 {
-    // A queue made paused waits here until it is unpaused.
-    checkPause();
+    // Explicit pause is a startup/control policy. Idle service uses the native
+    // event below, not a subclass runCondition that callbacks cannot signal.
+    if (isPaused()) checkPause();
     startThread();
-
-
-    mRequestQueue.runUntilClose();
-
+    for (;;)
+    {
+        consumeNotification();
+        if (isQuitting() && !mShutdownStarted) mRequestQueue.close();
+        if (isPaused() && !isAdmissionClosed()) checkPause();
+        if (processOne()) continue;
+        if (mShutdownStarted && !LLQueuedThread::getPending()) break;
+        waitForWork(nextDeadline());
+    }
     endThread();
     LL_INFOS() << "LLQueuedThread " << mName << " EXITING." << LL_ENDL;
-
-
 }
 
 // virtual

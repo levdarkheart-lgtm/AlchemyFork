@@ -1992,6 +1992,11 @@ LLTextureCache::handle_t LLTextureCache::readFromCache(const std::string& filena
                                                                      NULL, size, offset, 0,
                                                                      responder);
     handle_t handle = worker->read();
+    if (handle == nullHandle())
+    {
+        worker->discardUnaccepted();
+        return nullHandle();
+    }
     mReaders[handle] = worker;
     return handle;
 }
@@ -2007,6 +2012,11 @@ LLTextureCache::handle_t LLTextureCache::readFromCache(const LLUUID& id,
                                                                   NULL, size, offset,
                                                                   0, NULL, 0, responder);
     handle_t handle = worker->read();
+    if (handle == nullHandle())
+    {
+        worker->discardUnaccepted();
+        return nullHandle();
+    }
     mReaders[handle] = worker;
     return handle;
 }
@@ -2045,10 +2055,17 @@ bool LLTextureCache::readComplete(handle_t handle, bool abort)
 LLTextureCache::handle_t LLTextureCache::writeToCache(const LLUUID& id,
                                                       const U8* data, S32 datasize, S32 imagesize,
                                                       LLPointer<LLImageRaw> rawimage, S32 discardlevel,
-                                                      WriteResponder* responder)
+                                                      WriteResponder* responder, Admission* admission)
 {
+    if (isAdmissionClosed())
+    {
+        if (admission) *admission = Admission::CLOSED;
+        delete responder;
+        return nullHandle();
+    }
     if (mReadOnly)
     {
+        if (admission) *admission = Admission::READ_ONLY;
         delete responder;
         return LLWorkerThread::nullHandle();
     }
@@ -2064,6 +2081,13 @@ LLTextureCache::handle_t LLTextureCache::writeToCache(const LLUUID& id,
                                                                   data, datasize, 0,
                                                                   imagesize, rawimage, discardlevel, responder);
     handle_t handle = worker->write();
+    if (handle == nullHandle())
+    {
+        if (admission) *admission = isAdmissionClosed() ? Admission::CLOSED : Admission::BUSY;
+        worker->discardUnaccepted();
+        return nullHandle();
+    }
+    if (admission) *admission = Admission::ACCEPTED;
     mWriters[handle] = worker;
     return handle;
 }

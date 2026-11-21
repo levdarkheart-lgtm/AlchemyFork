@@ -140,6 +140,7 @@ struct LLTextureFetch
     LLTextureFetchWorker* getWorker(LLUUID id) { LLMutexLock lock(&mQueueMutex); return getWorkerAfterLock(id); }
     void notifyReady(LLTextureFetchWorker*);
     bool popReadyTexture(LLUUID&);
+    bool updateRequestPriority(const LLUUID&, F32);
 };
 struct LLTextureFetchWorker
 {
@@ -147,6 +148,7 @@ struct LLTextureFetchWorker
     U64 mGeneration;
     U64 mCacheReadGeneration = 0, mCacheWriteGeneration = 0;
     std::atomic<S32> mCacheRespondersInFlight{0};
+    std::atomic<S32> mPriorityUpdatesInFlight{0};
     LLMutex mWorkMutex;
     LLTextureFetch* mFetcher = nullptr;
     enum { LOAD_FROM_TEXTURE_CACHE = 1, WAIT_HTTP_RESOURCE2 = 3, WRITE_TO_CACHE = 10, WAIT_ON_WRITE = 11 };
@@ -157,6 +159,10 @@ struct LLTextureFetchWorker
     U32 mCacheReadHandle = 0, mCacheWriteHandle = 0;
     std::atomic<S32> mDecodesInFlight{0};
     unsigned wakes = 0;
+    F32 priority = 0;
+    void lockWorkMutex() { mWorkMutex.lock(); }
+    void unlockWorkMutex() { mWorkMutex.unlock(); }
+    void setImagePriority(F32 value) { priority = value; }
     LLTextureFetchWorker(LLUUID id, U64 generation): mID(id), mGeneration(generation) {}
     bool haveWork() const { return false; }
     bool deleteOK();
@@ -315,5 +321,30 @@ int main()
     CHECK(list.mFastCacheList.empty()); CHECK(list.mFastCachePending.empty());
     CHECK(owner_cache.mFastCacheSlots->load() == 0);
     for (const auto& texture: textures) { CHECK(texture->fetches == 1); CHECK(texture->priority_updates == 1); }
+    fetch.workers[7] = &old;
+    CHECK(fetch.updateRequestPriority(7, 12.f));
+    CHECK(old.mPriorityUpdatesInFlight == 1); CHECK(!old.deleteOK());
+    fetch.workers[7] = &newer;
+    fetch.mRequestQueue.run();
+    CHECK(old.priority == 0.f); CHECK(newer.priority == 0.f);
+    CHECK(old.mPriorityUpdatesInFlight == 0); CHECK(old.deleteOK());
+    CHECK(fetch.updateRequestPriority(7, 42.f));
+    fetch.mRequestQueue.run(); CHECK(newer.priority == 42.f);
+    CHECK(newer.mPriorityUpdatesInFlight == 0);
+    fetch.mRequestQueue.capacity = 0;
+    CHECK(!fetch.updateRequestPriority(7, 19.f));
+    CHECK(newer.mPriorityUpdatesInFlight == 0); CHECK(newer.priority == 42.f);
+    fetch.mRequestQueue.capacity = 10000;
+    CHECK(!fetch.updateRequestPriority(999, 19.f));
+    CHECK(fetch.updateRequestPriority(7, 33.f));
+    ++newer.mGeneration; fetch.mRequestQueue.run();
+    CHECK(newer.priority == 42.f); CHECK(newer.mPriorityUpdatesInFlight == 0);
+    CHECK(fetch.updateRequestPriority(7, 17.f));
+    CHECK(newer.mPriorityUpdatesInFlight == 1);
+    fetch.mRequestQueue.jobs.clear();
+    CHECK(newer.mPriorityUpdatesInFlight == 0); CHECK(newer.priority == 42.f);
+    fetch.mRequestQueue.closed = true;
+    CHECK(!fetch.updateRequestPriority(7, 19.f));
+    CHECK(newer.mPriorityUpdatesInFlight == 0);
     std::cout << "Production texture scheduling: " << checks << " checks passed\n";
 }

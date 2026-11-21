@@ -65,8 +65,8 @@ void LLLFSThread::cleanupClass()
 
 //----------------------------------------------------------------------------
 
-LLLFSThread::LLLFSThread(bool threaded) :
-    LLQueuedThread("LFS", threaded)
+LLLFSThread::LLLFSThread(bool threaded, size_t request_capacity, size_t callback_capacity) :
+    LLQueuedThread("LFS", threaded, false, request_capacity, callback_capacity)
 {
 }
 
@@ -79,7 +79,7 @@ LLLFSThread::~LLLFSThread()
 
 LLLFSThread::handle_t LLLFSThread::read(const std::string& filename,    /* Flawfinder: ignore */
                                         U8* buffer, S32 offset, S32 numbytes,
-                                        Responder* responder)
+                                        Responder* responder, Admission* admission)
 {
     LL_PROFILE_ZONE_SCOPED;
     handle_t handle = generateHandle();
@@ -92,15 +92,17 @@ LLLFSThread::handle_t LLLFSThread::read(const std::string& filename,    /* Flawf
     bool res = addRequest(req);
     if (!res)
     {
-        LL_ERRS() << "LLLFSThread::read called after LLLFSThread::cleanupClass()" << LL_ENDL;
+        if (admission) *admission = isAdmissionClosed() ? Admission::CLOSED : Admission::BUSY;
+        req->discardUnaccepted();
+        return nullHandle();
     }
-
+    if (admission) *admission = Admission::ACCEPTED;
     return handle;
 }
 
 LLLFSThread::handle_t LLLFSThread::write(const std::string& filename,
                                          U8* buffer, S32 offset, S32 numbytes,
-                                         Responder* responder)
+                                         Responder* responder, Admission* admission)
 {
     LL_PROFILE_ZONE_SCOPED;
     handle_t handle = generateHandle();
@@ -113,9 +115,11 @@ LLLFSThread::handle_t LLLFSThread::write(const std::string& filename,
     bool res = addRequest(req);
     if (!res)
     {
-        LL_ERRS() << "LLLFSThread::read called after LLLFSThread::cleanupClass()" << LL_ENDL;
+        if (admission) *admission = isAdmissionClosed() ? Admission::CLOSED : Admission::BUSY;
+        req->discardUnaccepted();
+        return nullHandle();
     }
-
+    if (admission) *admission = Admission::ACCEPTED;
     return handle;
 }
 
@@ -169,6 +173,13 @@ void LLLFSThread::Request::deleteRequest()
         mResponder->completed(0);
         mResponder = NULL;
     }
+    LLQueuedThread::QueuedRequest::deleteRequest();
+}
+
+void LLLFSThread::Request::discardUnaccepted()
+{
+    llassert_always(getStatus() == STATUS_UNKNOWN);
+    mResponder = NULL;
     LLQueuedThread::QueuedRequest::deleteRequest();
 }
 

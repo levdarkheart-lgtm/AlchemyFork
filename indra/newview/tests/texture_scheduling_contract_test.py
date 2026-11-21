@@ -35,7 +35,8 @@ def generate():
         'std::shared_ptr<LLTextureCacheFastResult> LLTextureCache::readFromFastCacheAsync(',
         'void LLTextureCache::prioritizeWrite(', 'void LLTextureCache::addCompleted(']]
     bodies += [block(fetch, signature) for signature in ['void LLTextureFetch::notifyReady(', 'bool LLTextureFetch::popReadyTexture(', 'bool LLTextureFetchWorker::deleteOK(',
-        'void LLTextureFetchWorker::callbackCacheRead(', 'void LLTextureFetchWorker::callbackCacheWrite(']]
+        'void LLTextureFetchWorker::callbackCacheRead(', 'void LLTextureFetchWorker::callbackCacheWrite(',
+        'bool LLTextureFetch::updateRequestPriority(']]
     bodies.append(block(texture_list, 'F32 LLViewerTextureList::updateImagesLoadingFastCache('))
     return fixture.replace('// @RESPONDERS@', responders).replace('// @PRODUCTION@', '\n\n'.join(bodies))
 

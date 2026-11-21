@@ -138,6 +138,10 @@ public:
     void setReadOnly(bool read_only) ;
     S64 initCache(ELLPath location, S64 maxsize, bool texture_cache_mismatch);
 
+    enum class Admission { ACCEPTED, BUSY, CLOSED, READ_ONLY };
+
+    // All admission paths consume responder; unaccepted operations do not
+    // manufacture a completion. Null read handles are retryable while open.
     handle_t readFromCache(const std::string& local_filename, const LLUUID& id, S32 offset, S32 size,
                            ReadResponder* responder);
 
@@ -145,7 +149,7 @@ public:
                            ReadResponder* responder);
     bool readComplete(handle_t handle, bool abort);
     handle_t writeToCache(const LLUUID& id, const U8* data, S32 datasize, S32 imagesize, LLPointer<LLImageRaw> rawimage, S32 discardlevel,
-                          WriteResponder* responder);
+                          WriteResponder* responder, Admission* admission = nullptr);
     LLPointer<LLImageRaw> readFromFastCache(const LLUUID& id, S32& discardlevel);
     std::shared_ptr<LLTextureCacheFastResult> readFromFastCacheAsync(const LLUUID& id);
     bool writeComplete(handle_t handle, bool abort = false);

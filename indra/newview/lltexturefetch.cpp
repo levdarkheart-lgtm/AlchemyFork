@@ -638,6 +638,7 @@ private:
     U64 mCacheReadGeneration = 0;
     U64 mCacheWriteGeneration = 0;
     std::atomic<S32> mCacheRespondersInFlight{0};
+    std::atomic<S32> mPriorityUpdatesInFlight{0};
     LLImageDecodeThread::Cancellation mDecodeCancellation;
     handle_t mDecodeHandle;
     // DecodeResponders alive that point at this worker. A responder lives on past completed()
@@ -2102,8 +2103,6 @@ bool LLTextureFetchWorker::doWork(S32 param)
         }
         llassert_always(datasize);
         mWritten = false;
-        setState(WAIT_ON_WRITE);
-        ++mCacheWriteCount;
         CacheWriteResponder* responder = new CacheWriteResponder(mFetcher, mID, this);
         // This call might be under work mutex, but mRawImage is not nessesary safe here.
         // If something retrieves it via getRequestFinished() and modifies, image won't
@@ -2111,9 +2110,26 @@ bool LLTextureFetchWorker::doWork(S32 param)
         // So make sure users of getRequestFinished() does not attempt to modify image while
         // fetcher is working
         mCacheWriteTimer.reset();
+        LLTextureCache::Admission admission;
         mCacheWriteHandle = mFetcher->mTextureCache->writeToCache(mID,
                                                                   data, datasize,
-                                                                  mFileSize, mRawImage, mDecodedDiscard, responder);
+                                                                  mFileSize, mRawImage, mDecodedDiscard, responder, &admission);
+        if (admission == LLTextureCache::Admission::BUSY)
+        {
+            // The formatted image remains owned here until an actual write
+            // is accepted. A busy cache must not masquerade as a completed write.
+            return false;
+        }
+        if (admission != LLTextureCache::Admission::ACCEPTED)
+        {
+            // Read-only or stopped storage cannot accept this optional cache
+            // write. The decoded texture remains valid, without a fictitious
+            // write completion or a permanent wait on a null handle.
+            setState(DONE);
+            return doWork(param);
+        }
+        ++mCacheWriteCount;
+        setState(WAIT_ON_WRITE);
         // fall through
     }
 
@@ -2322,6 +2338,9 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
 void LLTextureFetchWorker::endWork(S32 param, bool aborted)
 {
     LL_PROFILE_ZONE_SCOPED;
+    // addWork clears HAVE_WORK before rolling initialization back on
+    // nonacceptance. Retain a pending aux codestream for a later retry.
+    if (aborted && !haveWork()) return;
     LLMutexLock lock(&mWorkMutex);
     if (mDecodeHandle != 0)
     {
@@ -2423,7 +2442,7 @@ bool LLTextureFetchWorker::deleteOK()
     // Cache/decode responders pin this exact worker through completion delivery
     // and destruction, even after request cancellation or UUID replacement.
     // Request handles/state alone cannot establish that those pointers are gone.
-    if (mDecodesInFlight > 0 || mCacheRespondersInFlight > 0)
+    if (mDecodesInFlight > 0 || mCacheRespondersInFlight > 0 || mPriorityUpdatesInFlight > 0)
     {
         delete_ok = false;
     }
@@ -3254,69 +3273,41 @@ bool LLTextureFetch::getRequestFinished(const LLUUID& id, S32& discard_level, S3
 bool LLTextureFetch::updateRequestPriority(const LLUUID& id, F32 priority)
 {
     LL_PROFILE_ZONE_SCOPED;
-    mRequestQueue.tryPost([=, this]()
+    std::shared_ptr<LLTextureFetchWorker> worker;
+    {
+        LLMutexLock lock(&mQueueMutex);
+        auto* current = getWorkerAfterLock(id);
+        if (!current) return false;
+        ++current->mPriorityUpdatesInFlight;
+        // The map lock makes claiming the pin atomic with removal. This
+        // shared owner releases a lifecycle pin, never the worker itself;
+        // normal deleteOK/scheduleDelete remains its destruction authority.
+        worker = std::shared_ptr<LLTextureFetchWorker>(current,
+            [](LLTextureFetchWorker* pinned) { --pinned->mPriorityUpdatesInFlight; });
+    }
+    const U64 generation = worker->mGeneration;
+    return mRequestQueue.tryPost([this, id, priority, generation, worker = std::move(worker)]()
         {
-            LLTextureFetchWorker* worker = getWorker(id);
-            if (worker)
+            if (getWorker(id) == worker.get() && worker->mGeneration == generation)
             {
                 worker->lockWorkMutex();                                        // +Mw
                 worker->setImagePriority(priority);
                 worker->unlockWorkMutex();                                      // -Mw
             }
         });
-
-    return true;
 }
 
-// Replicates and expands upon the base class's
-// getPending() implementation.  getPending() and
-// runCondition() replicate one another's logic to
-// an extent and are sometimes used for the same
-// function (deciding whether or not to sleep/pause
-// a thread).  So the implementations need to stay
-// in step, at least until this can be refactored and
-// the redundancy eliminated.
-//
+// Include metrics/control commands alongside the base owner's logical work
+// and callback service. The native owner loop controls idle waiting itself.
 // Threads:  T*
 
 //virtual
 size_t LLTextureFetch::getPending()
 {
     LL_PROFILE_ZONE_SCOPED;
-    size_t res;
-    lockData();                                                         // +Ct
-    {
-        LLMutexLock lock(&mQueueMutex);                                 // +Mfq
-
-        res = mRequestQueue.size();
-        res += mCommands.size();
-    }                                                                   // -Mfq
-    unlockData();                                                       // -Ct
-    return res;
-}
-
-// Locks:  Ct
-// virtual
-bool LLTextureFetch::runCondition()
-{
-    // Caller is holding the lock on LLThread's condition variable.
-
-    // LLQueuedThread, unlike its base class LLThread, makes this a
-    // private method which is unfortunate.  I want to use it directly
-    // but I'm going to have to re-implement the logic here (or change
-    // declarations, which I don't want to do right now).
-    //
-    // Changes here may need to be reflected in getPending().
-
-    bool have_no_commands(false);
-    {
-        LLMutexLock lock(&mQueueMutex);                                 // +Mfq
-
-        have_no_commands = mCommands.empty();
-    }                                                                   // -Mfq
-
-    return ! (have_no_commands
-              && (mRequestQueue.size() == 0 && mIdleThread));       // From base class
+    const size_t pending = LLWorkerThread::getPending();
+    LLMutexLock lock(&mQueueMutex);                                     // +Mfq
+    return pending + mCommands.size();
 }
 
 //////////////////////////////////////////////////////////////////////////////

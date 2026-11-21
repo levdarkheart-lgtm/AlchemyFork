@@ -86,7 +86,8 @@ private:
     LLMutex* mDeleteMutex;
 
 public:
-    LLWorkerThread(const std::string& name, bool threaded = true, bool should_pause = false);
+    LLWorkerThread(const std::string& name, bool threaded = true, bool should_pause = false,
+                   size_t request_capacity = 1024 * 1024, size_t callback_capacity = 1024 * 1024);
     ~LLWorkerThread();
 
     /*virtual*/ size_t update(F32 max_time_ms);
@@ -147,6 +148,9 @@ public:
 
     // schedlueDelete(): schedules deletion once aborted or completed
     void scheduleDelete();
+    // Caller still owns this object after failed initial admission. Release
+    // immediately rather than creating a foreground-drained rejection backlog.
+    void discardUnaccepted();
 
     bool haveWork() { return getFlags(WCF_HAVE_WORK); } // may still be true if aborted
     bool isWorking() { return getFlags(WCF_WORKING); }
@@ -168,8 +172,9 @@ protected:
 
     void setWorkerThread(LLWorkerThread* workerthread);
 
-    // addWork(): calls startWork, adds doWork() to queue
-    void addWork(S32 param);
+    // Initializes before the owner can run doWork. Rejected admission rolls
+    // initialization back through endWork(param, true), without finishWork.
+    bool addWork(S32 param);
 
     // abortWork(): requests that work be aborted
     void abortWork(bool autocomplete);

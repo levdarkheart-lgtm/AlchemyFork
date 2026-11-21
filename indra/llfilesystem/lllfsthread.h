@@ -43,6 +43,7 @@ class LLLFSThread : public LLQueuedThread
 {
     //------------------------------------------------------------------------
 public:
+    enum class Admission { ACCEPTED, BUSY, CLOSED };
     enum operation_t {
         FILE_READ,
         FILE_WRITE,
@@ -97,6 +98,9 @@ public:
         /*virtual*/ bool processRequest();
         /*virtual*/ void finishRequest(bool completed);
         /*virtual*/ void deleteRequest();
+        // Admission never transferred ownership: release without a completion
+        // callback on the submitting thread.
+        void discardUnaccepted();
 
     private:
         LLLFSThread* mThread;
@@ -114,16 +118,18 @@ public:
 
     //------------------------------------------------------------------------
 public:
-    LLLFSThread(bool threaded = true);
+    LLLFSThread(bool threaded = true, size_t request_capacity = 1024 * 1024,
+               size_t callback_capacity = 1024 * 1024);
     ~LLLFSThread();
 
-    // Return a Request handle
+    // Always consumes responder. Only accepted requests receive completed().
+    // A null handle reports nonacceptance; BUSY is retryable, CLOSED is final.
     handle_t read(const std::string& filename,  /* Flawfinder: ignore */
                   U8* buffer, S32 offset, S32 numbytes,
-                  Responder* responder);
+                  Responder* responder, Admission* admission = nullptr);
     handle_t write(const std::string& filename,
                    U8* buffer, S32 offset, S32 numbytes,
-                   Responder* responder);
+                   Responder* responder, Admission* admission = nullptr);
 
     // static initializers
     static void initClass(bool local_is_threaded = true); // Setup sLocal
