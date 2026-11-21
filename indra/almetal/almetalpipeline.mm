@@ -490,6 +490,7 @@ std::unique_ptr<ALMetalShaderLibrary> ALMetalShaderLibrary::compileSource(
         }
         MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
         options.mathMode = MTLMathModeFast;
+        options.preserveInvariance = YES;
         NSError* native_error = nil;
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
         id<MTLLibrary> library = [native_device newLibraryWithSource:toNSString(source)

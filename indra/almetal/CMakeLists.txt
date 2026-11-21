@@ -54,7 +54,7 @@ if(al_metal_compiler_available)
         "-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   endif()
   set(al_metal_compile_options
-      -std=metal3.1 -ffast-math ${al_metal_deployment_arg}
+      -std=metal3.1 -ffast-math -fpreserve-invariance ${al_metal_deployment_arg}
       ${al_metal_source_record_flags})
   # Xcode's script dependency check does not invalidate existing outputs when
   # only the command's options change. Make those options an actual input.
@@ -406,6 +406,21 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_diagnostic_telemetry_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_function_constants_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   if(AL_METAL_BUILTIN_LIBRARY)
+    # Compare actual production vertex outputs across coplanar rigged passes.
+    # This tiny standalone fixture consumes the exact offline viewer library.
+    add_executable(almetal_rigged_depth_invariance_tests
+      tests/almetal_rigged_depth_invariance_test.mm)
+    set_target_properties(almetal_rigged_depth_invariance_tests PROPERTIES
+      OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED YES)
+    target_compile_options(almetal_rigged_depth_invariance_tests PRIVATE -fobjc-arc)
+    target_link_libraries(almetal_rigged_depth_invariance_tests PRIVATE
+      ${AL_METAL_FRAMEWORK} "-framework Foundation")
+    add_dependencies(almetal_rigged_depth_invariance_tests
+      ${AL_METAL_BUILTIN_LIBRARY_TARGET})
+    add_test(NAME almetal_rigged_depth_invariance
+      COMMAND almetal_rigged_depth_invariance_tests "${AL_METAL_BUILTIN_LIBRARY}")
+    set_tests_properties(almetal_rigged_depth_invariance PROPERTIES
+      RESOURCE_LOCK apple_gpu)
     # Exercise the same offline asset lookup as the viewer. CTest executes
     # TARGET_FILE directly; this bundle creates no window or app launch.
     set_target_properties(almetal_tests PROPERTIES MACOSX_BUNDLE TRUE)
