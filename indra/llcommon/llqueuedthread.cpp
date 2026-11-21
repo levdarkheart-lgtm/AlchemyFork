@@ -150,7 +150,9 @@ size_t LLQueuedThread::updateQueue(F32 max_time_ms)
         if (!isQuitting() && hasThreadedUpdate() &&
             !mThreadedUpdatePending.exchange(true, std::memory_order_acq_rel))
         {
-            const bool posted = mRequestQueue.post([this]()
+            // Housekeeping is a retryable hint. Never wait for queue capacity
+            // on the foreground owner, especially before unpausing service.
+            const bool posted = mRequestQueue.tryPost([this]()
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qt - update");
                     mIdleThread = false;

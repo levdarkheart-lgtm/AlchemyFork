@@ -17,6 +17,7 @@
 #include "llexception.h"
 #include "llthreadsafequeue.h"
 #include "tuple.h"
+#include <algorithm>
 #include <chrono>
 #include <tuple>
 
@@ -308,41 +309,41 @@ namespace LL
             // head of the queue could become ready sooner than either of
             // those events, and we need to deliver it as soon as it does.
             // Don't wait past the TimePoint of the head item.
-            // Naturally, lock the queue before peeking at mStorage.
-            return super::tryLockUntil(
-                until,
-                [this, until, &tuple](lock_t& lock)
-                {
-                    // Use our time_point_cast to allow for 'until' that's a
-                    // time_point type other than TimePoint.
-                    return POPPED ==
-                        tryPopUntil_(lock, LL::time_point_cast<TimePoint>(until), tuple);
-                });
+            // Naturally, lock the queue before peeking at mStorage. Try an
+            // immediate lock first so an expired timeout still permits a due
+            // item to pop when the queue lock is available.
+            lock_t lock(super::mLock, std::defer_lock);
+            if (!lock.try_lock() && !lock.try_lock_until(until))
+                return false;
+
+            // Use our time_point_cast to allow for 'until' that's a
+            // time_point type other than TimePoint.
+            return POPPED ==
+                tryPopUntil_(lock, LL::time_point_cast<TimePoint>(until), tuple);
         }
 
         pop_result tryPopUntil_(lock_t& lock, const TimePoint& until, TimeTuple& tuple)
         {
             LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-            TimePoint adjusted = until;
-            if (! super::mStorage.empty())
+            while (true)
             {
-                LL_PROFILE_ZONE_NAMED("tpu - adjust");
-                // use whichever is earlier: the head item's timestamp, or
-                // the caller's limit
-                adjusted = min(std::get<0>(super::mStorage.front()), adjusted);
-            }
-            // now delegate to base-class tryPopUntil_()
-            pop_result popped;
-            {
-                LL_PROFILE_ZONE_NAMED("tpu - super");
-                while ((popped = pop_result(super::tryPopUntil_(lock, adjusted, tuple))) == WAITING)
+                // Drain due items even when closed or already at the caller's
+                // deadline. pop_ leaves tuple unchanged unless it succeeds.
+                const auto popped = pop_result(super::pop_(lock, tuple));
+                if (popped == POPPED || popped == DONE || Clock::now() >= until)
+                    return popped;
+
+                TimePoint wake = until;
+                if (!super::mStorage.empty())
                 {
-                    // If super::tryPopUntil_() returns WAITING, it means there's
-                    // a head item, but it's not yet time. But it's worth looping
-                    // back to recheck.
+                    wake = std::min(std::get<0>(super::mStorage.front()), wake);
                 }
+
+                // A producer can insert a new, earlier head while we wait.
+                // Recheck both the head and the original caller deadline
+                // after every notification, timeout or spurious wake.
+                super::mEmptyCond.wait_until(lock, wake);
             }
-            return popped;
         }
 
         /// tryPopUntil(DataTuple&)

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-555 -->
+<!-- next-defect-id: PPD-560 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12808,3 +12808,92 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 registered before repair. Preserve actual live terrain/geometry/CPU arithmetic/lifetime coverage; remove only tests exclusive to abandoned mechanisms. Do not declare empty or skipped per-file scopes equivalent to executed native checks.
+
+
+## PPD-555 — Adjacent actual-body texture fixtures omit cancellation ownership
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Asset test integration
+- Discovered: 2026-11-21
+- Original reference: Existing auxiliary-recovery and asset-warning tests compile real fetch-worker methods. PPD533 adds per-decode cancellation state, which their isolated worker declarations must carry and validate.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); sourcec8e72de54a cpu-tests-06.log exits8,53/55 pass, two isolated fixture compilations fail with undeclared mDecodeCancellation.
+- Next action: Add correctly owned cancellation state to both fixture workers, retain actual production method extraction, and assert cancellation/reset behavior before rerunning the complete CPU selection.
+- Verification: Test fixture compile failures; normal full viewer build passes. No current viewer decode failure established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction. Preserve the original failed55-entry run; do not skip affected tests or strip production cancellation calls from extracted methods.
+
+## PPD-556 — Generic scheduled request admission can block at queue capacity
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Queued worker scheduling
+- Discovered: 2026-11-21
+- Original reference: Bounded service admission must not block its own consumer while retrying accepted work. Current generic LLQueuedThread request/retry and housekeeping paths still call WorkSchedule::post with blocking pushIfOpen; newer cache handoffs use nonblocking tryPost.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent asset review traces llqueuedthread postRequest/updateQueue to WorkSchedule and ThreadSafeQueue capacity1,048,576. A self-post can wait for capacity only this consumer can free.
+- Next action: Prove saturation behavior with a bounded deterministic fixture, then establish nonblocking foreground admission and progress-preserving retry/wake handling without dropping accepted work or creating an unbounded overflow. No current saturation is established.
+- Verification: Conditional source-level capacity hazard. Existing ordinary retry/generation/shutdown tests do not exercise a completely full schedule; no current executable stall or FPS attribution.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered on independent final review. The normal million-entry limit is not evidence this activates in owner workloads. Preserve the issue and investigate a coherent bounded scheduler design rather than increasing capacity or dropping retries.
+
+
+## PPD-557 — Retained CPU routing fixtures do not establish bounds capability
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Production CPU routing verification
+- Discovered: 2026-11-21
+- Original reference: Selected automatic CPU routing requires every bounds publication attempt to have completed. A missing bounds publication keeps the cohort scalar; explicitly published unqualified bounds remain fail-visible while qualified outside rows can be rejected.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); gpu-tests-05.log exposes four failed assertions in two of five publishedCPUvisibility cases: the older force-mode fixture passes a null bounds pointer, and new551 reload fixture reuses the same incomplete cohort, so neither activates automatic CPU routing. Pixels/lifetimes pass.
+- Next action: Exercise both incomplete-publication scalar fallback and completed-but-unqualified fail-visible routing, and use a fully published cohort to populate both real route counters for reload. Preserve output, query and lifetime assertions without changing production eligibility.
+- Verification: Executed Metal API/shader-validation fixture failures; no validation error or demonstrated wrong native output. Existing conservative production fallback is consistent with its capability contract.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correcting setup/expectations. Keep the failed56-scope run. Do not weaken the production publication gate to satisfy a test or drop the required populated-counter assertion.
+
+
+## PPD-558 — Timed schedule pop can exceed deadline behind future work
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Scheduled queue deadline maintenance
+- Discovered: 2026-11-21
+- Original reference: A timed schedule consumer must return by its caller deadline while still waking for newly earlier work. ThreadSafeSchedule::tryPopUntil_ loops on WAITING with an already expired adjusted limit instead of respecting the original deadline or reconsidering a new head.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent full-queue design review traces threadsafeschedule.h tryPopUntil_ and llthreadsafequeue.h timed condition wait, with future head past caller limit.
+- Next action: Recompute the due-head/caller deadline after every condition wake, preserve exact pop/close semantics, and add actual timed schedule regression tests for deadline expiry, untouched output/retained future work and an earlier inserted item.
+- Verification: Conditional source deadline/spin hazard. No current viewer stall or measured performance cost established; register before repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 discovered while evaluating556. A timed-drain workaround must not inherit this deadline bug; repair it independently rather than relying on repeated expired waits.
+
+
+## PPD-559 — Required sole pixel decoder retains experiment gates and unreachable fallback
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production decoder/build maintenance
+- Discovered: 2026-11-21
+- Original reference: Owner requires OpenHTJ2K as the sole pixel decoder. OpenJPEG remains valid for encoding/header parsing. A required production dependency must not retain a disabled alternate pixel-decode body or optional experimental selection path.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); llimagej2coj.cpp rejects missing/off AL_EXPERIMENTAL_OPENHTJ2K yet retains unreachable #else OpenJPEG decodeImpl; OpenHTJ2KExperiment module, conditional linking/tests and release flag preserve obsolete experiment selection vocabulary.
+- Next action: Make required OpenHT linkage/test registration explicit, retire unreachable alternate pixel decoding and experiment selectors while retaining pinned source/archive/receipt/ARM64 checks and all OpenJPEG header/encoding support. Migrate affected build tests/CI coherently.
+- Verification: Source maintenance defect, not evidence that the current candidate uses a wrong decoder. Actual decode identity and symbol inspection already support OpenHT selection.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before follow-through cleanup. No decoder fallback may be configured or introduced to validate retirement; preserve actual primary/auxiliary/truncation/encoding tests and required archive integrity.

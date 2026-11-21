@@ -1,6 +1,6 @@
 # Production convergence candidate — 2026-11-21
 
-Status: doing
+Status: final candidate qualification in progress
 Owner: root integrator, canonical codex/apple-silicon-metal worktree.
 Base: 83d33894c37087025616bd9aaf1d831cc574da97 / indra05091a15a7.
 Owner authorizes proper scheduling/ownership repairs, coherent Apple-first infrastructure,
@@ -24,8 +24,9 @@ Scene mutation and result publication stay on explicit owners; memory/retirement
 request generations, cancellation, quality and retained Alchemy features remain.
 Scheduling changes use existing queues and ownership boundaries, without a new
 engine-wide framework or speculative user tuning knobs. Original mappings are
-recorded before each renderer/settings repair. Rejected small-job experiments stay
-retained; no FPS gain is claimed from a source repair or component result.
+recorded before each renderer/settings repair. Rejected experimental implementations are retired after dependency/selection tracing; their
+historical evidence remains in docs/Git. No FPS gain is claimed from a source repair
+or component result.
 
 ## Evidence and integration
 
@@ -47,8 +48,10 @@ completion/performance, parity and product release gates remain open.
 
 ## Next executable action
 
-Implement independent worker/asset/preferences repairs, review and integrate them,
-then build and qualify one separate candidate. The owner controls its live test.
+Final integrated native validation is running at c8e72de54a. Repair two adjacent
+isolated texture fixtures under PPD555, rerun the CPU selection, then freeze and
+build the final distinct Maintenance candidate. Retain the saturation investigation
+PPD556 and the explicit residual action map below. The owner controls its live test.
 
 ## Root pre-fix ownership mapping
 
@@ -128,3 +131,98 @@ The first post-retirement harness run fails1 with four references to the deleted
 historical SourcePages implementation in PPD303/304. Point those evidence fields
 to this retained source index, preserve all original findings/test history, and
 make the current next actions refer to the maintained replacement candidate.
+
+
+## Final source integration and qualification
+
+All source groups are integrated locally in the canonical checkout. Independent
+agents have frozen their implementation worktrees and reviewed the root result.
+No push, viewer launch/login, runtime settings modification or live performance
+collection was performed. The accepted69417 app remains preserved separately.
+
+| Source checkpoint | Change / evidence boundary |
+| --- | --- |
+| 648aa4b667 | Bounded async fast-cache reads, pinned cache→fetch completions, generation-checked ready-result delivery and accepted-decode cancellation. |
+| a07d000478 | Explicit inherited fetch overrides fix the normal Werror compile failure549. Full Maintenance69438 build02 passes, before large renderer retirement. |
+| 24de2b2e99 /6fc608fb9e | Retire old banks/rows/GPU world visibility/resource tables/forced rejected E6 consumers, retaining CPU routing/leases/terrain/probes/shadow/rigged output. Source modules renamed to owned inputs and CPU classifier. |
+| 12e0d5d35f | Build03 exposes missing adjacent live shadow reload552; restore exact previous definition. Complete preference generator dependencies553. Build04 passes. |
+| c8e72de54a | Restore shared terrain/CPU interval test inclusion and register seven actual Catch fragments554. Empty visibility wrapper no longer creates an empty scope. Full Maintenance69442 build05 passes. |
+
+Private command/output receipts are under
+`artifacts/metal/production-convergence-20261121/`. The build uses
+`AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64-shadow-occlusion` with
+`AL_METAL_CONFIG=Release AL_METAL_JOBS=8 tools/metal/build.sh build`; configure uses
+`cmake -S indra -B build-Darwin-ninja-os-arm64-shadow-occlusion
+-DAL_CHANNEL:STRING="Alchemy Metal Maintenance" -DAL_BUILD_TESTS:BOOL=ON`.
+The isolated Python and pinned accepted OpenHT0.27 source/archive are reused;
+no decoder fallback is configured.
+
+The final CPU selection is55 entries: worker queue/retry/pool/schedule/lifetime,
+image decode/worker and actual OpenHT primary+auxiliary decode, settings roundtrip,
+preferences/asset startup/recovery and diagnostic contracts. Initial cpu-tests05
+exits8 before execution because --tests-from-file used a relative path interpreted
+inside the build directory. The absolute-path replacement cpu-tests06 executes
+53PASS/2FAIL; both failures are isolated missing cancellation-state declarations
+under555, not normal viewer compilation failures. Preserve all logs and rerun the
+complete selection after fixture correction.
+
+The native selection is56 scopes with MTL_DEBUG_LAYER=1 and
+MTL_SHADER_VALIDATION=1. It includes default-policy world outputs, scalar/cohort
+routing and query ordering, new populated-counter reload551, retained terrain and
+CPU arithmetic fragments, ResourceSource generation pins, pending-view lighting
+isolation/reuse, complete generic/relevant probe consumers, shadow publication,
+producer capture/lifetime and actual offline-library rigged-depth invariance.
+The first run exits8 with55PASS/1FAIL/270.28s; the failure is557
+(four assertions in two cases with incomplete test capability setup). Correct and
+rerun; no Metal validation error or native output mismatch is established.
+Cache/archive-specific assertions need a separate run
+without global shader validation, which intentionally bypasses the cache.
+
+Static app verification05 passes all346 bundled Mach-O files ARM64-only. Deep
+strict codesign verification05 passes. Strict GL source audit04 exits0; this is
+a conservative source gate, not runtime/context or foreign Chromium qualification.
+The Maintenance69442 executable links Metal directly, with no OpenGL/Vulkan direct
+framework dependency. Symbol inspection contains OpenHT decoder bodies and
+OpenJPEG header parsing, with no opj_decode symbol; actual decode test identity is
+separately exercised. The owner session has not been launched to claim startup-log
+or first-live-decode evidence.
+
+## Explicit remaining engineering actions
+
+| Item | Current boundary and next executable action |
+| --- | --- |
+| PPD556 full schedule | Conditional million-entry self-post capacity hazard, no observed saturation. Foreground housekeeping now uses retryable tryPost, so it cannot wait before unpausing. Remaining request/retry/wake design needs one reusable request-owned deadline entry, a separate bounded callback queue and explicit nonfatal admission handling across callers; preserve4-urgent fairness. Test tiny-capacity retry/wake/admission/paused shutdown, not a larger queue or dropped work. |
+| PPD532 handoff fallback / HTTP service | Cache→fetch tryPost falls back to the main list if closed/full/contended. Fast-cache and decoded-result publication remain bounded owner work. HTTP request updates are still frame-triggered/coalesced. Trace completion→fetch→collect→upload→publish age and service triggers before moving more lifecycle work. |
+| PPD533 decode cancellation | Pending accepted jobs can skip before allocation/expensive decode and after permit admission; a waiter does not stop waiting immediately, and a running OpenHT call remains nonpreemptible. Consider cancellation-aware permit admission only with exact one-completion/estimate/permit accounting. |
+| PPD529 General service | Invalid widths fixed and effective width/selector logged; shipped General1 retained. Measure queue age by job category, then justify separation or width from ownership and workload evidence. Saved-vs-shipped map origin is not available from current CommonControl API. |
+| PPD530 geometry / coarse CPU work | Misleading unused budget removed; required priority rebuild remains owner-serial. Attribute rebuild/cull/sort/encode costs and extract immutable preparation/private outputs at a concrete ownership boundary. Preserve required publication correctness. |
+| PPD537 earlier GPU waits | Live regular reply budget fixed; pacing drain retained. Correlate queue age against both required-main admission and end-pacing waits. Any added reply service must run outside an active render transaction. |
+| Upload/publication/producer credits | Keep memory, age/fairness and oversized progress bounds. Collect denials, backlog age and service capacity before revising per-frame credits; no universal default or FPS attribution established. |
+| Single upload owner CPU preparation | Preserve serial flush/batch ownership. Investigate immutable pixel conversion/alpha/mask preparation as an independent stage, with actual ownership/lifetime and total-cost evidence. |
+| Pipeline cache concurrency | Predictable point variants now eager. Archive cache mutex still covers native creation; separate archive mutation from compilation only after first-use/startup evidence and safety design. |
+| Required decoder naming | Required enabled OpenHT remains selected; OpenHTJ2KExperiment/AL_EXPERIMENTAL_OPENHTJ2K names are historical despite OFF being fatal. Follow-through production naming can migrate build receipts/CI/configuration coherently without decoder fallback. |
+| Owner/runtime acceptance | Test loading/teleport/refinement, stale/cancel/reload/shutdown and graphics controls in the separate candidate. Preserve accepted baseline. Whole-viewer performance, prolonged stability, broad parity, runtime no-GL and foreign subprocess/release gates remain open. |
+
+Default-off alone does not identify dead code. Supported quality options and
+selected CPU producers, bounded main-lighting chain/shadow-view overlap, probe
+candidates, small lighting tiles and active shadow ICB/visibility remain backed
+by live consumers or selection evidence. Only rejected/unselected abandoned
+mechanisms and their exclusive tests were removed; historical results stay in Git
+and the defect register.
+
+
+PPD555 adjacent fixture repair is frozen: real cancellation token ownership,
+endWork normal/abort cancellation, stale callback retention and accepted-completion
+reset. Both actual-body ASan/UBSan scripts pass: aux32cases/101checks, asset
+diagnostics71off/92on, HTTP6off/7on (fixture-repair-receipt.json).
+
+PPD557 keeps both missing-publication scalar fallback and completed unqualified
+fail-visible CPU routing, and551 now uses a fully published cohort for actual
+populated-route reload. Production eligibility and conservative output are
+unchanged. Independent review pending before final native rerun.
+
+PPD558 is an independently discovered inherited timed-schedule bug: WAITING can
+loop past a caller deadline and hold the queue lock in repeated expired waits.
+Repair the actual condition/deadline loop and add real deadline/earlier-insertion
+checks before the last candidate build; do not build556's future owner wait on
+that bug. All earlier logs remain retained.
