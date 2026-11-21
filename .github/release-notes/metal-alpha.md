@@ -1,23 +1,15 @@
-Alchemy Metal Alpha 7 is an early Apple Silicon prerelease for **macOS 26 or later**.
-It includes the current native Metal engine and the owner-tested loading, water
-and IM translation changes. Overall feature parity, prolonged stability and
-quality-equivalent performance gates remain open.
+Alchemy Metal Alpha 8 is an early Apple Silicon prerelease for **macOS 26 or later**.
 
-Changes since Alpha 6:
+This release fixes camera-dependent breakup of layered rigged mesh surfaces.
+Opaque, transparent and glow passes now keep those surfaces aligned as the
+camera moves, including the retained animated mesh paths. The correction passed
+native GPU regression checks and owner testing in candidate 69417.
 
-- Apple Silicon engine work covering scene preparation, resource publication,
-  lighting and shadow submission. Production defaults are retained; optional
-  alternatives follow their individual controls.
-- Reworked texture streaming with hardware-aware adaptive OpenHTJ2K decoding,
-  memory-bounded decode ahead and background native texture uploads.
-- Texture/cache, bake auxiliary-data, object admission and native upload fixes
-  addressing loading problems seen during login and teleporting.
-- Resource-readiness and snapshot-result corrections, plus the owner-verified
-  fix for the camera-relative dark/grainy water band.
-- Optional per-chat native Apple IM translation, with language preparation,
-  compact settings popup and preserved original outgoing text in local history.
-  Language models are prepared on the user's Mac with their approval; they are
-  not bundled into the download.
+It retains Alpha 7's native Metal engine, hardware-aware adaptive OpenHTJ2K
+texture streaming, loading and water corrections, and optional per-chat native
+Apple IM translation. Language models are prepared on the user's Mac with their
+approval; they are not bundled into the download. Overall feature parity,
+prolonged stability and quality-equivalent performance gates remain open.
 
 The download is an **ad-hoc-signed ARM64 application ZIP**, with a SHA-256
 checksum and build-provenance JSON. It is not Developer ID signed or notarized.
