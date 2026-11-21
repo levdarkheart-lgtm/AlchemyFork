@@ -1275,6 +1275,7 @@ void LLViewerFetchedTexture::init(bool firstinit)
     mForSculpt = false;
     mIsFetched = false;
     mInFastCacheList = false;
+    mFastCacheRequest.reset();
 
     mSavedRawImage = NULL;
     mForceToSaveRawImage  = false;
@@ -1344,15 +1345,22 @@ void LLViewerFetchedTexture::loadFromFastCache()
     {
         return; //no need to access the fast cache.
     }
+    if (!mFastCacheRequest)
+    {
+        mFastCacheRequest = LLAppViewer::getTextureCache()->readFromFastCacheAsync(getID());
+        if (!mFastCacheRequest) return; // bounded admission; keep the oldest request first
+        add(LLTextureFetch::sCacheAttempt, 1.0);
+    }
+    if (!mFastCacheRequest->ready.load(std::memory_order_acquire)) return;
+
     mInFastCacheList = false;
-
-    add(LLTextureFetch::sCacheAttempt, 1.0);
-
-    LLTimer fastCacheTimer;
-    mRawImage = LLAppViewer::getTextureCache()->readFromFastCache(getID(), mRawDiscardLevel);
+    mRawImage = mFastCacheRequest->image;
+    mRawDiscardLevel = mFastCacheRequest->discard;
+    const F32 cache_read_time = mFastCacheRequest->elapsed;
+    mFastCacheRequest.reset();
     if(mRawImage.notNull())
     {
-        F32 cachReadTime = fastCacheTimer.getElapsedTimeF32();
+        F32 cachReadTime = cache_read_time;
 
         add(LLTextureFetch::sCacheHit, 1.0);
         record(LLTextureFetch::sCacheHitRate, LLUnits::Ratio::fromValue(1));

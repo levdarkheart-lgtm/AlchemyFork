@@ -33,10 +33,26 @@
 #include "lluuid.h"
 
 #include "llworkerthread.h"
+#include <atomic>
+#include <memory>
 
 class LLImageFormatted;
 class LLTextureCacheWorker;
 class LLImageRaw;
+
+// Only the cache service writes these fields, before ready's release-store.
+// The main-owned texture consumes them after an acquire-load. Holding a result
+// retains its bounded slot through owner publication, not just disk completion.
+struct LLTextureCacheFastResult
+{
+    explicit LLTextureCacheFastResult(std::shared_ptr<std::atomic<U32>> slots);
+    ~LLTextureCacheFastResult();
+    std::atomic<bool> ready{false};
+    LLPointer<LLImageRaw> image;
+    S32 discard = -1;
+    F32 elapsed = 0.f;
+    std::shared_ptr<std::atomic<U32>> slots;
+};
 
 class LLTextureCache : public LLWorkerThread
 {
@@ -86,6 +102,10 @@ public:
     class Responder : public LLResponder
     {
     public:
+        // A safe worker receiver may enqueue a retained completion without
+        // taking its state locks while the cache request lock is held.
+        // False retains the established main-thread delivery (including full queues).
+        virtual bool postCompleted(bool success) { return false; }
         virtual void setData(U8* data, S32 datasize, S32 imagesize, S32 imageformat, bool imagelocal) = 0;
     };
 
@@ -127,6 +147,7 @@ public:
     handle_t writeToCache(const LLUUID& id, const U8* data, S32 datasize, S32 imagesize, LLPointer<LLImageRaw> rawimage, S32 discardlevel,
                           WriteResponder* responder);
     LLPointer<LLImageRaw> readFromFastCache(const LLUUID& id, S32& discardlevel);
+    std::shared_ptr<LLTextureCacheFastResult> readFromFastCacheAsync(const LLUUID& id);
     bool writeComplete(handle_t handle, bool abort = false);
     void prioritizeWrite(handle_t handle);
 
@@ -193,14 +214,13 @@ private:
     LLMutex mHeaderIDMapMutex; // To avoid deadlocks, never lock mFastCacheMutex after mHeaderIDMapMutex.
     LLMutex mListMutex;
     LLMutex mFastCacheMutex;
+    std::shared_ptr<std::atomic<U32>> mFastCacheSlots = std::make_shared<std::atomic<U32>>(0);
     LLFile* mHeaderAPRFile;
 
     typedef std::map<handle_t, LLTextureCacheWorker*> handle_map_t;
     handle_map_t mReaders;
     handle_map_t mWriters;
 
-    typedef std::vector<handle_t> handle_list_t;
-    handle_list_t mPrioritizeWriteList;
 
     typedef std::vector<std::pair<LLPointer<Responder>, bool> > responder_list_t;
     responder_list_t mCompletedList;

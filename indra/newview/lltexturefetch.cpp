@@ -292,25 +292,37 @@ private:
     public:
 
         // Threads:  Ttf
-        CacheReadResponder(LLTextureFetch* fetcher, const LLUUID& id, LLImageFormatted* image)
-            : mFetcher(fetcher), mID(id)
+        CacheReadResponder(LLTextureFetch* fetcher, const LLUUID& id, LLImageFormatted* image,
+                           LLTextureFetchWorker* worker)
+            : mFetcher(fetcher), mID(id), mWorker(worker), mGeneration(++worker->mCacheReadGeneration)
         {
+            ++mWorker->mCacheRespondersInFlight;
             setImage(image);
         }
+        ~CacheReadResponder() override { --mWorker->mCacheRespondersInFlight; }
+        bool postCompleted(bool success) override
+        {
+            LLPointer<CacheReadResponder> self(this);
+            return mFetcher->mRequestQueue.tryPost([self, success] { self->completed(success); });
+        }
 
-        // Threads:  Ttc
+        // Threads: Ttf; Tmain only when nonblocking service admission fails.
         void completed(bool success) override
         {
             LL_PROFILE_ZONE_SCOPED;
-            LLTextureFetchWorker* worker = mFetcher->getWorker(mID);
-            if (worker)
+            // The responder pins this exact worker; replacement UUIDs do not
+            // receive an older request's completion. The callback checks its epoch.
+            if (mFetcher->getWorker(mID) == mWorker)
             {
-                worker->callbackCacheRead(success, mFormattedImage, mImageSize, mImageLocal);
+                mWorker->callbackCacheRead(success, mFormattedImage, mImageSize, mImageLocal, mGeneration);
+                mWorker->wakeWork();
             }
         }
     private:
         LLTextureFetch* mFetcher;
         LLUUID mID;
+        LLTextureFetchWorker* mWorker;
+        U64 mGeneration;
     };
 
     class CacheWriteResponder final : public LLTextureCache::WriteResponder
@@ -318,24 +330,33 @@ private:
     public:
 
         // Threads:  Ttf
-        CacheWriteResponder(LLTextureFetch* fetcher, const LLUUID& id)
-            : mFetcher(fetcher), mID(id)
+        CacheWriteResponder(LLTextureFetch* fetcher, const LLUUID& id, LLTextureFetchWorker* worker)
+            : mFetcher(fetcher), mID(id), mWorker(worker), mGeneration(++worker->mCacheWriteGeneration)
         {
+            ++mWorker->mCacheRespondersInFlight;
+        }
+        ~CacheWriteResponder() override { --mWorker->mCacheRespondersInFlight; }
+        bool postCompleted(bool success) override
+        {
+            LLPointer<CacheWriteResponder> self(this);
+            return mFetcher->mRequestQueue.tryPost([self, success] { self->completed(success); });
         }
 
-        // Threads:  Ttc
+        // Threads: Ttf; Tmain only when nonblocking service admission fails.
         void completed(bool success) override
         {
             LL_PROFILE_ZONE_SCOPED;
-            LLTextureFetchWorker* worker = mFetcher->getWorker(mID);
-            if (worker)
+            if (mFetcher->getWorker(mID) == mWorker)
             {
-                worker->callbackCacheWrite(success);
+                mWorker->callbackCacheWrite(success, mGeneration);
+                mWorker->wakeWork();
             }
         }
     private:
         LLTextureFetch* mFetcher;
         LLUUID mID;
+        LLTextureFetchWorker* mWorker;
+        U64 mGeneration;
     };
 
     class DecodeResponder final : public LLImageDecodeThread::Responder
@@ -368,6 +389,7 @@ private:
             if (mFetcher->getWorker(mID) == mWorker)
             {
                 mWorker->callbackDecoded(success, error_message, raw, aux, request_id);
+                mWorker->wakeWork();
             }
         }
     private:
@@ -398,18 +420,26 @@ public:
     /*virtual*/ bool deleteOK(); // called from update()
 
     ~LLTextureFetchWorker();
+    void scheduleDelete()
+    {
+        {
+            LLMutexLock lock(&mWorkMutex);
+            if (mDecodeCancellation) mDecodeCancellation->store(true, std::memory_order_release);
+        }
+        LLWorkerClass::scheduleDelete();
+    }
 
     // Threads:  Ttf
     // Locks:  Mw
     S32 callbackHttpGet(LLCore::HttpResponse * response,
                         bool partial, bool success);
 
-    // Threads:  Ttc
+    // Threads: Ttf, or Tmain on completion-queue rejection.
     void callbackCacheRead(bool success, LLImageFormatted* image,
-                           S32 imagesize, bool islocal);
+                           S32 imagesize, bool islocal, U64 generation);
 
-    // Threads:  Ttc
-    void callbackCacheWrite(bool success);
+    // Threads: Ttf, or Tmain on completion-queue rejection.
+    void callbackCacheWrite(bool success, U64 generation);
 
     // Threads:  Tid
     void callbackDecoded(bool success, const std::string& error_message, LLImageRaw* raw, LLImageRaw* aux, S32 decode_id);
@@ -604,6 +634,11 @@ private:
                                 mCachedSize,
                                 mCacheReadEnd;   // where the last cache read was asked to stop
     e_request_state mSentRequest;
+    const U64 mGeneration;
+    U64 mCacheReadGeneration = 0;
+    U64 mCacheWriteGeneration = 0;
+    std::atomic<S32> mCacheRespondersInFlight{0};
+    LLImageDecodeThread::Cancellation mDecodeCancellation;
     handle_t mDecodeHandle;
     // DecodeResponders alive that point at this worker. A responder lives on past completed()
     // and past the worker's interest in its decode, so neither mDecodeHandle nor mDecoded can
@@ -941,6 +976,7 @@ LLTextureFetchWorker::LLTextureFetchWorker(LLTextureFetch* fetcher,
       mCacheReadEnd(0),
       mLoaded(false),
       mSentRequest(UNSENT),
+      mGeneration(++fetcher->mNextRequestGeneration),
       mDecodeHandle(0),
       mDecodesInFlight(0),
       mDecoded(false),
@@ -1303,7 +1339,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
                 // read file from local disk
                 ++mCacheReadCount;
                 std::string filename = mUrl.substr(7, std::string::npos);
-                CacheReadResponder* responder = new CacheReadResponder(mFetcher, mID, mFormattedImage);
+                CacheReadResponder* responder = new CacheReadResponder(mFetcher, mID, mFormattedImage, this);
                 mCacheReadTimer.reset();
                 mCacheReadHandle = mFetcher->mTextureCache->readFromCache(filename, mID, offset, size, responder);
 
@@ -1311,7 +1347,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
             else if ((mUrl.empty() || mFTType==FTT_SERVER_BAKE) && mFetcher->canLoadFromCache())
             {
                 ++mCacheReadCount;
-                CacheReadResponder* responder = new CacheReadResponder(mFetcher, mID, mFormattedImage);
+                CacheReadResponder* responder = new CacheReadResponder(mFetcher, mID, mFormattedImage, this);
                 mCacheReadTimer.reset();
                 mCacheReadHandle = mFetcher->mTextureCache->readFromCache(mID,
                                                                           offset, size, responder);;
@@ -1966,10 +2002,12 @@ bool LLTextureFetchWorker::doWork(S32 param)
         // In case worked manages to request decode, be shut down,
         // then init and request decode again with first decode
         // still in progress, assign a sufficiently unique id
+        if (mDecodeCancellation) mDecodeCancellation->store(true, std::memory_order_release);
+        mDecodeCancellation = std::make_shared<std::atomic<bool>>(false);
         mDecodeHandle = LLAppViewer::getImageDecodeThread()->decodeImage(mFormattedImage,
                                                                        discard,
                                                                        mDecodeNeedsAux,
-                                                                       new DecodeResponder(mFetcher, mID, this));
+                                                                       new DecodeResponder(mFetcher, mID, this), mDecodeCancellation);
         if (mDecodeHandle == 0)
         {
             // Abort, failed to put into queue.
@@ -2066,7 +2104,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
         mWritten = false;
         setState(WAIT_ON_WRITE);
         ++mCacheWriteCount;
-        CacheWriteResponder* responder = new CacheWriteResponder(mFetcher, mID);
+        CacheWriteResponder* responder = new CacheWriteResponder(mFetcher, mID, this);
         // This call might be under work mutex, but mRawImage is not nessesary safe here.
         // If something retrieves it via getRequestFinished() and modifies, image won't
         // be protected by work mutex and won't be safe to use here nor in cache worker.
@@ -2284,9 +2322,10 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
 void LLTextureFetchWorker::endWork(S32 param, bool aborted)
 {
     LL_PROFILE_ZONE_SCOPED;
+    LLMutexLock lock(&mWorkMutex);
     if (mDecodeHandle != 0)
     {
-        // LL::ThreadPool has no operation to cancel a particular work item
+        if (mDecodeCancellation) mDecodeCancellation->store(true, std::memory_order_release);
         mDecodeHandle = 0;
     }
     // Retain only an already decoded primary-only aux-capable codestream while
@@ -2381,10 +2420,10 @@ bool LLTextureFetchWorker::deleteOK()
         delete_ok = false;
     }
 
-    // A decode responder dereferences this worker until it is destroyed, whether or not its
-    // decode still matters. Once a worker is out of mRequestMap its decode's result is
-    // dropped, so neither mDecodeHandle nor mDecoded ever settles for it; the count does.
-    if (mDecodesInFlight > 0)
+    // Cache/decode responders pin this exact worker through completion delivery
+    // and destruction, even after request cancellation or UUID replacement.
+    // Request handles/state alone cannot establish that those pointers are gone.
+    if (mDecodesInFlight > 0 || mCacheRespondersInFlight > 0)
     {
         delete_ok = false;
     }
@@ -2516,13 +2555,13 @@ S32 LLTextureFetchWorker::callbackHttpGet(LLCore::HttpResponse * response,
 
 //////////////////////////////////////////////////////////////////////////////
 
-// Threads:  Ttc
+// Threads: Ttf, or Tmain on completion-queue rejection.
 void LLTextureFetchWorker::callbackCacheRead(bool success, LLImageFormatted* image,
-                                             S32 imagesize, bool islocal)
+                                             S32 imagesize, bool islocal, U64 generation)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     LLMutexLock lock(&mWorkMutex);                                      // +Mw
-    if (mState != LOAD_FROM_TEXTURE_CACHE)
+    if (mState != LOAD_FROM_TEXTURE_CACHE || generation != mCacheReadGeneration)
     {
 //      LL_WARNS(LOG_TXT) << "Read callback for " << mID << " with state = " << mState << LL_ENDL;
         return;
@@ -2542,11 +2581,11 @@ void LLTextureFetchWorker::callbackCacheRead(bool success, LLImageFormatted* ima
     mLoaded = true;
 }                                                                       // -Mw
 
-// Threads:  Ttc
-void LLTextureFetchWorker::callbackCacheWrite(bool success)
+// Threads: Ttf, or Tmain on completion-queue rejection.
+void LLTextureFetchWorker::callbackCacheWrite(bool success, U64 generation)
 {
     LLMutexLock lock(&mWorkMutex);                                      // +Mw
-    if (mState != WAIT_ON_WRITE)
+    if (mState != WAIT_ON_WRITE || generation != mCacheWriteGeneration)
     {
 //      LL_WARNS(LOG_TXT) << "Write callback for " << mID << " with state = " << mState << LL_ENDL;
         return;
@@ -2620,6 +2659,7 @@ void LLTextureFetchWorker::callbackDecoded(bool success, const std::string &erro
     }
 
     mDecodeHandle = 0;
+    mDecodeCancellation.reset();
     if (success)
     {
         llassert_always(raw);
@@ -3071,6 +3111,43 @@ LLTextureFetchWorker* LLTextureFetch::getWorker(const LLUUID& id)
 }                                                                       // -Mfq
 
 
+void LLTextureFetch::notifyReady(LLTextureFetchWorker* worker)
+{
+    // Called with the work lock held. Queue only immutable identity here;
+    // request-map validation belongs to the consumer under its separate lock.
+    LLMutexLock lock(&mReadyMutex);
+    constexpr size_t max_ready = 4096;
+    if (mReadyQueue.size() >= max_ready) return; // ordinary demand sweep remains a progress path
+    auto [entry, inserted] = mReadyGenerations.try_emplace(worker->mID, worker->mGeneration);
+    if (!inserted && entry->second >= worker->mGeneration) return;
+    entry->second = worker->mGeneration;
+    mReadyQueue.emplace_back(worker->mID, worker->mGeneration);
+}
+
+bool LLTextureFetch::popReadyTexture(LLUUID& id)
+{
+    // Never hold ready and request-map locks together, in either order.
+    for (unsigned scanned = 0; scanned < 64; ++scanned)
+    {
+        std::pair<LLUUID, U64> entry;
+        {
+            LLMutexLock lock(&mReadyMutex);
+            if (mReadyQueue.empty()) return false;
+            entry = mReadyQueue.front();
+            mReadyQueue.pop_front();
+            auto current = mReadyGenerations.find(entry.first);
+            if (current == mReadyGenerations.end() || current->second != entry.second) continue;
+            mReadyGenerations.erase(current);
+        }
+        LLMutexLock lock(&mQueueMutex);
+        auto* worker = getWorkerAfterLock(entry.first);
+        if (!worker || worker->mGeneration != entry.second) continue;
+        id = entry.first;
+        return true;
+    }
+    return false;
+}
+
 // Threads:  T*
 bool LLTextureFetch::getRequestFinished(const LLUUID& id, S32& discard_level, S32& worker_state,
                                         LLPointer<LLImageRaw>& raw, LLPointer<LLImageRaw>& aux,
@@ -3397,6 +3474,10 @@ void LLTextureFetchWorker::setState(e_state new_state)
 
     mStateTimer.reset();
     mState = new_state;
+    if (new_state == WAIT_ON_WRITE || new_state == DONE)
+    {
+        mFetcher->notifyReady(this);
+    }
 }
 
 LLViewerRegion* LLTextureFetchWorker::getRegion()

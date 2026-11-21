@@ -44,6 +44,7 @@
 #include "httphandler.h"
 #include "lltrace.h"
 #include "llviewertexture.h"
+#include <deque>
 
 class LLViewerTexture;
 class LLTextureFetchWorker;
@@ -126,6 +127,9 @@ public:
     bool getRequestFinished(const LLUUID& id, S32& discard_level, S32& worker_state,
                             LLPointer<LLImageRaw>& raw, LLPointer<LLImageRaw>& aux,
                             LLCore::HttpStatus& last_http_get_status, FetchStatus& status);
+
+    // Bounded completion-driven collection; texture mutation stays on the owner.
+    bool popReadyTexture(LLUUID& id);
 
     // Threads:  T*
     bool updateRequestPriority(const LLUUID& id, F32 priority);
@@ -276,6 +280,7 @@ private:
 
     // Threads:  Ttf
     /*virtual*/ void threadedUpdate(void);
+    bool hasThreadedUpdate() const override { return true; }
 
     // Threads:  Ttf
     void commonUpdate();
@@ -330,6 +335,12 @@ public:
     static LLTrace::EventStatHandle<LLUnit<F32, LLUnits::Percent> > sCacheHitRate;
 
 private:
+    void notifyReady(LLTextureFetchWorker* worker);
+    LLMutex mReadyMutex; // never nested with the worker or request-map lock
+    std::atomic<U64> mNextRequestGeneration{0};
+    std::deque<std::pair<LLUUID, U64>> mReadyQueue;
+    std::map<LLUUID, U64> mReadyGenerations; // coalesced under mReadyMutex
+
     LLMutex mQueueMutex;        //to protect mRequestMap and mCommands only
     LLMutex mNetworkQueueMutex; //to protect mHTTPTextureQueue
 

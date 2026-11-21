@@ -858,8 +858,6 @@ size_t LLTextureCache::update(F32 max_time_ms)
     res = LLWorkerThread::update(max_time_ms);
 
     mListMutex.lock();
-    handle_list_t priorty_list = mPrioritizeWriteList; // copy list
-    mPrioritizeWriteList.clear();
     responder_list_t completed_list = mCompletedList; // copy list
     mCompletedList.clear();
     mListMutex.unlock();
@@ -2070,7 +2068,60 @@ LLTextureCache::handle_t LLTextureCache::writeToCache(const LLUUID& id,
     return handle;
 }
 
-//called in the main thread
+LLTextureCacheFastResult::LLTextureCacheFastResult(std::shared_ptr<std::atomic<U32>> count)
+    : slots(std::move(count))
+{
+}
+
+LLTextureCacheFastResult::~LLTextureCacheFastResult()
+{
+    slots->fetch_sub(1, std::memory_order_relaxed);
+}
+
+std::shared_ptr<LLTextureCacheFastResult> LLTextureCache::readFromFastCacheAsync(const LLUUID& id)
+{
+    // Cap retained results, including completed I/O awaiting owner collection.
+    constexpr U32 max_pending = 64;
+    U32 count = mFastCacheSlots->load(std::memory_order_relaxed);
+    do
+    {
+        if (count >= max_pending || isQuitting()) return {};
+    }
+    while (!mFastCacheSlots->compare_exchange_weak(count, count + 1, std::memory_order_relaxed));
+    std::shared_ptr<LLTextureCacheFastResult> result;
+    try
+    {
+        result = std::make_shared<LLTextureCacheFastResult>(mFastCacheSlots);
+    }
+    catch (...)
+    {
+        mFastCacheSlots->fetch_sub(1, std::memory_order_relaxed);
+        throw;
+    }
+    if (!mRequestQueue.tryPost([this, id, result]
+        {
+            LLTimer timer;
+            try
+            {
+                result->image = readFromFastCache(id, result->discard);
+                result->elapsed = timer.getElapsedTimeF32();
+                result->ready.store(true, std::memory_order_release);
+            }
+            catch (...)
+            {
+                // A failed cache attempt must not permanently gate the fetch.
+                result->ready.store(true, std::memory_order_release);
+                throw;
+            }
+        }))
+    {
+        return {};
+    }
+    unpause();
+    return result;
+}
+
+// Called on the serial cache service.
 LLPointer<LLImageRaw> LLTextureCache::readFromFastCache(const LLUUID& id, S32& discardlevel)
 {
     U32 offset;
@@ -2289,14 +2340,18 @@ bool LLTextureCache::writeComplete(handle_t handle, bool abort)
 
 void LLTextureCache::prioritizeWrite(handle_t handle)
 {
-    // Don't prioritize yet, we might be working on this now
-    //   which could create a deadlock
-    LLMutexLock lock(&mListMutex);
-    mPrioritizeWriteList.push_back(handle);
+    // Promotion uses a handle/lifetime token, never a borrowed request pointer.
+    // The service bounds consecutive urgent starts so ordinary reads still run.
+    LLMutexLock lock(&mWorkersMutex);
+    if (mWriters.find(handle) != mWriters.end())
+    {
+        promoteRequest(handle);
+    }
 }
 
 void LLTextureCache::addCompleted(Responder* responder, bool success)
 {
+    if (responder->postCompleted(success)) return;
     LLMutexLock lock(&mListMutex);
     mCompletedList.push_back(std::make_pair(responder,success));
 }

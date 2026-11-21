@@ -47,15 +47,23 @@ public:
                  S32 discard,
                  bool needs_aux,
                  const LLPointer<LLImageDecodeThread::Responder>& responder,
-                 U32 request_id);
+                 U32 request_id, const LLImageDecodeThread::Cancellation& cancellation);
     virtual ~ImageRequest();
 
     /*virtual*/ bool processRequest(ALNativeFrameBudget::DecodeEstimate& estimate);
     /*virtual*/ void finishRequest(bool completed);
+    bool cancelled() const { return mCancelled; }
     void setStage(const char* stage) noexcept { mStage = stage; }
     void logUnexpectedException(const char* type, const char* message) const noexcept;
 
 private:
+    bool cancellationRequested()
+    {
+        mCancelled = mCancellation && mCancellation->load(std::memory_order_acquire);
+        return mCancelled;
+    }
+    LLImageDecodeThread::Cancellation mCancellation;
+    bool mCancelled = false;
     // LLPointers stored in ImageRequest MUST be LLPointer instances rather
     // than references: we need to increment the refcount when storing these.
     // input
@@ -208,7 +216,8 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
     const LLPointer<LLImageFormatted>& image,
     S32 discard,
     bool needs_aux,
-    const LLPointer<LLImageDecodeThread::Responder>& responder)
+    const LLPointer<LLImageDecodeThread::Responder>& responder,
+    const Cancellation& cancellation)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
@@ -226,14 +235,29 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
     try
     {
         posted = mThreadPool->getQueue().post(
-            [req = ImageRequest(image, discard, needs_aux, responder, decode_id), scheduler, ticket]
+            [req = ImageRequest(image, discard, needs_aux, responder, decode_id, cancellation), scheduler, ticket, cancellation]
             () mutable
             {
                 try
                 {
+                    // A cancelled queued request still delivers exactly one responder.
+                    // Remove its unstarted scheduler ticket before waiting for a permit.
+                    if (cancellation && cancellation->load(std::memory_order_acquire))
+                    {
+                        scheduler->cancel(ticket);
+                        req.finishRequest(false);
+                        return;
+                    }
                     req.setStage("admission");
                     auto permit = scheduler->acquire(ticket);
                     if (!permit)
+                    {
+                        req.finishRequest(false);
+                        return;
+                    }
+                    // Cancellation may arrive while waiting for admission. Its permit
+                    // retires normally; no pixels or working estimate are allocated.
+                    if (cancellation && cancellation->load(std::memory_order_acquire))
                     {
                         req.finishRequest(false);
                         return;
@@ -244,7 +268,7 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
                     // erases the worker's useful context (PPD-090).
                     const auto done = req.processRequest(estimate);
                     req.setStage("completion-accounting");
-                    permit.decoded();
+                    if (!req.cancelled()) permit.decoded();
                     req.finishRequest(done);
                 }
                 catch (const std::exception& error)
@@ -294,8 +318,9 @@ ImageRequest::ImageRequest(const LLPointer<LLImageFormatted>& image,
                            S32 discard,
                            bool needs_aux,
                            const LLPointer<LLImageDecodeThread::Responder>& responder,
-                           U32 request_id)
-    : mFormattedImage(image),
+                           U32 request_id, const LLImageDecodeThread::Cancellation& cancellation)
+    : mCancellation(cancellation),
+      mFormattedImage(image),
       mDiscardLevel(discard),
       mNeedsAux(needs_aux),
       mDecodedRaw(false),
@@ -342,14 +367,15 @@ bool ImageRequest::processRequest(ALNativeFrameBudget::DecodeEstimate& estimate)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
-    if (mFormattedImage.isNull())
-        return true;
+    if (mFormattedImage.isNull()) return true;
+    if (cancellationRequested()) return false;
 
     const F32 decode_time_slice = 0.f; //disable time slicing
     bool done = true;
 
     mStage = "formatted-lock";
     LLImageDataLock lockFormatted(mFormattedImage);
+    if (cancellationRequested()) return false;
     mStage = "raw-lock";
     LLImageDataLock lockDecodedRaw(mDecodedImageRaw);
     mStage = "aux-lock";
@@ -383,6 +409,7 @@ bool ImageRequest::processRequest(ALNativeFrameBudget::DecodeEstimate& estimate)
             mInputWidth = mFormattedImage->getWidth();
             mInputHeight = mFormattedImage->getHeight();
             mInputComponents = mFormattedImage->getComponents();
+            if (cancellationRequested()) return false;
             const auto cost = ALImageDecodeEstimate::metadata(
                 mInputWidth, mInputHeight, mInputComponents > 0 ? mInputComponents : 0,
                 mNeedsAux, mInputCodec == IMG_CODEC_J2C);
@@ -391,11 +418,13 @@ bool ImageRequest::processRequest(ALNativeFrameBudget::DecodeEstimate& estimate)
             // owner lasts through the responder and unwinds on every throw;
             // saved/cached raw images never retain this full working estimate.
             estimate = ALNativeFrameBudget::instance().beginDecodeEstimate(cost.bytes, cost.known);
+            if (cancellationRequested()) return false;
             mStage = "primary-allocation";
             mDecodedImageRaw = new LLImageRaw(mFormattedImage->getWidth(),
                                               mFormattedImage->getHeight(),
                                               mFormattedImage->getComponents());
         }
+        if (cancellationRequested()) return false;
         mStage = "primary-decode";
         done = mFormattedImage->decode(mDecodedImageRaw, decode_time_slice);
         // some decoders are removing data when task is complete and there were errors
@@ -407,6 +436,7 @@ bool ImageRequest::processRequest(ALNativeFrameBudget::DecodeEstimate& estimate)
     }
     if (done && mNeedsAux && !mDecodedAux && mFormattedImage.notNull())
     {
+        if (cancellationRequested()) return false;
         // Decode aux channel
         if (!mDecodedImageAux)
         {

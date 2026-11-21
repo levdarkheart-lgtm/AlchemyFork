@@ -31,6 +31,7 @@
 #include "llpointer.h"
 #include "threadpool_fwd.h"
 #include "alimagedecodescheduler.h"
+#include <atomic>
 
 class ALNativeFrameBudget;
 
@@ -53,9 +54,12 @@ public:
 
     // meant to resemble LLQueuedThread::handle_t
     typedef U32 handle_t;
+    // Shared request interest; cancellation never changes decoder ownership mid-call.
+    using Cancellation = std::shared_ptr<std::atomic<bool>>;
     handle_t decodeImage(const LLPointer<LLImageFormatted>& image,
                          S32 discard, bool needs_aux,
-                         const LLPointer<Responder>& responder);
+                         const LLPointer<Responder>& responder,
+                         const Cancellation& cancellation = {});
     size_t getPending();
     size_t update(F32 max_time_ms);
     ALImageDecodeScheduler::Snapshot getDecodeStats() const;

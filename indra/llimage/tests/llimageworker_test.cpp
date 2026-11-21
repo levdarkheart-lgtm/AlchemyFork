@@ -304,6 +304,26 @@ namespace
         std::shared_ptr<decode_gate> mGate;
     };
 
+    class cancellable_header_image final : public LLImageFormatted
+    {
+    public:
+        explicit cancellable_header_image(std::shared_ptr<decode_gate> gate,
+                                          std::shared_ptr<std::atomic<unsigned>> decoded)
+            : LLImageFormatted(IMG_CODEC_J2C), mGate(std::move(gate)), mDecoded(std::move(decoded)) {}
+        std::string getExtension() override { return "cancel-header"; }
+        bool updateData() override
+        {
+            mGate->enter();
+            setSize(128, 64, 4);
+            return true;
+        }
+        bool decode(LLImageRaw*, F32) override { ++*mDecoded; return true; }
+        bool encode(const LLImageRaw*, F32) override { return false; }
+    private:
+        std::shared_ptr<decode_gate> mGate;
+        std::shared_ptr<std::atomic<unsigned>> mDecoded;
+    };
+
     class throwing_image final : public LLImageFormatted
     {
     public:
@@ -541,6 +561,87 @@ namespace
         }
         // Verifies that the responder has now been called
         CHECK(done->load());
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: cancelled accepted job completes once without decoder admission",
+        "[LLImageDecodeThread][PPD-533]")
+    {
+        mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+        const auto completed = std::make_shared<completion_state>();
+        const auto cancellation = std::make_shared<std::atomic<bool>>(true);
+        raw_allocation_controls allocation_controls;
+        const auto id = mThread->decodeImage(new throwing_image, 0, true,
+                                            new counting_responder(completed), cancellation);
+        REQUIRE(id != 0);
+        REQUIRE(completed->waitFor(1));
+        mThread->shutdown();
+        check_failed_once(completed, {id});
+        const auto stats = mThread->getDecodeStats();
+        CHECK(stats.submitted == 1);
+        CHECK(stats.cancelled == 1);
+        CHECK(stats.started == 0);
+        CHECK(stats.completed == 0);
+        CHECK(stats.active == 0);
+        CHECK(stats.waiting == 0);
+        CHECK(inspected_raw_allocations == 0);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: cancelling queued work drains responder and ticket exactly once",
+        "[LLImageDecodeThread][PPD-533]")
+    {
+        mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        auto ids = enqueue_blocked(*mThread, 2, gate, completed);
+        REQUIRE(gate->waitFor(2));
+        const auto cancellation = std::make_shared<std::atomic<bool>>(false);
+        const auto id = mThread->decodeImage(new throwing_image, 0, false,
+                                            new counting_responder(completed), cancellation);
+        REQUIRE(id != 0); ids.insert(id);
+        cancellation->store(true, std::memory_order_release);
+        gate->release();
+        mThread->shutdown();
+        check_failed_once(completed, ids);
+        const auto stats = mThread->getDecodeStats();
+        CHECK(stats.submitted == 3);
+        CHECK(stats.cancelled == 1);
+        CHECK(stats.started == 2);
+        CHECK(stats.completed == 2);
+        CHECK(stats.active == 0);
+        CHECK(stats.waiting == 0);
+        CHECK(mThread->getPending() == 0);
+    }
+
+    TEST_CASE_METHOD(imagedecodethread_test,
+        "LLImageDecodeThread: cancellation during metadata prevents pixels and retires active permit",
+        "[LLImageDecodeThread][PPD-533]")
+    {
+        mThread = new LLImageDecodeThread(true, limits(2, 2), false);
+        const auto gate = std::make_shared<decode_gate>();
+        release_decode_gate release{gate};
+        const auto completed = std::make_shared<completion_state>();
+        const auto decoded = std::make_shared<std::atomic<unsigned>>(0);
+        const auto cancellation = std::make_shared<std::atomic<bool>>(false);
+        raw_allocation_controls allocation_controls;
+        const auto id = mThread->decodeImage(new cancellable_header_image(gate, decoded), 0, true,
+                                            new counting_responder(completed), cancellation);
+        REQUIRE(id != 0); REQUIRE(gate->waitFor(1));
+        cancellation->store(true, std::memory_order_release);
+        gate->release();
+        mThread->shutdown();
+        check_failed_once(completed, {id});
+        const auto stats = mThread->getDecodeStats();
+        CHECK(stats.started == 1);
+        CHECK(stats.completed == 1);
+        CHECK(stats.active == 0);
+        CHECK(stats.waiting == 0);
+        CHECK(stats.decode_wall.count == 0);
+        CHECK(inspected_raw_allocations == 0);
+        CHECK(decoded->load() == 0);
+        CHECK(ALNativeFrameBudget::instance().snapshot().decode_estimates_in_flight == 0);
     }
 
     TEST_CASE_METHOD(imagedecodethread_test,

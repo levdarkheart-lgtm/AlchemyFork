@@ -238,6 +238,7 @@ public:
 
     // new textures waiting for their first look in the fast cache, oldest first
     std::deque<LLPointer<LLViewerFetchedTexture>> mFastCacheList;
+    std::deque<LLPointer<LLViewerFetchedTexture>> mFastCachePending; // admitted, bounded by cache result slots
 
     bool mForceResetTextureStats;
 

@@ -46,6 +46,7 @@
 class LLFace;
 class LLImageGL ;
 class LLImageRaw;
+struct LLTextureCacheFastResult;
 class LLViewerObject;
 class LLViewerTexture;
 class LLViewerFetchedTexture ;
@@ -439,6 +440,7 @@ public:
 
     void        forceToDeleteRequest();
     void        loadFromFastCache();
+    bool        hasFastCacheRequest() const { return bool(mFastCacheRequest); }
     void        setInFastCacheList(bool in_list) { mInFastCacheList = in_list; }
     bool        isInFastCacheList() { return mInFastCacheList; }
 
@@ -471,6 +473,7 @@ private:
 private:
     bool  mFullyLoaded;
     bool  mInFastCacheList;
+    std::shared_ptr<LLTextureCacheFastResult> mFastCacheRequest;
     bool  mForceCallbackFetch;
 
 protected:
