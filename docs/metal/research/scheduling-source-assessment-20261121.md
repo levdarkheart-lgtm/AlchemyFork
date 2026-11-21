@@ -5,6 +5,10 @@ from hypotheses and identify feasible actions before choosing implementation.
 This checkpoint changes documentation only. No renderer, scheduler, settings,
 viewer process, decoder, build or live collection was changed.
 
+This is the retained initial audit. The owner subsequently authorized implementation;
+current repairs, candidate evidence and explicit residuals are maintained in the
+[production convergence ledger](../work/active/production-convergence-20261121.md).
+
 ## Source identity and evidence limits
 
 - Branch/worktree: `codex/apple-silicon-metal`, canonical repository.

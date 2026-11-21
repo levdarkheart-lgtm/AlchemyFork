@@ -1,6 +1,6 @@
 # Production convergence candidate — 2026-11-21
 
-Status: final candidate qualification in progress
+Status: candidate ready for owner testing
 Owner: root integrator, canonical codex/apple-silicon-metal worktree.
 Base: 83d33894c37087025616bd9aaf1d831cc574da97 / indra05091a15a7.
 Owner authorizes proper scheduling/ownership repairs, coherent Apple-first infrastructure,
@@ -11,11 +11,11 @@ All proposed fixes stay local; no push/release or automatic login authorized.
 
 | Work | Owner / exclusive paths | Acceptance | State |
 | --- | --- | --- | --- |
-| PPD528/532/533 cache priority, asset handoffs, ready decode and cancellation | asset agent: texturecache/fetch/viewertexture/list, llimageworker and dedicated tests | stale/cancel/shutdown/fairness tests, real decoder identity, full build | doing |
-| PPD529/531 pool validation and nonblocking retry infrastructure | scheduler agent: llcommon threadpool/queuedthread/workqueue/schedule and dedicated tests | invalid widths, timed retries, wake/abort/delete/generation, idle update accounting | doing |
-| PPD527/536 graphics preferences | preferences agent: settings/UI/feature tables, llfloaterpreference and dedicated tests; no pipeline writes | consumer census, preset parity, no dead controls or misleading GL help | doing |
-| PPD530/534/535/537/538/539 geometry contract, resources, lighting, replies and LFS integration | root: shared renderer files, llappviewer, canonical CMake/docs | actual resource lifetime/GPU tests, queue integration, complete Release candidate | doing |
-| Candidate | root alone owns configure/build/test/staging | doctor, Release build, verify_app, strict GL, relevant tests, immutable source/app hashes | todo |
+| PPD528/532/533 cache priority, asset handoffs, ready decode and cancellation | asset agent: texturecache/fetch/viewertexture/list, llimageworker and dedicated tests | stale/cancel/shutdown/fairness tests, real decoder identity, full build | ready_for_owner |
+| PPD529/531 pool validation and nonblocking retry infrastructure | scheduler agent: llcommon threadpool/queuedthread/workqueue/schedule and dedicated tests | invalid widths, timed retries, wake/abort/delete/generation, idle update accounting | ready_for_owner |
+| PPD527/536 graphics preferences | preferences agent: settings/UI/feature tables, llfloaterpreference and dedicated tests; no pipeline writes | consumer census, preset parity, no dead controls or misleading GL help | ready_for_owner |
+| PPD530/534/535/537/538/539 geometry contract, resources, lighting, replies and LFS integration | root: shared renderer files, llappviewer, canonical CMake/docs | actual resource lifetime/GPU tests, queue integration, complete Release candidate | ready_for_owner |
+| Candidate | root alone owns configure/build/test/staging | doctor, Release build, verify_app, strict GL, relevant tests, immutable source/app hashes | ready_for_owner |
 
 ## Preserved contracts
 
@@ -48,10 +48,11 @@ completion/performance, parity and product release gates remain open.
 
 ## Next executable action
 
-Final integrated native validation is running at c8e72de54a. Repair two adjacent
-isolated texture fixtures under PPD555, rerun the CPU selection, then freeze and
-build the final distinct Maintenance candidate. Retain the saturation investigation
-PPD556 and the explicit residual action map below. The owner controls its live test.
+Owner tests the separate verified Maintenance69445 candidate; exact source/app
+identities and validation are in the final handoff below. No push is authorized.
+First engineering follow-through is PPD556's bounded request-owned scheduler and
+nonfatal admission, followed by the explicit residual action map. No implemented
+source edits or agent work remain in flight.
 
 ## Root pre-fix ownership mapping
 
@@ -133,7 +134,7 @@ to this retained source index, preserve all original findings/test history, and
 make the current next actions refer to the maintained replacement candidate.
 
 
-## Final source integration and qualification
+## Earlier source integration and qualification checkpoints
 
 All source groups are integrated locally in the canonical checkout. Independent
 agents have frozen their implementation worktrees and reviewed the root result.
@@ -200,7 +201,7 @@ or first-live-decode evidence.
 | Upload/publication/producer credits | Keep memory, age/fairness and oversized progress bounds. Collect denials, backlog age and service capacity before revising per-frame credits; no universal default or FPS attribution established. |
 | Single upload owner CPU preparation | Preserve serial flush/batch ownership. Investigate immutable pixel conversion/alpha/mask preparation as an independent stage, with actual ownership/lifetime and total-cost evidence. |
 | Pipeline cache concurrency | Predictable point variants now eager. Archive cache mutex still covers native creation; separate archive mutation from compilation only after first-use/startup evidence and safety design. |
-| Required decoder naming | Required enabled OpenHT remains selected; OpenHTJ2KExperiment/AL_EXPERIMENTAL_OPENHTJ2K names are historical despite OFF being fatal. Follow-through production naming can migrate build receipts/CI/configuration coherently without decoder fallback. |
+| Required decoder559 | Implemented in a2aaaf2942: unconditional production OpenHT module/link/tests/notices, legacyON migration/OFF rejection and unreachable alternate pixel decode removed. Actual required decode/header/encoding/truncation checks and packaged licence must pass in final candidate. |
 | Owner/runtime acceptance | Test loading/teleport/refinement, stale/cancel/reload/shutdown and graphics controls in the separate candidate. Preserve accepted baseline. Whole-viewer performance, prolonged stability, broad parity, runtime no-GL and foreign subprocess/release gates remain open. |
 
 Default-off alone does not identify dead code. Supported quality options and
@@ -216,13 +217,99 @@ endWork normal/abort cancellation, stale callback retention and accepted-complet
 reset. Both actual-body ASan/UBSan scripts pass: aux32cases/101checks, asset
 diagnostics71off/92on, HTTP6off/7on (fixture-repair-receipt.json).
 
-PPD557 keeps both missing-publication scalar fallback and completed unqualified
+The pre-final PPD557 checkpoint keeps both missing-publication scalar fallback and completed unqualified
 fail-visible CPU routing, and551 now uses a fully published cohort for actual
 populated-route reload. Production eligibility and conservative output are
-unchanged. Independent review pending before final native rerun.
+unchanged. Independent review subsequently passed at33b1b6a308; final native
+execution is queued after build06.
 
 PPD558 is an independently discovered inherited timed-schedule bug: WAITING can
 loop past a caller deadline and hold the queue lock in repeated expired waits.
-Repair the actual condition/deadline loop and add real deadline/earlier-insertion
-checks before the last candidate build; do not build556's future owner wait on
-that bug. All earlier logs remain retained.
+The actual condition/deadline repair and real checks subsequently passed in
+2bba3d1e6b, before build06. Do not build556's future owner wait on the old bug.
+All earlier logs remain retained.
+
+
+## Final code freeze
+
+Source `a2aaaf29421dd49821606457923f246f73f77318`,
+indra tree `6e3b13c1f4076c5244bfa708ce564d8e03cd6cdd`. All agent source ownership is
+frozen. Root2bba3d1e6b repairs558 plus retryable housekeeping admission under556;
+33b1b6a308 completes555/557 actual fixtures; a2aaaf2942 retires559's unused decoder
+selection/alternate pixel path and makes notices unconditional. OpenHT accepted
+pixel body is unchanged apart from its production diagnostic; OpenJPEG metadata,
+encoding and cache identity bodies are byte-identical (source-proof.json).
+Focused production gate13tests0 and actual codec Release syntax0 precede fullbuild.
+
+Configure06 exits0 and selects Maintenance26.4.0.69445, explicitly migrating oldON
+cache metadata, requiring pinnedOpenHT0.27 and retaining OpenJPEG header/encoding.
+Build06 is the full final source build; do not deliver prior69442 while it runs.
+Doctor06 exits0 on the same M1Max host. Strictsourceaudit06 has0blocking/0scanerrors.
+
+Independent final source review confirms557 preserves publication capability,
+both scalar/CPU routes and actual distinct outputs. Schedule558 native baseline
+fails10assertions; fixed actual fixture passes27assertions/4cases including
+deadline/output/future-item retention, earlier-head insertion and expired/closed
+semantics. These contained checks do not replace final integrated execution.
+
+Pipelinecache05 separately passes ordinary5905assertions/6cases, global shader
+validation882/1 and selective validation98/1; exact flags/selectors/logs are in
+pipeline-cache-05-receipt.json. These preserve archive semantics without disabling
+validation globally to make correctness tests pass.
+
+Tooltests06 fail1 on import because unconfigured systemPython lacks PyYAML
+(183discovered/1skip); preserve the exact failure. Re-run the full required suite
+with the already configured isolated build-tool Python, which has PyYAML6.0.3.
+No global environment modification or dependency replacement is needed.
+
+
+The complete tool suite07 uses the configured isolated Python and exits0:
+185discovered,184passed,1optional retained-native serializer fixture skipped
+(no explicit retained stream selected),15.820s. System-Python import failure06
+remains separate. No tool test failures are relabeled as product failures.
+
+
+## Final candidate handoff
+
+**Ready for owner testing:**
+`/Users/dekstroza/Alchemy-candidates/Alchemy Metal Maintenance 69445.app`
+(version26.4.0.69445 / bundle26.4.0d69445).
+[Candidate report](../../research/maintenance-candidate-69445-20261121.md) is the
+readable scope/evidence/remaining-work summary. Source a2aaaf29421dd49821606457923f246f73f77318
+and indra6e3b13c1f4076c5244bfa708ce564d8e03cd6cdd are unchanged after qualification.
+Only handoff documentation changes follow that code checkpoint.
+
+| Final command/evidence | Result |
+| --- | --- |
+| doctor06; configure06; tools/metal/build.sh build06 | All exit0, complete1474-action Release build and signing. |
+| CPU-tests07 absolute manifest, parallel4 |55/55pass,0skip,5.90s; XML/argv/source/log retained. |
+| GPU-tests06 manifest, MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 |56/56pass,0skip,297.04s. Corrected routing/reload1864assertions; offline rigged765checks0failures. |
+| Pipeline-cache06 three exact selectors/modes | All0; ordinary5905assertions/6cases, instrumented882/1, selective98/1. |
+| Tool-tests07 configured Python |184pass,1optional retained-stream skip;185discovered/15.820s. |
+| verify_app06 staged app |346Mach-O,allARM64,0invalid. |
+| codesign06 --verify --deep --strict |0; valid on disk/designated requirement. |
+| Strict source GL audit06 |0blocking,0scanerrors; informational legacy names retained. |
+| Complete bundle inventories |7,839regularfiles/2internal symlinks/797,480,981bytes; source=stage;0external symlinks. |
+
+Executable SHA256 `0c5de0c90878f85c7e71296c279d303adda475be39a9c31923b10a942e2b9d89`;
+metallib SHA256 `6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793`.
+The packaged OpenHT source licence exactly matches the pinned dependency;
+app_settings/packages-info.txt retains its attribution. Actual decoder suite passes
+56assertions/3cases; staged symbols contain OpenHT decoding and OpenJPEG header
+parsing, without opj_decode. Main rpaths are only bundled Frameworks and system
+Swift, with no build-directory path or direct OpenGL/Vulkan dependency. No live
+viewer startup/decode collection or runtime no-GL claim is made.
+
+Receipts: candidate-69445-receipt.json, candidate-69445-inventory.json,
+final-test-summary-06.json and final-test-results-06.json in the private evidence
+root. Compact receipt also beside the app at Maintenance-69445-receipt.json. The
+first staging receipt script failed an assumed packages-info location; installed
+path is Resources/app_settings/packages-info.txt. Corrected inventory/notice checks
+pass without app mutation; candidate-staging-attempt-01.json preserves the failure.
+Accepted69417 executable hash rechecked unchanged. No viewer process was launched,
+no profile/settings modified, no live FPS result claimed and nothing pushed.
+
+PPD527–555/557–559 move to ready_for_owner with exact final evidence and retained
+histories; owner verification remains pending and push not_granted. PPD556 remains
+investigating. All agents/source ownership are frozen; existing native-IM worktree
+is untouched. These are bounded maintenance results, not product/release completion.

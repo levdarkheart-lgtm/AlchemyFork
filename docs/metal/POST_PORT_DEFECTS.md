@@ -12318,14 +12318,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Inherited Water waves help describes the original GL4.0 tessellation requirement. Current panel_lightbox_scene.xml1446 and settings_alchemy.xml2548 retain it although ALWaterSurface/ALMetalWorld now implement native Metal tessellation.
 - Evidence: [Shoreline source and control audit](work/active/water-land-line-20261121.md).
-- Next action: Update the English control tooltip and setting comment to describe native 3D water behavior without the obsolete OpenGL requirement, then verify packaged UI and owner-facing control. Keep this separate from PPD-526 geometry acceptance.
-- Verification: Source control binding and active native tessellation path verified; no help-text repair, new build or runtime UI inspection claimed in this checkpoint.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-21 found while tracing the existing Water waves switch for the shoreline comparison; registered before correction. This is misleading help text, not evidence that the native viewer needs or creates an OpenGL renderer.
+
+- 2026-11-21 repair checkpoint a2aaaf2942: The English waves tooltip and translated settings comments now describe the native displacement behavior; no feature/default change. HiDPI help is corrected alongside536. Final packaged control and owner review pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-528 — Texture cache drops requested write-priority promotions
 
@@ -12335,14 +12340,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Local upstream/develop408fd6c014 has the same inherited disconnected priority list. Fetch WAIT_ON_WRITE requests promotion to release formatted-image ownership for finer data; current LLQueuedThread WorkQueue has no priority API.
 - Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); lltexturefetch.cpp2093–2098 and lltexturecache.cpp861–862/2290–2295 at83d33894c3, application source identical to cited7976438.
-- Next action: Assess meaningful cache admission priority with identity/fairness or immutable write-payload ownership before implementation; preserve in-progress writes, cancellation and lower-resolution display.
-- Verification: Source confirms the copied priority list is cleared and never used. No runtime frequency, loading delay, deadlock, current FPS attribution or repair is established.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-21 registered from owner-supplied assessment before any fix. Read-only source/reference audit confirms the broken contract; it is inherited, not established as a Metal-introduced regression. Owner requests findings discussion before implementation.
+
+- 2026-11-21 repair checkpoint a2aaaf2942: Cache writer handles now receive real bounded-fair scheduler promotion, guarded by live writer identity and request lifecycle/ticket generations. Actual scheduling fixture covers promotions and stale handles; final integrated run pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-529 — Configured worker widths accept zero and negative integers
 
@@ -12352,14 +12362,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Local upstream/develop408fd6c014 has the same unchecked override conversion and General default1 despite constructor fallback3.
 - Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); threadpool.cpp70/77–103/174–211 and settings.xml12402–12403 at83d33894c3.
-- Next action: Validate supported override ranges and expose effective value/origin; preserve fixed-width owner pools. Audit General consumers before tuning its width, including width-dependent audio admission.
-- Verification: Zero starts no workers; negative signed LLSD integer converts to a huge size_t request. Actual saved values and runtime failure are unknown. The shipped positive General1 is a policy, not itself a configuration correctness defect.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-21 registered during source-only assessment. Native renderer General work is startup/reload construction, not normal per-frame preparation. No override, width, settings, code or viewer process changed; no FPS benefit claimed.
+
+- 2026-11-21 repair checkpoint a2aaaf2942: Effective width/selector startup logging and integer1..256 validation implemented. Invalid overrides fall back to the constructor width; fixed-owner policy remains authoritative. Shipped General1 is retained pending job-category service evidence.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-530 — Geometry update interface accepts an unenforced time allowance
 
@@ -12369,14 +12384,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Local upstream/develop408fd6c014 has the same display allowance, unused updateGeom parameter and full logical update-queue drain. Priority rebuild/lifecycle semantics remain authoritative.
 - Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); llviewerdisplay.cpp1953–1956 and pipeline.cpp21429–21440/21579–21621 at83d33894c3.
-- Next action: Attribute creation, partition, rebuild-item and logical update costs; classify frame-required versus deferrable work before changing deadlines or extracting immutable preparation.
-- Verification: updateGeom never reads max_dtime; creation checks between objects and does not cover partition/rebuild/update work. This confirms interface/budget scope mismatch, not current frame spikes, an unsafe missed deadline or permission to defer required work arbitrarily.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-21 retained inherited interface mismatch separately from measured performance incidents. Source-only assessment; no timer break, ownership change, runtime collection or repair. Legacy GL function names are not evidence of OpenGL API execution.
+
+- 2026-11-21 repair checkpoint a2aaaf2942: Required priority traversal is explicitly named updatePriorityGeometry with no unused deadline parameter. Object creation keeps its separate bounded allowance. Required owner mutation semantics preserved; immutable geometry decomposition remains explicit residual work.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-531 — Queued retries can sleep the serial worker ahead of ready work
 
@@ -12386,8 +12406,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Inherited fork retry callback sleeps until its16ms retry point. Local upstream/develop408fd6c014 instead posts a timed retry identified by handle/generation, supports wakeRequest and suppresses empty housekeeping through hasThreadedUpdate.
 - Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); llqueuedthread.cpp493–537 and166–176 at83d33894c3, compared with local upstream retry scheduler.
-- Next action: Review a scoped timed-retry/wakeup and empty-update adoption against WorkSchedule compatibility, request replacement/abort/delete, shutdown and ready-work fairness. Do not blindly import broader upstream queue changes.
-- Verification: A retry callback can sleep its sole service for nearly16ms instead of leaving other ready callbacks runnable. No current activation, queue delay, LFS foreground-sleep relationship or whole-viewer cost was measured. This is distinct from the conditional10–100ms main-loop sleep.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12395,16 +12415,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 additional omission discovered while checking the supplied assessment; registered before repair. Current source and local upstream remedy inspected read-only. No implementation, settings or runtime changes; assess alongside completion-driven loading candidates.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Retries use scheduled deadlines instead of sleeping inside service callbacks. No-op housekeeping is skipped; useful updates coalesce.558 additionally repairs inherited deadline/head wake behavior in the underlying schedule.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-532 — Texture cache lookup and completion progress depends on foreground polling
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Texture scheduling integrator
 - Discovered: 2026-11-21
 - Original reference: Inherited original fast-cache and responder handoffs require explicit request lifetime and publication ownership.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: lltexturecache.cpp745–874 and llviewertexturelist.cpp1402–1419.
-- Next action: Move safe I/O and worker-state handoffs off foreground polling; retain bounded owner publication and stale-request checks.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12412,16 +12437,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Fast-cache reads use bounded64 retained async slots with owner publication; cache completions tryPost pinned generation-checked responders onto FETCH. Closed/full/contended delivery retains main-list fallback. Frame-triggered HTTP service and latency instrumentation remain explicit residuals.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-533 — Accepted obsolete decode work and ready results lack direct progression
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Texture scheduling integrator
 - Discovered: 2026-11-21
 - Original reference: Original fetch responder accounting and decoded raw-image lifetime remain authoritative; sole OpenHTJ2K pixel decoder is preserved.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: llimageworker.cpp228–248 and llviewertexturelist.cpp1451–1513.
-- Next action: Provide cancellation before expensive accepted decode and bounded ready-result delivery while preserving exactly-once accounting and demand maintenance.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12429,16 +12459,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Bounded4096 ready notifications use an independent mutex plus exact request identity and limited tombstone scans. Accepted decode cancellation is checked around permit/allocation/processing with exact accounting; running OpenHT calls remain nonpreemptible. Adjacent fixture repairs555 retain cancellation ownership.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-534 — ResourcePlan map hits construct a redundant owning temporary
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Native renderer integrator
 - Discovered: 2026-11-21
 - Original reference: Native allocation generations and completion retirement are new Metal ownership contracts; no GL equivalent registry exists.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: almetalresourceplan.cpp167–175.
-- Next action: Construct owning mapped entries only on insertion and validate hit/miss lifetime/access/dependency behavior.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12446,16 +12481,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: try_emplace forwards constructor arguments and creates ownership-bearing Use only on insertion. Existing native registry hit/generation/access/dependency/retirement coverage remains; final integrated native qualification pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-535 — Recurring lighting constants allocate standalone native buffers
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Native renderer integrator
 - Discovered: 2026-11-21
 - Original reference: Original per-view lighting contents remain unchanged; existing completion-aware Metal frame pages provide the intended storage owner.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: almetalworld.cpp13490–13505 and27213–27230.
-- Next action: Reuse completion-aware frame slices with exact consuming-command lifetime and per-view offsets; preserve failure semantics.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12463,16 +12503,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Probe constants and nonempty local lists now publish immutable frame-page slices on the exact command. Standalone callers own a completion-aware arena too. Added two-pending-view mutation/frame-advance isolation and completed-page reuse check; no shader math change.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-536 — Graphics preferences retain obsolete backend controls or explanations
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Graphics preferences maintenance
 - Discovered: 2026-11-21
 - Original reference: Original settings expose functional graphics quality; retain active native quality controls and remove only proven dead backend mechanisms.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: panel_preferences_graphics XML, llfloaterpreference.cpp and graphics settings definitions; exact obsolete controls under audit.
-- Next action: Trace every suspect preference to live Metal consumers; remove dead controls/dependencies and stale OpenGL help, preserving native features and preset behavior.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12484,16 +12529,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 follow-up consumer audit confirms RenderUseVAO and RenderPreferStreamDraw have no production consumers; remove these two additional GL-only definitions/localized descriptions. Performance floater ALM/shadow gates still use obsolete GL feature proxies; repair to native availability while retaining live quality controls.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Eleven dead backend controls and stale feature/UI lookups/help removed; retained quality/media/mesh/HiDPI consumers traced. Actual native preferences ASan/UBSan fixture passes320 checks; all24 cumulative retired names absent packaged settings and translated bindings. Owner UI review pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-537 — Main reply budget is latched once despite mutable setting
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Application scheduling integrator
 - Discovered: 2026-11-21
 - Original reference: Original callback ownership remains on main and individual callbacks run to completion; existing extra pacing consumer remains valid.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: llappviewer.cpp5718–5728.
-- Next action: Use a validated current setting without per-frame conversion overhead; preserve safe reply boundaries and distinguish earlier admission pressure from pacing slack.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12501,16 +12551,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: MainWorkTime uses a live cached value with finite bounded conversion. Existing safe pacing reply drain remains. Earlier admission versus pacing wait/queue-age correlation remains explicit follow-up; no callbacks inserted into active render transactions.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-538 — Foreground file backlog throttle sleeps on undifferentiated queue entries
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Application scheduling integrator
 - Discovered: 2026-11-21
 - Original reference: Inherited main-loop delay counts queue callbacks including housekeeping rather than bytes or producer-specific demand.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: llappviewer.cpp1832–1837 and llqueuedthread.cpp166–176/206–208.
-- Next action: Remove unconditional foreground sleeping in favor of coherent worker queue progress and explicit bounded producer pressure; retain actual file operations and shutdown draining.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12518,16 +12573,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: The queue-count-based10–100ms foreground sleep is removed. Actual LFS operations and safe worker shutdown remain. No-op housekeeping no longer fabricates a file backlog; full-capacity accepted-request redesign556 stays open.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-539 — Required local-light pipeline variants compile on first render use
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Native renderer integrator
 - Discovered: 2026-11-21
 - Original reference: Native pipeline format/library generation and failure semantics must match the existing renderer construction and archive ownership.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: almetalworld.cpp27197–27209.
-- Next action: Prepare predictable local-light variants during renderer creation; keep cache archive ownership synchronized and avoid speculative compile concurrency.
-- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12535,16 +12595,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Predictable HDR/LDR depth-bearing point PSOs are constructed alongside ordinary renderer variants. First-render lazy compilation removed. Native archive cache lock remains serialized; no unproved compile concurrency introduced.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-540 — Queued-thread shutdown can destroy request state before its worker stops
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Worker scheduling integrator
 - Discovered: 2026-11-21
 - Original reference: Inherited LLQueuedThread shutdown closes an empty queue early, waits five seconds, then removes request state even if a nonempty service has not stopped. New timed retry ownership must preserve actual request lifetime rather than copy a handle-only ABA risk from upstream.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); scheduler pre-fix audit of llqueuedthread.cpp shutdown and processRequest at855be480b7.
-- Next action: Close scheduling at shutdown, retire queued retry/abort work on the owning worker, wait for actual worker termination before destroying requests, and use lifecycle plus ticket generations for dispatch/retry/wakeup identity. Bound or eliminate idle fallback delay without forced thread cancellation.
-- Verification: Source lifetime hazard confirmed before implementation; no observed viewer shutdown crash is attributed. Worker callback duration remains finite-work dependent and must be covered by shutdown/lifecycle tests.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12554,16 +12619,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 before repair, waitForResult also exits only on missing/COMPLETE, so a retained ABORTED request can spin indefinitely. Treat abort as terminal false with correct auto-completion; test no foreground callback pumping is needed to terminate worker shutdown.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Shutdown marks ownership closed, closes even nonempty scheduling, drains/aborts requests on the owner and waits for actual termination before deletion. Lifecycle/ticket identity protects stale retries/wakes. An uninterruptible OS I/O call can still prolong safe shutdown; owner logout testing pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-541 — Advanced graphics callbacks outlive their preference panel
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Graphics preferences integrator
 - Discovered: 2026-11-21
 - Original reference: Advanced preference settings signals capture this; the panel destructor must disconnect every retained callback before releasing panel lifetime, as it already does for adjacent complexity/LOD callbacks.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); pre-fix llfloaterpreferencesgraphicsadvanced constructor/postBuild/destructor: mImpostorsChangedSignal and mNumImpostorsChangedSignal remain connected.
-- Next action: Disconnect both impostor-setting callbacks during destruction and test that subsequent setting changes cannot call the destroyed panel.
-- Verification: Missing disconnection is source-confirmed before repair. No observed owner crash is attributed; maintain live impostor/quality behavior.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12571,16 +12641,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 discovered during PPD536 maintenance and registered before correction. Two callbacks capture panel this while destructor already disconnects the adjacent controls; include lifecycle regression in the native graphics preference fixture.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Both impostor-setting signal connections are disconnected during advanced-panel destruction. Actual production-body fixture reproduces original callback-after-destruction ASan UAF and passes corrected lifecycle/control tests. No prior viewer crash attribution.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-542 — Deleted backend settings are resurrected from saved profiles
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Settings persistence integrator
 - Discovered: 2026-11-21
 - Original reference: LLControlGroup intentionally preserves unknown saved settings for newer-viewer interoperability. Explicitly retired native-inapplicable options need a narrow group-owned exception while unrelated unknown settings and notification choices retain their contract.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); llcontrol.cpp1181–1228 auto-declares unknown user keys PERSIST_ALWAYS and saveToFile1027–1045 re-emits them.
-- Next action: Register exact retired backend names on Global before settings load, skip only those names before unknown-value preservation, and test saved-profile roundtrip plus independent control groups/unknown values. Keep backend-specific names out of the shared LLControlGroup implementation.
-- Verification: Source confirms XML deletion alone resurrects dummy controls from old saved profiles. No actual owner settings file is edited or parsed for this repair.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12588,16 +12663,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 found during536 cleanup before persistence repair. A narrow retirement API owned by the settings group is required; preserve unknown foreign/newer settings and notifications instead of globally disabling unknown preservation.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Global registers an exact24-name retired set before load. LLSD and legacy parsing skip only that set; unknown newer controls and unrelated groups remain preserved. Actual llcontrol saved-profile roundtrip check is retained for final execution.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-543 — Rejected main encode/light overlap remains in the shipped code
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production experiment retirement integrator
 - Discovered: 2026-11-21
 - Original reference: Owner now explicitly requests retirement of dead disabled experiments as part of production maintenance. Prior test/cost records stay retained in documentation and Git history; default-off alone does not prove a feature dead.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); RenderMetalMainLightOverlap, ALMetalMainWorldEncodingTask and exclusive overlap fixtures; PPD307 cost history rejects selection.
-- Next action: Remove rejected overlap branch, task, admission/diagnostic fields, setting and dedicated tests; retain ordinary point-light extraction and selected main-lighting chain.
-- Verification: Source selection/history checked before removal. No removal or new candidate qualification yet; supported optional native features and shared active helpers must remain.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12605,16 +12685,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before removal following owner maintenance steering. Preserve prior positive and adverse evidence; retiring abandoned code is separate from asserting a runtime speedup.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Rejected main encode/light overlap task, setting, branch, diagnostics and exclusive tests retired. Ordinary point values and selected main lighting chain remain; historical adverse31/32 cells retained in prior records.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-544 — Unselected world preparation scheduler remains alongside the owned scalar path
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production experiment retirement integrator
 - Discovered: 2026-11-21
 - Original reference: Owner now explicitly requests retirement of dead disabled experiments as part of production maintenance. Prior test/cost records stay retained in documentation and Git history; default-off alone does not prove a feature dead.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); RenderMetalWorldPreparation, ALMetalWorldPreparation/prepared-ticket consumer and experiment-only tests.
-- Next action: Remove the unselected scheduler/prepared route and its exclusive tests while retaining immutable ALMetalWorldViewInputs adoption, resource leases, scalar encoding and lifetime/shape regression coverage.
-- Verification: Source selection/history checked before removal. No removal or new candidate qualification yet; supported optional native features and shared active helpers must remain.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12622,16 +12707,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before removal following owner maintenance steering. Preserve prior positive and adverse evidence; retiring abandoned code is separate from asserting a runtime speedup.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Unselected world preparation scheduler/packed prepared consumer removed. Live immutable ALMetalWorldViewInputs and scalar consumption remain in clearly named C++ worldinputs module; owned/direct pixels, shape and lifetime tests retained.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-545 — Rejected source command-bank GPU and animated prototypes remain shipped
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production experiment retirement integrator
 - Discovered: 2026-11-21
 - Original reference: Owner explicitly requests removing dead disabled experiments, retaining functional Alchemy/native behavior and prior research history. Default-off alone is insufficient evidence; selection/cost history and actual dependencies distinguish abandoned routes.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); PPD191/229/301/302 and final E3 selection: ordinary CPU coarse/scalar selected, old command/GPU/animated prototypes unselected after adverse costs.
-- Next action: Retire abandoned command-bank/direct/GPUvisibility/animated optimization routes and their exclusive tests; retain default CPU source routing, immutable source/cohort/resource ownership, live publication admission and actual rigged output.
-- Verification: Source and prior selection records audited before removal. Shared publication-work/key types and CPU-only ownership must survive; no new build/runtime claim.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12645,16 +12735,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 post-syntax fixture review catches an obsolete fifth boundary case still expected after its producer branch was retired, and a required clearDraws/reset accidentally removed beside a visibility clear in a retained native-group cost loop. Correct the fixture bound and restore per-view reset before native execution. No executed output failure or viewer behavior is attributed; syntax success alone does not qualify runtime correctness.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Unselected command banks/direct banks/rows/animated GPU records and exclusive fixtures removed. Active CPU sources/cohorts/animated certificates/probe publication/shared keys and native generation leases remain. Static/rigged outputs are in the final native selection.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-546 — Unselected early and retained world GPU visibility prototypes remain shipped
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production experiment retirement integrator
 - Discovered: 2026-11-21
 - Original reference: Owner explicitly requests removing dead disabled experiments, retaining functional Alchemy/native behavior and prior research history. Default-off alone is insufficient evidence; selection/cost history and actual dependencies distinguish abandoned routes.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); PPD301 full24cell run rejects all16 active owner medians; PPD229 prior retained-visibility costs do not select the shipped route.
-- Next action: Remove early/retained world visibility GPU classes/hooks/shaders and exclusive tests; preserve conservative CPU bounds/classification, published CPU visibility regressions, ordinary occlusion query geometry and selected shadow visibility.
-- Verification: Source and prior selection records audited before removal. Shared publication-work/key types and CPU-only ownership must survive; no new build/runtime claim.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12662,16 +12757,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before removal. Preserve source-routing CPU gains, active probe candidates, shadow ICB/visibility owners and real quality features. Do not remove generic Metal ICB capability or original occlusion queries with abandoned world trials.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Abandoned early/retained GPU world visibility classes/hooks/shaders and exclusive fixtures removed. Conservative CPU classifier/query geometry and active shadow visibility/ICB remain. Shared arithmetic/CPU routing tests restored under554/557.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-547 — Compact recovery rewrite misses mandatory release-invariant coverage
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Continuity documentation integrator
 - Discovered: 2026-11-21
 - Original reference: validate_harness requires explicit invariant coverage in current recovery and active ledger even after historical details move into linked archives.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); first compact-snapshot harness exits1 with six coverage errors for prolonged stability, independent build/review evidence, strict no-GL and no-premature-completion language.
-- Next action: Restore explicit current invariant statements and rerun ordinary harness, retaining compact documents and all archived history.
-- Verification: First compact-snapshot validation fails1. No renderer/build regression or release-gate relaxation is established.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12681,16 +12781,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 second compact-snapshot run exits1 with two remaining coverage messages because the required independent build/review evidence phrase was split across lines. Keep the failure and make current wording explicit on one line; no gate bypass.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Compact CURRENT/active snapshots retain full pre-convergence archives and explicit release-invariant coverage. Initial six-error and second two-error runs retained; ordinary harness later passes33requiredfiles, including final source snapshot09.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-548 — Rejected forced probe-consumer variants remain in source and tests
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production experiment retirement integrator
 - Discovered: 2026-11-21
 - Original reference: PPD461 and final E6 selection retain BASE/simple/body/cloth prepared consumers while material/PBR/shiny/impostor use complete generic paths before preparation. The force-all diagnostic keeps rejected variants and CMake globally forces it for native tests.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); PPD461 history and apple-first-engine-completion-20261118.md514–525, almetalworld.cpp force consumer gates and almetal/CMakeLists.txt forced environment.
-- Next action: Retire force-only pipelines/branches/shader entrypoints and exclusive tests; retain selected BASE/simple/body/cloth candidate publication, default-policy regression coverage and complete generic material/PBR/shiny/impostor rendering.
-- Verification: Symbol and selection audit identifies four force-only shader entrypoints/implementation bodies and one exclusive helper overload. Generic full implementations are independent. No source removal or final qualification yet.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12702,16 +12807,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 root offline Metal compile of frozen retirement shader exits0 with all640 surviving function bodies retained. It exposes an unused SKY_MAX_METEORS constant warning; remove only that unused declaration while retaining SKY_METEOR_VECTORS and unchanged shader bodies, then recompile. Final integrated project library/GPU qualification still required.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Force-only rejected material/PBR/shiny/impostor prepared consumers, pipelines/shader entries and exclusive tests removed. Selected BASE/simple/body/cloth and complete generic material/PBR/shiny/impostor outputs remain. Native tests no longer globally force rejected consumers.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-549 — Fetch interface integration fails strict override diagnostics
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Texture/application integration
 - Discovered: 2026-11-21
 - Original reference: LLTextureFetch inherited methods used virtual comments, and the new explicit hasThreadedUpdate override makes Clang diagnose inconsistent missing override annotations under the repository's required Werror flags.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); full Maintenance69437/source648aa4b667 build-01.log exits1 at llappviewer.cpp compilation with six missing-override errors in lltexturefetch.h.
-- Next action: Mark every genuine inherited LLTextureFetch method override explicitly, preserve signatures/access and rerun the actual full build without suppressing diagnostics.
-- Verification: Full normal Release compile fails before candidate link; standalone worker/body tests did not cover this derived-class compiler contract. No successful candidate or runtime regression claim.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12719,16 +12829,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before correction. Initial configure0 verifies soleOpenHT0.27; build1 is a C++ interface integration failure, separate from the successful offline retired-shader compilation and prior nine GPU scopes.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: All genuine inherited LLTextureFetch methods now carry explicit override. Normal build02 and subsequent04/05 pass; the original missing-override build01 failure remains retained.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-550 — Retired resource-table backend remains behind an unused factory
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production resource ownership integrator
 - Discovered: 2026-11-21
 - Original reference: After rejected row/bank/resource-table routes retire under545, ALMetalWorldResources table context/cache/preflight/prepare/bind/declaration class has no production caller except its unused FrameData factory. ALMetalWorldResourceSource immutable texture proof remains used by ordinary CPU cohorts.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); post545 source consumer audit of worldresources, FrameData worldResources factory, pipeline diagnostics and table-only tests.
-- Next action: Remove dead table class/factory/cache/statistics/reflection-shader entries and exclusive tests, retaining ResourceSource publish/matches/generationLeases and active scalar/cohort native ownership. Verify headers are self-contained and live source lifetime/cache tests remain.
-- Verification: Dependency audit confirms orphaned backend after parent retirement; no current rendering fault or performance cost claim. Register before the follow-through removal.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12738,16 +12853,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 final source audit finds only copied-page and encoded-mapping bytes remain active in shared publication work; six retired table/bank/row/zeroing fields are permanently unused. Collapse to explicit copied_bytes/encoded_bytes plus separately retained allocation_bytes and preserve checked charging/admission; update the actual probe-publication test assertions. This completes dependency cleanup rather than leaving dead experimental accounting fields.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Unused resource-table class/factory/contexts/caches/reflection entries removed. Active immutable ResourceSource native/registry proofs and exact RP aliases remain; new real lifetime/idempotency/generation-pin coverage retained. Shared publication work now exposes only active copied/encoded/allocation bytes.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
+
 ## PPD-551 — Maintained source-routing counters reset on shader reload
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production renderer integration
 - Discovered: 2026-11-21
 - Original reference: Existing renderer shader reload copies cumulative counters to the replacement owner. Retirement introduces a maintained CPU source_routing_stats member, which commitShaderReload currently omits.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); new source_routing_stats field and commitShaderReload at24de2b2e99, with adjacent cohort/CPU visibility/tile counters preserved.
-- Next action: Copy cumulative CPU routing statistics during shader publication and add an actual populated-route reload regression with unchanged native output.
-- Verification: Source integration omission identified before final candidate build. No observed viewer counter discontinuity, rendering error or FPS effect is claimed.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12755,17 +12875,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before correction during final retirement review. Preserve real routing and output; do not keep obsolete GPU counters solely for telemetry compatibility.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Shader publication copies maintained CPU source-routing counters. A real populated scalar+CPU route reload test retains counts and distinct exact outputs;557 fixes its initial incomplete capability setup without changing eligibility.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-552 — Experiment retirement removes live shadow-material reload definition
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Production renderer integration
 - Discovered: 2026-11-21
 - Original reference: Native shader reload retains lazy shadow-material replacement and completion-owned old entries. The adjacent obsolete worldSourceCommands factory is retired, while this live function remains required.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source6fc608fb9e build-03.log fails1 at almetal_tests link with undefined ALMetalWorldFrameData::reloadShadowMaterials; both renderer callers and header declaration remain.
-- Next action: Restore the exact independent live definition from83d33894c3, audit neighboring retained functions, rebuild the complete candidate and run native shadow/shader-reload checks.
-- Verification: Full Release link failure, before any candidate delivery or executed new-source native test. Earlier build02 predates this cleanup and cannot qualify it.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12773,17 +12897,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before correction. Required shader reload ownership is separate from the abandoned factory; restore its existing swap/retirement semantics without reinstating the retired backend. Preserve build-03.log and result receipt.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Restored the byte-identical live reloadShadowMaterials definition from the prior checkpoint. Adjacent-definition audit found no second retained method lost. Normal builds04/05 pass; final native shadow/reload qualification pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-553 — Generated graphics preference test omits two source dependencies
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production preferences/build integration
 - Discovered: 2026-11-21
 - Original reference: The generated actual-method preferences fixture also checks packaged performance-panel bindings and feature-table controls. Every source read by generation must invalidate its custom command.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent final review finds verify_packaging reads panel_performance_preferences.xml and featuretable_linux.txt, absent from the newview/CMakeLists.txt custom-command DEPENDS.
-- Next action: Add both exact input paths to DEPENDS and reconfigure/build the ordinary generated test; retain live settings and packaging assertions.
-- Verification: Source dependency gap; no current bad packaged binding or viewer regression established.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12791,17 +12919,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before correction after independent preferences review. This is test invalidation plumbing, not authorization to weaken packaging coverage or retire a live graphics control.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Both missing graphics generator packaging inputs are in DEPENDS; normal generated-fixture build04/05 passes. Live packaging validation remains active.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-554 — Live native test fragments lose compilation or per-file registration
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production renderer/test integration
 - Discovered: 2026-11-21
 - Original reference: Retiring experimental source files must retain tests for live terrain publication, conservative CPU classification, source lifetimes and shader reload. Catch file tags refer to included fragment filenames rather than the including translation unit.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent source/CMake review finds unreferenced terrain_pass_publication and world_cpu_bound_intervals fragments plus unregistered included CPU visibility, body-palette, scalar-recipe and lighting fragments. The new visibility wrapper has no direct TEST_CASE, so its old per-file entry cannot select these cases.
-- Next action: Attach shared active fragments to compatible maintained fixtures, explicitly register included test fragments as HEADER_FILE_ONLY, exclude wrapper-only stems, then run actual stray-case and relevant native checks.
-- Verification: Source compilation/registration gap; neither prior syntax checks nor earlier pre-retirement GPU tests establish this final coverage. No current viewer output defect established.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12809,23 +12941,32 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before repair. Preserve actual live terrain/geometry/CPU arithmetic/lifetime coverage; remove only tests exclusive to abandoned mechanisms. Do not declare empty or skipped per-file scopes equivalent to executed native checks.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Seven live included native fragments registered HEADER_FILE_ONLY; CPU interval and terrain fragments reattached to maintained wrappers. Empty visibility wrapper compiles without an empty per-file CTest entry. First native56 run executes these checks and stray_cases passes;557 records its setup failures.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-555 — Adjacent actual-body texture fixtures omit cancellation ownership
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Asset test integration
 - Discovered: 2026-11-21
 - Original reference: Existing auxiliary-recovery and asset-warning tests compile real fetch-worker methods. PPD533 adds per-decode cancellation state, which their isolated worker declarations must carry and validate.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); sourcec8e72de54a cpu-tests-06.log exits8,53/55 pass, two isolated fixture compilations fail with undeclared mDecodeCancellation.
-- Next action: Add correctly owned cancellation state to both fixture workers, retain actual production method extraction, and assert cancellation/reset behavior before rerunning the complete CPU selection.
-- Verification: Test fixture compile failures; normal full viewer build passes. No current viewer decode failure established.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-21 registered before correction. Preserve the original failed55-entry run; do not skip affected tests or strip production cancellation calls from extracted methods.
+
+- 2026-11-21 repair checkpoint a2aaaf2942: Adjacent workers now carry real shared cancellation tokens and assert normal/abort cancellation, stale retention, current success/failure reset and decoder-lease lifetime. Actual ASan/UBSan aux32cases/101checks and asset71off/92on plus HTTP6off/7on pass; complete final CPU selection pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-556 — Generic scheduled request admission can block at queue capacity
 
@@ -12844,17 +12985,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered on independent final review. The normal million-entry limit is not evidence this activates in owner workloads. Preserve the issue and investigate a coherent bounded scheduler design rather than increasing capacity or dropping retries.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Foreground housekeeping admission now uses retryable tryPost and resets its coalescing bit on denial. Generic accepted request/retry/wake posts still need request-owned reusable scheduling entries plus a separate bounded callback queue and nonfatal caller admission; the conditional capacity hazard remains investigating. No current saturation measured.
+
+- 2026-11-21 final candidate69445: normal55CPU/56native checks pass, but none proves full-capacity accepted-request progress. Keep investigating; housekeeping admission alone is repaired. The request-owned scheduling/nonfatal caller admission design and tiny-capacity acceptance tests remain next executable work in the ledger. No current owner saturation is established.
+
 
 ## PPD-557 — Retained CPU routing fixtures do not establish bounds capability
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Production CPU routing verification
 - Discovered: 2026-11-21
 - Original reference: Selected automatic CPU routing requires every bounds publication attempt to have completed. A missing bounds publication keeps the cohort scalar; explicitly published unqualified bounds remain fail-visible while qualified outside rows can be rejected.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); gpu-tests-05.log exposes four failed assertions in two of five publishedCPUvisibility cases: the older force-mode fixture passes a null bounds pointer, and new551 reload fixture reuses the same incomplete cohort, so neither activates automatic CPU routing. Pixels/lifetimes pass.
-- Next action: Exercise both incomplete-publication scalar fallback and completed-but-unqualified fail-visible routing, and use a fully published cohort to populate both real route counters for reload. Preserve output, query and lifetime assertions without changing production eligibility.
-- Verification: Executed Metal API/shader-validation fixture failures; no validation error or demonstrated wrong native output. Existing conservative production fallback is consistent with its capability contract.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12862,17 +13007,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before correcting setup/expectations. Keep the failed56-scope run. Do not weaken the production publication gate to satisfy a test or drop the required populated-counter assertion.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Fixtures now exercise both missing-publication scalar fallback and completed-but-unqualified fail-visible routing.551 uses a fully published cohort to populate both routes; independent review confirms capability/output contracts. Final native rerun required.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-558 — Timed schedule pop can exceed deadline behind future work
 
-- Status: investigating
-- Confirmation: source_confirmed
+- Status: ready_for_owner
+- Confirmation: reproduced
 - Owner: Scheduled queue deadline maintenance
 - Discovered: 2026-11-21
 - Original reference: A timed schedule consumer must return by its caller deadline while still waking for newly earlier work. ThreadSafeSchedule::tryPopUntil_ loops on WAITING with an already expired adjusted limit instead of respecting the original deadline or reconsidering a new head.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent full-queue design review traces threadsafeschedule.h tryPopUntil_ and llthreadsafequeue.h timed condition wait, with future head past caller limit.
-- Next action: Recompute the due-head/caller deadline after every condition wake, preserve exact pop/close semantics, and add actual timed schedule regression tests for deadline expiry, untouched output/retained future work and an earlier inserted item.
-- Verification: Conditional source deadline/spin hazard. No current viewer stall or measured performance cost established; register before repair.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -12880,20 +13029,28 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 discovered while evaluating556. A timed-drain workaround must not inherit this deadline bug; repair it independently rather than relying on repeated expired waits.
 
+- 2026-11-21 repair checkpoint a2aaaf2942: Actual native baseline fails10assertions. Locked condition/deadline loop and immediate-lock timed-pop handling pass27assertions/4cases, including final1200ms earlier-head fixture. Release syntax/link0; final full build/queue-consumer tests pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
+
 
 ## PPD-559 — Required sole pixel decoder retains experiment gates and unreachable fallback
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Production decoder/build maintenance
 - Discovered: 2026-11-21
 - Original reference: Owner requires OpenHTJ2K as the sole pixel decoder. OpenJPEG remains valid for encoding/header parsing. A required production dependency must not retain a disabled alternate pixel-decode body or optional experimental selection path.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); llimagej2coj.cpp rejects missing/off AL_EXPERIMENTAL_OPENHTJ2K yet retains unreachable #else OpenJPEG decodeImpl; OpenHTJ2KExperiment module, conditional linking/tests and release flag preserve obsolete experiment selection vocabulary.
-- Next action: Make required OpenHT linkage/test registration explicit, retire unreachable alternate pixel decoding and experiment selectors while retaining pinned source/archive/receipt/ARM64 checks and all OpenJPEG header/encoding support. Migrate affected build tests/CI coherently.
-- Verification: Source maintenance defect, not evidence that the current candidate uses a wrong decoder. Actual decode identity and symbol inspection already support OpenHT selection.
+- Next action: Owner test the local Maintenance26.4.0.69445 candidate and review the scoped repair; retain the explicit remaining engineering actions in the convergence ledger. Record any recurrence against this ID. Push remains unapproved.
+- Verification: Final sourcea2aaaf2942 full Release build0; CPU55/55 and API/shader-validation native56/56 pass with no skips; staged signatures/346ARM64 files/strictsource gate pass. Component evidence and all earlier failures remain below and in the convergence ledger. Owner runtime acceptance is pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-21 registered before follow-through cleanup. No decoder fallback may be configured or introduced to validate retirement; preserve actual primary/auxiliary/truncation/encoding tests and required archive integrity.
+
+- 2026-11-21 repair checkpoint a2aaaf2942: Unconditional OpenHTJ2K production module/link/tests, retiredON migration/OFF rejection and required licence/attribution replace experiment selection. Unreachable alternate pixel decoding and private pixel-only helpers removed. OpenHT body differs only in diagnostic wording; OpenJPEG metadata/encode/cache functions byte-identical.13 gate tests and real codec Release syntax0; final native decoder checks/package inspection pending.
+
+- 2026-11-21 ready_for_owner: separate Maintenance69445 staged with exact source/app hashes and complete equal7839-file inventory. Final55CPU/56native scopes pass, tools184pass/1optionalskip, pipeline-cache modes all0, ordinary harness passes33requiredfiles. The component repair is locally reviewable; no owner acceptance, whole-viewer FPS gain, release completion or push approval is inferred. See candidate report and execution ledger for command receipts, original failures and residual contracts.
