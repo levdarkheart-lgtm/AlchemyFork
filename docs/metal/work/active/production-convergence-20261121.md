@@ -313,3 +313,12 @@ PPD527–555/557–559 move to ready_for_owner with exact final evidence and ret
 histories; owner verification remains pending and push not_granted. PPD556 remains
 investigating. All agents/source ownership are frozen; existing native-IM worktree
 is untouched. These are bounded maintenance results, not product/release completion.
+
+## Owner-requested launch
+
+After candidate delivery the owner explicitly requested starting the viewer.
+Opened the exact staged69445 bundle with its recorded executable SHA256, after
+checking no other Alchemy viewer process was present. Process11514 was observed
+running from that exact path; owner-launch-69445.json retains the observation.
+No agent login, destination/preset override, screenshot or live performance
+collection was performed. This is launch evidence, not owner test acceptance.

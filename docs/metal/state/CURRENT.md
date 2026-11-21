@@ -10,8 +10,11 @@ exact app/source hashes, validation and residuals.
 
 Owner authorizes coherent Apple-first repairs, removal of obsolete graphics
 preferences and abandoned disabled experiments, plus a separate candidate for
-manual testing. All changes remain local. No push/release, viewer launch/login,
-runtime settings modification or live profiling was performed.
+manual testing. All changes remain local. Candidate creation performed no
+push/release, viewer launch/login, runtime settings modification or live profiling.
+The owner subsequently requested launch: the exact staged69445 executable/hash
+was verified and process11514 observed running. No login action or scene/profile
+collection was requested or performed (owner-launch-69445.json).
 
 ## Current implementation and evidence
 
