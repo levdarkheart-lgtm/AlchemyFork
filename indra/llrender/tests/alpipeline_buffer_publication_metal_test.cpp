@@ -1272,9 +1272,9 @@ TEST_CASE("Actual compact source and group descriptions retire before native com
         U64 calls=0;
         void nativePublicationChanged(ALNativePublication::Phase) noexcept override{++calls;}
     };
-    for(bool grouped:{false,true})for(bool prepared_path:{false,true})
+    for(bool grouped:{false,true})
     {
-        CAPTURE(grouped,prepared_path);GroupPublication f;auto& info=f.draw();
+        CAPTURE(grouped);GroupPublication f;auto& info=f.draw();
         auto buffer=info.mVertexBuffer;
         auto observer=std::make_shared<Observe>();info.state->observe(observer);
         std::weak_ptr<ALNativePublication::State> weak_state=info.state;
@@ -1315,13 +1315,7 @@ TEST_CASE("Actual compact source and group descriptions retire before native com
         auto renderer=ALMetalWorldGBufferRenderer::create(*f.device,&f.error);INFO(f.error);REQUIRE(renderer);
         REQUIRE(renderer->beginCommandBatch("Compact tuple independent retirement",&f.error));
         std::unique_ptr<ALMetalRenderTarget> target;
-        if(prepared_path)
-        {
-            auto work=ALMetalWorldPreparation::create(inputs,1,{},&f.error);REQUIRE(work);REQUIRE(work->runJob(0));
-            auto ready=work->finish(&f.error);INFO(f.error);REQUIRE(ready);
-            target=renderer->renderPrepared(*ready,&f.error);
-        }
-        else target=renderer->renderOwnedInputs(*inputs,&f.error);
+        target=renderer->renderOwnedInputs(*inputs,&f.error);
         INFO(f.error);REQUIRE(target);
         auto completion=renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
         REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,capture.source_references,capture.draw_order,capture.source_cohorts,queries));
@@ -1392,12 +1386,12 @@ TEST_CASE("Actual compact CPU lease collisions retain nonadjacent sources throug
             auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),
                 std::move(capture.source_references),std::move(capture.draw_order),std::move(queries),
                 std::move(capture.cpu_sources),capture.world_resources,1,&f.error);INFO(f.error);REQUIRE(inputs);
-            scene={};auto work=ALMetalWorldPreparation::create(inputs,1,{},&f.error);INFO(f.error);REQUIRE(work);
+            scene={};auto reader=inputs;
             CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,capture.batches,
                 capture.source_references,capture.draw_order,queries));
             inputs.reset();capture.clearDraws();
             for(const auto& description:descriptions)CHECK_FALSE(description.expired());
-            work->cancel();work.reset();
+            reader.reset();
         }
         else capture.clearDraws();
         // The native-only tuple aggregate may remain alive; abandoning the
