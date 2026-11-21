@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-548 -->
+<!-- next-defect-id: PPD-550 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12636,6 +12636,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 registered before removal. Preserve source-routing CPU gains, active probe candidates, shadow ICB/visibility owners and real quality features. Do not remove generic Metal ICB capability or original occlusion queries with abandoned world trials.
 
+- 2026-11-21 first retirement renderer syntax attempt exits1 before integration: two dangling friend tokens remain in worldresources.h, selected CPU animated source needs NativeScope formerly declared with pages, and an adjacent required viewport/scissor/depth declaration block was mechanically removed with experimental setup. Preserve private experiment-retirement syntax/almetal_almetalworld.cpp.stderr/json; restore required declarations from base and move shared NativeScope to sourcepolicy, then rerun all affected TUs. Harness driver's unavailable direct cohort compilation command is separate and will use matching peer flags. No link/native success or product regression attribution.
+
+- 2026-11-21 renderer syntax passes after required-state/shared-scope repairs. Standalone cohort/animated TUs then expose a lost transitive ALMetalTexture declaration after pages removal; make the cohort header self-contained with an explicit forward declaration and rerun. Pipeline syntax driver initially stops at stale canonical PCH before parsing candidate source; disable PCH for this isolated syntax check. Preserve all failed logs, distinguish harness/PCH mismatch from source errors, and require final normal CMake compilation.
+
 ## PPD-546 — Unselected early and retained world GPU visibility prototypes remain shipped
 
 - Status: investigating
@@ -12671,3 +12675,41 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 registered before correcting compact snapshot wording. Prior original snapshots remain archived with relocated links; this metadata failure must not be relabeled as a passing check.
 
 - 2026-11-21 second compact-snapshot run exits1 with two remaining coverage messages because the required independent build/review evidence phrase was split across lines. Keep the failure and make current wording explicit on one line; no gate bypass.
+
+## PPD-548 — Rejected forced probe-consumer variants remain in source and tests
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production experiment retirement integrator
+- Discovered: 2026-11-21
+- Original reference: PPD461 and final E6 selection retain BASE/simple/body/cloth prepared consumers while material/PBR/shiny/impostor use complete generic paths before preparation. The force-all diagnostic keeps rejected variants and CMake globally forces it for native tests.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); PPD461 history and apple-first-engine-completion-20261118.md514–525, almetalworld.cpp force consumer gates and almetal/CMakeLists.txt forced environment.
+- Next action: Retire force-only pipelines/branches/shader entrypoints and exclusive tests; retain selected BASE/simple/body/cloth candidate publication, default-policy regression coverage and complete generic material/PBR/shiny/impostor rendering.
+- Verification: Symbol and selection audit identifies four force-only shader entrypoints/implementation bodies and one exclusive helper overload. Generic full implementations are independent. No source removal or final qualification yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before code retirement. PPD263 concerns a different world-preparation cost frontier; E6 nonselection evidence is PPD461. One shader owner coordinates both E6 and bank-variant deletions; shared renderer edits remain serialized.
+
+- 2026-11-21 E6 assigned shader/test removal retains eight active/generic function bodies byte-identical. First standalone Metal compiler attempt exits1 before source compilation because the child sandbox denies default Clang module-cache writes; this is an environment failure, not a shader diagnostic. Root will run the exact offline compiler after the final shader freeze using its unrestricted session. No successful shader qualification is inferred.
+
+- 2026-11-21 root offline Metal compile of frozen retirement shader exits0 with all640 surviving function bodies retained. It exposes an unused SKY_MAX_METEORS constant warning; remove only that unused declaration while retaining SKY_METEOR_VECTORS and unchanged shader bodies, then recompile. Final integrated project library/GPU qualification still required.
+
+## PPD-549 — Fetch interface integration fails strict override diagnostics
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Texture/application integration
+- Discovered: 2026-11-21
+- Original reference: LLTextureFetch inherited methods used virtual comments, and the new explicit hasThreadedUpdate override makes Clang diagnose inconsistent missing override annotations under the repository's required Werror flags.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); full Maintenance69437/source648aa4b667 build-01.log exits1 at llappviewer.cpp compilation with six missing-override errors in lltexturefetch.h.
+- Next action: Mark every genuine inherited LLTextureFetch method override explicitly, preserve signatures/access and rerun the actual full build without suppressing diagnostics.
+- Verification: Full normal Release compile fails before candidate link; standalone worker/body tests did not cover this derived-class compiler contract. No successful candidate or runtime regression claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction. Initial configure0 verifies soleOpenHT0.27; build1 is a C++ interface integration failure, separate from the successful offline retired-shader compilation and prior nine GPU scopes.

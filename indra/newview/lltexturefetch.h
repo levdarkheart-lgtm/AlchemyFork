@@ -63,12 +63,12 @@ public:
     static std::string getStateString(S32 state);
 
     LLTextureFetch(LLTextureCache* cache, bool threaded, bool qa_mode);
-    ~LLTextureFetch();
+    ~LLTextureFetch() override;
 
     class TFRequest;
 
     // Threads:  Tmain
-    /*virtual*/ size_t update(F32 max_time_ms);
+    size_t update(F32 max_time_ms) override;
 
     // called in the main thread after the TextureCacheThread shuts down.
     // Threads:  Tmain
@@ -164,7 +164,7 @@ public:
     U32 getTotalNumHTTPRequests();
 
     // Threads:  T*
-    size_t getPending();
+    size_t getPending() override;
 
     // Threads:  T*
     void lockQueue() { mQueueMutex.lock(); }
@@ -269,17 +269,17 @@ protected:
 
     // Overrides from the LLThread tree
     // Locks:  Ct
-    bool runCondition();
+    bool runCondition() override;
 
 private:
     // Threads:  Ttf
-    /*virtual*/ void startThread(void);
+    void startThread() override;
 
     // Threads:  Ttf
-    /*virtual*/ void endThread(void);
+    void endThread() override;
 
     // Threads:  Ttf
-    /*virtual*/ void threadedUpdate(void);
+    void threadedUpdate() override;
     bool hasThreadedUpdate() const override { return true; }
 
     // Threads:  Ttf
@@ -336,7 +336,9 @@ public:
 
 private:
     void notifyReady(LLTextureFetchWorker* worker);
-    LLMutex mReadyMutex; // never nested with the worker or request-map lock
+    // Producers may hold a worker lock. Consumers release this lock before
+    // looking up requests, so no request-map/worker lock is taken in reverse.
+    LLMutex mReadyMutex;
     std::atomic<U64> mNextRequestGeneration{0};
     std::deque<std::pair<LLUUID, U64>> mReadyQueue;
     std::map<LLUUID, U64> mReadyGenerations; // coalesced under mReadyMutex
