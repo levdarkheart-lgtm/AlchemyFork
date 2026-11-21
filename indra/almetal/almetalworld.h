@@ -36,7 +36,6 @@
 struct ALMetalWorldModernSkyScene;
 class ALMetalShadowSourceRecord;
 class ALMetalWorldViewInputs;
-class ALMetalPreparedWorldView;
 class ALMetalWorldVisibilityView;
 class ALMetalWorldEarlyVisibilityArguments;
 class ALMetalWorldMaterialSource;
@@ -3004,11 +3003,6 @@ public:
 
     // Consume a completed CPU preparation ticket. Its native resource lease
     // is retained through actual completion; CPU inputs last through encoding.
-    std::unique_ptr<ALMetalRenderTarget> renderPrepared(
-        const ALMetalPreparedWorldView& prepared,
-        std::string* error = nullptr,
-        std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results = nullptr);
-
     // Render one spotlight-camera slice directly into the caller's persistent
     // R32F array. R32F stores the exact raster depth sampled by the shadow
     // owner; a memoryless D32 attachment supplies the authoritative depth
@@ -3426,7 +3420,6 @@ public:
 private:
     std::unique_ptr<ALMetalRenderTarget> renderInternal(
         const ALMetalWorldGBufferScene& scene,
-        const ALMetalPreparedWorldView* prepared,
         bool validated_shape,
         std::string* error,
         std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results);

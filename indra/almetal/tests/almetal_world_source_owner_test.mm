@@ -240,7 +240,7 @@ TEST_CASE("almetal: failed G-buffer transactions reject a careless outer commit 
 {
     @autoreleasepool
     {
-        // The real input/epoch checks fail deterministically. In each case an
+        // The real raw/owned input checks fail deterministically. In each case an
         // earlier valid pass has already encoded into the enclosing command;
         // rejecting only the failed pass must not publish that valid prefix.
         for (unsigned failure : {0u, 1u, 2u})
@@ -278,17 +278,12 @@ TEST_CASE("almetal: failed G-buffer transactions reject a careless outer commit 
             }
             else
             {
-                auto epoch = std::make_shared<std::atomic<std::uint64_t>>(17);
-                auto inputs = ALMetalWorldViewInputs::adopt(scene, {batch}, {}, fixture.resources, 17, &fixture.error);
+                auto invalid = batch;
+                invalid.diffuse_textures[0] = nullptr;
+                auto inputs = ALMetalWorldViewInputs::adopt(scene, {invalid}, {}, fixture.resources, 17, &fixture.error);
                 INFO(fixture.error); REQUIRE(inputs);
-                auto ticket = ALMetalWorldPreparation::create(inputs, 1, epoch, &fixture.error);
-                REQUIRE(ticket);
-                REQUIRE(ticket->runJob(0));
-                auto prepared = ticket->finish(&fixture.error);
-                REQUIRE(prepared);
-                epoch->store(18, std::memory_order_release);
-                CHECK_FALSE(fixture.renderer->renderPrepared(*prepared, &fixture.error));
-                CHECK(fixture.error == "Prepared world view epoch was cancelled");
+                CHECK_FALSE(fixture.renderer->renderOwnedInputs(*inputs, &fixture.error));
+                CHECK_FALSE(fixture.error.empty());
             }
 
             const auto submitted_before = ALMetalDevice::committedCommandBufferCount();
@@ -310,14 +305,14 @@ TEST_CASE("almetal: failed G-buffer transactions reject a careless outer commit 
     }
 }
 
-TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and prepared GPU work remains pending",
+TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and owned_input GPU work remains pending",
           "[almetal][world-source-owner][world-cpu-retirement]")
 {
     @autoreleasepool
     {
-        for(bool prepared_path:{false,true})
+        for(bool owned_path:{false,true})
         {
-            CAPTURE(prepared_path);
+            CAPTURE(owned_path);
             Fixture fixture;
             std::vector<ALMetalWorldSimpleBatch> batches;
             std::vector<ALMetalWorldVisibilityQuery> queries;
@@ -362,14 +357,11 @@ TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and pr
             CHECK(inputs);CHECK(batches.size()==1);CHECK(batches.front().index_count==777);
             CHECK(inputs->scene().batches==copied_batches);
             batches.clear();
-
-            std::shared_ptr<ALMetalWorldPreparation> ticket;
-            std::shared_ptr<const ALMetalPreparedWorldView> prepared;
-            if(prepared_path)
+            std::shared_ptr<const ALMetalWorldViewInputs> owned_input;
+            if(owned_path)
             {
-                ticket=ALMetalWorldPreparation::create(inputs,2,{},&fixture.error);REQUIRE(ticket);
-                for(std::size_t job=0;job<ticket->jobCount();++job)REQUIRE(ticket->runJob(job));
-                prepared=ticket->finish(&fixture.error);INFO(fixture.error);REQUIRE(prepared);
+
+                owned_input=inputs;INFO(fixture.error);REQUIRE(owned_input);
             }
             // The original mutable pose is no longer a CPU or GPU input.
             fixture.attachment_pose.fill(std::numeric_limits<float>::quiet_NaN());
@@ -381,7 +373,7 @@ TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and pr
             std::unique_ptr<ALMetalRenderTarget> candidate;
             {
                 ALMetalSubmissionScope scope(credit);
-                if(prepared_path)candidate=fixture.renderer->renderPrepared(*prepared,&fixture.error,&candidate_queries);
+                if(owned_path)candidate=fixture.renderer->renderOwnedInputs(*owned_input,&fixture.error,&candidate_queries);
                 else
                 {
                     auto owned_scene=inputs->scene();
@@ -392,7 +384,7 @@ TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and pr
             }
             // All CPU jobs/readers have joined and encoding has returned.
             // GPU commands own only exact native generations, not these arrays.
-            prepared.reset();ticket.reset();
+            owned_input.reset();
             REQUIRE(inputs.use_count()==1);
             REQUIRE_FALSE(gate.blocker->completionToken()->isComplete());
             REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,batches,queries));
@@ -416,7 +408,7 @@ TEST_CASE("almetal: quiescent CPU packet storage is reusable while direct and pr
     }
 }
 
-TEST_CASE("almetal: an empty prepared view renders with an exact null native resource lease",
+TEST_CASE("almetal: an empty owned_input view renders with an exact null native resource lease",
           "[almetal][world-source-owner][world-cpu-retirement]")
 {
     @autoreleasepool
@@ -427,9 +419,9 @@ TEST_CASE("almetal: an empty prepared view renders with an exact null native res
         const auto expected=fixture.read(*reference);
         auto inputs=ALMetalWorldViewInputs::adopt(scene,{}, {},{},103,&fixture.error);REQUIRE(inputs);
         CHECK_FALSE(inputs->resourceLease());
-        auto ticket=ALMetalWorldPreparation::create(inputs,2,{},&fixture.error);REQUIRE(ticket);
-        REQUIRE(ticket->runJob(0));auto prepared=ticket->finish(&fixture.error);REQUIRE(prepared);
-        auto candidate=fixture.renderer->renderPrepared(*prepared,&fixture.error);INFO(fixture.error);REQUIRE(candidate);
+
+        auto owned_input=inputs;REQUIRE(owned_input);
+        auto candidate=fixture.renderer->renderOwnedInputs(*owned_input,&fixture.error);INFO(fixture.error);REQUIRE(candidate);
         CHECK(fixture.read(*candidate)==expected);
     }
 }

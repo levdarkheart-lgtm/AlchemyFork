@@ -45,7 +45,6 @@
 #include <utility>
 #include <vector>
 
-
 namespace
 {
     using CommandSettlementObserver = std::function<void(bool)>;
@@ -11424,110 +11423,11 @@ bool alMetalValidateWorldBatch(const ALMetalWorldGBufferScene& scene,
     return alMetalValidateWorldBatch(scene, ALMetalWorldDraw(batch), error);
 }
 
-bool alMetalLayoutWorldRecord(const ALMetalWorldSimpleBatch& batch,
-    std::size_t& next, ALMetalWorldPreparedRecord& record, std::string* error)
-{
-    record = {};
-    if (batch.material_slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
-        batch.pbr_slot_count > ALMetalWorldSimpleBatch::max_material_slots)
-    {
-        setError(error, "World preparation material count is invalid");
-        return false;
-    }
-    const auto append = [&](std::size_t length, std::size_t& offset)
-    {
-        if (next > std::numeric_limits<std::size_t>::max() - length) return false;
-        offset = next;
-        next += length;
-        return true;
-    };
-    record.family = batch.impostor ? ALMetalWorldPreparedRecord::Family::impostor :
-        batch.terrain ? ALMetalWorldPreparedRecord::Family::terrain : ALMetalWorldPreparedRecord::Family::simple;
-    record.length = batch.impostor ? sizeof(WorldImpostorConstants) :
-        batch.terrain ? sizeof(WorldTerrainConstants) : sizeof(WorldSimpleConstants);
-    if (!append(record.length, record.offset))
-    {
-        setError(error, "World preparation constant size overflows");
-        return false;
-    }
-    if (!batch.impostor && !batch.terrain)
-    {
-        const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
-        record.material_length = batch.material_slot_count && !stable_tables ? sizeof(WorldMaterialConstants) : 0;
-        record.pbr_length = batch.pbr_slot_count && !stable_tables ? sizeof(WorldPBRConstants) : 0;
-        if (!append(record.material_length, record.material_offset) ||
-            !append(record.pbr_length, record.pbr_offset))
-        {
-            setError(error, "World preparation material size overflows");
-            return false;
-        }
-    }
-    return true;
-}
-
-bool alMetalPrepareWorldRecord(const ALMetalWorldGBufferScene& scene, std::size_t index,
-    ALMetalWorldPreparedRecord& record, std::span<std::byte> bytes, std::string* error)
-{
-    if (!alMetalWorldDrawStorageAvailable(scene, index))
-    {
-        setError(error, "Prepared world draw storage index is invalid");
-        return false;
-    }
-    const auto draw=scene.draw(index);
-    const auto* cohort = alMetalWorldCohortAt(scene,index);
-    if (cohort)
-    {
-        if (!cohort->cohort->matchesOwners(cohort->cpu_owner,cohort->native_owner) ||
-            !ALMetalWorldSourceCohort::validView(cohort->view))
-        { setError(error,"Prepared world cohort view is invalid");return false; }
-    }
-    else if (!alMetalValidateWorldBatch(scene, draw, error)) return false;
-    const auto& batch = draw.source();
-    const auto copy = [&](std::size_t offset, const auto& value)
-    {
-        if (offset > bytes.size() || sizeof(value) > bytes.size() - offset) return false;
-        std::memcpy(bytes.data() + offset, &value, sizeof(value));
-        return true;
-    };
-    if (batch.impostor) return copy(record.offset, buildWorldImpostorConstants(scene, batch));
-    if (batch.terrain)
-    {
-        if(batch.terrain_pass && batch.terrain_pass->matches(batch))
-        {
-            if(!record.length)return true; // A private layout alias has one earlier owner/writer.
-            return record.offset<=bytes.size() && sizeof(WorldTerrainConstants)<=bytes.size()-record.offset &&
-                batch.terrain_pass->copyConstants(scene,bytes.subspan(record.offset,sizeof(WorldTerrainConstants)));
-        }
-        return copy(record.offset,buildWorldTerrainConstants(scene,batch));
-    }
-    record.avatar = batch.avatar_rigid || batch.avatar_skinning;
-    record.rigged = draw.skinPalette() != nullptr && !record.avatar;
-    record.bump = batch.normal_texture != nullptr;
-    record.material = batch.material_slot_count != 0;
-    record.pbr = isPBRBatch(batch);
-    const auto* animated=draw.animatedReference();
-    const auto recipe=animated?animated->animated_source->scalarRecipe():ALMetalWorldScalarRecipe{};
-    record.material_normal_map = animated?recipe.normal_map:materialHasNormalMap(batch);
-    record.material_specular_map = animated?recipe.specular_map:materialHasSpecularMap(batch);
-    record.avatar_variant = batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
-    const bool stable_tables = batch.native_material_source && batch.native_material_source->matches(batch);
-    if ((!stable_tables && record.material && record.material_length != sizeof(WorldMaterialConstants)) ||
-        (!stable_tables && record.pbr && record.pbr_length != sizeof(WorldPBRConstants)))
-    {
-        setError(error, "Prepared material certificate changed after layout");
-        return false;
-    }
-    return copy(record.offset, buildWorldSimpleConstants(scene, draw)) &&
-        (!record.material || stable_tables || copy(record.material_offset, buildWorldMaterialConstants(scene, batch,
-            record.material_normal_map, record.material_specular_map))) &&
-        (!record.pbr || stable_tables || copy(record.pbr_offset, buildWorldPBRConstants(scene, batch)));
-}
-
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     const ALMetalWorldGBufferScene& scene, std::string* error,
     std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
 {
-    return renderInternal(scene, nullptr, false, error, visibility_results);
+    return renderInternal(scene, false, error, visibility_results);
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderOwnedInputs(
@@ -11537,19 +11437,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderOwnedInp
     // Only adopt can construct this type, and it owns the validated immutable
     // raw/reference/order/query arrays. Do not discard that shape boundary or
     // retain the CPU packet on a native command after synchronous encoding.
-    return renderInternal(inputs.scene(), nullptr, true, error, visibility_results);
-}
-
-std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderPrepared(
-    const ALMetalPreparedWorldView& prepared, std::string* error,
-    std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
-{
-    return renderInternal(prepared.scene(), &prepared, true, error, visibility_results);
+    return renderInternal(inputs.scene(), true, error, visibility_results);
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal(
     const ALMetalWorldGBufferScene& scene,
-    const ALMetalPreparedWorldView* prepared,
     bool validated_shape,
     std::string* error,
     std::shared_ptr<ALMetalVisibilityResultBatch>* visibility_results)
@@ -11574,13 +11466,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         setError(error, "Static GPU visibility requires direct-bound source command banks");
         return nullptr;
     }
-    if (prepared && !prepared->isCurrent())
-    {
-        setError(error, "Prepared world view epoch was cancelled");
-        return nullptr;
-    }
+
     const std::size_t draw_count = scene.drawCount();
-    if (!prepared)
     {
         if (!validated_shape && !alMetalValidateWorldView(scene, error)) return nullptr;
         ALMetalWorldDrawCursor cursor(scene);
@@ -11599,8 +11486,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
     }
 
-    const auto prepared_records = prepared ? prepared->records() : std::span<const ALMetalWorldPreparedRecord>{};
-    const auto prepared_constants = prepared ? prepared->constants() : std::span<const std::byte>{};
     std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
     std::vector<std::uint16_t> terrain_factors;
     ALMetalWorldDrawCursor terrain_cursor(scene);
@@ -11822,7 +11707,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     {
         return nullptr;
     }
-    ALMetalWorldDataSlice prepared_gpu_data;
     if (scene.source_owner &&
         !command->retainUntilCompletion(scene.source_owner, error))
     {
@@ -11831,15 +11715,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     for (std::size_t i=0;i<scene.cohort_count;++i)
         if (!command->retainUntilCompletion(scene.cohorts[i].native_owner,error)) return nullptr;
 
-    const auto prepared_resources = prepared ? prepared->inputLease() : nullptr;
-    if (prepared &&
-        ((prepared_resources && !command->retainUntilCompletion(prepared_resources, error)) ||
-         (mImpl->frame_data && !prepared_constants.empty() &&
-          !mImpl->frame_data->publish(*command, prepared_constants.data(), prepared_constants.size(),
-                                    prepared_gpu_data, error, false))))
-    {
-        return nullptr;
-    }
     ALMetalWorldEarlyVisibilityStats early_visibility_stats;
     std::shared_ptr<const ALMetalWorldEarlyVisibilityRead> early_visibility_arguments;
     if (scene.early_visibility)
@@ -11997,7 +11872,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     std::vector<SourceBankRun> source_banks;
     std::size_t source_bank_cursor=0;
     ALMetalWorldSourceCommandDrawStats source_bank_stats;
-    const bool source_routing=scene.source_routing && !prepared && !scene.wireframe &&
+    const bool source_routing=scene.source_routing && !scene.wireframe &&
         !scene.stamp_opaque_coverage && !scene.native_visibility && !scene.early_visibility &&
         !scene.cpu_cohort_visibility && !scene.source_command_banks && !scene.join_adjacent_static_draws;
     std::vector<std::size_t> routed_native_cohorts,routed_cpu_cohorts;
@@ -12284,7 +12159,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if(const auto* reference=cursor.draw().animatedReference())
                 {
                     ++animated_stats.requested_draws;
-                    if(!prepared && reference->animated_source->gpuReady() && !scene.wireframe && !scene.stamp_opaque_coverage &&
+                    if(reference->animated_source->gpuReady() && !scene.wireframe && !scene.stamp_opaque_coverage &&
                        std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,64)==0)
                     {candidates.push_back(reference);logical.push_back(index);}
                 }
@@ -12363,29 +12238,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         animated_declarations=mImpl->source_commands->makeDeclarationScope(*encoder,*command,&optional_error);
         // Empty on allocation failure: retain the safe self-declaring route.
     }
-
-    // A prepared view publishes its complete constant slab once. Per-draw
-    // bindings reference immutable subranges; they never hash or republish it.
-    const auto bind_prepared = [&](std::size_t offset, std::size_t length,
-                                   std::uint32_t vertex_slot,
-                                   std::optional<std::uint32_t> fragment_slot = std::nullopt)
-    {
-        if (prepared_gpu_data.buffer)
-            return encoder->setVertexBuffer(vertex_slot, *prepared_gpu_data.buffer,
-                       prepared_gpu_data.offset + offset, error) &&
-                (!fragment_slot || encoder->setFragmentBuffer(*fragment_slot,
-                    *prepared_gpu_data.buffer, prepared_gpu_data.offset + offset, error));
-        return encoder->setVertexBytes(vertex_slot, prepared_constants.data() + offset, length, error) &&
-            (!fragment_slot || encoder->setFragmentBytes(*fragment_slot,
-                prepared_constants.data() + offset, length, error));
-    };
-    const auto bind_prepared_fragment = [&](std::size_t offset, std::size_t length,
-                                            std::uint32_t slot)
-    {
-        return prepared_gpu_data.buffer
-            ? encoder->setFragmentBuffer(slot, *prepared_gpu_data.buffer, prepared_gpu_data.offset + offset, error)
-            : encoder->setFragmentBytes(slot, prepared_constants.data() + offset, length, error);
-    };
 
     const ALMetalDepthStencilState* depth = scene.reverse_z
         ? mImpl->reverse_depth.get() : mImpl->forward_depth.get();
@@ -12484,7 +12336,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     static_assert(sizeof(WorldSimpleConstants) == 400);
     WorldSimpleConstants previous_world_constants{};
     ALMetalWorldDataSlice previous_world_slice;
-    std::size_t previous_prepared_world_offset = 0;
     bool have_previous_world_constants = false;
     ALMetalWorldConstantStats constant_stats;
     ALMetalWorldResourceStats resource_stats;
@@ -12494,27 +12345,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     // cached identity, so collisions can only cause an additional retain.
     std::shared_ptr<std::vector<std::shared_ptr<const ALMetalWorldMaterialSource>>> material_owners;
     std::array<const ALMetalWorldMaterialSource*,16> retained_material_sources{};
-    const auto bind_world_constants = [&](const void* constants, std::size_t offset,bool known_equal=false)
+    const auto bind_world_constants = [&](const void* constants, bool known_equal=false)
     {
         if (!mImpl->frame_data)
             return mImpl->setVertexData(*encoder, *command,
                 4, constants, sizeof(WorldSimpleConstants), error);
         ++constant_stats.bindings;
-        if (prepared)
-        {
-            if (!have_previous_world_constants ||
-                std::memcmp(&previous_world_constants, constants, sizeof(WorldSimpleConstants)) != 0)
-            {
-                std::memcpy(&previous_world_constants, constants, sizeof(WorldSimpleConstants));
-                previous_prepared_world_offset = offset;
-                have_previous_world_constants = true;
-            }
-            else ++constant_stats.reused_bindings;
-            // Equal region/agent-space draws share one native range, just as
-            // the direct publisher shares previous_world_slice. Always ask
-            // the encoder to bind it: terrain may have overwritten slot 4.
-            return bind_prepared(previous_prepared_world_offset, sizeof(WorldSimpleConstants), 4);
-        }
+
         if (!have_previous_world_constants ||
             (!known_equal && std::memcmp(&previous_world_constants, constants,
                         sizeof(WorldSimpleConstants)) != 0))
@@ -12656,7 +12493,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 if(result==Result::unknown)++cpu_visibility_stats.unknown_draws;
             }
         }
-        if(prepared || !current_cohort)scalar_common_cohort=nullptr;
+        if(!current_cohort)scalar_common_cohort=nullptr;
         while (cohort_bank_cursor<cohort_bank_ranges.size() && cohort_bank_ranges[cohort_bank_cursor].logical_end<=index)
             ++cohort_bank_cursor;
         if (current_cohort && cohort_bank_cursor<cohort_bank_ranges.size() &&
@@ -12699,7 +12536,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         const auto draw=draw_cursor.draw();
         const auto* animated_reference=draw.animatedReference();
-        if(!animated_reference || prepared)
+        if(!animated_reference)
         {scalar_common_animated=nullptr;private_pose_record=nullptr;}
         const ALMetalWorldSimpleBatch& batch = draw.source();
         const bool join_static = scene.join_adjacent_static_draws &&
@@ -12727,10 +12564,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 break;
             }
             std::optional<WorldImpostorConstants> owned_constants;
-            if (!prepared) owned_constants = buildWorldImpostorConstants(scene, batch);
-            const void* constants_data = prepared
-                ? prepared_constants.data() + prepared_records[index].offset
-                : static_cast<const void*>(&*owned_constants);
+            owned_constants = buildWorldImpostorConstants(scene, batch);
+            const void* constants_data = static_cast<const void*>(&*owned_constants);
             const ALMetalRenderPipeline* pipeline =
                 mImpl->impostor_pipelines[scene.hdr ? 1 : 0]
                                          [scene.normal_hdr ? 1 : 0].get();
@@ -12749,8 +12584,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                     encoder->setTriangleFillMode(
                         ALMetalTriangleFillMode::fill, error) &&
                     encoder->setPipeline(*debug_pipeline, error) &&
-                    (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldImpostorConstants), 0)
-                        : mImpl->setVertexData(*encoder, *command,
+                    (mImpl->setVertexData(*encoder, *command,
                             0, constants_data, sizeof(WorldImpostorConstants), error)) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 24, 1, error);
@@ -12768,8 +12602,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                     : ALMetalTriangleFillMode::fill,
                     error) &&
                 encoder->setPipeline(*pipeline, error) &&
-                (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldImpostorConstants), 0, 0)
-                    : mImpl->setVertexAndFragmentData(*encoder, *command,
+                (mImpl->setVertexAndFragmentData(*encoder, *command,
                         0, 0, constants_data, sizeof(WorldImpostorConstants), error)) &&
                 encoder->setFragmentTextureLinear(
                     0, batch.impostor_textures[0], error) &&
@@ -12800,16 +12633,14 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             std::optional<WorldTerrainConstants> owned_constants;
             ALMetalWorldDataSlice terrain_slice;
             bool terrain_published=false;
-            if(!prepared && shared_terrain && mImpl->frame_data)
+            if(shared_terrain && mImpl->frame_data)
                 terrain_published=mImpl->frame_data->publishTerrainPass(*command,batch.terrain_pass,scene,terrain_slice,error);
-            if(!prepared && !terrain_published)
+            if(!terrain_published)
             {
                 if(error)error->clear(); // Optional cache failure retains ordinary required publication.
                 owned_constants=buildWorldTerrainConstants(scene,batch);
             }
-            const void* constants_data = prepared
-                ? prepared_constants.data() + prepared_records[index].offset
-                : terrain_published ? nullptr : static_cast<const void*>(&*owned_constants);
+            const void* constants_data = terrain_published ? nullptr : static_cast<const void*>(&*owned_constants);
             const auto& terrain_pipelines = batch.terrain_pbr
                 ? mImpl->pbr_terrain_pipelines
                 : mImpl->terrain_pipelines;
@@ -12823,8 +12654,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 encoder->setPipeline(*pipeline, error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
-                (prepared ? bind_prepared(prepared_records[index].offset, sizeof(WorldTerrainConstants), 4, 0)
-                    : terrain_published ? encoder->setVertexBuffer(4,*terrain_slice.buffer,terrain_slice.offset,error) &&
+                (terrain_published ? encoder->setVertexBuffer(4,*terrain_slice.buffer,terrain_slice.offset,error) &&
                         encoder->setFragmentBuffer(0,*terrain_slice.buffer,terrain_slice.offset,error)
                     : mImpl->setVertexAndFragmentData(*encoder, *command,
                         4, 0, constants_data, sizeof(WorldTerrainConstants), error)) &&
@@ -12912,7 +12742,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 encoder->drawPatches(4, 0, 1, 1, 0, error);
             if(encoded && batch.terrain_pass)
             {
-                if(shared_terrain && (prepared || terrain_published))++terrain_source_draws;
+                if(shared_terrain && (terrain_published))++terrain_source_draws;
                 else ++terrain_source_fallback_draws;
             }
             continue;
@@ -12960,11 +12790,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         std::optional<WorldSimpleConstants> owned_constants;
         ALMetalWorldScalarRecipe scalar_recipe;
-        const bool recipe_draw=!prepared && (current_cohort || animated_reference);
+        const bool recipe_draw=(current_cohort || animated_reference);
         bool known_common_equal=false;
         const void* constants_data=nullptr;
-        if(prepared)constants_data=prepared_constants.data()+prepared_records[index].offset;
-        else if(animated_reference)
+        if(animated_reference)
         {
             const auto& source=*animated_reference->animated_source;
             scalar_recipe=source.scalarRecipe();++animated_stats.direct_recipe_reads;
@@ -12997,13 +12826,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             owned_constants=draw.view()?buildWorldSimpleConstants(scene,draw):buildWorldSimpleConstants(scene,batch);
             ++scalar_common_builds;constants_data=&*owned_constants;
         }
-        const bool avatar = prepared ? prepared_records[index].avatar : !recipe_draw && (batch.avatar_rigid || batch.avatar_skinning);
-        const bool rigged = prepared ? prepared_records[index].rigged : animated_reference || (!recipe_draw && draw.skinPalette() != nullptr && !avatar);
-        const bool bump = prepared ? prepared_records[index].bump : !recipe_draw && batch.normal_texture != nullptr;
-        const bool material = prepared ? prepared_records[index].material : recipe_draw ? scalar_recipe.family==1 : batch.material_slot_count != 0;
-        const bool pbr = prepared ? prepared_records[index].pbr : recipe_draw ? scalar_recipe.family==2 : isPBRBatch(batch);
-        const bool material_normal_map = prepared ? prepared_records[index].material_normal_map : recipe_draw ? scalar_recipe.normal_map : materialHasNormalMap(batch);
-        const bool material_specular_map = prepared ? prepared_records[index].material_specular_map : recipe_draw ? scalar_recipe.specular_map : materialHasSpecularMap(batch);
+        const bool avatar = !recipe_draw && (batch.avatar_rigid || batch.avatar_skinning);
+        const bool rigged = animated_reference || (!recipe_draw && draw.skinPalette() != nullptr && !avatar);
+        const bool bump = !recipe_draw && batch.normal_texture != nullptr;
+        const bool material = recipe_draw ? scalar_recipe.family==1 : batch.material_slot_count != 0;
+        const bool pbr = recipe_draw ? scalar_recipe.family==2 : isPBRBatch(batch);
+        const bool material_normal_map = recipe_draw ? scalar_recipe.normal_map : materialHasNormalMap(batch);
+        const bool material_specular_map = recipe_draw ? scalar_recipe.specular_map : materialHasSpecularMap(batch);
         const bool stable_tables = current_cohort || animated_reference ||
             (batch.native_material_source && batch.native_material_source->matches(batch));
         const ALMetalRenderPipeline* resource_pipeline = nullptr;
@@ -13049,8 +12878,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                 retained_material_sources[slot] = source;
             }
         }
-        const std::size_t avatar_variant = prepared ? prepared_records[index].avatar_variant :
-            batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
+        const std::size_t avatar_variant = batch.avatar_rigid ? 0 : (batch.avatar_cloth ? 2 : 1);
         const ALMetalRenderPipeline* pipeline = avatar
             ? mImpl->avatar_pipelines[scene.hdr ? 1 : 0]
                                      [avatar_variant]
@@ -13082,7 +12910,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                      batch.normal_offset, error) &&
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
-            bind_world_constants(constants_data, prepared ? prepared_records[index].offset : 0,known_common_equal) &&
+            bind_world_constants(constants_data, known_common_equal) &&
             (resource_bound || encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error));
         if (encoded && !avatar)
         {
@@ -13092,7 +12920,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         if (encoded && draw.skinPalette())
         {
             const auto skin_joint_count=draw.skinJointCount();
-            if(animated_reference && !prepared && mImpl->frame_data)
+            if(animated_reference && mImpl->frame_data)
             {
                 const auto* record=draw.skinPaletteRecord();
                 const bool hit=private_pose_record==record && index==private_pose_index+1;
@@ -13167,12 +12995,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             else
             {
                 std::optional<WorldMaterialConstants> owned_material_constants;
-                if (!prepared) owned_material_constants = buildWorldMaterialConstants(scene, batch, material_normal_map, material_specular_map);
-                const void* material_constants_data = prepared
-                    ? prepared_constants.data() + prepared_records[index].material_offset
-                    : static_cast<const void*>(&*owned_material_constants);
-                encoded = encoded && (prepared ? bind_prepared_fragment(prepared_records[index].material_offset, sizeof(WorldMaterialConstants), 0)
-                    : mImpl->setFragmentData(*encoder, *command,
+                owned_material_constants = buildWorldMaterialConstants(scene, batch, material_normal_map, material_specular_map);
+                const void* material_constants_data = static_cast<const void*>(&*owned_material_constants);
+                encoded = encoded && (mImpl->setFragmentData(*encoder, *command,
                         0, material_constants_data, sizeof(WorldMaterialConstants), error, true));
             }
         }
@@ -13189,13 +13014,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             else
             {
                 std::optional<WorldPBRConstants> owned_pbr_constants;
-                if (!prepared) owned_pbr_constants = buildWorldPBRConstants(scene, batch);
-                const void* pbr_constants_data = prepared
-                    ? prepared_constants.data() + prepared_records[index].pbr_offset
-                    : static_cast<const void*>(&*owned_pbr_constants);
+                owned_pbr_constants = buildWorldPBRConstants(scene, batch);
+                const void* pbr_constants_data = static_cast<const void*>(&*owned_pbr_constants);
                 encoded = encoded &&
-                    (prepared ? bind_prepared(prepared_records[index].pbr_offset, sizeof(WorldPBRConstants), 11, 0)
-                        : mImpl->setVertexAndFragmentData(*encoder, *command,
+                    (mImpl->setVertexAndFragmentData(*encoder, *command,
                             11, 0, pbr_constants_data, sizeof(WorldPBRConstants), error, true));
             }
         }

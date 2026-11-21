@@ -129,7 +129,7 @@ ALMetalWorldSourceReference reference(const std::shared_ptr<const ALMetalWorldAn
 }
 Output render(RiggedFixture& f,ALMetalWorldGBufferScene scene,std::vector<ALMetalWorldSimpleBatch> batches,
     std::vector<ALMetalWorldSourceReference> references={},std::shared_ptr<const CpuOwners> owners={},
-    std::vector<ALMetalWorldDrawIndex> order={},bool prepared=false)
+    std::vector<ALMetalWorldDrawIndex> order={},bool owned_input=false)
 {
     const auto count=batches.size()+references.size();auto q=queries(count,scene.reverse_z);
     if(!references.empty() && order.empty())for(unsigned at=0;at<references.size();++at)order.push_back(alMetalWorldDrawReferenceBit|at);
@@ -137,14 +137,13 @@ Output render(RiggedFixture& f,ALMetalWorldGBufferScene scene,std::vector<ALMeta
         std::move(q),std::move(owners),f.resources,1,&f.error);INFO(f.error);REQUIRE(input);
     std::shared_ptr<ALMetalVisibilityResultBatch> results;
     std::unique_ptr<ALMetalRenderTarget> target;
-    if(prepared)
+    if(owned_input)
     {
-        auto work=ALMetalWorldPreparation::create(input,2,{},&f.error);INFO(f.error);REQUIRE(work);
-        for(std::size_t job=0;job<work->jobCount();++job)REQUIRE(work->runJob(job));
-        auto ready=work->finish(&f.error);INFO(f.error);REQUIRE(ready);
-        target=f.renderer->renderPrepared(*ready,&f.error,&results);
+
+        auto ready=input;INFO(f.error);REQUIRE(ready);
+        target=f.renderer->renderOwnedInputs(*ready,&f.error,&results);
     }
-    else target=f.renderer->renderOwnedInputs(*input,&f.error,&results);
+    else target=f.renderer->render(input->scene(),&f.error,&results);
     INFO(f.error);REQUIRE(target);return read(f,*target,results,3);
 }
 }
@@ -585,7 +584,7 @@ TEST_CASE("almetal: animated metadata and command byte caps preserve required dr
         const auto expected=render(f,f.scene(),{batch});
         auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);
 
-        // A declaration proof belongs to this prepared Batch and exact active
+        // A declaration proof belongs to this owned_input Batch and exact active
         // encoder, while the unchanged standalone entry declares every call.
         // Real animated pipelines/ranges keep this a native ABI/output proof.
         {

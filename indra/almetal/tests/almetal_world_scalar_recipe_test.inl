@@ -252,13 +252,12 @@ TEST_CASE("almetal: scalar common runs restore exact values across queries raw d
             CHECK(after.scalar_common_reuses - before.scalar_common_reuses == 2);
             CHECK(f.read(*target) == expected);
             CHECK(scalarRecipeQueries(result, queries.size(), f.error) == expected_queries);
-            auto work = ALMetalWorldPreparation::create(inputs, 2, {}, &f.error); INFO(f.error); REQUIRE(work);
-            for (std::size_t job = 0; job < work->jobCount(); ++job) REQUIRE(work->runJob(job));
-            auto ready = work->finish(&f.error); INFO(f.error); REQUIRE(ready);
-            std::shared_ptr<ALMetalVisibilityResultBatch> prepared_queries;
-            auto prepared = f.renderer->renderPrepared(*ready, &f.error, &prepared_queries); INFO(f.error); REQUIRE(prepared);
-            CHECK(f.read(*prepared) == expected);
-            CHECK(scalarRecipeQueries(prepared_queries, queries.size(), f.error) == expected_queries);
+
+            auto ready = inputs; INFO(f.error); REQUIRE(ready);
+            std::shared_ptr<ALMetalVisibilityResultBatch> owned_queries;
+            auto owned_input = f.renderer->renderOwnedInputs(*ready, &f.error, &owned_queries); INFO(f.error); REQUIRE(owned_input);
+            CHECK(f.read(*owned_input) == expected);
+            CHECK(scalarRecipeQueries(owned_queries, queries.size(), f.error) == expected_queries);
         }
     }
 }

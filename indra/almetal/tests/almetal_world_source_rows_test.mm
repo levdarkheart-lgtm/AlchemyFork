@@ -204,14 +204,7 @@ SourceRowsOutput renderSourceRows(SourceRowsFixture& f, ALMetalWorldGBufferScene
     {
         auto input = ALMetalWorldViewInputs::adopt(scene, raw, refs, order, queries, cpu_owner, f.resources, frame, &f.error);
         INFO(f.error); REQUIRE(input);
-        if (mode == 1) target = f.renderer->renderOwnedInputs(*input, &f.error, &results);
-        else
-        {
-            auto work = ALMetalWorldPreparation::create(input, 2, {}, &f.error); REQUIRE(work);
-            for (std::size_t job = 0; job < work->jobCount(); ++job) REQUIRE(work->runJob(job));
-            auto ready = work->finish(&f.error); INFO(f.error); REQUIRE(ready);
-            target = f.renderer->renderPrepared(*ready, &f.error, &results);
-        }
+        target = f.renderer->renderOwnedInputs(*input, &f.error, &results);
     }
     INFO(f.error); REQUIRE(target);
     SourceRowsOutput output{f.read(*target), {}};
@@ -310,7 +303,7 @@ TEST_CASE("almetal: source-row renderer preserves indexed material slots and ord
                 REQUIRE(std::count_if(expected.pixels.depth.begin(), expected.pixels.depth.end(),
                     [&](auto value) { return value != clear; }) > 8);
                 scene.source_rows = metadata;
-                for (unsigned mode = 0; mode < 3; ++mode)
+                for (unsigned mode = 0; mode < 2; ++mode)
                 {
                     CAPTURE(mode);
                     const auto before = f.renderer->worldSourceStats();

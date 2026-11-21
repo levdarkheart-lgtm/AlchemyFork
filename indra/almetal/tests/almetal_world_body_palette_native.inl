@@ -80,7 +80,7 @@ TEST_CASE("almetal: body records seal exactly180 finite view-specific floats",
 }
 
 TEST_CASE("almetal: raw and body records preserve mixed queries formats cloth and shadow output",
-          "[almetal][body-palette][world-prepare]")
+          "[almetal][body-palette][world-inputs]")
 {
     using namespace BodyPaletteNative;
     Host f;
@@ -114,7 +114,7 @@ TEST_CASE("almetal: raw and body records preserve mixed queries formats cloth an
             if(mode)
             {
                 auto second=probe->renderOwnedInputs(*inputs,&f.error);REQUIRE(second);CHECK(f.read(*second)==images[mode]);
-                auto prepared=f.prepare(scene,{prefix,body});auto third=probe->renderPrepared(*prepared,&f.error);REQUIRE(third);
+                auto owned_input=f.adopt(scene,{prefix,body});auto third=probe->renderOwnedInputs(*owned_input,&f.error);REQUIRE(third);
                 CHECK(f.read(*third)==images[mode]);CHECK(f.data->stats().body_record_reuses>=2);
             }
             auto caster=BodyPaletteNative::shadow(body);ALMetalWorldSpotShadowScene shadows;shadows.batches=&caster;shadows.batch_count=1;
@@ -164,7 +164,7 @@ TEST_CASE("almetal: body records preserve forward avatar alpha and reject mismat
 }
 
 TEST_CASE("almetal: pending body palette bytes outlive CPU record and cancellation retires readers",
-          "[almetal][body-palette][world-prepare]")
+          "[almetal][body-palette][world-inputs]")
 {
     using namespace BodyPaletteNative;
     Host f;auto source=values();auto record=Record::create(source,&f.error);REQUIRE(record);

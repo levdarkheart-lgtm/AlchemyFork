@@ -162,7 +162,7 @@ struct WorldResourceOutput
 WorldResourceOutput renderResourceView(WorldResourceFixture& f,
     ALMetalWorldGBufferRenderer& renderer, ALMetalWorldGBufferScene scene,
     std::vector<ALMetalWorldSimpleBatch> batches,
-    std::vector<ALMetalWorldVisibilityQuery> queries, bool prepared, std::uint64_t frame)
+    std::vector<ALMetalWorldVisibilityQuery> queries, bool owned_input, std::uint64_t frame)
 {
     f.data->beginFrame(frame);
     scene.source_owner = f.resources;
@@ -170,10 +170,10 @@ WorldResourceOutput renderResourceView(WorldResourceFixture& f,
     scene.visibility_queries = queries.data(); scene.visibility_query_count = queries.size();
     std::shared_ptr<ALMetalVisibilityResultBatch> results;
     std::unique_ptr<ALMetalRenderTarget> target;
-    if (prepared)
+    if (owned_input)
     {
-        auto ready = f.prepare(scene, std::move(batches), std::move(queries));
-        target = renderer.renderPrepared(*ready, &f.error, &results);
+        auto ready = f.adopt(scene, std::move(batches), std::move(queries));
+        target = renderer.renderOwnedInputs(*ready, &f.error, &results);
     }
     else target = renderer.render(scene, &f.error, &results);
     INFO(f.error); REQUIRE(target);
@@ -257,10 +257,10 @@ TEST_CASE("almetal: world resource tables preserve visible indexed and query bou
                     {first, second}, resourceQueries(count), false, ++frame);
                 REQUIRE(expected.queries.size() == 3);
                 CHECK(expected.queries.front() > 0);
-                const auto prepared = renderResourceView(f, *f.renderer, scene,
+                const auto owned_input = renderResourceView(f, *f.renderer, scene,
                     {first, second}, resourceQueries(count), true, ++frame);
-                CHECK(prepared.pixels == expected.pixels);
-                CHECK(prepared.queries == expected.queries);
+                CHECK(owned_input.pixels == expected.pixels);
+                CHECK(owned_input.queries == expected.queries);
                 scene.material_argument_buffers = true;
                 for (bool prepare : {false, true})
                 {
@@ -351,10 +351,9 @@ TEST_CASE("almetal: world resource generations survive pending GPU work and reti
             {
                 auto inputs = ALMetalWorldViewInputs::adopt(scene, {batch}, {}, geometry, 3, &f.error);
                 REQUIRE(inputs);
-                auto work = ALMetalWorldPreparation::create(inputs, 1, {}, &f.error);
-                REQUIRE(work); REQUIRE(work->runJob(0));
-                auto ready = work->finish(&f.error); REQUIRE(ready);
-                target = f.renderer->renderPrepared(*ready, &f.error);
+
+                auto ready = inputs; REQUIRE(ready);
+                target = f.renderer->renderOwnedInputs(*ready, &f.error);
             }
             else target = f.renderer->render(scene, &f.error);
             INFO(f.error); REQUIRE(target);
@@ -435,8 +434,8 @@ TEST_CASE("almetal: rigged world resource pipelines preserve single material out
                 const auto expected = renderResourceView(f, *f.renderer, scene, {batch}, {}, false, ++frame);
                 CHECK(std::any_of(expected.pixels.depth.begin(), expected.pixels.depth.end(),
                     [reverse = scene.reverse_z](auto value) { return value != (reverse ? 0u : 0x3f800000u); }));
-                const auto prepared = renderResourceView(f, *f.renderer, scene, {batch}, {}, true, ++frame);
-                CHECK(prepared.pixels == expected.pixels);
+                const auto owned_input = renderResourceView(f, *f.renderer, scene, {batch}, {}, true, ++frame);
+                CHECK(owned_input.pixels == expected.pixels);
                 scene.material_argument_buffers = true;
                 for (bool prepare : {false, true})
                 {
@@ -468,9 +467,9 @@ TEST_CASE("almetal: optional world resource failures preserve exact direct rende
             // Warm once so fault injection must also override a fast hit.
             renderResourceView(f, *f.renderer, scene, {batch}, {}, false, ++frame);
             for (unsigned failure = 0; failure < 4; ++failure)
-            for (bool prepared : {false, true})
+            for (bool owned_input : {false, true})
             {
-                CAPTURE(family, failure, prepared);
+                CAPTURE(family, failure, owned_input);
                 auto candidate = batch;
                 if (failure == 0) candidate.native_resource_source.reset();
                 if (failure == 1)
@@ -483,8 +482,8 @@ TEST_CASE("almetal: optional world resource failures preserve exact direct rende
                 const auto before = f.renderer->worldResourceStats();
                 auto direct_scene = scene; direct_scene.material_argument_buffers = false;
                 const auto reference = failure == 1
-                    ? renderResourceView(f, *f.renderer, direct_scene, {candidate}, {}, prepared, ++frame) : expected;
-                const auto actual = renderResourceView(f, *f.renderer, scene, {candidate}, {}, prepared, ++frame);
+                    ? renderResourceView(f, *f.renderer, direct_scene, {candidate}, {}, owned_input, ++frame) : expected;
+                const auto actual = renderResourceView(f, *f.renderer, scene, {candidate}, {}, owned_input, ++frame);
                 CHECK(actual.pixels == reference.pixels);
                 const auto after = f.renderer->worldResourceStats();
                 CHECK(after.requested_draws - before.requested_draws == 1);
@@ -516,10 +515,10 @@ TEST_CASE("almetal: optional world resource failures preserve exact direct rende
                     publishResourceBatch(f, optional_maps, material_cache);
                     auto direct_scene = scene; direct_scene.material_argument_buffers = false;
                     const auto reference = renderResourceView(f, *f.renderer, direct_scene, {optional_maps}, {}, false, ++frame);
-                    for (bool prepared : {false, true})
+                    for (bool owned_input : {false, true})
                     {
                         const auto resource_before = f.renderer->worldResourceStats();
-                        const auto actual = renderResourceView(f, *f.renderer, scene, {optional_maps}, {}, prepared, ++frame);
+                        const auto actual = renderResourceView(f, *f.renderer, scene, {optional_maps}, {}, owned_input, ++frame);
                         CHECK(actual.pixels == reference.pixels);
                         checkResourcePath(resource_before, f.renderer->worldResourceStats(), 1);
                     }
@@ -561,11 +560,11 @@ TEST_CASE("almetal: argument resource declarations preserve adjacent native inde
             const auto expected = renderResourceView(f, *f.renderer, scene, {first, second}, {}, false, ++frame);
             REQUIRE(ALMetalDevice::encodedDrawCallCount() - before == 1);
             scene.material_argument_buffers = true;
-            for (bool prepared : {false, true})
+            for (bool owned_input : {false, true})
             {
                 const auto draws_before = ALMetalDevice::encodedDrawCallCount();
                 const auto resource_before = f.renderer->worldResourceStats();
-                const auto actual = renderResourceView(f, *f.renderer, scene, {first, second}, {}, prepared, ++frame);
+                const auto actual = renderResourceView(f, *f.renderer, scene, {first, second}, {}, owned_input, ++frame);
                 CHECK(actual.pixels == expected.pixels);
                 CHECK(ALMetalDevice::encodedDrawCallCount() - draws_before == 1);
                 checkResourcePath(resource_before, f.renderer->worldResourceStats(), 2);
@@ -723,9 +722,9 @@ TEST_CASE("almetal: recurring source ownership survives bounded cache collisions
             {
                 auto inputs = ALMetalWorldViewInputs::adopt(scene, batches, queries, scene.source_owner, 4, &f.error);
                 INFO(f.error); REQUIRE(inputs);
-                auto work = ALMetalWorldPreparation::create(inputs, 1, {}, &f.error); REQUIRE(work);
-                REQUIRE(work->runJob(0)); auto ready = work->finish(&f.error); REQUIRE(ready);
-                target = f.renderer->renderPrepared(*ready, &f.error, &results);
+
+                 auto ready = inputs; REQUIRE(ready);
+                target = f.renderer->renderOwnedInputs(*ready, &f.error, &results);
             }
             else target = f.renderer->render(scene, &f.error, &results);
             INFO(f.error); REQUIRE(target); REQUIRE(results);
@@ -817,11 +816,11 @@ TEST_CASE("almetal: world resources preserve the previous compiled scalar shader
                 CHECK(direct.pixels == old.pixels);
                 CHECK(direct.queries == old.queries);
                 scene.material_argument_buffers = true;
-                for (bool prepared : {false, true})
+                for (bool owned_input : {false, true})
                 {
                     const auto before = f.renderer->worldResourceStats();
                     const auto actual = renderResourceView(f, *f.renderer, scene,
-                        {first, second}, resourceQueries(count), prepared, ++frame);
+                        {first, second}, resourceQueries(count), owned_input, ++frame);
                     CHECK(actual.pixels == old.pixels);
                     CHECK(actual.queries == old.queries);
                     checkResourcePath(before, f.renderer->worldResourceStats(), 2);

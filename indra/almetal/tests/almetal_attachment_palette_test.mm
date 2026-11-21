@@ -363,8 +363,8 @@ std::vector<std::uint8_t> paletteColor(Fixture& f,const ALMetalRenderTarget& tar
 }
 }
 
-TEST_CASE("almetal: attachment identity is shared by main probe prepared and shadow consumers",
-          "[almetal][attachment-palette][world-prepare]")
+TEST_CASE("almetal: attachment identity is shared by main probe owned_input and shadow consumers",
+          "[almetal][attachment-palette][world-inputs]")
 {
     @autoreleasepool
     {
@@ -388,8 +388,8 @@ TEST_CASE("almetal: attachment identity is shared by main probe prepared and sha
             batch.skin_palette_record=record.get();batch.skin_palette=record->data();
             auto main=f.renderer->render(scene,&f.error);INFO(f.error);REQUIRE(main);CHECK(f.read(*main)==expected);
             auto ordinary_probe=probe->render(scene,&f.error);INFO(f.error);REQUIRE(ordinary_probe);CHECK(f.read(*ordinary_probe)==expected);
-            auto ready=f.prepare(scene,{batch});
-            auto prepared=f.renderer->renderPrepared(*ready,&f.error);INFO(f.error);REQUIRE(prepared);CHECK(f.read(*prepared)==expected);
+            auto ready=f.adopt(scene,{batch});
+            auto owned_input=f.renderer->renderOwnedInputs(*ready,&f.error);INFO(f.error);REQUIRE(owned_input);CHECK(f.read(*owned_input)==expected);
             ALMetalTextureDescriptor descriptor;descriptor.type=ALMetalTextureType::texture_2d_array;
             descriptor.format=ALMetalPixelFormat::r32_float;descriptor.width=descriptor.height=side;descriptor.array_length=2;
             descriptor.usage=ALMetalTextureUsage::render_target|ALMetalTextureUsage::shader_read;
@@ -468,7 +468,7 @@ TEST_CASE("almetal: attachment records preserve forward alpha glow and impostor 
 }
 
 TEST_CASE("almetal: queued world draws keep native palette bytes without retaining CPU records",
-          "[almetal][attachment-palette][world-prepare]")
+          "[almetal][attachment-palette][world-inputs]")
 {
     @autoreleasepool
     {
@@ -479,21 +479,21 @@ TEST_CASE("almetal: queued world draws keep native palette bytes without retaini
         std::weak_ptr<const ALMetalAttachmentPaletteRecord> weak=record;
         batch.skin_palette_record=record.get();batch.skin_palette=record->data();
         auto inputs=ALMetalWorldViewInputs::adopt(scene,{batch},{},f.resources,1,&f.error);REQUIRE(inputs);
-        auto ticket=ALMetalWorldPreparation::create(inputs,1,{},&f.error);REQUIRE(ticket);REQUIRE(ticket->runJob(0));
-        auto ready=ticket->finish(&f.error);REQUIRE(ready);
+
+        auto ready=inputs;REQUIRE(ready);
         // Renderer construction synchronously uploads fallback textures on
         // this queue; complete it before installing the actual GPU wait.
         auto library=f.data->builtinLibrary(&f.error);REQUIRE(library);
         auto probe=ALMetalWorldGBufferRenderer::create(*f.device,1,library,&f.error);REQUIRE(probe);probe->setFrameData(f.data);
         PaletteQueueGate gate(f);
         REQUIRE(f.renderer->beginCommandBatch("Attachment native-only pending reader",&f.error));
-        auto old=f.renderer->renderPrepared(*ready,&f.error);INFO(f.error);REQUIRE(old);
+        auto old=f.renderer->renderOwnedInputs(*ready,&f.error);INFO(f.error);REQUIRE(old);
         auto completion=f.renderer->commandBatchCompletion();REQUIRE(completion);CHECK_FALSE(completion->isComplete());
         REQUIRE(f.renderer->commitCommandBatch(&f.error));
         CHECK_FALSE(completion->isComplete());
         // Clear all CPU packet/cache owners while this real submitted command
         // is GPU-gated. Only its encoded native arena bytes are needed.
-        ready.reset();ticket.reset();inputs.reset();record.reset();f.data->beginFrame(2);
+        ready.reset();inputs.reset();record.reset();f.data->beginFrame(2);
         CHECK(weak.expired());
         f.attachment_pose[0]=.5f;
         auto changed=ALMetalAttachmentPaletteRecord::create(f.attachment_pose.data(),f.attachment_pose.size(),1,&f.error);REQUIRE(changed);

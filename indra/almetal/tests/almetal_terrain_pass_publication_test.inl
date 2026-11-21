@@ -141,16 +141,16 @@ struct Rendered
     bool operator==(const Rendered&) const=default;
 };
 Rendered render(TerrainFixture& fixture,ALMetalWorldGBufferScene scene,
-    const std::vector<ALMetalWorldSimpleBatch>& batches,bool prepared)
+    const std::vector<ALMetalWorldSimpleBatch>& batches,bool owned_input)
 {
     auto queries=fixture.queries();scene.batches=batches.data();scene.batch_count=batches.size();
     scene.visibility_queries=queries.data();scene.visibility_query_count=queries.size();
     std::shared_ptr<ALMetalVisibilityResultBatch> results;
     std::unique_ptr<ALMetalRenderTarget> target;
-    if(prepared)
+    if(owned_input)
     {
-        auto ready=fixture.f.prepare(scene,batches,queries,2);
-        target=fixture.f.renderer->renderPrepared(*ready,&fixture.f.error,&results);
+        auto ready=fixture.f.adopt(scene,batches,queries);
+        target=fixture.f.renderer->renderOwnedInputs(*ready,&fixture.f.error,&results);
     }
     else target=fixture.f.renderer->render(scene,&fixture.f.error,&results);
     INFO(fixture.f.error);REQUIRE(target);REQUIRE(results);
@@ -219,7 +219,6 @@ struct QueueGate
 }
 }
 
-
 TEST_CASE("almetal: one immutable terrain pass preserves classic and PBR patch output",
           "[almetal][terrain-pass-publication]")
 {
@@ -245,10 +244,10 @@ TEST_CASE("almetal: one immutable terrain pass preserves classic and PBR patch o
                 CHECK(t.f.data->stats().terrain_published_bytes==before.terrain_published_bytes+896);
                 CHECK(render(t,scene,raw,true)==expected);
                 auto queries=t.queries();
-                auto ready=t.f.prepare(scene,published,queries,2);
-                CHECK(ready->stats().constant_bytes==896);
+                auto ready=t.f.adopt(scene,published,queries);
+                CHECK(ready->scene().batch_count==published.size());
                 std::shared_ptr<ALMetalVisibilityResultBatch> result;
-                auto target=t.f.renderer->renderPrepared(*ready,&t.f.error,&result);INFO(t.f.error);REQUIRE(target);REQUIRE(result);
+                auto target=t.f.renderer->renderOwnedInputs(*ready,&t.f.error,&result);INFO(t.f.error);REQUIRE(target);REQUIRE(result);
                 CHECK(t.f.read(*target)==expected.image);
                 for(unsigned at=0;at<2;++at){std::uint64_t count=0;REQUIRE(result->wait(at,count,&t.f.error));CHECK(count==expected.queries[at]);}
             }
@@ -291,10 +290,10 @@ TEST_CASE("almetal: native terrain readers retain resources without retaining th
           "[almetal][terrain-pass-publication]")
 {
     using namespace TerrainPassPublicationTest;
-    for(bool prepared:{false,true})
+    for(bool owned_input:{false,true})
     @autoreleasepool
     {
-        CAPTURE(prepared);TerrainFixture t(4);
+        CAPTURE(owned_input);TerrainFixture t(4);
         auto geometry=std::make_shared<Resources>();geometry->buffers=t.f.resources->buffers;
         std::weak_ptr<Resources> weak_geometry=geometry;
         auto geometry_scene=t.scene();geometry_scene.source_owner=geometry;
@@ -317,26 +316,17 @@ TEST_CASE("almetal: native terrain readers retain resources without retaining th
         REQUIRE_FALSE(selected_texture.expired());
         auto library=t.f.data->builtinLibrary(&t.f.error);REQUIRE(library);
         auto probe=ALMetalWorldGBufferRenderer::create(*t.f.device,1,library,&t.f.error);REQUIRE(probe);probe->setFrameData(t.f.data);
-        std::shared_ptr<const ALMetalPreparedWorldView> old_ready,new_ready;
-        if(prepared)
-        {
-            const auto prepare=[&](const auto& inputs)
-            {auto work=ALMetalWorldPreparation::create(inputs,2,{},&t.f.error);REQUIRE(work);
-             for(std::size_t job=0;job<work->jobCount();++job)REQUIRE(work->runJob(job));
-             auto ready=work->finish(&t.f.error);REQUIRE(ready);return ready;};
-            old_ready=prepare(old_inputs);new_ready=prepare(new_inputs);
-        }
         QueueGate gate(t.f);
         REQUIRE(t.f.renderer->beginCommandBatch("Pending immutable terrain old pass",&t.f.error));
-        auto old=prepared?t.f.renderer->renderPrepared(*old_ready,&t.f.error):t.f.renderer->renderOwnedInputs(*old_inputs,&t.f.error);
+        auto old=owned_input?t.f.renderer->renderOwnedInputs(*old_inputs,&t.f.error):t.f.renderer->render(old_inputs->scene(),&t.f.error);
         INFO(t.f.error);REQUIRE(old);auto old_completion=t.f.renderer->commandBatchCompletion();REQUIRE(old_completion);
         REQUIRE(t.f.renderer->commitCommandBatch(&t.f.error));
         t.f.data->beginFrame(2);
         REQUIRE(probe->beginCommandBatch("Pending immutable terrain new pass",&t.f.error));
-        auto current=prepared?probe->renderPrepared(*new_ready,&t.f.error):probe->renderOwnedInputs(*new_inputs,&t.f.error);
+        auto current=owned_input?probe->renderOwnedInputs(*new_inputs,&t.f.error):probe->render(new_inputs->scene(),&t.f.error);
         INFO(t.f.error);REQUIRE(current);auto new_completion=probe->commandBatchCompletion();REQUIRE(new_completion);
         REQUIRE(probe->commitCommandBatch(&t.f.error));
-        old_ready.reset();new_ready.reset();old_inputs.reset();new_inputs.reset();old_pass.reset();new_pass.reset();
+        old_inputs.reset();new_inputs.reset();old_pass.reset();new_pass.reset();
         CHECK(weak_old.expired());CHECK(weak_new.expired());
         geometry.reset();t.f.resources.reset();
         CHECK_FALSE(weak_geometry.expired());CHECK_FALSE(selected_texture.expired());
@@ -514,7 +504,6 @@ TEST_CASE("almetal: complete raw and shared terrain pass path costs",
         }
     }
 }
-
 
 TEST_CASE("almetal: ordinary source proofs reject a real unrelated terrain owner",
           "[almetal][terrain-pass-publication][PPD-265]")

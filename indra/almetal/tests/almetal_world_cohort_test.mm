@@ -318,11 +318,10 @@ TEST_CASE("almetal: mixed raw reference cohort queries prepare and reclaim compl
             const auto expected=f.read(*expected_target);
             auto inputs=ALMetalWorldViewInputs::adopt(scene,raw,refs,order,std::move(groups),queries,refs_owner,f.resources,5,&f.error);
             INFO(f.error);REQUIRE(inputs);scene={};ordinary={};group={};groups.clear();
-            auto work=ALMetalWorldPreparation::create(inputs,2,{},&f.error);REQUIRE(work);
-            for(std::size_t job=0;job<work->jobCount();++job)REQUIRE(work->runJob(job));
-            auto ready=work->finish(&f.error);INFO(f.error);REQUIRE(ready);CHECK(ready->stats().prepared_count==5);
+
+            auto ready=inputs;INFO(f.error);REQUIRE(ready);CHECK(ready->scene().drawCount()==5);
             std::shared_ptr<ALMetalVisibilityResultBatch> result;
-            auto target=f.renderer->renderPrepared(*ready,&f.error,&result);INFO(f.error);REQUIRE(target);REQUIRE(result);
+            auto target=f.renderer->renderOwnedInputs(*ready,&f.error,&result);INFO(f.error);REQUIRE(target);REQUIRE(result);
             CHECK(f.read(*target)==expected);
             std::uint64_t visible=0;REQUIRE(result->wait(0,visible,&f.error));CHECK(visible>0);
             std::shared_ptr<ALMetalVisibilityResultBatch> scalar_queries;
@@ -337,7 +336,7 @@ TEST_CASE("almetal: mixed raw reference cohort queries prepare and reclaim compl
             std::vector<ALMetalWorldDrawIndex> out_order;std::vector<ALMetalWorldSourceCohortView> out_groups;
             std::vector<ALMetalWorldVisibilityQuery> out_queries;
             CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,out_raw,out_refs,out_order,out_groups,out_queries));
-            ready.reset();work.reset();
+            ready.reset();
             CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,out_raw,out_queries));
             CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,out_raw,out_refs,out_order,out_queries));
             REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,out_raw,out_refs,out_order,out_groups,out_queries));
@@ -347,7 +346,7 @@ TEST_CASE("almetal: mixed raw reference cohort queries prepare and reclaim compl
     }
 }
 
-TEST_CASE("almetal: cohort input ownership and preparation cancellation reject malformed public storage",
+TEST_CASE("almetal: cohort input ownership rejects malformed public storage",
           "[almetal][world-cohort]")
 {
     @autoreleasepool
@@ -373,12 +372,7 @@ TEST_CASE("almetal: cohort input ownership and preparation cancellation reject m
         // Cohort-only adoption needs no unrelated aggregate CPU owner or
         // caller resource owner: each exact native tuple is pinned separately.
         REQUIRE(input->resourceLease());
-        auto epoch=std::make_shared<std::atomic<std::uint64_t>>(3);
-        auto work=ALMetalWorldPreparation::create(input,2,epoch,&f.error);REQUIRE(work);work->cancel();
-        CHECK_FALSE(work->runJob(0));CHECK_FALSE(work->finish(&f.error));
-        work.reset();epoch->store(4);
-        work=ALMetalWorldPreparation::create(input,2,epoch,&f.error);REQUIRE(work);
-        CHECK_FALSE(work->runJob(0));CHECK_FALSE(work->finish(&f.error));
+        REQUIRE(f.renderer->renderOwnedInputs(*input,&f.error));
     }
 }
 
@@ -387,16 +381,16 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
 {
     @autoreleasepool
     {
-        for(unsigned family:{1u,2u})for(bool prepared:{false,true})for(bool abandon:{false,true})
+        for(unsigned family:{1u,2u})for(bool owned_input:{false,true})for(bool abandon:{false,true})
         {
-            CAPTURE(family,prepared,abandon);
+            CAPTURE(family,owned_input,abandon);
             // Keep the legacy scalar descriptor-retirement gate while also
             // exercising descriptor-free Legacy/PBR pending native tuples.
-            const bool resource_descriptor=family==1 && !prepared;
+            const bool resource_descriptor=family==1 && !owned_input;
             CohortFixture f(family,2,resource_descriptor);auto certificate=f.seal();
             CHECK(bool(certificate->source(0).native_resource_source)==resource_descriptor);
             std::weak_ptr<const ALMetalWorldCohortSource> weak_record;
-            if(prepared)
+            if(owned_input)
             {
                 std::vector<std::shared_ptr<const ALMetalWorldCohortSource>> records;
                 for(const auto& source:f.cpu->keys)
@@ -417,13 +411,12 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
             }
             REQUIRE(f.renderer->beginCommandBatch("Cohort CPU retirement test",&f.error));
             std::unique_ptr<ALMetalRenderTarget> target;
-            if(prepared)
+            if(owned_input)
             {
-                auto work=ALMetalWorldPreparation::create(inputs,2,{},&f.error);REQUIRE(work);
-                for(std::size_t job=0;job<work->jobCount();++job)REQUIRE(work->runJob(job));
-                auto ready=work->finish(&f.error);REQUIRE(ready);target=f.renderer->renderPrepared(*ready,&f.error);
+
+                auto ready=inputs;REQUIRE(ready);target=f.renderer->renderOwnedInputs(*ready,&f.error);
             }
-            else target=f.renderer->renderOwnedInputs(*inputs,&f.error);
+            else target=f.renderer->render(inputs->scene(),&f.error);
             INFO(f.error);REQUIRE(target);if(!abandon)REQUIRE(f.renderer->commitCommandBatch(&f.error));
             std::weak_ptr<CohortCpu> weak_cpu=f.cpu;std::weak_ptr<Resources> weak_native=f.resources;
             std::weak_ptr<const ALMetalWorldSourceCohort> weak_certificate=certificate;
@@ -435,7 +428,7 @@ TEST_CASE("almetal: cohort CPU descriptions expire while native-only command gen
             group={};certificate.reset();f.cpu.reset();f.resources.reset();
             REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs,raw,refs,order,cohorts,queries));
             CHECK(weak_cpu.expired());CHECK(weak_certificate.expired());CHECK(weak_material.expired());CHECK(weak_resource.expired());
-            if(prepared)CHECK(weak_record.expired());
+            if(owned_input)CHECK(weak_record.expired());
             CHECK_FALSE(weak_native.expired());
             if(abandon)f.renderer->cancelCommandBatch();
             else{gate.signaledValue=1;REQUIRE(f.device->waitUntilIdle(&f.error));CHECK(f.read(*target)==expected);}

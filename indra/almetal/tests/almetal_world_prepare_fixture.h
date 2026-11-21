@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file almetal_world_prepare_test.mm
- * @brief Ordered prepared/direct native world parity and input lifetime tests.
+ * @brief Ordered owned_input/direct native world parity and input lifetime tests.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "../almetalworldprepare.h"
@@ -203,36 +203,12 @@ struct Fixture
         for(unsigned y=0;y<side;++y)std::memcpy(p.stencil.data()+y*side,static_cast<const std::uint8_t*>(plane.contents)+y*row,side);
         return p;
     }
-    std::shared_ptr<const ALMetalPreparedWorldView> prepare(ALMetalWorldGBufferScene s,
-        std::vector<ALMetalWorldSimpleBatch> batches,std::vector<ALMetalWorldVisibilityQuery> queries={},unsigned jobs=2)
+    std::shared_ptr<const ALMetalWorldViewInputs> adopt(ALMetalWorldGBufferScene s,
+        std::vector<ALMetalWorldSimpleBatch> batches,std::vector<ALMetalWorldVisibilityQuery> queries={})
     {
         auto inputs=ALMetalWorldViewInputs::adopt(s,std::move(batches),std::move(queries),resources,7,&error);
-        INFO(error);REQUIRE(inputs);
-        auto ticket=ALMetalWorldPreparation::create(inputs,jobs,{},&error);INFO(error);REQUIRE(ticket);
-        ALNativeFrameBudget::Lease credit;
-        if(ticket->jobCount()>1)
-            credit=ALNativeFrameBudget::instance().tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
-        if(credit)
-        {
-            struct Range { ALMetalWorldPreparation* work; bool result=false; } range{ticket.get()};
-            auto group=dispatch_group_create();
-            dispatch_group_async_f(group,dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),
-                &range,[](void* context)
-                {
-                    auto& range=*static_cast<Range*>(context);
-                    range.result=range.work->runJob(1);
-                });
-            const bool first=ticket->runJob(0);
-            dispatch_group_wait(group,DISPATCH_TIME_FOREVER);
-#if !OS_OBJECT_USE_OBJC
-            dispatch_release(group);
-#endif
-            INFO(error);REQUIRE(first);REQUIRE(range.result);
-        }
-        else
-            for(std::size_t job=0;job<ticket->jobCount();++job)REQUIRE(ticket->runJob(job));
-        auto ready=ticket->finish(&error);INFO(error);REQUIRE(ready);return ready;
+        INFO(error);REQUIRE(inputs);return inputs;
     }
+
 };
 }
-

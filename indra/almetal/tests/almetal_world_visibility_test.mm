@@ -235,8 +235,8 @@ TEST_CASE("almetal: shared world visibility preserves small mixed draw order and
             auto unsafe=v->publishBounds(21,1,outside);
             for(unsigned index:{4u,5u,6u})values[index]=member(unsafe,batches[index].modelview_projection,batches[index].index_count);
             s.native_visibility=v->makeView(std::move(values),&f.error);REQUIRE(s.native_visibility);
-            auto prepared=f.prepare(s,batches,queries);
-            auto actual=f.renderer->renderPrepared(*prepared,&f.error,&native_queries);INFO(f.error);REQUIRE(actual);REQUIRE(native_queries);
+            auto owned_input=f.adopt(s,batches,queries);
+            auto actual=f.renderer->renderOwnedInputs(*owned_input,&f.error,&native_queries);INFO(f.error);REQUIRE(actual);REQUIRE(native_queries);
             CHECK(f.read(*actual)==expected);
             for(unsigned q=0;q<3;++q){std::uint64_t value=0;REQUIRE(native_queries->wait(q,value,&f.error));CHECK(value==results[q]);}
             CHECK(results.front()>0);
@@ -310,8 +310,8 @@ TEST_CASE("almetal: complete shared visibility small mixed path cost matrix", "[
                     const auto start=std::chrono::steady_clock::now();
                     f.data->beginFrame(++frame);
                     s.native_visibility=gpu?v->makeView(worldMembers(handle,batches),&f.error):nullptr;
-                    auto prepared=f.prepare(s,batches,{},1);
-                    auto target=f.renderer->renderPrepared(*prepared,&f.error);INFO(f.error);REQUIRE(target);
+                    auto owned_input=f.adopt(s,batches,{});
+                    auto target=f.renderer->renderOwnedInputs(*owned_input,&f.error);INFO(f.error);REQUIRE(target);
                     REQUIRE(f.device->waitUntilIdle(&f.error));
                     if(sample>=2)ms[sample-2]=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
                 }

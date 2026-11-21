@@ -66,8 +66,7 @@ DrawResult renderDraws(Fixture& f, ALMetalWorldGBufferScene scene,
     const std::vector<ALMetalWorldSourceReference>& refs,
     const std::vector<ALMetalWorldDrawIndex>& order,
     const std::vector<ALMetalWorldVisibilityQuery>& queries,
-    const std::shared_ptr<const void>& cpu_owner, bool prepared, std::uint64_t frame,
-    bool owned = false)
+    const std::shared_ptr<const void>& cpu_owner, bool owned_input, std::uint64_t frame)
 {
     f.data->beginFrame(frame);
     scene.batches = raw.data(); scene.batch_count = raw.size();
@@ -77,22 +76,12 @@ DrawResult renderDraws(Fixture& f, ALMetalWorldGBufferScene scene,
     scene.cpu_source_owner = cpu_owner; scene.source_owner = f.resources;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::shared_ptr<ALMetalVisibilityResultBatch> query_results;
-    if (prepared || owned)
+    if (owned_input)
     {
         auto input = ALMetalWorldViewInputs::adopt(scene, raw, refs, order, queries,
             cpu_owner, f.resources, frame, &f.error);
         INFO(f.error); REQUIRE(input);
-        if (owned) target = f.renderer->renderOwnedInputs(*input, &f.error, &query_results);
-        else
-        {
-            auto work = ALMetalWorldPreparation::create(input, 2, {}, &f.error);
-            INFO(f.error); REQUIRE(work);
-            for (std::size_t job = 0; job < work->jobCount(); ++job) REQUIRE(work->runJob(job));
-            auto ready = work->finish(&f.error); INFO(f.error); REQUIRE(ready);
-            CHECK(ready->stats().input_count == raw.size() + refs.size());
-            CHECK(ready->stats().prepared_count == raw.size() + refs.size());
-            target = f.renderer->renderPrepared(*ready, &f.error, &query_results);
-        }
+        target = f.renderer->renderOwnedInputs(*input, &f.error, &query_results);
     }
     else target = f.renderer->render(scene, &f.error, &query_results);
     INFO(f.error); REQUIRE(target);
@@ -221,11 +210,11 @@ TEST_CASE("almetal: mixed compact sources preserve native MRT depth stencil UV a
                 const auto clear = scene.reverse_z ? 0u : 0x3f800000u;
                 REQUIRE(std::count_if(expected.pixels.depth.begin(), expected.pixels.depth.end(),
                     [&](auto value) { return value != clear; }) > 40);
-                for (unsigned path = 0; path < 3; ++path)
+                for (unsigned path = 0; path < 2; ++path)
                 {
-                    CAPTURE(path); // Borrowed scene, typed owned scalar, prepared.
+                    CAPTURE(path); // Borrowed scene and typed owned scalar.
                     const auto actual = renderDraws(f, scene, raw, refs, order, queries, cpu,
-                        path == 2, ++serial, path == 1);
+                        path == 1, ++serial);
                     CHECK(actual.pixels == expected.pixels);
                     CHECK(actual.queries == expected.queries);
                 }
@@ -254,11 +243,11 @@ TEST_CASE("almetal: raw special records retain their position around compact sou
         const std::vector<ALMetalWorldDrawIndex> order{0, alMetalWorldDrawReferenceBit, 1};
         auto scene = f.scene(); auto queries = orderedQueries(3);
         const auto expected = renderDraws(f, scene, baseline, {}, {}, queries, {}, false, 2);
-        for (unsigned path = 0; path < 3; ++path)
+        for (unsigned path = 0; path < 2; ++path)
         {
             CAPTURE(path);
             const auto actual = renderDraws(f, scene, raw, refs, order, queries, cpu,
-                path == 2, path + 3, path == 1);
+                path == 1, path + 3);
             CHECK(actual.pixels == expected.pixels); CHECK(actual.queries == expected.queries);
         }
     }
@@ -324,10 +313,9 @@ TEST_CASE("almetal: compact view validation rejects malformed mappings owners an
         CHECK_FALSE(ALMetalWorldViewInputs::adopt(valid, {raw}, {ref}, {0,alMetalWorldDrawReferenceBit}, {}, {}, f.resources, 1, &f.error));
         CHECK_FALSE(ALMetalWorldViewInputs::adopt(valid, {raw}, {ref}, {0,alMetalWorldDrawReferenceBit}, {}, cpu, {}, 1, &f.error));
         // The detached helper is safe even before an owner's whole-view check.
-        ALMetalWorldPreparedRecord record; std::array<std::byte, 400> bytes;
         auto invalid_local = valid;
         invalid_local.draw_order = nullptr;
-        CHECK_FALSE(alMetalPrepareWorldRecord(invalid_local, 0, record, bytes, &f.error));
+        CHECK_FALSE(alMetalValidateWorldView(invalid_local, &f.error));
     }
 }
 
@@ -387,7 +375,7 @@ TEST_CASE("almetal: typed owned input keeps draw validation and does not certify
     }
 }
 
-TEST_CASE("almetal: compact preparation cancellation preserves readers and reclaims all capture capacity",
+TEST_CASE("almetal: compact owned inputs preserve readers and reclaims all capture capacity",
           "[almetal][world-draws]")
 {
     @autoreleasepool
@@ -405,18 +393,14 @@ TEST_CASE("almetal: compact preparation cancellation preserves readers and recla
         cpu.reset(); CHECK_FALSE(weak.expired());
         CHECK(inputs->scene().drawCount() == 2); CHECK(inputs->scene().batch_count == 1);
         CHECK(inputs->scene().draw(1).view() == &inputs->scene().references[0].view);
-        auto epoch = std::make_shared<std::atomic<std::uint64_t>>(7);
-        auto work = ALMetalWorldPreparation::create(inputs, 2, epoch, &f.error); REQUIRE(work);
-        REQUIRE(work->jobCount() == 2); REQUIRE(work->runJob(0));
-        epoch->store(8); CHECK_FALSE(work->runJob(1)); CHECK_FALSE(work->finish(&f.error));
         std::vector<ALMetalWorldSimpleBatch> returned_raw;
         std::vector<ALMetalWorldSourceReference> returned_refs;
         std::vector<ALMetalWorldDrawIndex> returned_order;
         std::vector<ALMetalWorldVisibilityQuery> returned_queries;
+        auto reader = inputs;
         CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs, returned_raw, returned_refs, returned_order, returned_queries));
-        CHECK(inputs); CHECK_FALSE(weak.expired()); work->cancel(); work.reset();
-        // Ticket cancellation affects its prepared result, not the immutable
-        // input packet. A required local scalar retry remains available.
+        CHECK(inputs); CHECK_FALSE(weak.expired()); reader.reset();
+        // With no CPU reader outstanding, scalar encoding can consume the packet.
         REQUIRE(f.renderer->renderOwnedInputs(*inputs, &f.error));
         CHECK_FALSE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs, returned_raw, returned_queries));
         returned_order.push_back(42);
@@ -442,9 +426,9 @@ TEST_CASE("almetal: compact CPU descriptions retire before pending native comman
 {
     @autoreleasepool
     {
-        for (bool prepared : {false, true}) for (bool abandon : {false, true})
+        for (bool owned_input : {false, true}) for (bool abandon : {false, true})
         {
-            CAPTURE(prepared, abandon);
+            CAPTURE(owned_input, abandon);
             Fixture f; auto cpu = std::make_shared<DrawDescriptions>(); cpu->sources.push_back(f.batch(2));
             auto view = matrices(cpu->sources[0]);
             view.modelview_projection[0] = .75f; view.texture_matrix[12] = .25f;
@@ -459,11 +443,11 @@ TEST_CASE("almetal: compact CPU descriptions retire before pending native comman
             poisonMatrices(cpu->sources[0]);
             auto input = ALMetalWorldViewInputs::adopt(scene, std::move(raw), std::move(refs), std::move(order),
                 std::move(queries), cpu, f.resources, 3, &f.error); REQUIRE(input);
-            std::shared_ptr<ALMetalPreparedWorldView const> ready;
-            if (prepared)
+            std::shared_ptr<ALMetalWorldViewInputs const> ready;
+            if (owned_input)
             {
-                auto work = ALMetalWorldPreparation::create(input, 1, {}, &f.error); REQUIRE(work);
-                REQUIRE(work->runJob(0)); ready = work->finish(&f.error); REQUIRE(ready);
+
+                 ready = input; REQUIRE(ready);
             }
             id<MTLSharedEvent> gate = [(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent]; REQUIRE(gate);
             struct OpenGate { id<MTLSharedEvent> gate; ~OpenGate() { gate.signaledValue = 1; } } open{gate};
@@ -475,8 +459,8 @@ TEST_CASE("almetal: compact CPU descriptions retire before pending native comman
             }
             f.data->beginFrame(3);
             REQUIRE(f.renderer->beginCommandBatch("Compact packet lifetime", &f.error));
-            auto target = prepared ? f.renderer->renderPrepared(*ready, &f.error)
-                                   : f.renderer->renderOwnedInputs(*input, &f.error);
+            auto target = owned_input ? f.renderer->renderOwnedInputs(*ready, &f.error)
+                                   : f.renderer->render(input->scene(), &f.error);
             INFO(f.error); REQUIRE(target);
             auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion); CHECK_FALSE(completion->isComplete());
             if (!abandon) REQUIRE(f.renderer->commitCommandBatch(&f.error));
@@ -523,12 +507,12 @@ TEST_CASE("almetal: native adjacent joins span raw and compact references withou
         const auto expected = renderDraws(f, scene, {first, second}, {}, {}, {}, {}, false, 2);
         REQUIRE(ALMetalDevice::encodedDrawCallCount() - before == 1);
         std::uint64_t serial = 3;
-        for (unsigned path = 0; path < 3; ++path)
+        for (unsigned path = 0; path < 2; ++path)
         {
             CAPTURE(path);
             const auto start = ALMetalDevice::encodedDrawCallCount();
             const auto actual = renderDraws(f, scene, {first}, refs, order, {}, cpu,
-                path == 2, ++serial, path == 1);
+                path == 1, ++serial);
             CHECK(actual.pixels == expected.pixels);
             CHECK(ALMetalDevice::encodedDrawCallCount() - start == 1);
         }
@@ -537,12 +521,12 @@ TEST_CASE("almetal: native adjacent joins span raw and compact references withou
         const auto query_expected = renderDraws(f, scene, {first, second}, {}, {}, queries, {}, false, ++serial);
         const auto query_draws = ALMetalDevice::encodedDrawCallCount() - query_start;
         REQUIRE(query_draws > 1);
-        for (unsigned path = 0; path < 3; ++path)
+        for (unsigned path = 0; path < 2; ++path)
         {
             CAPTURE(path);
             const auto start = ALMetalDevice::encodedDrawCallCount();
             const auto actual = renderDraws(f, scene, {first}, refs, order, queries, cpu,
-                path == 2, ++serial, path == 1);
+                path == 1, ++serial);
             CHECK(actual.pixels == query_expected.pixels); CHECK(actual.queries == query_expected.queries);
             CHECK(ALMetalDevice::encodedDrawCallCount() - start == query_draws);
         }
