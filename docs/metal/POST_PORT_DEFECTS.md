@@ -12198,7 +12198,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Owner reports a BoM overlay on a mesh attachment breaks up when the camera turns; screenshot shows sharply bounded surface patches. Original-viewer depth/alpha/culling behavior and exact asset material/layer topology remain to be inspected. No cause is established from the screenshot.
 - Evidence: [Capture and investigation ledger](work/active/bom-overlay-rendering-20261121.md).
-- Next action: Validate PPD-523 cross-family precision repair with native regression controls, then deliver an exact local candidate for owner testing. Competing-surface identity and incident attribution remain unproved; no depth bias or alpha workaround selected.
+- Next action: Owner retests candidate69417 at the same attachment and rotates the camera. Source precision mechanism is qualified under PPD-523; incident closure and push remain pending actual owner result.
 - Verification: Exact unchanged69404 source7d607/exe1a875/OpenHTJ2K verified. Failed bounded3sSystemTrace(-9/63.259s/712839904bytes/TOC10) retained unusable. Owner-authorized restart7831 produces error-free early162–163 and late1327–1328 GPUTraceDocuments. Late Xcode replay visibly reproduces the overlay, with12commandbuffers/36renderencoders/3239draws/5dispatches. Draw16866 diffuse/geometry/frame/palette exported. Neighbor16844 is a different origin/25joints and must not be assumed the same surface. Requested numeric depth export actually savedPNG, so it is not float-depth evidence. Owner remains logged in; replay stopped. No incident repair verified yet.
 - Owner verification: pending
 - Push approval: not_granted
@@ -12207,15 +12207,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 report registered before any code repair. Camera-dependent patches could arise from several depth/material/layer mechanisms; source and captured producer/consumer data must distinguish them. The failed attach trace is not usable proof of a captured problematic draw. Current69404 has no supported runtime one-shot capture arming path; preserve ordinary scene/settings/cache and use its existing startup-armed diagnostic path with owner's restart approval.
 
+- 2026-11-21 Full Release69417/source8f2e56b5db/exe0b8bab95fd3d built0;13focusedCTests0(37.41s), final-library765/0,346ARM64/signature/strictGL0. CandidatePID39451 starts normal controls/no capture, sole OpenHT0.27.0 verified, STATE_LOGIN_WAIT. Mac locked prevents window/scene verification; owner unlock requested. No incident closure or push.
+
 ## PPD-523 — Rigged shader families disagree on rebased position precision
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex rendering integrator
 - Discovered: 2026-11-21
-- Original reference: At1eb44bbd1bdc76d0100c75699bad1fb337e8cb45, class1/avatar/objectSkinV.glsl29–57 and109–124 explicitly require keeping vertex-varying coordinates avatar-local and transforming the large origin separately. Diffuse/material/alpha/fullbrightShiny use skinTransformH(modelview) then projection. Current Metal simple/material/bump/PBR reconstruct region-space position before matrix multiply, while shiny/legacy alpha/glow split the origin and local transforms. Algebraic equality does not guarantee equal F32 depth across passes.
+- Original reference: At1eb44bbd1bdc76d0100c75699bad1fb337e8cb45, class1/avatar/objectSkinV.glsl29–57 and109–124 explicitly require keeping vertex-varying coordinates avatar-local and transforming the large origin separately. Diffuse/material/alpha/fullbrightShiny use skinTransformH(modelview) then projection. Pre-repair Metal simple/material/bump/PBR reconstructed region-space position before matrix multiply, while shiny/legacy alpha/glow split the origin and local transforms. Algebraic equality does not guarantee equal F32 depth across passes.
 - Evidence: [BoM investigation and precision mapping](work/active/bom-overlay-rendering-20261121.md).
-- Next action: Test the captured inputs and actual native shader families; restore a consistent original-equivalent precision contract with meaningful cross-pass GPU controls. Keep attribution to PPD-522 separate until the offending competing draws and owner retest establish it.
+- Next action: Owner verifies local69417 with the reported overlay under camera motion. Retain old/helper-only/invariance-only failures and all final-library/broad GPU evidence. Keep unrelated asset, rigging and other-target limits separate; no new fix push approval.
 - Verification: Source divergence confirmed. Captured draw16866 inputs are exported privately and use legacy-alpha-skinned vertex shader; no production repair or owner verification yet. CPU F32 diagnostic shows differing depth in both directions, but is not GPU rasterization proof. Existing fast-math compilation and absent position-invariance annotations require explicit validation rather than an assumed guarantee.
 - Owner verification: pending
 - Push approval: not_granted
@@ -12226,6 +12228,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 actual M1Max production-VS fixture765checks: old35fail, helper-only30fail, invariance-only80fail, full firstcandidate0fail. Exact32bitdepth/coplanar errors with all independent geometry/front-behind controls passing establish the source mechanism. Independent test/source review passes and finds2animated producer entries missing the helper; root corrects them before final build/retest. Firstcandidate is not yet a source-pinned complete viewer, and PPD-522 owner cause/closure remain pending.
 
+
+- 2026-11-21 Final build-generated librarye69a532f0592 includes both reviewed animated corrections and passes765exact-depth checks/162ordered pairs. Full repository Release0,13focusedCTests0 include broad world131939assertions/65cases and animated attachment/parity. Two optional cache-validation cases skipped under defaults are separately executed under their required environments:882+98assertions, both0. Doctor/346ARM64/strictsignature/strictGL3647files0/harness33 pass. Exact69417 is waiting manual login, not visually accepted.
 
 ## PPD-524 — Investigation snapshot copies two links with the wrong relative base
 
@@ -12249,13 +12253,13 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-525 — New standalone depth fixture misses mandatory project flags target
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Codex rendering integrator
 - Discovered: 2026-11-21
 - Original reference: cmake/00-Common.cmake::al_check_flags_target requires every built target to link al::flags. New standalone almetal_rigged_depth_invariance_tests links only Metal/Foundation, causing configure to reject the target before compilation.
 - Evidence: [BoM investigation ledger](work/active/bom-overlay-rendering-20261121.md); private bom-overlay-depth-20261121/configure.log retains initial exit1 and exact missing target.
-- Next action: Link the mandatory al::flags target, rerun configure and compile the fixture with actual project flags, then execute exact-library GPU checks. Preserve initial failure.
+- Next action: Retain required al::flags linkage and the initial configure failure; source-pinned full build and CTest now pass. Owner candidate acceptance remains pending; no additional flags-target repair is needed.
 - Verification: Standalone manual -Wall/-Wextra/-Werror compile and GPU controls pass as previously recorded, but first full project configure exits1. No compiled candidate viewer or owner acceptance is inferred from those independent fixture results.
 - Owner verification: pending
 - Push approval: not_granted
@@ -12263,3 +12267,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 registered before repairing the target integration. Sole OpenHTJ2K identity was checked successfully during configure; this failure is the new test target, not decoder or viewer runtime.
+
+- 2026-11-21 configure-03 uses existing isolated Python with yaml/llsd and exits0, restoring peer/compiler tests. Full repository Release build0 and actual CMake-built standalone fixture765checks0fail prove mandatory project flags compile/link/run correctly. New source8f2e56b5db/build69417; initial configure1 retained.

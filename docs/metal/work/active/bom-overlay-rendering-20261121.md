@@ -122,3 +122,101 @@ Next: run repository build, focused GPU/animated tests, static app/decoder check
 and source-pinned candidate identity; keep owner69404 session untouched until
 normal logout. Owner must test the exact new candidate at the same view before
 closing PPD-522/523 or approving any new fix push. No private capture upload.
+
+
+## Full candidate qualification in progress
+
+Canonical integration is now the primary workspace, codex/apple-silicon-metal,
+tracked-clean source8f2e56b5dbeb1eb0ee7e1dc800bf62645ceb6bcc/revision69417.
+The separate shader worktree preserves241f486943. No proposed fix is pushed;
+public Alpha7 remains immutablebd930/69412. Actual owner69404 PID7831 exited
+normally0 at00:55:26.306879Z; no process was killed or account changed.
+
+PPD-524 retains the first documentation-harness failure (two copied links);
+corrected links pass33files. PPD-525 retains initial project configure failure
+because the new standalone fixture omitted required al::flags. Linking that
+mandatory target resolves configure. First configured Python lacked llsd/yaml;
+use the existing isolated known tool-venv via explicit Python3_EXECUTABLE,
+restoring Python peer tests and LL compiler without installing global packages.
+configure-03 exits0 and verifies required OpenHT0.27.0/pinned72ea0450 archive.
+The final build-generated shader library SHA256
+e69a532f059290fa2bd7cc8e262fe68dc5fd9bae3075ca66df3e59f581365eab
+includes both animated-entry corrections; SAME765check fixture reports0fail.
+Firstcandidate765/0 therefore is corroborated by final-library765/0, not reused
+as evidence for changed shader inputs. Broad animated/world checks stillpending.
+
+Full repository tools/metal/build.sh Release is running against configured
+build-Darwin-ninja-os-arm64-shadow-occlusion with a distinct app channel
+Alchemy Metal Rigged Depth Fix. Initial4job build is deliberately interrupted
+with SIGINT to the uniquely verified Ninja child after the owner session exits;
+exit130/log retained, no compiler-error claim. It resumes8jobs reusing completed
+objects. Do not treat an incomplete staged app as the source-pinned candidate.
+App/static/signature/source/decoder qualification and owner retest remainpending.
+
+
+## Captured-session warning accounting (separate from the depth defect)
+
+Closed source7d607 session log is4351031bytes/SHA256
+05fe7a657efcb1a09df57404e7a1e86e61fcdfa25140a8bc7b02a38401b1af79:
+261WARNING rows/28sites,0ERROR/FATAL. A literal fallback+rigging search returns
+230INFO rows, but all are pipeline.cpp3325 census (115main/115probe), every
+fallback counter0 and last_fallback=none. These are schema labels, not230rigging
+failures. No skin/palette/nonfinite, decoder-failure or missing-auxiliary-mask
+warning row occurs in this session. Absence is not blanket rigging correctness.
+
+Seventeen distinct textures reach terminal missing-asset handling with stored
+HTTP403 status01930001,9material assets fail with status-1, and117coreHTTP
+Easy_28 timeouts have0retries with request ownership unknown. Four inherited
+alpha-analysis warnings use float0x1406;30stale appearance updates are rejected.
+Corresponding warning/failure branches are inherited from original1eb44, and
+there are no WarningInputs records providing typed request/bake context here.
+Do not join recycled HTTP handles or connect these failures to the affected
+attachment without an object/face-to-texture mapping. PPD-311/466 and existing
+asset-transport causes remain separate/open; no new decoder or rigging cause
+for PPD-522 is established. The selected draw's diffuse is validRGBA8 in the
+GPU capture. Private warning-sites.json/shutdown-log-summary.json and source
+review retain the accounting without committing account/asset identifiers.
+
+
+## Ready for owner retest —69417
+
+Full tools/metal/build.sh Release resumes and exits0. Source
+8f2e56b5dbeb1eb0ee7e1dc800bf62645ceb6bcc, indra tree
+05091a15a707be1694ac37495414c42d90cbe951, version26.4.0.69417.
+Exact app is primary workspace build-Darwin-ninja-os-arm64-shadow-occlusion/
+newview/Release/Alchemy Metal Rigged Depth Fix.app; executable same name under
+Contents/MacOS. Executable SHA256
+0b8bab95fd3da4312029734a3b1c0a9a12b3b76d0227bd99d97eb0ce9ae1e1f1
+contains the full built source hash. Bundled metallib exactly equals tested
+build library e69a532f059290fa2bd7cc8e262fe68dc5fd9bae3075ca66df3e59f581365eab.
+tools/metal/verify_app.sh346ARM64/0invalid and strict codesign both exit0.
+Strict source gate3647first-party files/0blocking/0scanerrors (925informational).
+
+Thirteen focused CTests pass in37.41s: classic avatar, broad native GPU/world,
+resource/direct routing, compact draws, runtime shader reload, shadow material/
+coverage, pipeline cache, attachment palettes/animated material+PBR, G-buffer
+constants, shared library and animated pipeline policy, plus new765check test.
+Broad GPU fixture passes131939assertions/65cases. All comparisons use the newly
+built executable/library, not the preceding old test bundle. Two opt-in cache
+cases are skipped under ordinary settings, then explicitly run under required
+shader-validation environments:882 and98assertions, both pass. These settings
+are subprocess-only and never passed to the owner candidate.
+
+Owner candidate launched PID39451 at02:00:11Z through exact verified executable,
+manual AutoLoginfalse and separate private log only. No capture, experiment,
+graphics-preset, region, cache or account change. Startup independently confirms
+version69417, OpenHTJ2K0.27.0 decoding/one caller thread per image and
+STATE_LOGIN_WAIT; no ERROR/FATAL observed before login. lsof confirms the live
+process opens /Users/dekstroza/Library/Caches/AlchemyNext/texturecache/FastCache.cache
+(the quiet startup log does not itself print that path). Mac is locked; native
+UI inspection cannot unlock it, and owner is asked to unlock manually. No scene
+screenshot, graphics/location verification or owner visual acceptance claimed.
+
+PPD-523/525 ready_for_owner; PPD-522 still investigating until actual attachment
+camera-motion retest. All failed
+traces, partial4job build, first helper-only/invariance-only failures and two
+harness/configure errors remain retained. Proposed fixes and checkpoint commits
+are LOCAL, no push; public Alpha7/69412 is untouched. Next: after owner unlocks,
+verify exact running69417, let owner login/reproduce, inspect current log, and
+record whether the overlay remains complete while rotating the camera. Only a
+confirmed owner result can close the incident or support a requested fix push.
