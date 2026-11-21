@@ -1,0 +1,51 @@
+# Production convergence candidate — 2026-11-21
+
+Status: doing
+Owner: root integrator, canonical codex/apple-silicon-metal worktree.
+Base: 83d33894c37087025616bd9aaf1d831cc574da97 / indra05091a15a7.
+Owner authorizes proper scheduling/ownership repairs, coherent Apple-first infrastructure,
+graphics preference cleanup, and a separate candidate viewer for manual testing.
+All proposed fixes stay local; no push/release or automatic login authorized.
+
+## Ownership and acceptance
+
+| Work | Owner / exclusive paths | Acceptance | State |
+| --- | --- | --- | --- |
+| PPD528/532/533 cache priority, asset handoffs, ready decode and cancellation | asset agent: texturecache/fetch/viewertexture/list, llimageworker and dedicated tests | stale/cancel/shutdown/fairness tests, real decoder identity, full build | doing |
+| PPD529/531 pool validation and nonblocking retry infrastructure | scheduler agent: llcommon threadpool/queuedthread/workqueue/schedule and dedicated tests | invalid widths, timed retries, wake/abort/delete/generation, idle update accounting | doing |
+| PPD527/536 graphics preferences | preferences agent: settings/UI/feature tables, llfloaterpreference and dedicated tests; no pipeline writes | consumer census, preset parity, no dead controls or misleading GL help | doing |
+| PPD530/534/535/537/538/539 geometry contract, resources, lighting, replies and LFS integration | root: shared renderer files, llappviewer, canonical CMake/docs | actual resource lifetime/GPU tests, queue integration, complete Release candidate | doing |
+| Candidate | root alone owns configure/build/test/staging | doctor, Release build, verify_app, strict GL, relevant tests, immutable source/app hashes | todo |
+
+## Preserved contracts
+
+OpenHTJ2K remains the sole pixel decoder. Upload keeps its one batch/flush owner.
+Scene mutation and result publication stay on explicit owners; memory/retirement,
+request generations, cancellation, quality and retained Alchemy features remain.
+Scheduling changes use existing queues and ownership boundaries, without a new
+engine-wide framework or speculative user tuning knobs. Original mappings are
+recorded before each renderer/settings repair. Rejected small-job experiments stay
+retained; no FPS gain is claimed from a source repair or component result.
+
+## Evidence and integration
+
+Initial working changes are the preceding audit's documentation, owned by root.
+Existing untracked native-im worktree is untouched. Independent code changes use
+separate worktrees and local commits, integrated serially; root owns shared
+pipeline.cpp, almetalworld.cpp, llappviewer.cpp and canonical documentation.
+Exact commands, failures, source identities and test outcomes are appended here.
+
+## Remaining work must survive handoff
+
+The audit action map remains [source assessment](../../research/scheduling-source-assessment-20261121.md).
+Every item will end with implemented evidence or an explicit residual contract,
+reason and next executable step. Large scene preparation/parallel encoding,
+capacity tuning, deep geometry ownership changes and pipeline compilation lock
+splitting require demonstrated need and appropriate correctness/cost qualification;
+they must not disappear merely because a candidate builds. Existing PPD319 GPU
+completion/performance, parity and product release gates remain open.
+
+## Next executable action
+
+Implement independent worker/asset/preferences repairs, review and integrate them,
+then build and qualify one separate candidate. The owner controls its live test.

@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-528 -->
+<!-- next-defect-id: PPD-540 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12323,3 +12323,207 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 found while tracing the existing Water waves switch for the shoreline comparison; registered before correction. This is misleading help text, not evidence that the native viewer needs or creates an OpenGL renderer.
+
+## PPD-528 — Texture cache drops requested write-priority promotions
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex scheduling audit
+- Discovered: 2026-11-21
+- Original reference: Local upstream/develop408fd6c014 has the same inherited disconnected priority list. Fetch WAIT_ON_WRITE requests promotion to release formatted-image ownership for finer data; current LLQueuedThread WorkQueue has no priority API.
+- Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); lltexturefetch.cpp2093–2098 and lltexturecache.cpp861–862/2290–2295 at83d33894c3, application source identical to cited7976438.
+- Next action: Assess meaningful cache admission priority with identity/fairness or immutable write-payload ownership before implementation; preserve in-progress writes, cancellation and lower-resolution display.
+- Verification: Source confirms the copied priority list is cleared and never used. No runtime frequency, loading delay, deadlock, current FPS attribution or repair is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered from owner-supplied assessment before any fix. Read-only source/reference audit confirms the broken contract; it is inherited, not established as a Metal-introduced regression. Owner requests findings discussion before implementation.
+
+## PPD-529 — Configured worker widths accept zero and negative integers
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex scheduling audit
+- Discovered: 2026-11-21
+- Original reference: Local upstream/develop408fd6c014 has the same unchecked override conversion and General default1 despite constructor fallback3.
+- Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); threadpool.cpp70/77–103/174–211 and settings.xml12402–12403 at83d33894c3.
+- Next action: Validate supported override ranges and expose effective value/origin; preserve fixed-width owner pools. Audit General consumers before tuning its width, including width-dependent audio admission.
+- Verification: Zero starts no workers; negative signed LLSD integer converts to a huge size_t request. Actual saved values and runtime failure are unknown. The shipped positive General1 is a policy, not itself a configuration correctness defect.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered during source-only assessment. Native renderer General work is startup/reload construction, not normal per-frame preparation. No override, width, settings, code or viewer process changed; no FPS benefit claimed.
+
+## PPD-530 — Geometry update interface accepts an unenforced time allowance
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex scheduling audit
+- Discovered: 2026-11-21
+- Original reference: Local upstream/develop408fd6c014 has the same display allowance, unused updateGeom parameter and full logical update-queue drain. Priority rebuild/lifecycle semantics remain authoritative.
+- Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); llviewerdisplay.cpp1953–1956 and pipeline.cpp21429–21440/21579–21621 at83d33894c3.
+- Next action: Attribute creation, partition, rebuild-item and logical update costs; classify frame-required versus deferrable work before changing deadlines or extracting immutable preparation.
+- Verification: updateGeom never reads max_dtime; creation checks between objects and does not cover partition/rebuild/update work. This confirms interface/budget scope mismatch, not current frame spikes, an unsafe missed deadline or permission to defer required work arbitrarily.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 retained inherited interface mismatch separately from measured performance incidents. Source-only assessment; no timer break, ownership change, runtime collection or repair. Legacy GL function names are not evidence of OpenGL API execution.
+
+## PPD-531 — Queued retries can sleep the serial worker ahead of ready work
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex scheduling audit
+- Discovered: 2026-11-21
+- Original reference: Inherited fork retry callback sleeps until its16ms retry point. Local upstream/develop408fd6c014 instead posts a timed retry identified by handle/generation, supports wakeRequest and suppresses empty housekeeping through hasThreadedUpdate.
+- Evidence: [Source assessment](research/scheduling-source-assessment-20261121.md); llqueuedthread.cpp493–537 and166–176 at83d33894c3, compared with local upstream retry scheduler.
+- Next action: Review a scoped timed-retry/wakeup and empty-update adoption against WorkSchedule compatibility, request replacement/abort/delete, shutdown and ready-work fairness. Do not blindly import broader upstream queue changes.
+- Verification: A retry callback can sleep its sole service for nearly16ms instead of leaving other ready callbacks runnable. No current activation, queue delay, LFS foreground-sleep relationship or whole-viewer cost was measured. This is distinct from the conditional10–100ms main-loop sleep.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 additional omission discovered while checking the supplied assessment; registered before repair. Current source and local upstream remedy inspected read-only. No implementation, settings or runtime changes; assess alongside completion-driven loading candidates.
+
+## PPD-532 — Texture cache lookup and completion progress depends on foreground polling
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Texture scheduling integrator
+- Discovered: 2026-11-21
+- Original reference: Inherited original fast-cache and responder handoffs require explicit request lifetime and publication ownership.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: lltexturecache.cpp745–874 and llviewertexturelist.cpp1402–1419.
+- Next action: Move safe I/O and worker-state handoffs off foreground polling; retain bounded owner publication and stale-request checks.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-533 — Accepted obsolete decode work and ready results lack direct progression
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Texture scheduling integrator
+- Discovered: 2026-11-21
+- Original reference: Original fetch responder accounting and decoded raw-image lifetime remain authoritative; sole OpenHTJ2K pixel decoder is preserved.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: llimageworker.cpp228–248 and llviewertexturelist.cpp1451–1513.
+- Next action: Provide cancellation before expensive accepted decode and bounded ready-result delivery while preserving exactly-once accounting and demand maintenance.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-534 — ResourcePlan map hits construct a redundant owning temporary
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Native renderer integrator
+- Discovered: 2026-11-21
+- Original reference: Native allocation generations and completion retirement are new Metal ownership contracts; no GL equivalent registry exists.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: almetalresourceplan.cpp167–175.
+- Next action: Construct owning mapped entries only on insertion and validate hit/miss lifetime/access/dependency behavior.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-535 — Recurring lighting constants allocate standalone native buffers
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Native renderer integrator
+- Discovered: 2026-11-21
+- Original reference: Original per-view lighting contents remain unchanged; existing completion-aware Metal frame pages provide the intended storage owner.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: almetalworld.cpp13490–13505 and27213–27230.
+- Next action: Reuse completion-aware frame slices with exact consuming-command lifetime and per-view offsets; preserve failure semantics.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-536 — Graphics preferences retain obsolete backend controls or explanations
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Graphics preferences maintenance
+- Discovered: 2026-11-21
+- Original reference: Original settings expose functional graphics quality; retain active native quality controls and remove only proven dead backend mechanisms.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: panel_preferences_graphics XML, llfloaterpreference.cpp and graphics settings definitions; exact obsolete controls under audit.
+- Next action: Trace every suspect preference to live Metal consumers; remove dead controls/dependencies and stale OpenGL help, preserving native features and preset behavior.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-537 — Main reply budget is latched once despite mutable setting
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Application scheduling integrator
+- Discovered: 2026-11-21
+- Original reference: Original callback ownership remains on main and individual callbacks run to completion; existing extra pacing consumer remains valid.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: llappviewer.cpp5718–5728.
+- Next action: Use a validated current setting without per-frame conversion overhead; preserve safe reply boundaries and distinguish earlier admission pressure from pacing slack.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-538 — Foreground file backlog throttle sleeps on undifferentiated queue entries
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Application scheduling integrator
+- Discovered: 2026-11-21
+- Original reference: Inherited main-loop delay counts queue callbacks including housekeeping rather than bytes or producer-specific demand.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: llappviewer.cpp1832–1837 and llqueuedthread.cpp166–176/206–208.
+- Next action: Remove unconditional foreground sleeping in favor of coherent worker queue progress and explicit bounded producer pressure; retain actual file operations and shutdown draining.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-539 — Required local-light pipeline variants compile on first render use
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Native renderer integrator
+- Discovered: 2026-11-21
+- Original reference: Native pipeline format/library generation and failure semantics must match the existing renderer construction and archive ownership.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source83d33894c3: almetalworld.cpp27197–27209.
+- Next action: Prepare predictable local-light variants during renderer creation; keep cache archive ownership synchronized and avoid speculative compile concurrency.
+- Verification: Source mechanism confirmed; no repair or new runtime result yet. Existing performance attribution remains unproved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
