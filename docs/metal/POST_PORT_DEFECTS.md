@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-524 -->
+<!-- next-defect-id: PPD-525 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12225,3 +12225,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 registered before code repair. Retain PPD-522 as the owner incident with unproved causality. Original-source inspection establishes a precision contract rather than a reason to add depth bias or suppress the overlay. Raw geometry, textures, captures and derived images remain private/ignored.
 
 - 2026-11-21 actual M1Max production-VS fixture765checks: old35fail, helper-only30fail, invariance-only80fail, full firstcandidate0fail. Exact32bitdepth/coplanar errors with all independent geometry/front-behind controls passing establish the source mechanism. Independent test/source review passes and finds2animated producer entries missing the helper; root corrects them before final build/retest. Firstcandidate is not yet a source-pinned complete viewer, and PPD-522 owner cause/closure remain pending.
+
+
+## PPD-524 — Investigation snapshot copies two links with the wrong relative base
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Codex rendering integrator
+- Discovered: 2026-11-21
+- Original reference: CURRENT.md lives in state/ and its ../work/active links are correct there. The same prefix copied into work/active/metal-port.md retains those relative links, resolving to a nonexistent work/work/active path.
+- Evidence: [Investigation ledger](work/active/bom-overlay-rendering-20261121.md); private release-alpha7 final-continuity-harness.log retains two stale-link errors from the first check.
+- Next action: Correct those two active-ledger links to sibling file paths and rerun the ordinary harness; preserve the failed result. No engine change or owner runtime attribution.
+- Verification: First ordinary harness fails with exactly two stale Markdown links; the later commit command ran despite that failure and did not make it a passing result. Link correction and fresh validation required before delivery.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction. The failed docs check is distinct from the passing physical shader tests; no hidden bypass or release artifact change.
+
+- 2026-11-21 both relative links corrected; fresh ordinary harness passes33requiredfiles, whitespace0. No engine/owner closure inferred.
