@@ -2066,6 +2066,19 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
     }
 }
 
+bool ALMetalWorldFrameData::reloadShadowMaterials(
+    const ALMetalShaderLibrary& library, std::string* error)
+{
+    if (!mImpl->shadow_materials) return true;
+    auto replacement = ALMetalShadowMaterials::create(*mImpl->device, library, error);
+    if (!replacement) return false;
+    if (mImpl->initialized) replacement->beginFrame(mImpl->generation);
+    // Passes hold the old Pool; submitted commands independently retain their
+    // immutable entries, slots and resources. No GPU wait or arena reset.
+    mImpl->shadow_materials.swap(replacement);
+    return true;
+}
+
 bool ALMetalWorldFrameData::publish(
     ALMetalCommandBuffer& command, const void* bytes, std::size_t length,
     ALMetalWorldDataSlice& slice, std::string* error, bool deduplicate)

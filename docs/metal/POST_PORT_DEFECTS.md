@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-552 -->
+<!-- next-defect-id: PPD-554 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12754,3 +12754,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 registered before correction during final retirement review. Preserve real routing and output; do not keep obsolete GPU counters solely for telemetry compatibility.
+
+
+## PPD-552 — Experiment retirement removes live shadow-material reload definition
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Production renderer integration
+- Discovered: 2026-11-21
+- Original reference: Native shader reload retains lazy shadow-material replacement and completion-owned old entries. The adjacent obsolete worldSourceCommands factory is retired, while this live function remains required.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); source6fc608fb9e build-03.log fails1 at almetal_tests link with undefined ALMetalWorldFrameData::reloadShadowMaterials; both renderer callers and header declaration remain.
+- Next action: Restore the exact independent live definition from83d33894c3, audit neighboring retained functions, rebuild the complete candidate and run native shadow/shader-reload checks.
+- Verification: Full Release link failure, before any candidate delivery or executed new-source native test. Earlier build02 predates this cleanup and cannot qualify it.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction. Required shader reload ownership is separate from the abandoned factory; restore its existing swap/retirement semantics without reinstating the retired backend. Preserve build-03.log and result receipt.
+
+
+## PPD-553 — Generated graphics preference test omits two source dependencies
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production preferences/build integration
+- Discovered: 2026-11-21
+- Original reference: The generated actual-method preferences fixture also checks packaged performance-panel bindings and feature-table controls. Every source read by generation must invalidate its custom command.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent final review finds verify_packaging reads panel_performance_preferences.xml and featuretable_linux.txt, absent from the newview/CMakeLists.txt custom-command DEPENDS.
+- Next action: Add both exact input paths to DEPENDS and reconfigure/build the ordinary generated test; retain live settings and packaging assertions.
+- Verification: Source dependency gap; no current bad packaged binding or viewer regression established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction after independent preferences review. This is test invalidation plumbing, not authorization to weaken packaging coverage or retire a live graphics control.
