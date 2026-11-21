@@ -1,5 +1,6 @@
 /** Owned scalar world input parity and publication tests. */
 #include "almetal_world_inputs_fixture.h"
+#include <time.h>
 
 TEST_CASE("almetal: owned scalar world consumes every G-buffer family with exact direct pixels", "[almetal][world-inputs]")
 {
@@ -147,3 +148,5 @@ TEST_CASE("almetal: repeated scalar common ranges restore after terrain and quer
         }
     }
 }
+
+#include "almetal_terrain_pass_publication_test.inl"

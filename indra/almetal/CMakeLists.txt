@@ -226,6 +226,18 @@ set_source_files_properties(
 )
 
 if(AL_BUILD_TESTS)
+  # Catch assigns included cases the fragment's file tag. Register those
+  # fragments explicitly, while compiling them only through their owning TU.
+  set(almetal_native_case_fragments
+    tests/almetal_empty_light_pass_native.inl
+    tests/almetal_probe_lighting_fusion_test.inl
+    tests/almetal_terrain_pass_publication_test.inl
+    tests/almetal_world_body_palette_native.inl
+    tests/almetal_world_cpu_bound_intervals_test.inl
+    tests/almetal_world_published_cpu_visibility_test.inl
+    tests/almetal_world_scalar_recipe_test.inl
+  )
+  set_source_files_properties(${almetal_native_case_fragments} PROPERTIES HEADER_FILE_ONLY TRUE)
   al_add_test_binary(
     almetal_tests
     PROJECT almetal
@@ -266,8 +278,6 @@ if(AL_BUILD_TESTS)
             tests/almetal_indexed_join_test.mm
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
             tests/almetal_submission_owner_test.mm
-            tests/almetal_world_visibility_test.mm
-
             tests/almetal_main_lighting_renderpass_test.mm
             tests/almetal_main_frame_admission_test.mm
             tests/almetal_shadow_recipe_test.mm
@@ -317,11 +327,15 @@ if(AL_BUILD_TESTS)
             tests/almetal_function_constants_test.mm
 
             tests/almetal_world_library_test.mm
+            ${almetal_native_case_fragments}
 
     LIBRARIES almetal llcommon llinventory
     # Correctness cases exercise the selected production consumer policy.
     RESOURCE_LOCK apple_gpu
   )
+  # This TU owns fixtures and included cases only; it has no direct file-tagged
+  # cases and must not create an empty per-file CTest entry.
+  target_sources(almetal_tests PRIVATE tests/almetal_world_visibility_test.mm)
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

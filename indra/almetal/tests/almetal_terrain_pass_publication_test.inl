@@ -2,7 +2,7 @@
  * @file almetal_terrain_pass_publication_test.inl
  * @brief Native terrain pass sharing, exact resources and complete path costs.
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Included by the registered world preparation fixture.
+ * Included by the registered owned scalar world input fixture.
  */
 #include "almetal_world_inputs_fixture.h"
 #include "../almetalworldmaterialdata.h"

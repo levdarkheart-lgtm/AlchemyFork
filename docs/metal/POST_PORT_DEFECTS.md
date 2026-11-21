@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-554 -->
+<!-- next-defect-id: PPD-555 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12790,3 +12790,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 registered before correction after independent preferences review. This is test invalidation plumbing, not authorization to weaken packaging coverage or retire a live graphics control.
+
+
+## PPD-554 — Live native test fragments lose compilation or per-file registration
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production renderer/test integration
+- Discovered: 2026-11-21
+- Original reference: Retiring experimental source files must retain tests for live terrain publication, conservative CPU classification, source lifetimes and shader reload. Catch file tags refer to included fragment filenames rather than the including translation unit.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent source/CMake review finds unreferenced terrain_pass_publication and world_cpu_bound_intervals fragments plus unregistered included CPU visibility, body-palette, scalar-recipe and lighting fragments. The new visibility wrapper has no direct TEST_CASE, so its old per-file entry cannot select these cases.
+- Next action: Attach shared active fragments to compatible maintained fixtures, explicitly register included test fragments as HEADER_FILE_ONLY, exclude wrapper-only stems, then run actual stray-case and relevant native checks.
+- Verification: Source compilation/registration gap; neither prior syntax checks nor earlier pre-retirement GPU tests establish this final coverage. No current viewer output defect established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before repair. Preserve actual live terrain/geometry/CPU arithmetic/lifetime coverage; remove only tests exclusive to abandoned mechanisms. Do not declare empty or skipped per-file scopes equivalent to executed native checks.

@@ -87,3 +87,4 @@ struct RetainedVisibilityFixture : Fixture
 }
 
 #include "almetal_world_published_cpu_visibility_test.inl"
+#include "almetal_world_cpu_bound_intervals_test.inl"
