@@ -50,3 +50,25 @@ pending manual release runs and no existing Alpha8 tag are found. Workflow is
 active. Owner authorization covers required notes/record commits and normal push
 as part of this release request. The next commit's actual full SHA/count, rather
 than a predicted revision, determines the dispatch source and release tag.
+
+
+## Dispatch verified
+
+Preparation commit9ef1da4d37919f3b300ba6d777374bb021143abe (revision69421)
+was pushed normally and independently matched on the remote Metal branch.
+Exactly one workflow_dispatch request returned0, explicit workflow ref
+codex/apple-silicon-metal and inputs source_ref full9ef1da4d37919f3b300ba6d777374bb021143abe,
+alpha_number8, release_tag26.4.0.69421-alpha8. The workflow run is
+[44888382375](https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/44888382375),
+created2026-11-21T09:11:23Z. GitHub CLI discovery and independent connector reads
+agree on the exact source SHA, branch, workflow_dispatch event and Alpha8 title.
+Run moved fromqueued toin_progress; job136798580790 set-up passed and source
+checkout was in progress at the first job observation. Build, package and
+publication were not yet observed complete. No duplicate dispatch was sent.
+
+The existing workflow will publish the ad-hoc signed ARM64 ZIP, checksum and
+provenance as a prerelease only after its gates pass. Actual run/dispatch/private
+receipt data remains in ignored artifacts/metal/release-alpha8-20261121. User
+requested a trigger; report this verified running Actions URL without claiming
+that a downloadable release or any new runtime qualification already exists.
+The immutable existing Alpha7 release and default branch are unchanged.
