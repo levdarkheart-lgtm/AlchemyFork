@@ -323,11 +323,6 @@ extern bool gDebugGL;
 extern bool gHiDPISupport;
 #endif
 
-#if LL_WINDOWS || LL_LINUX
-extern bool gGPUBenchmarkMode;
-#else
-static constexpr bool gGPUBenchmarkMode = false;
-#endif // LL_WINDOWS || LL_LINUX
 
 
 ////////////////////////////////////////////////////////////
@@ -1024,12 +1019,8 @@ bool LLAppViewer::init()
     // Find partition serial number (Windows) or hardware serial (Mac)
     mSerialNumber = generateSerialNumber();
 
-    // do any necessary set-up for accepting incoming SLURLs from apps. The
-    // GPU benchmark child takes none: the D-Bus name is its parent's.
-    if (!gGPUBenchmarkMode)
-    {
-        initSLURLHandler();
-    }
+    // Set up incoming SLURLs for this viewer instance.
+    initSLURLHandler();
 
     if (!initHardwareTest())
     {
@@ -2673,17 +2664,14 @@ void LLAppViewer::initLoggingAndGetLastDuration()
 
     if (mSecondInstance)
     {
-        if (!gGPUBenchmarkMode)
-        {
-            LLFile::mkdir(gDirUtilp->getDumpLogsDirPath());
+        LLFile::mkdir(gDirUtilp->getDumpLogsDirPath());
 
-            LLUUID uid;
-            uid.generate();
-            // Is this even useful?
-            // Originally this wa used to store states, but I don't think it's practical with bugsplat attributes.
-            // So it just spams files now.
-            LLError::logToFile(gDirUtilp->getDumpLogsDirPath(uid.asString() + ".log"));
-        }
+        LLUUID uid;
+        uid.generate();
+        // Is this even useful?
+        // Originally this wa used to store states, but I don't think it's practical with bugsplat attributes.
+        // So it just spams files now.
+        LLError::logToFile(gDirUtilp->getDumpLogsDirPath(uid.asString() + ".log"));
     }
     else
     {
@@ -3053,7 +3041,9 @@ bool LLAppViewer::initConfiguration()
             "RenderMetalSourceCommandMinimumRun", "RenderMetalAnimatedGpuRecords",
             "RenderMetalAnimatedGpuVisibility", "RenderMetalSourceRows",
             "RenderMetalWorldResourceTables", "RenderMetalNativeVisibility",
-            "RenderMetalEarlyGroupVisibility", "RenderMetalCpuCohortVisibility"})
+            "RenderMetalEarlyGroupVisibility", "RenderMetalCpuCohortVisibility",
+            "RenderDeferred", "RenderTerrainDetail", "GPUBenchmarkResult", "SkipBenchmark",
+            "RenderClass1MemoryBandwidth", "RenderCPUBasis", "ALMesaRDNA35SettingsRestored"})
         gSavedSettings.retireControl(name);
 
     // Load settings files list
@@ -3465,7 +3455,7 @@ bool LLAppViewer::initConfiguration()
 
     // Display splash screen.  Must be after above check for previous
     // crash as this dialog is always frontmost.
-    if (!gGPUBenchmarkMode && !gHeadlessClient)
+    if (!gHeadlessClient)
     {
         std::string splash_msg;
         LLStringUtil::format_map_t args;
@@ -3511,7 +3501,7 @@ bool LLAppViewer::initConfiguration()
     //
     // The GPU benchmark child is always a second instance: its parent holds
     // the marker lock.
-    if (mSecondInstance && !gGPUBenchmarkMode && !gSavedSettings.getBOOL("AllowMultipleViewers"))
+    if (mSecondInstance && !gSavedSettings.getBOOL("AllowMultipleViewers"))
     {
         OSMessageBox(
             LLTrans::getString("MBAlreadyRunning"),
@@ -4044,12 +4034,10 @@ LLSD LLAppViewer::getViewerInfo() const
 // [RLVa:KB] - Checked: 2010-04-18 (RLVa-1.2.0)
     info["RLV_VERSION"] = (rlv_handler_t::isEnabled()) ? RlvStrings::getVersionAbout() : "(disabled)";
 // [/RLVa:KB]
-#if LL_DARWIN
     info["RENDERER_BACKEND"] = "Metal";
+    // Retain this structured field for consumers of the established info API.
+    // The human-readable report uses the native backend instead.
     info["OPENGL_VERSION"] = "not present";
-#else
-    info["OPENGL_VERSION"] = gGLManager.mGLVersionString;
-#endif
 
     // Settings
 
@@ -4236,7 +4224,7 @@ std::string LLAppViewer::getViewerInfoString(bool default_string) const
     {
         support << "\n" << LLTrans::getString("AboutDriver", args, default_string);
     }
-    support << "\n" << LLTrans::getString("AboutOGL", args, default_string);
+    support << "\n" << LLTrans::getString("AboutRenderer", args, default_string);
     support << "\n\n" << LLTrans::getString("AboutSettings", args, default_string);
 #if LL_DARWIN || LL_SDL_WINDOW
     support << "\n" << LLTrans::getString("AboutOSXHiDPI", args, default_string);
@@ -4605,13 +4593,7 @@ bool LLAppViewer::getMarkerData(const std::string& marker_name, std::string& dat
 
 void LLAppViewer::processMarkerFiles()
 {
-    if (gGPUBenchmarkMode)
-    {
-        // Skipping marker file processing in GPU benchmark mode
-        mSecondInstance = true;
-        initLoggingAndGetLastDuration();
-        return;
-    }
+
     //We've got 4 things to test for here
     // - Other Process Running (Alchemy.exec_marker present, locked)
     // - Freeze (SecondLife.exec_marker present, not locked)

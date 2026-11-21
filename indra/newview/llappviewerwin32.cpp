@@ -56,7 +56,6 @@
 #endif
 #include "llversioninfovars.h"
 
-extern bool gGPUBenchmarkMode;
 
 // Create app mutex creates a unique global windows object.
 // If the object can be created it returns true, otherwise
@@ -336,21 +335,12 @@ int APIENTRY WINMAIN(HINSTANCE hInstance,
 #endif
 #endif
 
-    // Benchmark subprocess mode before full init for LLFeatureManager::loadGPUClass().
-    {
-        std::wstring cmdLineStr(pCmdLine ? pCmdLine : L"");
-        if (cmdLineStr.find(L"--gpubenchmark") != std::wstring::npos)
-        {
-            gGPUBenchmarkMode = true;
-        }
-    }
-
     LLAppViewerWin32* viewer_app_ptr = new LLAppViewerWin32(ll_convert_wide_to_string(pCmdLine).c_str());
 
     LLAppViewer::installTerminateHandler();
 
     // Set a debug info flag to indicate if multiple instances are running.
-    bool found_other_instance = gGPUBenchmarkMode || !create_app_mutex();
+    bool found_other_instance = !create_app_mutex();
     gDebugInfo["FoundOtherInstanceAtStartup"] = LLSD::Boolean(found_other_instance);
 
     bool ok = viewer_app_ptr->init();
@@ -605,10 +595,8 @@ void LLAppViewerWin32::initLoggingAndGetLastDuration()
 void LLAppViewerWin32::initConsole()
 {
     // pop up debug console
-    if (!gGPUBenchmarkMode)
-    {
-        mIsConsoleAllocated = create_console();
-    }
+    mIsConsoleAllocated = create_console();
+
     return LLAppViewer::initConsole();
 }
 

@@ -50,9 +50,6 @@ Grafikkarte: [GRAPHICS_CARD]
 	<string name="AboutDriver">
 		Windows-Grafiktreiberversion: [GRAPHICS_DRIVER_VERSION]
 	</string>
-	<string name="AboutOGL">
-		OpenGL-Version: [OPENGL_VERSION]
-	</string>
 	<string name="AboutSettings">
 		Fenstergröße: [WINDOW_WIDTH]x[WINDOW_HEIGHT]
 Schriftgrößenanpassung: [FONT_SIZE_ADJUSTMENT] pt

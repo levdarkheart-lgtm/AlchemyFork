@@ -112,8 +112,8 @@ public:
     EGPUClass getGPUClass()             { return mGPUClass; }
     std::string& getGPUString()         { return mGPUString; }
 
-    // get the measured GPU memory bandwidth in GB/sec
-    // may return 0 of benchmark has not been run or failed to run
+    // Startup has no native physical-bandwidth measurement; -1 is unknown.
+    // The manual texture benchmark never changes classification or telemetry.
     F32 getGPUMemoryBandwidth() { return mGPUMemoryBandwidth; }
 
     void cleanupFeatureTables();
@@ -170,7 +170,7 @@ protected:
     S32         mTableVersion;
     bool        mSafe;                  // Reinitialize everything to the "safe" mask
     EGPUClass   mGPUClass;
-    F32         mGPUMemoryBandwidth = 0.f;  // measured memory bandwidth of GPU in GB/second
+    F32         mGPUMemoryBandwidth = -1.f; // Unknown physical bandwidth, not sampled texture throughput.
     std::string mGPUString;
     bool        mSkipProfiling = false;
 };

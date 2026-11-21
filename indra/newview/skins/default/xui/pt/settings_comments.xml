@@ -1781,14 +1781,10 @@
   <string>Distância máxima na qual renderizar primitivas com bumpmap (distância em metros, ao quadrado).</string>
   <key>RenderCASSharpness</key>
   <string>Nível de nitidez a aplicar via Contrast Adaptive Sharpening (0,0 (desligado) - 1,0).</string>
-  <key>RenderCPUBasis</key>
-  <string>Velocidade de clock de CPU de referência a usar para enviesar a classe da GPU (em MHz).</string>
   <key>RenderCanUseGLTFPBROpaqueShaders</key>
   <string>O hardware tem suporte para shaders de cena GLTF.</string>
   <key>RenderCanUseTerrainBakeShaders</key>
   <string>O hardware tem suporte para shaders de Terrain Bake.</string>
-  <key>RenderClass1MemoryBandwidth</key>
-  <string>Largura de banda de memória na qual usar Classe 1 por padrão, em gigabytes por segundo. Usado como base para classes superiores.</string>
   <key>RenderComplexityColorMax</key>
   <string>Configuração obsoleta não utilizada.</string>
   <key>RenderComplexityColorMid</key>
@@ -1811,8 +1807,6 @@
   <string>Ativar teste de desempenho de bind de textura.</string>
   <key>RenderDefaultProbeUpdatePeriod</key>
   <string>Quando RenderReflectionProbeLevel é 0, tempo em segundos a aguardar entre atualizações do mapa de reflexão.</string>
-  <key>RenderDeferred</key>
-  <string>Renderização diferida.</string>
   <key>RenderDeferredAlphaSoften</key>
   <string>Escalar para suavizar superfícies alpha (para partículas suaves).</string>
   <key>RenderDeferredAtmospheric</key>
@@ -2121,8 +2115,6 @@
   <string>Valor de deslocamento para sombras (previne shadow acne).</string>
   <key>RenderSunDynamicRange</key>
   <string>Define quanto por cento o sol é mais brilhante que as luzes pontuais locais (1,0 = 100% mais brilhante. O valor não deve ser menor que 0).</string>
-  <key>RenderTerrainDetail</key>
-  <string>Detalhe aplicado à texturização do terreno (0 = nenhum, 1 = completo).</string>
   <key>RenderTerrainLODFactor</key>
   <string>Controla o nível de detalhe do terreno (multiplicador para a área de tela atual ao calcular o nível de detalhe).</string>
   <key>RenderTerrainPBRDetail</key>
@@ -2393,8 +2385,6 @@
   <string>O skin selecionado no momento.</string>
   <key>SkinningSettingsFile</key>
   <string>Nome do arquivo de configuração de cor do skin do cliente (por instalação).</string>
-  <key>SkipBenchmark</key>
-  <string>Se verdadeiro, desativa a execução do benchmark de GPU na inicialização (padrão para classe 1).</string>
   <key>SkyAmbientScale</key>
   <string>Controla a intensidade da luz ambiente, ou não direcional, do sol e da lua (fração ou múltiplo do nível de ambiente padrão).</string>
   <key>SkyMoonDefaultPosition</key>

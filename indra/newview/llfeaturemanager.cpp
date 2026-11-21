@@ -26,42 +26,22 @@
 
 #include "llviewerprecompiledheaders.h"
 
-#include <cmath>
 #include <iostream>
 #include <fstream>
 
 #include "llfeaturemanager.h"
-#include "llprocess.h"
 #include "pipeline.h"
 #include "lldir.h"
 
-#include "llsys.h"
 #include "alrendercapabilities.h"
 #include "llgl.h"
 
-#include "alcrashreporter.h"
-#include "llappviewer.h"
-#include "llbufferstream.h"
-#include "llnotificationsutil.h"
 #include "llviewercontrol.h"
-#include "llworld.h"
-#include "lldrawpoolterrain.h"
-#include "llviewertexturelist.h"
-#include "llversioninfo.h"
-#include "llwindow.h"
-#include "llui.h"
 #include "llcontrol.h"
-#include "llboost.h"
-#include "llweb.h"
-#include "llviewershadermgr.h"
 #include "llstring.h"
+#include "llstl.h"
 #include "stringize.h"
-#include "llcorehttputil.h"
 
-#if LL_LINUX
-#include <unistd.h>     // write(), _exit() for the GPU benchmark subprocess
-#include <sys/utsname.h>
-#endif
 
 #if LL_DARWIN
 const char FEATURE_TABLE_FILENAME[] = "featuretable_mac.txt";
@@ -71,8 +51,6 @@ const char FEATURE_TABLE_FILENAME[] = "featuretable_linux.txt";
 const char FEATURE_TABLE_FILENAME[] = "featuretable.txt";
 #endif
 
-#if 0                               // consuming code in #if 0 below
-#endif
 LLFeatureInfo::LLFeatureInfo(const std::string& name, const bool available, const F32 level)
     : mValid(true), mName(name), mAvailable(available), mRecommendedLevel(level)
 {
@@ -376,445 +354,27 @@ bool LLFeatureManager::parseFeatureTable(std::string filename)
     return parse_ok;
 }
 
-F32 gpu_benchmark();
-
-#if LL_WINDOWS || LL_LINUX
-
-bool gGPUBenchmarkMode = false;
-
-// Runs gpu_benchmark() in a subprocess (exe with --gpubenchmark). Nothing
-// when the subprocess could not be started, so the caller can run it itself.
-static std::optional<F32> subprocess_gpu_benchmark()
-{
-    LLProcess::Params params;
-    params.executable = gDirUtilp->getExecutablePathAndName();
-    params.args.add("--gpubenchmark");
-    // A viewer with no desktop has nowhere to show the child's window either.
-    if (gHeadlessClient)
-    {
-        params.args.add("--set");
-        params.args.add("HeadlessClient");
-        params.args.add("1");
-    }
-    params.desc       = "GPU benchmark";
-    params.autokill   = true;   // killed via job object if parent crashes (Linux: the child's PR_SET_PDEATHSIG)
-    params.attached   = true;   // killed on LLProcessPtr destruction (timeout)
-    params.files.add(LLProcess::FileParam());                    // stdin:  default
-    params.files.add(LLProcess::FileParam().type("pipe"));       // stdout: pipe
-    params.files.add(LLProcess::FileParam());                    // stderr: default
-
-    LLProcessPtr child;
-    try
-    {
-        child = LLProcess::create(params);
-    }
-    catch (const std::exception& e)
-    {
-        LL_WARNS("RenderInit") << "subprocess_gpu_benchmark: failed to launch: "
-                               << e.what() << LL_ENDL;
-        return std::nullopt;
-    }
-
-    if (!child)
-    {
-        LL_WARNS("RenderInit") << "subprocess_gpu_benchmark: LLProcess::create returned null." << LL_ENDL;
-        return std::nullopt;
-    }
-
-    LLProcess::ReadPipe& out = child->getReadPipe(LLProcess::STDOUT);
-
-    const F32 POLL_INTERVAL_S  = 0.25f;
-    const F32 TOTAL_TIMEOUT_S  = 120.f; // covers full viewer init + benchmark
-    LLTimer timer;
-    timer.start();
-
-    while (timer.getElapsedTimeF32() < TOTAL_TIMEOUT_S)
-    {
-        child->pump();
-
-        // Result is a single float followed by '\n'
-        if (out.contains('\n'))
-        {
-            std::string line = out.getline();
-            F32 parsed = 0.f;
-            if (LLStringUtil::convertToF32(line, parsed) && parsed > 0.f)
-            {
-                LL_INFOS("RenderInit") << "subprocess_gpu_benchmark: result = "
-                                       << parsed << " GB/sec" << LL_ENDL;
-                // Let LLProcessPtr destructor handle cleanup
-                return parsed;
-            }
-            LL_WARNS("RenderInit") << "subprocess_gpu_benchmark: unparseable output: '"
-                                   << line << "'" << LL_ENDL;
-            return -1.f;
-        }
-
-        // If child already exited without writing anything, bail
-        if (!child->isRunning())
-        {
-            LL_WARNS("RenderInit") << "subprocess_gpu_benchmark: process exited without result." << LL_ENDL;
-            return -1.f;
-        }
-
-        ms_sleep((U32)(POLL_INTERVAL_S * 1000));
-    }
-
-    // Timeout: attached=true means LLProcessPtr destructor kills it
-    LL_WARNS("RenderInit") << "GPU benchmark subprocess timed out after "
-                           << (int)TOTAL_TIMEOUT_S << " seconds; killing." << LL_ENDL;
-    return -1.f;
-}
-
-#if LL_WINDOWS
-F32 logExceptionBenchmark()
-{
-    // FIXME: gpu_benchmark uses many C++ classes on the stack to control state.
-    //  SEH exceptions with our current exception handling options do not call
-    //  destructors for these classes, resulting in an undefined state should
-    //  this handler be invoked.
-    F32 gbps = -1;
-    __try
-    {
-        gbps = gpu_benchmark();
-    }
-    __except (msc_exception_filter(GetExceptionCode(), GetExceptionInformation()))
-    {
-        // convert to C++ styled exception
-        char integer_string[32];
-        sprintf(integer_string, "SEH, code: %lu\n", GetExceptionCode());
-        throw std::exception(integer_string);
-    }
-    return gbps;
-}
-#endif
-
-// The benchmark in this process: the subprocess's own run, and the fallback
-// for a viewer that could not start one.
-static F32 in_process_gpu_benchmark()
-{
-#if LL_WINDOWS
-    // logExceptionBenchmark wraps with SEH so structured exceptions
-    // (e.g. access violations inside the driver) are still caught.
-    return logExceptionBenchmark();
-#else
-    return gpu_benchmark();
-#endif
-}
-#endif
-
-bool checkRDNA35()
-{
-    // This checks if we're running on an RDNA3.5 GPU.  You're only going to see these on AMD's APUs.
-    // As of driver version 25, we're seeing stalls in some of our queries.
-    // This appears to be a driver bug, and appears to be specific RDNA3.5 APUs.
-    // There's multiples of these guys, so we just use this function to check if that GPU is on the list of known RDNA3.5 APUs.
-    // - Geenz 11/12/2025
-    std::array<std::string, 7> rdna35GPUs = {
-        "8060S",
-        "8050S",
-        "8040S",
-        "860M",
-        "840M",
-        "890M",
-        "880M"
-    };
-
-    for (const auto& gpu_name : rdna35GPUs)
-    {
-        if (gGLManager.getRawGLString().find(gpu_name) != std::string::npos)
-        {
-            LL_WARNS("RenderInit") << "Detected AMD RDNA3.5 GPU (" << gpu_name << ")." << LL_ENDL;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/**
- * Removes the Mesa information from the GPU model string.
- *
- * The Mesa graphics utilities injects the current kernel name and version,
- * as well as Mesa's own name and version into the device name, which causes
- * several usability headaches when doing A/B testing across kernel and Mesa
- * releases, as the original behavior of the viewer is to reset the graphics
- * settings every time this string changes.
- * This function thus strips everything but the physical device information
- * from the string to greatly aid both the developer and the end user
- * experience.
- *
- * @param[out] device_name Contains the new GPU model string, after being cleaned if applicable.
- */
-bool extractGLDeviceModel(std::string& device_name)
-{
-    const std::string gl_string = gRenderCapabilities.isInitialized()
-        ? gRenderCapabilities.renderer() : gGLManager.mGLRendererString;
-#if LL_LINUX
-    // The kernel release, 'uname -r'. The OS string leads with the
-    // distribution's name.
-    struct utsname un;
-    const std::string kernel_version = uname(&un) != -1 ? un.release : "";
-
-    if (!kernel_version.empty())
-    {
-        LL_WARNS("RenderInit") << "Linux detected, performing GPU String cleanup!" << LL_ENDL;
-        std::string new_gpu_string = gl_string;
-        if (new_gpu_string.find(kernel_version) != std::string::npos)
-        {
-            LL_WARNS("RenderInit") << "GPU String contains the kernel version, removing" << LL_ENDL;
-            // Strip the extra information on AMD adapters
-            if (const size_t paren_pos = new_gpu_string.find('('); paren_pos != std::string::npos)
-            {
-                std::string result = new_gpu_string.substr(0, paren_pos);
-                // Trim trailing whitespace
-                result.erase(std::find_if(result.rbegin(), result.rend(),
-                            [](unsigned char c) { return !std::isspace(c); }).base(),
-                        result.end());
-                new_gpu_string = result;
-            }
-        }
-        // Strip leading 'Mesa' keyword on Intel adapters
-        if (const size_t paren_pos = new_gpu_string.find("Mesa "); paren_pos != std::string::npos)
-        {
-            LL_WARNS("RenderInit") << "GPU String contains 'Mesa', removing" << LL_ENDL;
-            std::string result = new_gpu_string.substr(5, std::string::npos);
-            new_gpu_string = result;
-        }
-        device_name = new_gpu_string;
-        return true;
-    }
-#endif // LL_LINUX
-    device_name = gl_string;
-    return false;
-}
-
 bool LLFeatureManager::loadGPUClass()
 {
-    if (gRenderCapabilities.isMetal())
+    mGPUClass = GPU_CLASS_UNKNOWN;
+    mGPUMemoryBandwidth = -1.f;
+    mGPUString.clear();
+    if (!gRenderCapabilities.isMetal())
     {
-        // The legacy benchmark compiles and draws a GLSL workload. It cannot
-        // classify a context-free Metal renderer and keeping it here would
-        // make feature selection itself retain the GL context. Preserve the
-        // established Apple-GPU quality class until a measured native Metal
-        // classifier replaces it.
-        mGPUClass = GPU_CLASS_3;
-        mGPUMemoryBandwidth = -1.f;
-        mGPUString = gRenderCapabilities.renderer();
-        LL_INFOS("RenderInit") << "Native Metal renderer " << mGPUString
-                                << "; selecting established Apple GPU class 3"
-                                << LL_ENDL;
-        return true;
+        LL_WARNS("RenderInit") << "GPU classification requires initialized native Metal capabilities"
+                              << LL_ENDL;
+        return false;
     }
 
-    // This is a hack for certain AMD GPUs in newer driver versions on certain APUs.
-    // These GPUs will show inconsistent freezes when attempting to run shader profiles against them.
-    // This is extremely problematic as it can lead to:
-    // - Login freezes
-    // - Inability to start the client
-    // - Completely random avatars triggering a freeze
-    // As a result, we filter out these GPUs for shader profiling.
-    // - Geenz 11/11/2025
-    // The freezes are AMD's own driver. Mesa's version string carries its own
-    // "25." (e.g. "(Core Profile) Mesa 25.2.1"), so it is left out.
-
-    if (!gGLManager.mIsMesa && gGLManager.getRawGLString().find("Radeon") != std::string::npos && checkRDNA35() && gGLManager.mDriverVersionVendorString.find("25.") != std::string::npos)
-    {
-        LL_WARNS("RenderInit") << "Detected AMD RDNA3.5 GPU on a known bad driver; disabling benchmark and occlusion culling to prevent freezes." << LL_ENDL;
-        gSavedSettings.setBOOL("SkipBenchmark", true);
-        gSavedSettings.setBOOL("UseOcclusion", false);
-    }
-
-    // Earlier viewers took Mesa's "25." for AMD's driver, so on these APUs under Mesa 25 the
-    // workaround above set both settings, and both persist. Put them back, once, and only if
-    // both still hold what it set: anyone who has changed either since meant it.
-    if (gGLManager.mIsMesa && !gSavedSettings.getBOOL("ALMesaRDNA35SettingsRestored")
-        && gGLManager.getRawGLString().find("Radeon") != std::string::npos && checkRDNA35())
-    {
-        if (gSavedSettings.getBOOL("SkipBenchmark") && !gSavedSettings.getBOOL("UseOcclusion"))
-        {
-            LL_INFOS("RenderInit") << "Restoring the benchmark and occlusion culling, which the RDNA 3.5 workaround turned off under Mesa" << LL_ENDL;
-            gSavedSettings.setBOOL("SkipBenchmark", false);
-            gSavedSettings.setBOOL("UseOcclusion", true);
-        }
-        gSavedSettings.setBOOL("ALMesaRDNA35SettingsRestored", true);
-    }
-
-    if (gGLManager.mIsSoftwareRenderer)
-    {
-        // The benchmark would measure the CPU, which no GPU class describes.
-        LL_WARNS("RenderInit") << "Rendering on the CPU; skipping the benchmark and defaulting to class 0" << LL_ENDL;
-        mGPUClass = GPU_CLASS_0;
-    }
-    else if (!gSavedSettings.getBOOL("SkipBenchmark"))
-    {
-        F32 class1_gbps = gSavedSettings.getF32("RenderClass1MemoryBandwidth");
-        // The renderer with its driver information but not the kernel release, and the
-        // full GL version: the display GPU string strips both on Linux, and the raw
-        // renderer would rerun the benchmark on every kernel update.
-        const std::string gpu_string = gGLManager.mGLIdentity;
-        const LLSD benchmark = gSavedSettings.getLLSD("GPUBenchmarkResult");
-        F32 gbps = (F32)benchmark["bandwidth"].asReal();
-        bool use_cached_result = benchmark["gpu"].asString() == gpu_string
-            && benchmark["vendor"].asString() == gGLManager.mGLVendor
-            && benchmark["driver"].asString() == gGLManager.mGLVersionString
-            && benchmark["bandwidth"].isReal()
-            && std::isfinite(gbps)
-            && (gbps > 0.f || gbps == -1.f);
-#if LL_WINDOWS || LL_LINUX
-        // An explicitly launched benchmark child must measure and report a result.
-        use_cached_result = use_cached_result && !gGPUBenchmarkMode;
-#endif
-
-        if (use_cached_result)
-        {
-            LL_INFOS("RenderInit") << "Using cached GPU benchmark result: " << gbps << " GB/sec" << LL_ENDL;
-        }
-        else
-        {
-            try
-            {
-#if LL_WINDOWS || LL_LINUX
-                if (gGPUBenchmarkMode)
-                {
-                    // We ARE the benchmark subprocess; run directly in-process.
-                    gbps = in_process_gpu_benchmark();
-                }
-                else if (std::optional<F32> child_gbps = subprocess_gpu_benchmark())
-                {
-                    // Normal path: run benchmark in an isolated subprocess so a
-                    // driver hang can be killed without freezing the main viewer.
-                    gbps = *child_gbps;
-                }
-                else
-                {
-                    // No subprocess could be started: measure here, as before.
-                    gbps = in_process_gpu_benchmark();
-                }
-#else
-                gbps = gpu_benchmark();
-#endif
-            }
-            catch (const std::exception& e)
-            {
-                gbps = -1.f;
-                LL_WARNS("RenderInit") << "GPU benchmark failed: " << e.what() << LL_ENDL;
-            }
-
-            if (!std::isfinite(gbps) || gbps <= 0.f)
-            {
-                gbps = -1.f;
-            }
-
-#if LL_WINDOWS || LL_LINUX
-            // If we are the benchmark subprocess, write the raw result to stdout
-            // so the parent process can read it, then exit immediately.
-            if (gGPUBenchmarkMode)
-            {
-                LL_WARNS("RenderInit") << "Passing " << gbps << " to parent" << LL_ENDL;
-                // Close the crash reporter before the parent has its answer
-                // and kills this process: a session left open is reported
-                // as an abnormal exit on the next launch.
-                ALCrashReporter::shutdown();
-                char buf[64];
-                int len = snprintf(buf, sizeof(buf), "%.6f\n", gbps);
-#if LL_WINDOWS
-                DWORD written = 0;
-                WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, (DWORD)len, &written, NULL);
-                FlushFileBuffers(GetStdHandle(STD_OUTPUT_HANDLE));
-                ExitProcess(0);
-#else
-                // Straight out: no exit handlers or destructors run over a
-                // viewer stopped halfway through its init, and nothing is saved.
-                [[maybe_unused]] ssize_t written = write(STDOUT_FILENO, buf, len);
-                _exit(0);
-#endif
-            }
-#endif
-
-            // Cache failures too, so a broken driver is not retried every startup.
-            LLSD result = LLSD::emptyMap();
-            result["gpu"] = gpu_string;
-            result["vendor"] = gGLManager.mGLVendor;
-            result["driver"] = gGLManager.mGLVersionString;
-            result["bandwidth"] = gbps;
-            gSavedSettings.setLLSD("GPUBenchmarkResult", result);
-        }
-
-#if LL_WINDOWS
-        if (gbps == -1.f
-            && gpu_string.find("Radeon") != std::string::npos
-            && checkRDNA35())
-        {
-            // Apply the driver workaround for fresh and cached failures.
-            gSavedSettings.setBOOL("UseOcclusion", false);
-        }
-#endif
-
-        mGPUMemoryBandwidth = gbps;
-
-        // bias by CPU speed
-        F32 cpu_basis_mhz = gSavedSettings.getF32("RenderCPUBasis");
-        F32 cpu_mhz = (F32) gSysCPU.getMHz();
-        // A clock the system would not report is unknown, not slow.
-        F32 cpu_bias = cpu_mhz > 0.f ? llclamp(cpu_mhz / cpu_basis_mhz, 0.5f, 1.f) : 1.f;
-        gbps *= cpu_bias;
-
-        if (gbps < 0.f)
-        { //couldn't bench, default to Low
-    #if LL_DARWIN
-        //GLVersion is misleading on OSX, just default to class 3 if we can't bench
-        LL_WARNS("RenderInit") << "Unable to get an accurate benchmark; defaulting to class 3" << LL_ENDL;
-        mGPUClass = GPU_CLASS_3;
-    #else
-            mGPUClass = GPU_CLASS_0;
-    #endif
-        }
-        else if (gbps <= class1_gbps)
-        {
-            mGPUClass = GPU_CLASS_1;
-        }
-        else if (gbps <= class1_gbps *2.f)
-        {
-            mGPUClass = GPU_CLASS_2;
-        }
-        else if ((gbps <= class1_gbps*4.f)
-                 // Cap silicon's GPUs at med+ as they have high throughput, low capability
-                 || gGLManager.mIsApple)
-        {
-            mGPUClass = GPU_CLASS_3;
-        }
-        else if (gbps <= class1_gbps*8.f)
-        {
-            mGPUClass = GPU_CLASS_4;
-        }
-        else
-        {
-            mGPUClass = GPU_CLASS_5;
-        }
-
-        LLMemory::updateMemoryInfo();
-    #if LL_WINDOWS || LL_LINUX
-        const F32Gigabytes MIN_PHYSICAL_MEMORY(8);
-        F32Gigabytes physical_mem = LLMemory::getMaxMemKB();
-        if (MIN_PHYSICAL_MEMORY > physical_mem && mGPUClass > GPU_CLASS_1)
-        {
-            // reduce quality on systems that don't have enough memory
-            mGPUClass = (EGPUClass)(mGPUClass - 1);
-        }
-    #endif //LL_WINDOWS || LL_LINUX
-    } //end if benchmark
-    else
-    {
-        //setting says don't benchmark MAINT-7558
-        LL_WARNS("RenderInit") << "Setting 'SkipBenchmark' is true; defaulting to class 1 (may be required for some GPUs)" << LL_ENDL;
-
-        mGPUClass = GPU_CLASS_1;
-    }
-
-    if (extractGLDeviceModel(mGPUString)) {
-        LL_INFOS("RenderInit") << "GPU String has been stripped of driver identification" << LL_ENDL;
-    }
-    return true; // indicates that a gpu value was established
+    // Preserve the established Apple-GPU quality class. The manual native
+    // texture benchmark remains a developer tool, not a startup classifier
+    // or a measurement of physical GPU memory bandwidth.
+    mGPUClass = GPU_CLASS_3;
+    mGPUString = gRenderCapabilities.renderer();
+    LL_INFOS("RenderInit") << "Native Metal renderer " << mGPUString
+                         << "; selecting established Apple GPU class 3"
+                         << LL_ENDL;
+    return true;
 }
 
 void LLFeatureManager::cleanupFeatureTables()

@@ -42,9 +42,6 @@ Tarjeta gráfica: [GRAPHICS_CARD]
 	<string name="AboutDriver">
 		Versión de Windows Graphics Driver: [GRAPHICS_DRIVER_VERSION]
 	</string>
-	<string name="AboutOGL">
-		Versión de OpenGL: [OPENGL_VERSION]
-	</string>
 	<string name="AboutSettings">
 		Tamaño de la ventana: [WINDOW_WIDTH]x[WINDOW_HEIGHT]
 Ajuste del tamaño de fuente: [FONT_SIZE_ADJUSTMENT]pt

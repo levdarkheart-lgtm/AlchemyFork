@@ -1,16 +1,20 @@
-// PPD536/541: real availability, signal hookups and destruction bodies.
+// Real native classification, availability, signal hookups and destruction bodies.
 #include <boost/bind/bind.hpp>
 #include <boost/signals2.hpp>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 using F32 = float;
 using LLSD = int;
 using boost::placeholders::_2;
+#define LL_INFOS(...) std::ostringstream()
+#define LL_WARNS(...) std::ostringstream()
+#define LL_ENDL std::endl
 struct LLControlVariable
 {
     boost::signals2::signal<void(LLControlVariable*, const LLSD&, const LLSD&)> signal;
@@ -34,9 +38,11 @@ struct Settings
 {
     std::map<std::string, bool> values;
     LLControlVariable impostors;
-    bool getBOOL(const std::string& name) const { return values.at(name); }
+    mutable unsigned reads = 0;
+    bool getBOOL(const std::string& name) const { ++reads; return values.at(name); }
     LLControlVariable* getControl(const std::string& name)
     {
+        ++reads;
         if (name != "RenderAvatarMaxNonImpostors") throw std::runtime_error("unexpected setting");
         return &impostors;
     }
@@ -46,20 +52,31 @@ template<typename T> struct LLCachedControl
     Settings& settings;
     std::string name;
     LLCachedControl(Settings& store, const std::string& key) : settings(store), name(key) {}
-    operator T() const { return settings.values.at(name); }
+    operator T() const { ++settings.reads; return settings.values.at(name); }
 };
+// @GPU_CLASS_ENUM@
 struct LLFeatureManager
 {
     std::map<std::string, bool> available;
+    EGPUClass mGPUClass = GPU_CLASS_UNKNOWN;
+    F32 mGPUMemoryBandwidth = -1.f;
+    std::string mGPUString;
     static LLFeatureManager& instance() { static LLFeatureManager value; return value; }
     static LLFeatureManager* getInstance() { return &instance(); }
     bool isFeatureAvailable(const std::string& name) const { return available.at(name); }
+    bool loadGPUClass();
+    // @FEATURE_ACCESSORS@
 };
 struct Capabilities
 {
     bool anisotropic = true;
     F32 max_anisotropy = 16.f;
-    bool isInitialized() const { return true; }
+    bool initialized = true;
+    bool metal = true;
+    std::string renderer_name = "Apple M1 Max";
+    bool isInitialized() const { return initialized; }
+    bool isMetal() const { return initialized && metal; }
+    const std::string& renderer() const { return renderer_name; }
     bool hasAnisotropicFiltering() const { return anisotropic; }
     F32 maxAnisotropy() const { return max_anisotropy; }
 } gRenderCapabilities;
@@ -97,6 +114,38 @@ unsigned checks = 0, failures = 0;
 #define CHECK(condition) do { ++checks; if (!(condition)) { ++failures; std::cerr << __LINE__ << ": " #condition "\n"; } } while (false)
 int main()
 {
+    // Startup classification uses the initialized native identity, not an
+    // automatic bandwidth workload or saved benchmark/workaround state.
+    auto& manager = LLFeatureManager::instance();
+    gSavedSettings.values = {{"SkipBenchmark", true}, {"UseOcclusion", false}};
+    const auto saved = gSavedSettings.values;
+    const auto reads = gSavedSettings.reads;
+    for (const auto* name : {"Apple M1 Max", "Apple M4"})
+    {
+        gRenderCapabilities = {};
+        gRenderCapabilities.renderer_name = name;
+        CHECK(manager.loadGPUClass());
+        CHECK(manager.getGPUClass() == GPU_CLASS_3);
+        CHECK(manager.getGPUString() == name);
+        CHECK(manager.getGPUMemoryBandwidth() == -1.f);
+        CHECK(gSavedSettings.reads == reads);
+        CHECK(gSavedSettings.values == saved);
+    }
+    for (bool initialized : {false, true})
+    {
+        gRenderCapabilities = {};
+        gRenderCapabilities.initialized = initialized;
+        gRenderCapabilities.metal = !initialized;
+        manager.mGPUClass = GPU_CLASS_5;
+        manager.mGPUString = "stale renderer";
+        manager.mGPUMemoryBandwidth = 42.f;
+        CHECK(!manager.loadGPUClass());
+        CHECK(manager.getGPUClass() == GPU_CLASS_UNKNOWN);
+        CHECK(manager.getGPUString().empty());
+        CHECK(manager.getGPUMemoryBandwidth() == -1.f);
+        CHECK(gSavedSettings.reads == reads);
+        CHECK(gSavedSettings.values == saved);
+    }
     for (bool ssao : {false, true})
     for (bool shadows : {false, true})
     for (bool modern : {false, true})

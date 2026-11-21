@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PPD527/536/541: packaged quality, native availability and callback lifetimes."""
+"""Packaged graphics quality, native GPU classification and callback lifetimes."""
 import argparse
 import hashlib
 import json
@@ -15,7 +15,9 @@ OBSOLETE = {
     "RenderVBOEnable", "RenderVBOMappingDisable", "RenderUseStreamVBO",
     "RenderDownScaleMethod", "RenderGLMultiThreadedTextures", "RenderGLContextCoreProfile",
     "RenderMaxOpenGLVersion", "RenderGLContext10bitSDR", "RenderNsightDebugSupport",
-    "RenderUseVAO", "RenderPreferStreamDraw",
+    "RenderUseVAO", "RenderPreferStreamDraw", "RenderDeferred", "RenderTerrainDetail",
+    "GPUBenchmarkResult", "SkipBenchmark", "RenderClass1MemoryBandwidth", "RenderCPUBasis",
+    "ALMesaRDNA35SettingsRestored",
 }
 
 
@@ -58,6 +60,8 @@ def verify_packaging(read, advanced):
     for name in ("settings.xml", "settings_alchemy.xml"):
         settings.update(llsd_map(ET.fromstring(read("indra/newview/app_settings/" + name)).find("map")))
     assert not OBSOLETE.intersection(settings), "obsolete backend settings still exposed"
+    commands = llsd_map(ET.fromstring(read("indra/newview/app_settings/cmd_line.xml")).find("map"))
+    assert "gpubenchmark" not in commands, "retired automatic benchmark command still advertised"
     # GL-named settings with real native consumers must not be removed by a name sweep.
     assert {"RenderMaxVBOSize", "RenderGLMultiThreadedMedia", "RenderMetalMultiThreadedTextures",
             "RenderDepthOfField", "RenderDeferredSSAO", "AlchemyRenderWaterWaves"} <= settings.keys()
@@ -117,6 +121,9 @@ def main():
     methods += "\n" + block(source, "LLFloaterPreferenceGraphicsAdvanced::~LLFloaterPreferenceGraphicsAdvanced()")
     if "void LLFloaterPreferenceGraphicsAdvanced::disableUnavailableSettings()" in source:
         methods += "\n" + block(source, "void LLFloaterPreferenceGraphicsAdvanced::disableUnavailableSettings()")
+    feature = read("indra/newview/llfeaturemanager.cpp")
+    feature_header = read("indra/newview/llfeaturemanager.h")
+    methods += "\n" + block(feature, "bool LLFeatureManager::loadGPUClass()")
     performance = read("indra/newview/llfloaterperformance.cpp")
     if "bool is_ALM_available()" in performance:
         methods += "\n" + block(performance, "bool is_ALM_available()")
@@ -128,6 +135,10 @@ def main():
     hookups = "\n".join(statement(source, name + " =") for name in
                          ("mImpostorsChangedSignal", "mNumImpostorsChangedSignal"))
     generated = generated.replace("// @PRODUCTION_HOOKUPS@", hookups)
+    generated = generated.replace("// @GPU_CLASS_ENUM@", statement(feature_header, "typedef enum EGPUClass"))
+    accessors = "\n".join(block(feature_header, signature) for signature in
+                          ("EGPUClass getGPUClass()", "std::string& getGPUString()", "F32 getGPUMemoryBandwidth()"))
+    generated = generated.replace("// @FEATURE_ACCESSORS@", accessors)
     if args.emit_source:
         args.emit_source.parent.mkdir(parents=True, exist_ok=True)
         args.emit_source.write_text(generated)

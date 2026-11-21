@@ -47,9 +47,6 @@ SLURL：&lt;nolink&gt;[SLURL]&lt;/nolink&gt;
 	<string name="AboutDriver">
 		Windowsグラフィックドライババージョン：[GRAPHICS_DRIVER_VERSION]
 	</string>
-	<string name="AboutOGL">
-		OpenGLバージョン：[OPENGL_VERSION]
-	</string>
 	<string name="AboutSettings">
 		ウィンドウサイズ：[WINDOW_WIDTH]✕[WINDOW_HEIGHT]
 フォントサイズ調整：[FONT_SIZE_ADJUSTMENT]pt

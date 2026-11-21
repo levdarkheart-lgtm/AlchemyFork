@@ -7725,28 +7725,6 @@
         <key>Value</key>
         <integer>1</integer>
     </map>
-  <key>RenderClass1MemoryBandwidth</key>
-  <map>
-    <key>Comment</key>
-    <string>Memory bandwidth at which to default to Class 1 in gigabytes per second.  Used as basis for higher classes.</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>F32</string>
-    <key>Value</key>
-    <real>48.0</real>
-  </map>
-  <key>RenderCPUBasis</key>
-  <map>
-    <key>Comment</key>
-    <string>Reference CPU clockspeed to use to bias GPU class (in MHz).</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>F32</string>
-    <key>Value</key>
-    <real>3000.0</real>
-  </map>
   <key>RenderComplexityColorMin</key>
     <map>
       <key>Comment</key>
@@ -8773,17 +8751,6 @@
     <real>368.0</real>
   </map>
 
-  <key>RenderDeferred</key>
-  <map>
-    <key>Comment</key>
-    <string>DEPRECATED (only true supported) - Use deferred rendering pipeline (Advanced Lighting Model).</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Boolean</string>
-    <key>Value</key>
-    <integer>1</integer>
-  </map>
 
   <key>RenderDeferredSun</key>
   <map>
@@ -9950,17 +9917,6 @@
       <string>F32</string>
       <key>Value</key>
       <real>1.0</real>
-    </map>
-    <key>RenderTerrainDetail</key>
-    <map>
-      <key>Comment</key>
-      <string>Detail applied to terrain texturing (0 = none, 1 = full)</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>S32</string>
-      <key>Value</key>
-      <integer>1</integer>
     </map>
     <key>RenderTerrainLODFactor</key>
     <map>
@@ -16143,29 +16099,6 @@
       <integer>0</integer>
       <key>Type</key>
       <string>U32</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
-    <key>GPUBenchmarkResult</key>
-    <map>
-      <key>Comment</key>
-      <string>Cached GPU benchmark bandwidth in GB/sec (-1 for failure), with the GPU vendor, the renderer without the kernel release, and the full OpenGL driver version. Reset to rerun the benchmark.</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>LLSD</string>
-      <key>Value</key>
-      <map />
-    </map>
-    <key>SkipBenchmark</key>
-    <map>
-      <key>Comment</key>
-      <string>if true, disables running the GPU benchmark at startup
-      (default to class 1)</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
       <key>Value</key>
       <integer>0</integer>
     </map>
