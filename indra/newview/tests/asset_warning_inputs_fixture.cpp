@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -112,6 +113,7 @@ struct TextureOwner
     bool mDecodeNeedsAux=false;
     S32 mAuxComponents=-1;
     int mDecodeHandle=8,mWorkMutex=0,cache_removals=0;
+    std::shared_ptr<std::atomic<bool>>mDecodeCancellation=std::make_shared<std::atomic<bool>>(false);
     LLImageRaw*mRawImage=nullptr,*mAuxImage=nullptr;
     int mRetryAttempt=2,mRegionRetryAttempt=1,released=0;
     Retry mFetchRetryPolicy;
@@ -222,11 +224,14 @@ int main()
     throw_diagnostics=false;
     LLImageRaw rgba,mask{1};
     TextureOwner decode_aux;decode_aux.mID.text="decode-with-aux";decode_aux.mNeedsAux=true;
+    const auto completed_cancellation=decode_aux.mDecodeCancellation;
     decode_aux.decoded(true,"",&rgba,&mask,8);
     check(decode_aux.mRawImage==&rgba);check(decode_aux.mAuxImage==&mask);
     check(decode_aux.mDecoded);check(decode_aux.mDecodeHandle==0);
     check(decode_aux.mDecodedDiscard==2);
     check(decode_aux.mAuxComponents==1);
+    check(!decode_aux.mDecodeCancellation);
+    check(!completed_cancellation->load(std::memory_order_acquire));
     if(enabled)
     {
         const auto line=diagnostics().back();
@@ -260,22 +265,46 @@ int main()
     TextureOwner plain;plain.decoded(true,"",&rgba,nullptr,8);
     check(plain.mDecoded);check(diagnostics().size()==before_plain);
     TextureOwner aborted;aborted.mNeedsAux=true;aborted.mDecodeHandle=0;
+    const auto aborted_cancellation=aborted.mDecodeCancellation;
+    aborted_cancellation->store(true,std::memory_order_release);
     aborted.decoded(true,"",&rgba,&mask,8);check(!aborted.mDecoded);
+    check(aborted.mDecodeCancellation==aborted_cancellation);
+    check(aborted_cancellation->load(std::memory_order_acquire));
     check(diagnostics().size()==before_plain);
     TextureOwner obsolete;obsolete.mNeedsAux=true;
+    const auto current_cancellation=obsolete.mDecodeCancellation;
     obsolete.decoded(true,"",&rgba,&mask,7);check(!obsolete.mDecoded);
     check(obsolete.mDecodeHandle==8);check(diagnostics().size()==before_plain);
+    check(obsolete.mDecodeCancellation==current_cancellation);
+    check(!current_cancellation->load(std::memory_order_acquire));
     TextureOwner wrong_state;wrong_state.mNeedsAux=true;wrong_state.mState=3;
+    const auto wrong_state_cancellation=wrong_state.mDecodeCancellation;
     wrong_state.decoded(true,"",&rgba,&mask,8);check(!wrong_state.mDecoded);
     check(wrong_state.mDecodeHandle==0);check(diagnostics().size()==before_plain);
+    check(wrong_state.mDecodeCancellation==wrong_state_cancellation);
+    check(!wrong_state_cancellation->load(std::memory_order_acquire));
     TextureOwner failed_decode;failed_decode.mNeedsAux=true;
+    const auto failed_cancellation=failed_decode.mDecodeCancellation;
     failed_decode.decoded(false,"fixture",nullptr,nullptr,8);
     check(failed_decode.mDecoded);check(failed_decode.mDecodedDiscard==-1);
     check(failed_decode.cache_removals==1);check(diagnostics().size()==before_plain);
+    check(!failed_decode.mDecodeCancellation);
+    check(!failed_cancellation->load(std::memory_order_acquire));
     TextureOwner logging_fail;logging_fail.mID.text="decode-log-allocation-fail";logging_fail.mNeedsAux=true;
+    const auto logging_cancellation=logging_fail.mDecodeCancellation;
     throw_diagnostics=true;logging_fail.decoded(true,"",&rgba,&mask,8);throw_diagnostics=false;
     check(logging_fail.mDecoded);check(logging_fail.mRawImage==&rgba);
     check(logging_fail.mAuxImage==&mask);check(logging_fail.mDecodeHandle==0);
+    check(!logging_fail.mDecodeCancellation);
+    check(!logging_cancellation->load(std::memory_order_acquire));
+    // A stale callback retains the current request's token until its own
+    // completion. Keep a decoder-side lease to observe the reset distinctly
+    // from cancellation or premature destruction.
+    obsolete.mNeedsAux=false;
+    obsolete.decoded(true,"",&rgba,nullptr,8);
+    check(obsolete.mDecoded);check(obsolete.mRawImage==&rgba);
+    check(!obsolete.mDecodeCancellation);
+    check(!current_cancellation->load(std::memory_order_acquire));
     if(!enabled)check(diagnostics().empty());
     std::cout<<"asset warning diagnostics enabled="<<enabled<<": "<<checks<<" checks passed\n";
 }

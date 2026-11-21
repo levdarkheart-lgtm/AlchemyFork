@@ -167,8 +167,10 @@ TEST_CASE("almetal: unqualified members prevent coarse rejection of their visibl
           "[almetal][world-published-cpu-visibility][PPD-271]")
 {
     using namespace PublishedCpuVisibilityTest;
+    for (bool publish_unknown : {false, true})
     @autoreleasepool
     {
+        CAPTURE(publish_unknown);
         Fixture f;auto cpu=std::make_shared<VisibilityCohortCpu>();
         std::vector<std::shared_ptr<const ALMetalWorldCohortSource>> records;
         cpu->sources.reserve(3);
@@ -176,7 +178,10 @@ TEST_CASE("almetal: unqualified members prevent coarse rejection of their visibl
         {
             auto mesh=f.geometry;if(row<2)for(auto& point:mesh.positions)point[0]+=4.f+row;
             auto batch=f.batch(0);batch.vertices=f.buffer(&mesh,sizeof(mesh));cpu->sources.push_back(std::move(batch));
-            const auto bounds=meshBounds(mesh);auto record=ALMetalWorldCohortSource::seal({{2000+row,0,1},&cpu->sources.back()},&f.error,row<2?&bounds:nullptr);
+            auto bounds=meshBounds(mesh);
+            if (row==2) bounds.qualified=false;
+            auto record=ALMetalWorldCohortSource::seal({{2000+row,0,1},&cpu->sources.back()},&f.error,
+                row<2 || publish_unknown ? &bounds : nullptr);
             INFO(f.error);REQUIRE(record);records.push_back(std::move(record));
         }
         ALMetalWorldSourceCohortView group;group.cohort=ALMetalWorldSourceCohort::seal(records,cpu,f.resources,27,&f.error);REQUIRE(group.cohort);
@@ -184,11 +189,30 @@ TEST_CASE("almetal: unqualified members prevent coarse rejection of their visibl
         // PPD273: this union describes the TWO qualified members only.
         // Their outside result cannot reject the unqualified visible third.
         CHECK(group.cohort->qualifiedBoundsUnion().qualified);CHECK(group.cohort->qualifiedBoundsCount()==2);
+        CHECK(group.cohort->hasBoundsPublication()==publish_unknown);
         CHECK(alMetalClassifyWorldBoundsCPU(group.cohort->qualifiedBoundsUnion(),group.view.modelview_projection)==ALMetalWorldCpuVisibilityResult::outside);
         auto scene=f.scene();scene.source_owner=f.resources;scene.cohorts=&group;scene.cohort_count=1;
         const auto expected=render(f,scene);scene.source_routing=true;const auto before=f.renderer->worldCpuVisibilityStats();
+        const auto route_before=f.renderer->worldSourceRoutingStats();
         CHECK(render(f,scene)==expected);const auto after=f.renderer->worldCpuVisibilityStats();
-        CHECK(after.culled_draws==before.culled_draws+2);CHECK(after.visible_draws==before.visible_draws+1);CHECK(after.unknown_draws==before.unknown_draws+1);
+        const auto route_after=f.renderer->worldSourceRoutingStats();
+        CHECK(route_after.cohorts==route_before.cohorts+1);
+        if (publish_unknown)
+        {
+            CHECK(route_after.cpu==route_before.cpu+1);
+            CHECK(route_after.scalar==route_before.scalar);
+            CHECK(after.culled_draws==before.culled_draws+2);
+            CHECK(after.visible_draws==before.visible_draws+1);
+            CHECK(after.unknown_draws==before.unknown_draws+1);
+        }
+        else
+        {
+            // An unfinished optional publication stays entirely scalar.
+            CHECK(route_after.cpu==route_before.cpu);
+            CHECK(route_after.scalar==route_before.scalar+1);
+            CHECK(after.coarse_tests==before.coarse_tests);
+            CHECK(after.culled_draws==before.culled_draws);
+        }
     }
 }
 
@@ -236,16 +260,18 @@ TEST_CASE("almetal: populated CPU routing counters and output survive shader rel
     using namespace PublishedCpuVisibilityTest;
     @autoreleasepool
     {
-        RetainedVisibilityFixture f(0);
-        auto group = f.view();
+        Fixture f;
+        auto source = stressGroup(f, f.geometry, 4000);
+        auto& group = source.view;
         auto scene = f.scene();
-        scene.source_owner = f.native;
+        scene.source_owner = f.resources;
         scene.cohorts = &group;
         scene.cohort_count = 1;
         scene.source_routing = true;
         const auto visible = render(f, scene);
         group.view.modelview_projection[12] = 5.f;
         const auto outside = render(f, scene);
+        REQUIRE_FALSE(visible == outside);
         const auto before = f.renderer->worldSourceRoutingStats();
         REQUIRE(before.cohorts > 0);
         REQUIRE(before.scalar > 0);

@@ -6,6 +6,7 @@
 #include <functional>
 #include <iostream>
 #include <list>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -97,6 +98,7 @@ struct LLTextureFetchWorker
  std::atomic<S32>mState{DONE};bool mNeedsAux=false,mDecodeNeedsAux=false,mHaveAllData=true,mDecoded=true;
  S32 mAuxComponents=-1,mDecodedDiscard=0,mDesiredDiscard=0,mDesiredSize=600,mActiveCount=0,mDecodeHandle=11,mLoadedDiscard=0,mRequestedDiscard=0,mFTType=FTT_SERVER_BAKE;
  S32 mFileSize=600;F32 mRequestedPriority=1,mImagePriority=1;UID mID;void*mWorkMutex=nullptr;
+ std::shared_ptr<std::atomic<bool>>mDecodeCancellation=std::make_shared<std::atomic<bool>>(false);
  Timer mFetchDeltaTimer,mRequestedDeltaTimer;LLPointer<Formatted>mFormattedImage{new Formatted};LLPointer<LLImageRaw>mRawImage{new LLImageRaw},mAuxImage;
  bool have_work=false,aborted=false;int posts=0,cache_removes=0;
  void lockWorkMutex(){}void unlockWorkMutex(){}bool wasAborted()const{return aborted;}bool haveWork()const{return have_work;}
@@ -151,9 +153,11 @@ int main()
  {"completed race restarts before old output",[]{LLTextureFetch f;LLTextureFetchWorker w;w.have_work=true;w.mNeedsAux=true;CHECK(!f.complete(&w));CHECK(w.posts==1&&w.mState==w.DECODE_IMAGE);}},
  {"terminal maskless does not restart",[]{LLTextureFetch f;LLTextureFetchWorker w;w.mAuxComponents=0;w.mNeedsAux=true;w.mFormattedImage->components=4;CHECK(f.complete(&w));CHECK(w.posts==0);}},
  {"aborted request not revived",[]{LLTextureFetch f;LLTextureFetchWorker w;w.aborted=true;CHECK(f.admit(&w,true)==f.CREATE_REQUEST_ERROR_ABORTED);CHECK(w.posts==0);w.endWork(0,true);CHECK(w.mFormattedImage.isNull());}},
- {"obsolete decode cannot publish",[]{LLTextureFetchWorker w;auto old=w.mRawImage.get();LLPointer<LLImageRaw>raw=new LLImageRaw,aux=new LLImageRaw(16,16,1);w.mState=w.DECODE_IMAGE_UPDATE;w.callbackDecoded(true,"",raw,aux,99);CHECK(w.mRawImage.get()==old);CHECK(w.mAuxComponents==-1);}},
- {"aborted decode cannot publish",[]{LLTextureFetchWorker w;w.mDecodeHandle=0;auto old=w.mRawImage.get();LLPointer<LLImageRaw>raw=new LLImageRaw;w.callbackDecoded(true,"",raw,nullptr,11);CHECK(w.mRawImage.get()==old);}},
- {"valid complete maskless metadata",[]{LLTextureFetchWorker w;w.mState=w.DECODE_IMAGE_UPDATE;w.mFormattedImage->components=4;LLPointer<LLImageRaw>raw=new LLImageRaw;w.callbackDecoded(true,"",raw,nullptr,11);LLTextureFetch::FetchStatus s;w.getStatus(s);CHECK(s.mAuxComponents==0);CHECK(w.mRawImage.notNull());}},
+ {"obsolete decode cannot publish",[]{LLTextureFetchWorker w;auto old=w.mRawImage.get();const auto cancellation=w.mDecodeCancellation;LLPointer<LLImageRaw>raw=new LLImageRaw,aux=new LLImageRaw(16,16,1);w.mState=w.DECODE_IMAGE_UPDATE;w.mDecoded=false;w.callbackDecoded(true,"",raw,aux,99);CHECK(w.mRawImage.get()==old);CHECK(w.mAuxComponents==-1);CHECK(!w.mDecoded);CHECK(w.mDecodeHandle==11);CHECK(w.mDecodeCancellation==cancellation);CHECK(!cancellation->load(std::memory_order_acquire));}},
+ {"aborted decode cannot publish",[]{LLTextureFetchWorker w;w.endWork(0,true);const auto cancellation=w.mDecodeCancellation;auto old=w.mRawImage.get();LLPointer<LLImageRaw>raw=new LLImageRaw;w.callbackDecoded(true,"",raw,nullptr,11);CHECK(w.mRawImage.get()==old);CHECK(w.mDecodeCancellation==cancellation);CHECK(cancellation->load(std::memory_order_acquire));}},
+ {"endWork cancellation outlives worker ownership",[]{for(bool aborted:{false,true}){std::shared_ptr<std::atomic<bool>>decoder;std::weak_ptr<std::atomic<bool>>weak;{LLTextureFetchWorker w;decoder=w.mDecodeCancellation;weak=decoder;CHECK(!decoder->load(std::memory_order_acquire));w.endWork(0,aborted);CHECK(w.mDecodeHandle==0);CHECK(w.mDecodeCancellation==decoder);CHECK(decoder->load(std::memory_order_acquire));}CHECK(!weak.expired());CHECK(decoder->load(std::memory_order_acquire));decoder.reset();CHECK(weak.expired());}}},
+ {"stale decode retains replacement cancellation",[]{LLTextureFetchWorker w;const auto old=w.mDecodeCancellation;w.endWork(0,false);CHECK(old->load(std::memory_order_acquire));w.mDecodeCancellation=std::make_shared<std::atomic<bool>>(false);const auto current=w.mDecodeCancellation;w.mDecodeHandle=12;w.mState=w.DECODE_IMAGE_UPDATE;w.mDecoded=false;LLPointer<LLImageRaw>raw=new LLImageRaw;w.callbackDecoded(true,"",raw,nullptr,11);CHECK(!w.mDecoded);CHECK(w.mDecodeHandle==12);CHECK(w.mDecodeCancellation==current);CHECK(!current->load(std::memory_order_acquire));w.callbackDecoded(true,"",raw,nullptr,12);CHECK(w.mDecoded);CHECK(w.mDecodeHandle==0);CHECK(!w.mDecodeCancellation);CHECK(!current->load(std::memory_order_acquire));CHECK(old->load(std::memory_order_acquire));}},
+ {"valid complete maskless metadata",[]{LLTextureFetchWorker w;w.mState=w.DECODE_IMAGE_UPDATE;w.mFormattedImage->components=4;const auto cancellation=w.mDecodeCancellation;LLPointer<LLImageRaw>raw=new LLImageRaw;w.callbackDecoded(true,"",raw,nullptr,11);LLTextureFetch::FetchStatus s;w.getStatus(s);CHECK(s.mAuxComponents==0);CHECK(w.mRawImage.notNull());CHECK(!w.mDecodeCancellation);CHECK(!cancellation->load(std::memory_order_acquire));}},
  {"successful partial maskless has finite terminal progress",[]{LLTextureFetch f;LLTextureFetchWorker w;w.mState=w.DECODE_IMAGE_UPDATE;w.mNeedsAux=true;w.mHaveAllData=false;w.mFormattedImage->components=4;LLPointer<LLImageRaw>raw=new LLImageRaw;w.callbackDecoded(true,"",raw,nullptr,11);w.mState=w.DONE;LLTextureFetch::FetchStatus s;w.getStatus(s);CHECK(s.mAuxComponents==0);CHECK(f.admit(&w,true)==f.CREATE_REQUEST_ERROR_TRANSITION);LLViewerFetchedTexture t;Seen a;t.setLoadedCallback(observed,0,true,true,&a,nullptr,false);t.mNeedsCreateTexture=false;t.mAuxComponents=s.mAuxComponents;t.doLoadedCallbacks();CHECK(a.calls==1&&!a.success&&a.final);CHECK(!t.mNeedsAux);}},
  {"maskless metadata skips optional decode",[]{LLTextureFetchWorker w;w.mNeedsAux=true;w.mFormattedImage->components=4;w.prepareDecode();CHECK(!w.mDecodeNeedsAux);CHECK(w.mState==w.DECODE_IMAGE_UPDATE);}},
  {"five channel metadata requests auxiliary decode",[]{LLTextureFetchWorker w;w.mNeedsAux=true;w.prepareDecode();CHECK(w.mDecodeNeedsAux);}},
@@ -165,7 +169,7 @@ int main()
  {"explicit refetch invalidates terminal knowledge",[]{LLViewerFetchedTexture t;t.mAuxComponents=0;t.forceToRefetchTexture(0);CHECK(t.mAuxComponents==-1);}},
  {"worker content reset invalidates knowledge",[]{LLTextureFetchWorker w;w.mAuxComponents=0;w.resetFormattedData();CHECK(w.mAuxComponents==-1);CHECK(w.mFormattedImage->getDataSize()==0);}},
  {"changed endpoint invalidates knowledge",[]{LLTextureFetchWorker w;w.mAuxComponents=0;w.setUrl("new-endpoint");CHECK(w.mAuxComponents==-1);}},
- {"failed aux result is terminal only DONE",[]{LLTextureFetchWorker w;w.mNeedsAux=true;w.mState=w.DECODE_IMAGE_UPDATE;w.callbackDecoded(false,"controlled failure",nullptr,nullptr,11);LLTextureFetch::FetchStatus s;w.getStatus(s);CHECK(s.mAuxComponents==-1);w.mState=w.DONE;w.getStatus(s);CHECK(s.mAuxComponents==-2);CHECK(w.cache_removes==1);}}
+ {"failed aux result is terminal only DONE",[]{LLTextureFetchWorker w;w.mNeedsAux=true;w.mState=w.DECODE_IMAGE_UPDATE;const auto cancellation=w.mDecodeCancellation;w.callbackDecoded(false,"controlled failure",nullptr,nullptr,11);LLTextureFetch::FetchStatus s;w.getStatus(s);CHECK(s.mAuxComponents==-1);w.mState=w.DONE;w.getStatus(s);CHECK(s.mAuxComponents==-2);CHECK(w.cache_removes==1);CHECK(!w.mDecodeCancellation);CHECK(!cancellation->load(std::memory_order_acquire));}}
  };
  int failures=0;for(auto&[name,run]:cases){try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){++failures;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
  std::cout<<cases.size()<<" cases, "<<checks<<" checks, "<<failures<<" failures\n";return failures?1:0;
