@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-547 -->
+<!-- next-defect-id: PPD-548 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12652,3 +12652,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 registered before removal. Preserve source-routing CPU gains, active probe candidates, shadow ICB/visibility owners and real quality features. Do not remove generic Metal ICB capability or original occlusion queries with abandoned world trials.
+
+## PPD-547 — Compact recovery rewrite misses mandatory release-invariant coverage
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Continuity documentation integrator
+- Discovered: 2026-11-21
+- Original reference: validate_harness requires explicit invariant coverage in current recovery and active ledger even after historical details move into linked archives.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); first compact-snapshot harness exits1 with six coverage errors for prolonged stability, independent build/review evidence, strict no-GL and no-premature-completion language.
+- Next action: Restore explicit current invariant statements and rerun ordinary harness, retaining compact documents and all archived history.
+- Verification: First compact-snapshot validation fails1. No renderer/build regression or release-gate relaxation is established.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correcting compact snapshot wording. Prior original snapshots remain archived with relocated links; this metadata failure must not be relabeled as a passing check.
+
+- 2026-11-21 second compact-snapshot run exits1 with two remaining coverage messages because the required independent build/review evidence phrase was split across lines. Keep the failure and make current wording explicit on one line; no gate bypass.

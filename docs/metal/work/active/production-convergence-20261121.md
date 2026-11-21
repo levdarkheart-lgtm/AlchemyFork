@@ -91,3 +91,25 @@ owned scalar packets. Inventory other controls by actual consumers and selection
 history; default-off quality features and active probe candidates are not deleted
 by name/default alone. Root handles all Git writes centrally because child agents
 retain the prior read-only .git sandbox; do not leave approval prompts waiting.
+
+## Integrated progress before experiment cleanup
+
+Root native component build: cmake --build build-Darwin-ninja-os-arm64-shadow-occlusion
+--config Release --parallel6 --target almetal_tests, exit0. Nine focused CTests under
+MTL_DEBUG_LAYER=1/MTL_SHADER_VALIDATION=1 pass176.92s. Logs native-build-01.log and
+native-tests-01.log in private production evidence root. These precede later
+cleanup and cannot qualify final candidate source by themselves.
+
+Root core5d7dc12078; saved-profile retirementb9304951d8; scheduler source2c9628e07a
+integrated60932652bf; preferences source96d937b816 integrated10dc03df11; rejected
+main-overlap removal9bb0f4e289; owned-scalar caller cleanup5ce8f94aba. All local.
+Root handles Git centrally after child .git index writes were denied; no owner
+permission is needed in root's current unrestricted session.
+
+The large stale recovery/active notes were archived with relocated links, replaced
+by a concise truthful current snapshot. Prior release/acceptance/failed evidence
+is retained; current build/cleanup work is no longer mixed with old completed tasks.
+
+PPD547 retains the first compact recovery rewrite harness failure (six invariant
+coverage messages); explicit current gate wording is being restored without
+moving history back into live snapshots or weakening the gate.
