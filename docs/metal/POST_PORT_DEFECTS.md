@@ -12285,15 +12285,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-526 — Animated water boundary appears to cross dry shoreline land
 
-- Status: investigating
+- Status: dismissed
 - Confirmation: reproduced
 - Owner: Codex water rendering investigation
 - Discovered: 2026-11-21
 - Original reference: Owner reports a shoreline advancing/retreating over sand in69417 and clarifies the fixed-line comparison is Firestorm or another viewer. Original Alchemy1eb44/parent65c39b7 already contains optional 3D displacement; inspected Firestorm7.1.13 uses planar geometry. Exact owner reference version and terrain-versus-object sand draw remain unknown.
 - Evidence: [Shoreline capture ledger](work/active/water-land-line-20261121.md).
-- Next action: Same-view owner comparison using the existing Lightbox Water waves setting off; confirm whether the advancing/retreating shoreline disappears. Captured native geometry and inspected original Alchemy contracts support inherited 3D waves, while owner clarifies comparison is Firestorm or another viewer. Do not change the renderer or close the incident before the discriminating comparison; PPD-013/497 acceptance and open PPD-015 remain separate.
-- Verification: Exact69417/exe0b8bab95fd3d/OpenHT0.27 verified. Restarted44179 captures early264–265 and late2157–2158, native_error0; late cloned capture replays the reported curved shoreline. Actual wave draw17023 changes3681292depth pixels, all closer; reconstructed replaced finite current-cell geometry reaches only2.95cm above base, water stays inside captured12.19cm displacement bound. RGB/depth masks agree except21pixels, supporting geometry coverage rather than a broad color-only overlay. Original Alchemy wave geometry and stencil admission match the reviewed Metal path; history places 3D waves upstream before the fork. Firestorm7.1.13 inspected source uses planar geometry/animated shading. Owner exact Firestorm version and paired runtime/waves-off comparison remain unknown. Viewer exits0 normally10:36:28.767636Z; Xcode replay stopped. Private exports/hashes and analysis retained; no renderer repair or full port-correctness claim.
-- Owner verification: pending
+- Next action: Retain owner-confirmed stable waves-off behavior and the upstream 3D waves option; reopen if the moving edge persists with displacement off or new evidence shows an Alchemy parity defect. PPD-013/497 acceptance, open PPD-015 shading mismatch and PPD-527 help text remain separate. Do not change the product default or push based on this comparison.
+- Verification: Exact69417/exe0b8bab95fd3d/OpenHT0.27 verified. Restarted44179 captures early264–265 and late2157–2158, native_error0; late cloned capture replays the reported curved shoreline. Actual wave draw17023 changes3681292depth pixels, all closer; reconstructed replaced finite current-cell geometry reaches only2.95cm above base, water stays inside captured12.19cm displacement bound. RGB/depth masks agree except21pixels, supporting geometry coverage rather than a broad color-only overlay. Original Alchemy wave geometry and stencil admission match the reviewed Metal path; history places 3D waves upstream before the fork. Firestorm7.1.13 inspected source uses planar geometry/animated shading. Owner later tests the existing Water waves control in the same69417: "yeah that makes is stable". This is owner-reported waves-off stability; no independently attested active setting, paired screenshots or separate waves-on recheck is claimed. Exact Firestorm build remains unknown. Viewer exits0 normally10:36:28.767636Z; Xcode replay stopped. Private exports/hashes and analysis retained; no renderer repair or full port-correctness claim.
+- Resolution: The reported advancing/retreating boundary is explained by inherited optional Alchemy 3D geometry waves against a Firestorm-style planar-water comparison. Captured geometry/coverage and original mask/displacement contracts agree; owner confirms stable shoreline with the existing displacement switch off. No missing Metal shoreline mask or renderer correction is established. This scoped explanation does not clear unrelated water defects or full product gates.
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -12301,6 +12302,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 registered before capture/repair. Preserve earlier accepted haze/SSR and BoM fixes; this new shoreline report has no established cause. Owner authorizes another capture and the required same-build restart. No main/release change or new-fix push approval follows from the capture request.
 
 - 2026-11-21 captured and replayed the affected late view. Retained a failed stencil-only raw KTX export; corrected float Depth-aspect exports support independent numeric reconstruction. Owner clarifies desired fixed separation/advancing and retreating edge, and comparison is Firestorm or another viewer. No missing static shoreline mask was found in original Alchemy; active optional 3D displacement explains the measured native coverage. Keep investigating until an owner waves-off comparison settles this scoped report. No settings changed, new build, closure or push.
+
+- 2026-11-21 owner requests the comparison launch. Same69417/exe0b8bab starts48466, window/process/hash and sole OpenHT0.27 verified; STATE_STARTED11:12:48Z. Normal settings retained, no capture or forced wave value. Guide existing Lightbox checkbox comparison; owner result pending and viewer remains running.
+
+- 2026-11-21 owner reports "yeah that makes is stable" after the guided existing Water waves comparison. Record owner waves-off stability and dismiss this scoped report as an explained feature/settings difference, with original source and captured-depth proof retained. No new shader change, forced default, automated setting action, paired screenshot gate pass, separate waves-on result or push authorization is claimed.
 
 ## PPD-527 — Water waves help still claims an OpenGL requirement
 

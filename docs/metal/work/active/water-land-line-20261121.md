@@ -144,3 +144,40 @@ no new build, native-GPU tests or harness unit tests are claimed or necessary.
 Independent read-only checkpoint review passes source/history/control gates,
 quoted private numeric/exit facts, no private SL identifiers, resolved links and
 line caps. Keep pre-water geometry type unknown; do not relabel it terrain.
+
+
+## Owner comparison launch
+
+Owner explicitly requests another launch for the existing-setting comparison.
+Same69417/exe0b8bab95fd3d starts asPID48466; window title independently inspected,
+process path/hash verified, startup log confirms sole OpenHTJ2K0.27 and reaches
+STATE_STARTED11:12:48Z. Launch uses only private --logfile and AutoLogin=false;
+child capture/diagnostic environment is cleared. No forced location, graphics,
+cache/profile or water setting change. Owned launcher session21857 retains
+normal shutdown receipt when it occurs; viewer remains running at handoff.
+Private owner-comparison-01 contains launch/runtime records and logs.
+
+Source-confirmed navigation is Me > Lightbox... > Scene >
+Performance - Advanced > Water waves. Owner should compare the same shoreline,
+first with the existing state, then unchecked, then checked again; keep adjacent
+Water anti-repeat/Wave height unchanged. Actual region/profile and active wave
+value are not independently attested yet. No comparison screenshot or visual
+pass is claimed. PPD526 remains investigating/pending; no new code or push.
+
+
+## Owner waves-off result
+
+Owner replies "yeah that makes is stable" to the guided existing Water waves
+comparison. Record this as owner-reported stable shoreline with displacement
+off in the launched69417. No independent live value/profile read, new capture,
+paired screenshot gate, or separate waves-on confirmation is claimed.
+
+Together with actual captured water-depth/coverage and original Alchemy
+geometry/mask/history proof, this resolves PPD526 as an inherited 3D-wave
+feature/settings difference from planar-water viewers. Status dismissed,
+owner verification passed for the scoped waves-off outcome. No renderer fix,
+product-default change or new push authorization. Existing Water waves remains
+available; owner may keep it off for a fixed shoreline. PPD015/527 remain open;
+accepted013/497 and BoM522/523 remain unchanged. Viewer is not closed by Codex.
+Reopen526 if the moving boundary persists with geometry displacement off or
+new evidence establishes a source-parity defect.
