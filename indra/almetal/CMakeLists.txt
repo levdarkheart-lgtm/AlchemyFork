@@ -128,12 +128,11 @@ target_sources(
     almetalworlddraws.cpp
     almetalworldanimated.mm
     almetalworldcohort.mm
-    almetalworldvisibility.mm
+    almetalworldvisibility.cpp
     almetalworldmaterialdata.mm
     almetalworldresources.mm
-    almetalworldsourcepages.mm
-    almetalworldsourcecommands.mm
-    almetalworldprepare.mm
+
+    almetalworldinputs.cpp
     almetalworlddiagnostics.cpp
   PUBLIC
     FILE_SET HEADERS
@@ -170,10 +169,8 @@ target_sources(
       almetalworldvisibility.h
       almetalworldmaterialdata.h
       almetalworldresources.h
-      almetalworldsourcepages.h
-      almetalworldsourcecommands.h
-      almetalworldsourceview.h
-      almetalworldprepare.h
+
+      almetalworldinputs.h
       almetalworlddraws.h
       almetalworldanimated.h
       almetalworldcohort.h
@@ -223,7 +220,7 @@ set_source_files_properties(
   almetalstagetiming.mm
   almetalsurface.mm
   almetaltexturebenchmark.mm
-  almetalworldprepare.mm
+  almetalworldinputs.cpp
   almetalworldresources.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
@@ -235,7 +232,7 @@ if(AL_BUILD_TESTS)
     SOURCES tests/almetal_command_timing_test.mm
             tests/almetal_resource_plan_test.cpp
             tests/almetal_resource_plan_native_test.mm
-            tests/almetal_source_applicability_test.mm
+
             tests/almetal_surface_resource_native_test.mm
             tests/almetal_retained_background_test.mm
             tests/almetal_scene_monitor_test.mm
@@ -270,16 +267,15 @@ if(AL_BUILD_TESTS)
             tests/almetal_completion_test.mm tests/almetal_world_data_test.mm
             tests/almetal_submission_owner_test.mm
             tests/almetal_world_visibility_test.mm
-            tests/almetal_early_visibility_test.mm
-            tests/almetal_static_visibility_commands_test.mm
+
             tests/almetal_main_lighting_renderpass_test.mm
             tests/almetal_main_frame_admission_test.mm
             tests/almetal_shadow_recipe_test.mm
-            tests/almetal_cohort_declaration_test.mm
+
             tests/almetal_world_material_source_test.mm
             tests/almetal_world_resources_test.mm
             tests/almetal_world_source_owner_test.mm
-            tests/almetal_world_prepare_test.mm
+            tests/almetal_world_inputs_test.mm
             tests/almetal_world_draws_test.mm
             tests/almetal_world_cohort_test.mm
             tests/almetal_world_cohort_renderer_test.mm
@@ -308,7 +304,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_shadow_generation_benchmark.mm
             tests/almetal_shadow_source_benchmark.mm
             tests/almetal_frame_admission_test.cpp
-            tests/almetal_visibility_abandon_test.mm
+
             tests/almetal_attachment_palette_test.mm
             tests/almetal_attachment_palette_benchmark.mm
             tests/almetal_shadow_gather_test.mm
@@ -319,21 +315,15 @@ if(AL_BUILD_TESTS)
             tests/almetal_quiet_capture_policy_test.cpp
             tests/almetal_diagnostic_telemetry_test.mm
             tests/almetal_function_constants_test.mm
-            tests/almetal_source_row_draw_test.mm
-            tests/almetal_world_source_pages_test.mm
-            tests/almetal_world_source_rows_test.mm
-            tests/almetal_world_source_admission_test.mm
+
             tests/almetal_world_library_test.mm
-            tests/almetal_world_source_commands_test.mm
+
     LIBRARIES almetal llcommon llinventory
-    # Visible correctness cases exercise every compiled lighting variant.
-    # The production policy has a separate hidden native qualification case.
-    ENVIRONMENT "ALCHEMY_METAL_E6_PREPARED_FORCE_ALL=1"
+    # Correctness cases exercise the selected production consumer policy.
     RESOURCE_LOCK apple_gpu
   )
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-  set_source_files_properties(tests/almetal_source_applicability_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_retained_background_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_scene_monitor_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
@@ -368,7 +358,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_submission_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-  set_source_files_properties(tests/almetal_world_prepare_test.mm tests/almetal_world_draws_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_world_inputs_test.mm tests/almetal_world_draws_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_cache_test.mm
                               tests/almetal_shadow_prepare_test.mm
                               tests/almetal_shadow_publication_test.mm
@@ -378,7 +368,7 @@ if(AL_BUILD_TESTS)
                               tests/almetal_shadow_generation_benchmark.mm
                               tests/almetal_shadow_source_benchmark.mm
                               tests/almetal_frame_admission_test.cpp
-                              tests/almetal_visibility_abandon_test.mm
+
                               PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_attachment_palette_test.mm
                               tests/almetal_attachment_palette_benchmark.mm
@@ -444,11 +434,7 @@ if(AL_BUILD_TESTS)
   endif()
 endif()
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_world_visibility.metal" AL_METAL_WORLD_VISIBILITY_SOURCE)
-configure_file(almetalworldvisibilitysource.h.in "${CMAKE_CURRENT_BINARY_DIR}/almetalworldvisibilitysource.h" @ONLY)
 set_source_files_properties(tests/almetal_world_visibility_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-set_source_files_properties(tests/almetal_early_visibility_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-set_source_files_properties(tests/almetal_static_visibility_commands_test.mm tests/almetal_cohort_declaration_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_main_lighting_renderpass_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_main_frame_admission_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_shadow_recipe_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
@@ -458,14 +444,7 @@ set_source_files_properties(tests/almetal_world_source_owner_test.mm PROPERTIES 
 set_source_files_properties(tests/almetal_world_material_source_test.mm almetalworldmaterialdata.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 set_source_files_properties(tests/almetal_world_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-set_source_files_properties(almetalworldsourcepages.mm
-  tests/almetal_source_row_draw_test.mm tests/almetal_world_source_pages_test.mm
-  tests/almetal_world_source_rows_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-set_source_files_properties(tests/almetal_world_source_admission_test.mm
-  tests/almetal_world_library_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties(tests/almetal_world_library_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 set_source_files_properties(tests/almetal_world_cohort_test.mm
   tests/almetal_world_cohort_renderer_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-set_source_files_properties(almetalworldsourcecommands.mm
-  tests/almetal_world_source_commands_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-
 set_source_files_properties(almetalworldanimated.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

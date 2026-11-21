@@ -214,11 +214,11 @@ if(AL_BUILD_TESTS)
     # ordinary cases explicitly; the including .cpp cannot own those tags.
     # They remain includes, so never compile the fragments a second time.
     set(llrender_native_case_fragments
-      tests/alpipeline_animated_gpu_records_native.inl
+
       tests/alpipeline_attachment_palette_native.inl
       tests/alpipeline_body_palette_native.inl
       tests/alpipeline_dependency_topology_native.inl
-      tests/alpipeline_early_visibility_native.inl
+
       tests/alpipeline_group_bounds_promotion_native.inl
       tests/alpipeline_local_light_values_native.inl
       tests/alpipeline_producer_drain_native.inl
@@ -228,7 +228,7 @@ if(AL_BUILD_TESTS)
       tests/alpipeline_source_miss_census_native.inl
       tests/alpipeline_source_recipes_native.inl
       tests/alpipeline_static_restoration_native.inl
-      tests/alpipeline_static_visibility_commands_native.inl
+
       tests/alpipeline_terrain_pass_context_native.inl
       tests/alpipeline_terrain_preflight_native.inl
     )

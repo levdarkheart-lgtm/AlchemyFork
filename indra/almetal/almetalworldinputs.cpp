@@ -1,9 +1,9 @@
 /**
- * @file almetalworldprepare.mm
+ * @file almetalworldinputs.cpp
  * @brief Immutable world packet ownership for scalar native encoding.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
-#include "almetalworldprepare.h"
+#include "almetalworldinputs.h"
 
 #include <algorithm>
 #include <array>

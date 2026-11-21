@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "almetalworldcohort.h"
-#include "almetalworldprepare.h"
+#include "almetalworldinputs.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>

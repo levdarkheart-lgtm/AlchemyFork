@@ -1,10 +1,10 @@
 #pragma once
 /**
- * @file almetal_world_prepare_test.mm
+ * @file almetal_world_inputs_test.mm
  * @brief Ordered owned_input/direct native world parity and input lifetime tests.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
-#include "../almetalworldprepare.h"
+#include "../almetalworldinputs.h"
 #include "alnativeframebudget.h"
 #include <Metal/Metal.h>
 #include <dispatch/dispatch.h>

@@ -8,7 +8,7 @@
  * $/LicenseInfo$
  */
 #include "../almetalworld.h"
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 

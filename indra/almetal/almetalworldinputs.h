@@ -1,5 +1,5 @@
 /**
- * @file almetalworldprepare.h
+ * @file almetalworldinputs.h
  * @brief Owned immutable native world inputs for scalar encoding.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
@@ -7,7 +7,6 @@
 
 #include "almetalworld.h"
 #include "almetalworlddraws.h"
-
 
 // Created on the scene owner after native generations have been published.
 // The aggregate owner must lease every referenced buffer/texture generation,

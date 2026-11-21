@@ -3,7 +3,7 @@
  * @brief Actual world resource-table output, lifetime and complete-path costs.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalworldmaterialdata.h"
 #include "../almetalworldresources.h"
 #include <cstdlib>

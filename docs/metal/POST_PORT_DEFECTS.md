@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-550 -->
+<!-- next-defect-id: PPD-552 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7363,8 +7363,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex native source publication
 - Discovered: 2026-11-16
 - Original reference: Every original encoder/pass must receive its resource usage declarations. Native argument-buffer resources and GPU-address roots require declarations on each actual encoder lifetime; an object address alone is not a lifetime proof.
-- Evidence: [SourceFrameView binding](../../indra/almetal/almetalworldsourcepages.mm) and [native table declarations](../../indra/almetal/almetalworldresources.mm). Current almetalworldsourcepages.mm FrameView::bind compares view.declared_encoder raw id<MTLRenderCommandEncoder> to current native. A later encoder in the same allowed command can reuse that native object address and incorrectly inherit the previous encoder's declaration proof. Existing ALMetalRenderEncoder::declarationIdentity and animated command scopes already provide an exact inert lifetime identity. No live viewer fault or driver address-reuse incident has been observed.
-- Next action: Replace FrameView raw-address declaration proof with the existing exact weak encoder-lifetime identity and cover fresh encoder invalidation/current command qualification without retaining the native encoder. Preserve every resource union/table declaration and normal binds.
+- Evidence: [SourceFrameView binding](work/active/production-convergence-20261121.md#retired-source-history) and [native table declarations](work/active/production-convergence-20261121.md#retired-source-history). Original pre-retirement almetalworldsourcepages.mm FrameView::bind compares view.declared_encoder raw id<MTLRenderCommandEncoder> to current native. A later encoder in the same allowed command can reuse that native object address and incorrectly inherit the previous encoder's declaration proof. Existing ALMetalRenderEncoder::declarationIdentity and animated command scopes already provide an exact inert lifetime identity. No live viewer fault or driver address-reuse incident has been observed.
+- Next action: Validate maintained immutable source/native-generation ownership in the production maintenance candidate. The old FrameView/table prototypes are retired under PPD545/550; retain their original findings and verification history through the retired-source index. Owner acceptance remains pending.
 - Verification: Source-confirmed proof weakness only; no reproduced live GPU fault or fixed test result yet.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7382,8 +7382,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex native source publication
 - Discovered: 2026-11-16
 - Original reference: Original accepted static pass owns every source resource through its submitted work. New native cohort certificates must preserve that lifetime and per-encoder resource declarations while avoiding repeated application-side discovery of immutable resources.
-- Evidence: [SourceFrameView binding](../../indra/almetal/almetalworldsourcepages.mm) and [native table declarations](../../indra/almetal/almetalworldresources.mm). Current SourceFrameView::bind retains shared_from_this once, which owns CohortBinding tables; then visits each table through Resources::declareResources, redundantly retaining each table using the command's linear owner-vector search. T distinct tables cause quadratic owner comparisons. Native table/context validation and resource span submission also repeat despite immutable successful publication. Runtime dominance and whole-viewer attribution are unknown; old bank GPU penalties remain independent.
-- Next action: Cold-publish one typed deduplicated cohort resource-declaration certificate, keep exact table/native owners and context identity, account allocated metadata, then declare its retained span once per exact encoder lifetime after command/FrameView qualification. Preserve ordinary noncohort resource behavior and all caps. Include unique-table, changed-generation, abandonment/pending-retirement and pixel/query correctness plus complete cost evidence.
+- Evidence: [SourceFrameView binding](work/active/production-convergence-20261121.md#retired-source-history) and [native table declarations](work/active/production-convergence-20261121.md#retired-source-history). Original pre-retirement SourceFrameView::bind retains shared_from_this once, which owns CohortBinding tables; then visits each table through Resources::declareResources, redundantly retaining each table using the command's linear owner-vector search. T distinct tables cause quadratic owner comparisons. Native table/context validation and resource span submission also repeat despite immutable successful publication. Runtime dominance and whole-viewer attribution are unknown; old bank GPU penalties remain independent.
+- Next action: Validate maintained immutable source/native-generation ownership in the production maintenance candidate. The old FrameView/table prototypes are retired under PPD545/550; retain their original findings and verification history through the retired-source index. Owner acceptance remains pending.
 - Verification: Source-confirmed redundant host work only; no measured saving, rendering repair or hardware-wide performance claim.
 - Owner verification: pending
 - Push approval: not_granted
@@ -7398,6 +7398,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 failed86 ordinary-table fixture cause is confirmed: its default ALMetalSamplerDescriptor had support_argument_buffers=false, correctly rejected by Resources::preflight; production SourcePages already enables that capability. Test-only sampler flag/INFO repair preserves4cases, renderer/caps unchanged. Actual-producer86 independently PASS2952assertions/2cases with API/GPU validation. No full34 or costs run; freeze87 for complete corrected native validation.
 
+
+
+- 2026-11-21 historical implementation removed under PPD545/550. First post-removal harness fails on dead local source links; evidence now points to the retained Git-source index. Prior tests/failures remain unchanged; no new runtime fault or owner closure is inferred.
 
 ## PPD-305 — Detailed profiling template retains a short window despite five-minute recording
 
@@ -12640,6 +12643,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 renderer syntax passes after required-state/shared-scope repairs. Standalone cohort/animated TUs then expose a lost transitive ALMetalTexture declaration after pages removal; make the cohort header self-contained with an explicit forward declaration and rerun. Pipeline syntax driver initially stops at stale canonical PCH before parsing candidate source; disable PCH for this isolated syntax check. Preserve all failed logs, distinguish harness/PCH mismatch from source errors, and require final normal CMake compilation.
 
+- 2026-11-21 post-syntax fixture review catches an obsolete fifth boundary case still expected after its producer branch was retired, and a required clearDraws/reset accidentally removed beside a visibility clear in a retained native-group cost loop. Correct the fixture bound and restore per-view reset before native execution. No executed output failure or viewer behavior is attributed; syntax success alone does not qualify runtime correctness.
+
 ## PPD-546 — Unselected early and retained world GPU visibility prototypes remain shipped
 
 - Status: investigating
@@ -12713,3 +12718,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 registered before correction. Initial configure0 verifies soleOpenHT0.27; build1 is a C++ interface integration failure, separate from the successful offline retired-shader compilation and prior nine GPU scopes.
+
+## PPD-550 — Retired resource-table backend remains behind an unused factory
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production resource ownership integrator
+- Discovered: 2026-11-21
+- Original reference: After rejected row/bank/resource-table routes retire under545, ALMetalWorldResources table context/cache/preflight/prepare/bind/declaration class has no production caller except its unused FrameData factory. ALMetalWorldResourceSource immutable texture proof remains used by ordinary CPU cohorts.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); post545 source consumer audit of worldresources, FrameData worldResources factory, pipeline diagnostics and table-only tests.
+- Next action: Remove dead table class/factory/cache/statistics/reflection-shader entries and exclusive tests, retaining ResourceSource publish/matches/generationLeases and active scalar/cohort native ownership. Verify headers are self-contained and live source lifetime/cache tests remain.
+- Verification: Dependency audit confirms orphaned backend after parent retirement; no current rendering fault or performance cost claim. Register before the follow-through removal.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 discovered while tracing shared dependencies for545/546. Do not retain an unused GPU table implementation solely to keep its tests; preserve actual immutable proof separately and remove only the unreachable table API.
+
+- 2026-11-21 final source audit finds only copied-page and encoded-mapping bytes remain active in shared publication work; six retired table/bank/row/zeroing fields are permanently unused. Collapse to explicit copied_bytes/encoded_bytes plus separately retained allocation_bytes and preserve checked charging/admission; update the actual probe-publication test assertions. This completes dependency cleanup rather than leaving dead experimental accounting fields.
+
+## PPD-551 — Maintained source-routing counters reset on shader reload
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production renderer integration
+- Discovered: 2026-11-21
+- Original reference: Existing renderer shader reload copies cumulative counters to the replacement owner. Retirement introduces a maintained CPU source_routing_stats member, which commitShaderReload currently omits.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); new source_routing_stats field and commitShaderReload at24de2b2e99, with adjacent cohort/CPU visibility/tile counters preserved.
+- Next action: Copy cumulative CPU routing statistics during shader publication and add an actual populated-route reload regression with unchanged native output.
+- Verification: Source integration omission identified before final candidate build. No observed viewer counter discontinuity, rendering error or FPS effect is claimed.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before correction during final retirement review. Preserve real routing and output; do not keep obsolete GPU counters solely for telemetry compatibility.

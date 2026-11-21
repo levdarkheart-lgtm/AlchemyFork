@@ -1,5 +1,5 @@
-/** Shared native visibility correctness and complete-path rejection fixtures. */
-#include "almetal_world_prepare_fixture.h"
+/** Published CPU visibility and scalar native rendering contracts. */
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalworldvisibility.h"
 #include "../almetalworldcohort.h"
 #include "../almetalworldmaterialdata.h"

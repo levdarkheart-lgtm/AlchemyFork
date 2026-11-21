@@ -3,7 +3,7 @@
  * @brief Sealed ordinary cohorts, mixed ordered preparation and exact lifetimes.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalworldcohort.h"
 #include "../almetalworldmaterialdata.h"
 #include <cmath>

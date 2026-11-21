@@ -229,3 +229,34 @@ TEST_CASE("almetal: CPU visibility releases CPU certificates while queued draws 
     }
 }
 }
+
+TEST_CASE("almetal: populated CPU routing counters and output survive shader reload",
+          "[almetal][world-published-cpu-visibility][shader-reload][PPD-551]")
+{
+    using namespace PublishedCpuVisibilityTest;
+    @autoreleasepool
+    {
+        RetainedVisibilityFixture f(0);
+        auto group = f.view();
+        auto scene = f.scene();
+        scene.source_owner = f.native;
+        scene.cohorts = &group;
+        scene.cohort_count = 1;
+        scene.source_routing = true;
+        const auto visible = render(f, scene);
+        group.view.modelview_projection[12] = 5.f;
+        const auto outside = render(f, scene);
+        const auto before = f.renderer->worldSourceRoutingStats();
+        REQUIRE(before.cohorts > 0);
+        REQUIRE(before.scalar > 0);
+        REQUIRE(before.cpu > 0);
+        REQUIRE(f.renderer->reloadShaders(&f.error));
+        const auto after = f.renderer->worldSourceRoutingStats();
+        CHECK(after.cohorts == before.cohorts);
+        CHECK(after.scalar == before.scalar);
+        CHECK(after.cpu == before.cpu);
+        CHECK(render(f, scene) == outside);
+        group.view.modelview_projection[12] = 0.f;
+        CHECK(render(f, scene) == visible);
+    }
+}

@@ -113,3 +113,18 @@ is retained; current build/cleanup work is no longer mixed with old completed ta
 PPD547 retains the first compact recovery rewrite harness failure (six invariant
 coverage messages); explicit current gate wording is being restored without
 moving history back into live snapshots or weakening the gate.
+
+## Retired source history
+
+Historical PPD303/304 FrameView/table proof and prior implementations remain
+retrievable in Git at83d33894c37087025616bd9aaf1d831cc574da97. For example:
+`git show 83d33894c3:indra/almetal/almetalworldsourcepages.mm` and
+`git show 83d33894c3:indra/almetal/almetalworldresources.mm`.
+These prototypes were removed under545/550; the active ResourceSource immutable
+native/registry-generation proofs remain in the maintained resource module.
+Historical diagnostics are not current API descriptions or new runtime failures.
+
+The first post-retirement harness run fails1 with four references to the deleted
+historical SourcePages implementation in PPD303/304. Point those evidence fields
+to this retained source index, preserve all original findings/test history, and
+make the current next actions refer to the maintained replacement candidate.

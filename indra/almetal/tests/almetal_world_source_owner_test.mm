@@ -3,7 +3,7 @@
  * @brief Producer-generation ownership across direct and forward commands.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalpipeline.h"
 
 namespace

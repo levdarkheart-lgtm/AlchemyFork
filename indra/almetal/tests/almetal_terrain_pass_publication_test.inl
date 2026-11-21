@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  * Included by the registered world preparation fixture.
  */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalworldmaterialdata.h"
 #include <optional>
 

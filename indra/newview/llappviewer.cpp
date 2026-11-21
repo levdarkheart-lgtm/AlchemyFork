@@ -2318,12 +2318,12 @@ bool LLAppViewer::cleanup()
     sTextureFetch->shutDownTextureCacheThread() ;
     LLLFSThread::sLocal->shutdown();
 
-    LL_INFOS() << "Shutting down OpenGL" << LL_ENDL;
+    LL_INFOS() << "Shutting down native rendering" << LL_ENDL;
 
-    // Shut down OpenGL
+    // Shut down the native window and render owners.
     if (gViewerWindow)
     {
-        sFontsXmlLiveFiles.clear(); // make sure any live file watchers are stopped before we shut down GL
+        sFontsXmlLiveFiles.clear(); // make sure any live file watchers stop before rendering shuts down
 
         gViewerWindow->shutdownGL();
 
@@ -3048,7 +3048,12 @@ bool LLAppViewer::initConfiguration()
             "RenderGLMultiThreadedTextures", "RenderGLContextCoreProfile",
             "RenderMaxOpenGLVersion", "RenderGLContext10bitSDR",
             "RenderNsightDebugSupport", "RenderMetalMainLightOverlap",
-            "RenderMetalWorldPreparation"})
+            "RenderMetalWorldPreparation", "RenderMetalSourceCommandBanks",
+            "RenderMetalSourceDirectCommandBanks", "RenderMetalSourceGpuVisibility",
+            "RenderMetalSourceCommandMinimumRun", "RenderMetalAnimatedGpuRecords",
+            "RenderMetalAnimatedGpuVisibility", "RenderMetalSourceRows",
+            "RenderMetalWorldResourceTables", "RenderMetalNativeVisibility",
+            "RenderMetalEarlyGroupVisibility", "RenderMetalCpuCohortVisibility"})
         gSavedSettings.retireControl(name);
 
     // Load settings files list

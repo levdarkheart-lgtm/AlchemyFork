@@ -67,7 +67,7 @@ struct Settings
     LLSD asLLSD(bool only) { ++reads; diffs_only=only; return diffs; }
 } gSavedSettings, gSavedPerAccountSettings;
 LLUUID gAgentSessionID("11111111-2222-3333-4444-555555555555");
-namespace LLStatViewer { enum { ENABLE_VBO, AGENT_POSITION_SNAP }; }
+namespace LLStatViewer { enum { AGENT_POSITION_SNAP }; }
 struct Number
 {
     operator double() const { return 2.; }

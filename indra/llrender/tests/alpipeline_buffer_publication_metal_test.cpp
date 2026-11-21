@@ -9,7 +9,7 @@
 #include "../../almetal/almetalworld.h"
 #include "../../almetal/almetalworldanimated.h"
 #include "../../almetal/almetalworldcohort.h"
-#include "../../almetal/almetalworldprepare.h"
+#include "../../almetal/almetalworldinputs.h"
 #include "../../almetal/almetalworldmaterialdata.h"
 #include "../../almetal/almetalworldresources.h"
 #include "../../almetal/almetalworldsourcepolicy.h"

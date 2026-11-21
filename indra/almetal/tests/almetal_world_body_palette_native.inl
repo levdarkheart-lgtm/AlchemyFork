@@ -2,7 +2,7 @@
  * @file almetal_world_body_palette_native.inl
  * @brief View-specific body palettes preserve scalar world/shadow ownership.
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Included after almetal_world_prepare_fixture.h in attachment-palette tests.
+ * Included after almetal_world_inputs_fixture.h in attachment-palette tests.
  */
 namespace BodyPaletteNative
 {

@@ -1,5 +1,5 @@
 /** Owned scalar world input parity and publication tests. */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 
 TEST_CASE("almetal: owned scalar world consumes every G-buffer family with exact direct pixels", "[almetal][world-inputs]")
 {

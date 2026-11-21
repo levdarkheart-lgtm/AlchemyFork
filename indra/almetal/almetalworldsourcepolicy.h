@@ -9,7 +9,6 @@
 #include <limits>
 #include <functional>
 #include <memory>
-#include <initializer_list>
 
 // Stable identity shared by ordinary immutable source and cohort records.
 struct ALMetalWorldSourceKey
@@ -29,20 +28,13 @@ struct ALMetalWorldSourceNativeScope
 // publication; it is not a physical resident-memory or GPU-traffic estimate.
 struct ALMetalWorldSourcePublicationWork
 {
-    std::uint64_t encoded_row_bytes=0,encoded_table_bytes=0,encoded_bank_range_bytes=0,encoded_mapping_bytes=0;
-    std::uint64_t copied_page_bytes=0,copied_bank_bytes=0,zeroed_page_bytes=0,zeroed_bank_bytes=0;
+    std::uint64_t encoded_bytes=0, copied_bytes=0;
     std::uint64_t allocation_bytes=0;
     std::uint64_t chargedBytes() const noexcept
     {
-        std::uint64_t total=0;
-        for(auto bytes:{encoded_row_bytes,encoded_table_bytes,encoded_bank_range_bytes,encoded_mapping_bytes,
-                        copied_page_bytes,copied_bank_bytes,zeroed_page_bytes,zeroed_bank_bytes})
-        {
-            if(bytes>std::numeric_limits<std::uint64_t>::max()-total)
-                return std::numeric_limits<std::uint64_t>::max();
-            total+=bytes;
-        }
-        return total;
+        constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+        return encoded_bytes > maximum - copied_bytes
+            ? maximum : encoded_bytes + copied_bytes;
     }
 };
 using ALMetalWorldPublicationAdmission =

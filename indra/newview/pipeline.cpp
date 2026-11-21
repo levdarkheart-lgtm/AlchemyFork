@@ -90,7 +90,7 @@
 #include "../almetal/almetalworldcohort.h"
 #include "../almetal/almetalshadowprepare.h"
 #include "../almetal/almetalshadowcache.h"
-#include "../almetal/almetalworldprepare.h"
+#include "../almetal/almetalworldinputs.h"
 #include "../almetal/almetalworldvisibility.h"
 #include "alnativeframebudget.h"
 #include "alnativeframeplan.h"

@@ -1,7 +1,7 @@
 /** Native immutable regular-rigged source publication. */
 #include "almetalworldanimated.h"
 #include "almetalworld.h"
-#include "almetalworldprepare.h"
+#include "almetalworldinputs.h"
 #include <algorithm>
 #include <array>
 #include <bit>

@@ -1,5 +1,5 @@
 /** Native probe tile-lighting tests. Included by the registered base-light fixture. */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalstagetiming.h"
 #include <cstdlib>
 #include <filesystem>

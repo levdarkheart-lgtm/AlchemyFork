@@ -10,7 +10,7 @@
 
 #include "almetalworld.h"
 #include "almetaldiagnostictelemetry.h"
-#include "almetalworldprepare.h"
+#include "almetalworldinputs.h"
 #include "almetalworldvisibility.h"
 #include "almetalworldsourcepolicy.h"
 #include "almetalworldmaterialdata.h"
@@ -1992,9 +1992,9 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
         const auto owner_epoch=mImpl->builtin_library_epoch;
         ALMetalWorldSourcePublicationWork work;
         work.allocation_bytes=resident_bytes;
-        work.copied_page_bytes=2u*sizeof(Impl::ProbeCandidateKey)+sizeof(packet)+
+        work.copied_bytes=2u*sizeof(Impl::ProbeCandidateKey)+sizeof(packet)+
             sizeof(probe_snapshot)+sizeof(projection_snapshot)+sizeof(inverse_snapshot);
-        work.encoded_mapping_bytes=output_bytes;
+        work.encoded_bytes=output_bytes;
         std::shared_ptr<const void> credit;
         if (!requestSourcePublication(work,credit)) return policy_decline(Reason::admission_denied);
         // The policy is reentrant. Borrowed inputs and ownership may change;
@@ -3974,6 +3974,7 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.constant_stats = mImpl->constant_stats;
     next.animated_stats=mImpl->animated_stats;
     next.cohort_stats = mImpl->cohort_stats;
+    next.source_routing_stats = mImpl->source_routing_stats;
     next.cpu_visibility_stats = mImpl->cpu_visibility_stats;
     next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
     next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;

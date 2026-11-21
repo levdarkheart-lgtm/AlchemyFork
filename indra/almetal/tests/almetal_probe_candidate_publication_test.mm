@@ -181,7 +181,7 @@ TEST_CASE("Probe publication reuses one command and retains output through compl
             ->std::shared_ptr<const void>
         {
             ++admissions; CHECK(work.allocation_bytes > 0);
-            CHECK(work.copied_page_bytes > 0); CHECK(work.encoded_mapping_bytes == 480);
+            CHECK(work.copied_bytes > 0); CHECK(work.encoded_bytes == 480);
             auto owner = std::make_shared<int>(42); credit = owner; return owner;
         });
         const auto commits = ALMetalDevice::committedCommandBufferCount();

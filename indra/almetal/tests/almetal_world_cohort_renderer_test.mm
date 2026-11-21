@@ -3,7 +3,7 @@
  * @brief Direct-cohort renderer accounting and ordinary path regressions.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
-#include "almetal_world_prepare_fixture.h"
+#include "almetal_world_inputs_fixture.h"
 #include "../almetalworldcohort.h"
 #include "../almetalworldmaterialdata.h"
 #include <cstdlib>
