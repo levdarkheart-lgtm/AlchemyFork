@@ -1111,11 +1111,8 @@ struct LLPipeline::MetalWorldSimpleCapture
         }
     };
 #include "pipeline_cpu_source_lease_native.inl"
-    static constexpr std::size_t parallel_world_minimum = 1024;
     U64 scene_source_hits = 0, scene_source_builds = 0;
-    U64 scalar_world_views = 0, prepared_world_views = 0, credited_world_views = 0;
-    U64 prepared_world_constant_bytes = 0, prepared_world_uncompacted_bytes = 0;
-    U64 prepared_world_shared_common_records = 0;
+    U64 scalar_world_views = 0;
     U64 cpu_packets_reclaimed = 0, cpu_packets_retained = 0;
     // Owner-only CPU staging, drained in composition before any encoder is
     // opened. Values/probes are owned; resource pointers refer to this exact
@@ -1160,8 +1157,7 @@ struct LLPipeline::MetalWorldSimpleCapture
         retainImage(fetched.overlay.image.get());
     }
 
-    std::shared_ptr<std::atomic<std::uint64_t>> world_prepare_epoch =
-        std::make_shared<std::atomic<std::uint64_t>>(0);
+    U64 world_input_epoch = 0;
     std::vector<ALMetalWorldSimpleBatch> batches;
     std::vector<ALMetalWorldSourceReference> source_references;
     std::vector<ALMetalWorldDrawIndex> draw_order;
@@ -3451,7 +3447,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             const auto log_publication = [](const char* view, const MetalWorldSimpleCapture* value)
             {
                 if (!value) return;
-                static LLCachedControl<bool> preparation_requested(gSavedSettings, "RenderMetalWorldPreparation", false);
                 const auto prepared=value->renderer ? value->renderer->opaquePostDiagnostics() : ALMetalWorldPostDiagnostics{};
                 const auto reasons = [](const auto& counts)
                 {
@@ -3529,10 +3524,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", probe_lighting_encoded(tile/separate)=" << value->probe_tile_lighting_encoded
                     << '/' << value->probe_separate_lighting_encoded
                     << ", optional_visibility_metadata_failures=" << value->visibility_metadata_failures
-                    << ", preparation_requested=" << preparation_requested()
-                    << ", encoded_views(scalar/prepared/credited)=" << value->scalar_world_views << '/' << value->prepared_world_views << '/' << value->credited_world_views
-                    << ", prepared_constant_bytes(compact/original)=" << value->prepared_world_constant_bytes << '/' << value->prepared_world_uncompacted_bytes
-                    << ", shared_common_records=" << value->prepared_world_shared_common_records
+                    << ", encoded_owned_scalar_views=" << value->scalar_world_views
                     << ", cpu_packet_reclaimed/retained=" << value->cpu_packets_reclaimed << '/' << value->cpu_packets_retained
                     << ", direct_cohort_appends/draws=" << value->direct_cohort_appends << '/' << value->direct_cohort_draws
                     << ", direct_cohort_accepted(views/groups/draws)=" << cohorts.views << '/' << cohorts.groups << '/' << cohorts.draws
@@ -11784,7 +11776,7 @@ void LLPipeline::beginMetalEarlyWorldVisibility()
         sShadowRender || sImpostorRender || sRenderingHUDs || mRenderDebugMask || cullingToCutoutSubject() ||
         gSavedSettings.getBOOL("RenderMetalNativeVisibility") || gSavedSettings.getBOOL("RenderMetalCpuCohortVisibility") ||
         gSavedSettings.getBOOL("RenderMetalSourceCommandBanks") || gSavedSettings.getBOOL("RenderMetalJoinStaticDraws") ||
-        gSavedSettings.getBOOL("RenderMetalWorldPreparation") || gSavedSettings.getBOOL("RenderDepthPrePass") ||
+        gSavedSettings.getBOOL("RenderDepthPrePass") ||
         gSavedSettings.getBOOL("RenderMetalSourceGpuVisibility") ||
         (ALMetalStageTimingScope::current() && ALMetalStageTimingScope::current()->window()))
     { ++stats.unsupported;return; }
@@ -17307,18 +17299,15 @@ void LLPipeline::endMetalWorldGBufferCapture()
             error.clear();
         }
     }
-    const auto epoch = capture.world_prepare_epoch->fetch_add(1, std::memory_order_acq_rel) + 1;
+    const auto epoch = ++capture.world_input_epoch;
     auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
         std::move(capture.source_references), std::move(capture.draw_order),
         std::move(capture.source_cohorts),
         std::move(capture.visibility_queries), capture.cpu_sources, capture.world_resources, epoch, &error);
-    // Required work never disappears when optional worker admission is denied.
-    // One owner range and at most one credited GCD range share the same packet.
-    std::shared_ptr<const ALMetalPreparedWorldView> prepared;
+    // Immutable inputs live through synchronous encoding and owner settlement.
     struct CpuCaptureRetirement
     {
         std::shared_ptr<const ALMetalWorldViewInputs>& inputs;
-        std::shared_ptr<const ALMetalPreparedWorldView>& prepared;
         ALMetalWorldGBufferScene& scene;
         std::vector<ALMetalWorldSimpleBatch>& batches;
         std::vector<ALMetalWorldSourceReference>& references;
@@ -17331,10 +17320,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
         U64& retained;
         ~CpuCaptureRetirement() noexcept
         {
-            // All ranges are joined before encoding; this scope ends only
-            // after encoding, query settlement and scene diagnostics finish.
             // Native commands retain resources and constant pages separately.
-            prepared.reset();
+            // CPU storage returns only after encoding and query settlement.
             scene.cpu_source_owner.reset();
             scene.source_rows.reset();
             batches.clear();
@@ -17350,69 +17337,22 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 else ++retained;
             }
         }
-    } retire_cpu_capture{inputs, prepared, scene, capture.batches, capture.source_references, capture.draw_order,
+    } retire_cpu_capture{inputs, scene, capture.batches, capture.source_references, capture.draw_order,
         capture.source_cohorts, capture.source_cohort_draw_count,
         capture.cpu_sources, capture.visibility_queries,
         capture.cpu_packets_reclaimed, capture.cpu_packets_retained};
-    // Stable source tables make the scalar native path substantially cheaper.
-    // Draw count alone did not predict a complete-path worker benefit; keep
-    // this diagnostic explicit until its frame/CPU cost gate is established.
-    static LLCachedControl<bool> prepare_world_inputs(gSavedSettings, "RenderMetalWorldPreparation", false);
-    const bool prepare_world = inputs && prepare_world_inputs() && !capture.animated_sources_active && !scene.animated_gpu_records && !scene.source_rows && !scene.cohort_count &&
-        inputs->scene().drawCount() >= MetalWorldSimpleCapture::parallel_world_minimum;
-    bool credited_preparation = false;
-    if (inputs) scene = inputs->scene();
-    if (prepare_world)
+    if (inputs)
     {
-        auto preparation = ALMetalWorldPreparation::create(inputs, 2, capture.world_prepare_epoch, &error);
-        if (preparation)
-        {
-            ALNativeFrameBudget::Lease credit;
-            if (preparation->jobCount() > 1)
-                // Both ranges share the input and output arrays allocated by
-                // create() above; this synchronous fork adds no owned snapshot
-                // while another capture allocates. Zero charges a JOB only,
-                // not the preexisting world ticket's total CPU storage.
-                credit = ALNativeFrameBudget::instance().tryAcquire(ALNativeFrameBudget::Work::preparation).credit;
-            if (credit)
-            {
-                credited_preparation = true;
-                struct Range { ALMetalWorldPreparation* work; } range{preparation.get()};
-                auto group = dispatch_group_create();
-                dispatch_group_async_f(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
-                    &range, [](void* value) { static_cast<Range*>(value)->work->runJob(1); });
-                preparation->runJob(0);
-                dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
-                dispatch_release(group);
-            }
-            else
-                for (std::size_t job = 0; job < preparation->jobCount(); ++job) preparation->runJob(job);
-            prepared = preparation->finish(&error);
-        }
+        scene = inputs->scene();
+        scene.source_owner = inputs->resourceLease();
     }
-    // Scalar views use the same immutable packet, avoiding a second ticket,
-    // layout pass and temporary constant slab. Encoding consumes its copied
-    // poses synchronously; only native resource generations need GPU lifetime.
-    if (inputs && !prepare_world) scene.source_owner = inputs->resourceLease();
     std::shared_ptr<ALMetalVisibilityResultBatch> visibility_results;
     const bool count_native_draws = ALMetalDevice::commandTimingEnabled();
     const U64 native_draws_before = count_native_draws
         ? ALMetalDevice::encodedDrawCallCount() : 0;
     std::unique_ptr<ALMetalRenderTarget> target;
-    target = prepared ? capture.renderer->renderPrepared(*prepared, &error, &visibility_results)
-        : inputs && !prepare_world ? capture.renderer->renderOwnedInputs(*inputs, &error, &visibility_results) : nullptr;
-    if (target)
-    {
-        if (prepared)
-        {
-            ++capture.prepared_world_views;
-            capture.credited_world_views += credited_preparation;
-            capture.prepared_world_constant_bytes += prepared->stats().constant_bytes;
-            capture.prepared_world_uncompacted_bytes += prepared->stats().uncompacted_constant_bytes;
-            capture.prepared_world_shared_common_records += prepared->stats().shared_common_records;
-        }
-        else ++capture.scalar_world_views;
-    }
+    target = inputs ? capture.renderer->renderOwnedInputs(*inputs, &error, &visibility_results) : nullptr;
+    if (target) ++capture.scalar_world_views;
     if (target && !impostor_bake)
     {
         if (count_native_draws)

@@ -8015,13 +8015,6 @@
       <real>0.00</real>
     </array>
   </map>
-  <key>RenderMetalWorldPreparation</key>
-  <map>
-    <key>Comment</key><string>Diagnostic bounded G-buffer preparation jobs for complete-path cost comparisons. Published scene and material inputs are shared regardless.</string>
-    <key>Persist</key><integer>0</integer>
-    <key>Type</key><string>Boolean</string>
-    <key>Value</key><integer>0</integer>
-  </map>
   <key>RenderMetalMainLightingRenderPass</key>
   <map>
     <key>Comment</key><string>Diagnostic ordinary main-view base, sky, point and projector lighting in one native render encoder. Haze, probe fusion and shader arithmetic remain unchanged. Disabled pending parity and complete-path cost evidence.</string>

@@ -3047,7 +3047,8 @@ bool LLAppViewer::initConfiguration()
             "RenderUseVAO", "RenderPreferStreamDraw", "RenderDownScaleMethod",
             "RenderGLMultiThreadedTextures", "RenderGLContextCoreProfile",
             "RenderMaxOpenGLVersion", "RenderGLContext10bitSDR",
-            "RenderNsightDebugSupport", "RenderMetalMainLightOverlap"})
+            "RenderNsightDebugSupport", "RenderMetalMainLightOverlap",
+            "RenderMetalWorldPreparation"})
         gSavedSettings.retireControl(name);
 
     // Load settings files list
