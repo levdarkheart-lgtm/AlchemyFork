@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-526 -->
+<!-- next-defect-id: PPD-528 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12281,3 +12281,40 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 configure-03 uses existing isolated Python with yaml/llsd and exits0, restoring peer/compiler tests. Full repository Release build0 and actual CMake-built standalone fixture765checks0fail prove mandatory project flags compile/link/run correctly. New source8f2e56b5db/build69417; initial configure1 retained.
 
 - 2026-11-21 after confirming the overlay fixed, owner explicitly requests commit and push. Approval covers the accepted shader/compiler correction, synthetic GPU regression, supporting integration repairs and evidence records. Publish normally to codex/apple-silicon-metal; no default-branch merge, force push, release/tag replacement or private capture upload. This authorization does not close unrelated records.
+
+
+## PPD-526 — Animated water boundary appears to cross dry shoreline land
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex water rendering investigation
+- Discovered: 2026-11-21
+- Original reference: Owner reports a shoreline advancing/retreating over sand in69417 and clarifies the fixed-line comparison is Firestorm or another viewer. Original Alchemy1eb44/parent65c39b7 already contains optional 3D displacement; inspected Firestorm7.1.13 uses planar geometry. Exact owner reference version and terrain-versus-object sand draw remain unknown.
+- Evidence: [Shoreline capture ledger](work/active/water-land-line-20261121.md).
+- Next action: Same-view owner comparison using the existing Lightbox Water waves setting off; confirm whether the advancing/retreating shoreline disappears. Captured native geometry and inspected original Alchemy contracts support inherited 3D waves, while owner clarifies comparison is Firestorm or another viewer. Do not change the renderer or close the incident before the discriminating comparison; PPD-013/497 acceptance and open PPD-015 remain separate.
+- Verification: Exact69417/exe0b8bab95fd3d/OpenHT0.27 verified. Restarted44179 captures early264–265 and late2157–2158, native_error0; late cloned capture replays the reported curved shoreline. Actual wave draw17023 changes3681292depth pixels, all closer; reconstructed replaced finite current-cell geometry reaches only2.95cm above base, water stays inside captured12.19cm displacement bound. RGB/depth masks agree except21pixels, supporting geometry coverage rather than a broad color-only overlay. Original Alchemy wave geometry and stencil admission match the reviewed Metal path; history places 3D waves upstream before the fork. Firestorm7.1.13 inspected source uses planar geometry/animated shading. Owner exact Firestorm version and paired runtime/waves-off comparison remain unknown. Viewer exits0 normally10:36:28.767636Z; Xcode replay stopped. Private exports/hashes and analysis retained; no renderer repair or full port-correctness claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before capture/repair. Preserve earlier accepted haze/SSR and BoM fixes; this new shoreline report has no established cause. Owner authorizes another capture and the required same-build restart. No main/release change or new-fix push approval follows from the capture request.
+
+- 2026-11-21 captured and replayed the affected late view. Retained a failed stencil-only raw KTX export; corrected float Depth-aspect exports support independent numeric reconstruction. Owner clarifies desired fixed separation/advancing and retreating edge, and comparison is Firestorm or another viewer. No missing static shoreline mask was found in original Alchemy; active optional 3D displacement explains the measured native coverage. Keep investigating until an owner waves-off comparison settles this scoped report. No settings changed, new build, closure or push.
+
+## PPD-527 — Water waves help still claims an OpenGL requirement
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Codex native viewer UI maintenance
+- Discovered: 2026-11-21
+- Original reference: Inherited Water waves help describes the original GL4.0 tessellation requirement. Current panel_lightbox_scene.xml1446 and settings_alchemy.xml2548 retain it although ALWaterSurface/ALMetalWorld now implement native Metal tessellation.
+- Evidence: [Shoreline source and control audit](work/active/water-land-line-20261121.md).
+- Next action: Update the English control tooltip and setting comment to describe native 3D water behavior without the obsolete OpenGL requirement, then verify packaged UI and owner-facing control. Keep this separate from PPD-526 geometry acceptance.
+- Verification: Source control binding and active native tessellation path verified; no help-text repair, new build or runtime UI inspection claimed in this checkpoint.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 found while tracing the existing Water waves switch for the shoreline comparison; registered before correction. This is misleading help text, not evidence that the native viewer needs or creates an OpenGL renderer.
