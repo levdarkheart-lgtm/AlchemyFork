@@ -1,4 +1,4 @@
-// Local experiment admission through the real LLImageJ2C implementation.
+// Required production decoder through the real LLImageJ2C implementation.
 #include "linden_common.h"
 #include "llimagej2c.h"
 #include <catch2/catch_test_macros.hpp>
@@ -23,7 +23,7 @@ LLPointer<LLImageJ2C> losslessTexture(S32 components, std::vector<U8>& pixels)
 }
 }
 
-TEST_CASE("OpenHTJ2K experiment reports the decoder without changing disk encoding identity", "[alopenhtj2k]")
+TEST_CASE("OpenHTJ2K reports the decoder without changing disk encoding identity", "[alopenhtj2k]")
 {
     const auto engine=LLImageJ2C::getEngineInfo(), cache=LLImageJ2C::getCacheInfo();
     CHECK(engine.find("OpenHTJ2K 0.27.0 decode; ")==0);
@@ -32,7 +32,7 @@ TEST_CASE("OpenHTJ2K experiment reports the decoder without changing disk encodi
     CHECK(engine!=cache);
 }
 
-TEST_CASE("OpenHTJ2K experiment preserves bottom-up primary and baked auxiliary channels", "[alopenhtj2k]")
+TEST_CASE("OpenHTJ2K preserves bottom-up primary and baked auxiliary channels", "[alopenhtj2k]")
 {
     for (S32 components : {1,2,3,4,5,8}) {
         CAPTURE(components);
@@ -57,7 +57,7 @@ TEST_CASE("OpenHTJ2K experiment preserves bottom-up primary and baked auxiliary 
     }
 }
 
-TEST_CASE("OpenHTJ2K experiment rejects an invalid channel and can decode a later valid request", "[alopenhtj2k]")
+TEST_CASE("OpenHTJ2K rejects an invalid channel and can decode a later valid request", "[alopenhtj2k]")
 {
     std::vector<U8> pixels;
     auto j2c=losslessTexture(4,pixels);

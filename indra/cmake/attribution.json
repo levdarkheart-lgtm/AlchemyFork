@@ -94,8 +94,7 @@
       "holder": "Copyright (c) 2019-2026 Osamu Watanabe; portions Copyright (c) 2021 Aaron Boxer",
       "license": "BSD-3-Clause",
       "homepage": "https://github.com/osamu620/OpenHTJ2K",
-      "text": "cmake/licenses/OpenHTJ2K-LICENSE.txt",
-      "when": "AL_EXPERIMENTAL_OPENHTJ2K"
+      "text": "cmake/licenses/OpenHTJ2K-LICENSE.txt"
     }
   ]
 }

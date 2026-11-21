@@ -9,13 +9,13 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
-GATE = ROOT / "indra/cmake/OpenHTJ2KExperiment.cmake"
+GATE = ROOT / "indra/cmake/OpenHTJ2K.cmake"
 REVISION = "72ea0450d2b522a88e7dbb9c1a9c164fb029c1f2"
 
 
 @unittest.skipUnless(shutil.which("cmake"), "CMake is required for the actual receipt gate")
 class OpenHTReceiptGateTests(unittest.TestCase):
-    def configure(self, change=None, *, legacy=False, dirty=False, decoder="ON"):
+    def configure(self, change=None, *, legacy=False, dirty=False, decoder=None):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()
             source, tools = base / "source", base / "bin"
@@ -41,11 +41,15 @@ class OpenHTReceiptGateTests(unittest.TestCase):
             project.mkdir()
             content = "cmake_minimum_required(VERSION 4.0)\nproject(OpenHTReceipt LANGUAGES CXX)\n"
             if decoder is not None:
-                content += f"set(AL_EXPERIMENTAL_OPENHTJ2K {decoder})\n"
+                content += f'set(AL_EXPERIMENTAL_OPENHTJ2K {decoder} CACHE BOOL "Retired decoder selector")\n'
             content += (f'set(AL_OPENHTJ2K_SOURCE_DIR "{source}")\n'
                        f'set(AL_OPENHTJ2K_LIBRARY "{library}")\n')
             if not legacy: content += f'set(AL_OPENHTJ2K_BUILD_RECEIPT "{receipt_path}")\n'
             content += f'include("{GATE}")\n'
+            content += ('if(DEFINED AL_EXPERIMENTAL_OPENHTJ2K)\n'
+                        '  message(FATAL_ERROR "Retired decoder selector was not removed")\nendif()\n'
+                        'if(NOT TARGET ll::openhtj2k)\n'
+                        '  message(FATAL_ERROR "Required OpenHTJ2K target is missing")\nendif()\n')
             (project / "CMakeLists.txt").write_text(content)
             environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"])
             result = subprocess.run(["cmake", "-S", str(project), "-B", str(base / "build")],
@@ -56,7 +60,7 @@ class OpenHTReceiptGateTests(unittest.TestCase):
         code, output = self.configure()
         self.assertEqual(0, code, output)
 
-    def test_openhtj2k_is_enabled_by_default(self):
+    def test_openhtj2k_is_required_without_a_selector(self):
         code, output = self.configure(decoder=None)
         self.assertEqual(0, code, output)
         self.assertIn("OpenHTJ2K 0.27.0", output)
@@ -66,13 +70,16 @@ class OpenHTReceiptGateTests(unittest.TestCase):
         self.assertNotEqual(0, code)
         self.assertIn("requires OpenHTJ2K texture pixel decoding", output)
 
+    def test_retired_on_cache_is_migrated_and_removed(self):
+        code, output = self.configure(decoder="ON")
+        self.assertEqual(0, code, output)
+        self.assertIn("Migrating retired AL_EXPERIMENTAL_OPENHTJ2K=ON", output)
+
     @unittest.skipUnless(shutil.which("c++"), "C++ preprocessor is required")
-    def test_direct_compile_requires_openhtj2k(self):
-        # Exercise the production guard before dependency includes, so this
-        # check also runs without a configured viewer dependency tree.
+    def test_direct_compile_has_no_selector_and_rejects_retired_off(self):
         source = (ROOT / "indra/llimagej2coj/llimagej2coj.cpp").read_text()
         prefix = source[:source.index('#include "linden_common.h"')]
-        for definitions, succeeds in (([], False), (["-DAL_EXPERIMENTAL_OPENHTJ2K=0"], False),
+        for definitions, succeeds in (([], True), (["-DAL_EXPERIMENTAL_OPENHTJ2K=0"], False),
                                        (["-DAL_EXPERIMENTAL_OPENHTJ2K=1"], True)):
             with self.subTest(definitions=definitions):
                 result = subprocess.run(["c++", "-E", "-x", "c++", *definitions, "-"],
@@ -80,6 +87,25 @@ class OpenHTReceiptGateTests(unittest.TestCase):
                 self.assertEqual(succeeds, result.returncode == 0, result.stderr)
                 if not succeeds:
                     self.assertIn("requires OpenHTJ2K", result.stderr)
+
+    def test_pixel_decoder_and_packaged_license_have_no_alternate_selection(self):
+        source = (ROOT / "indra/llimagej2coj/llimagej2coj.cpp").read_text()
+        self.assertIn('#include "decoder.hpp"', source)
+        self.assertNotIn("opj_decode(", source)
+        self.assertNotIn("opj_end_decompress(", source)
+        self.assertIn("opj_read_header(", source)
+        self.assertIn("opj_encode(", source)
+        build = (ROOT / "indra/llimagej2coj/CMakeLists.txt").read_text()
+        self.assertIn("include(OpenHTJ2K)", build)
+        self.assertIn("target_link_libraries(llimagej2coj PRIVATE ll::openhtj2k)", build)
+        self.assertNotIn("AL_EXPERIMENTAL_OPENHTJ2K", build)
+        notices = json.loads((ROOT / "indra/cmake/attribution.json").read_text())
+        # Notices have a stable dependencies array; find the actual package record.
+        records = next(value for value in notices.values() if isinstance(value, list) and
+                       any(isinstance(row, dict) and row.get("name") == "OpenHTJ2K" for row in value))
+        self.assertNotIn("when", next(row for row in records if row.get("name") == "OpenHTJ2K"))
+        install = (ROOT / "indra/cmake/ViewerInstall.cmake").read_text()
+        self.assertNotIn("if(AL_EXPERIMENTAL_OPENHTJ2K)", install)
 
     def test_changed_archive_digest_is_rejected(self):
         code, output = self.configure(lambda receipt: receipt.update(library_sha256="0" * 64))

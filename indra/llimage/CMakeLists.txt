@@ -46,11 +46,7 @@ target_sources(
 )
 
 target_link_libraries(llimage PRIVATE al::flags)
-if(AL_USE_KDU)
-  target_link_libraries(llimage PUBLIC llkdu)
-else()
-  target_link_libraries(llimage PUBLIC llimagej2coj)
-endif()
+target_link_libraries(llimage PUBLIC llimagej2coj)
 
 target_link_libraries(
   llimage
@@ -73,19 +69,11 @@ if(AL_BUILD_TESTS)
 
   # The library itself: the locks images are read and written under, and the
   # J2C codestream layout and the byte targets it gives.
-  set(al_j2c_experiment_tests "")
-  if(AL_EXPERIMENTAL_OPENHTJ2K)
-    list(APPEND al_j2c_experiment_tests tests/alopenhtj2k_test.cpp)
-  endif()
-  set(al_j2c_crash_repro "")
-  if(AL_EXPERIMENTAL_OPENHTJ2K)
-    list(APPEND al_j2c_crash_repro tests/alg1decode_corpus_test.cpp)
-  endif()
   al_add_test_binary(
     llimage_tests
     PROJECT llimage
-    SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp tests/alimagedecodescheduler_test.cpp ${al_j2c_experiment_tests}
-    BENCH_SOURCES ${al_j2c_crash_repro}
+    SOURCES tests/llimage_test.cpp tests/alj2clayout_test.cpp tests/alimagedecodescheduler_test.cpp tests/alopenhtj2k_test.cpp
+    BENCH_SOURCES tests/alg1decode_corpus_test.cpp
     LIBRARIES llimage ll::openjpeg
   )
 endif()

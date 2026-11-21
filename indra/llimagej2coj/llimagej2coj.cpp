@@ -24,8 +24,8 @@
  * $/LicenseInfo$
  */
 
-#if !defined(AL_EXPERIMENTAL_OPENHTJ2K) || !AL_EXPERIMENTAL_OPENHTJ2K
-#error "Alchemy requires OpenHTJ2K for JPEG2000 texture pixel decoding"
+#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && !AL_EXPERIMENTAL_OPENHTJ2K
+#error "Alchemy requires OpenHTJ2K texture pixel decoding; the retired AL_EXPERIMENTAL_OPENHTJ2K option cannot be OFF"
 #endif
 
 #include "linden_common.h"
@@ -34,11 +34,9 @@
 #include <algorithm>
 #include <vector>
 
-#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && AL_EXPERIMENTAL_OPENHTJ2K
 #include "decoder.hpp"
 #include <limits>
 #include <stdexcept>
-#endif
 
 // this is defined so that we get static linking.
 #include "openjpeg.h"
@@ -51,11 +49,7 @@ LLImageJ2CImpl* fallbackCreateLLImageJ2CImpl()
 
 std::string LLImageJ2COJ::getEngineInfo() const
 {
-#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && AL_EXPERIMENTAL_OPENHTJ2K
     return std::string("OpenHTJ2K 0.27.0 decode; ") + getCacheInfo();
-#else
-    return getCacheInfo();
-#endif
 }
 
 std::string LLImageJ2COJ::getCacheInfo() const
@@ -281,6 +275,7 @@ static void opj_free_user_data_write(void * user_data)
 }
 
 
+// OpenJPEG main-header parsing only. Texture pixels always use OpenHTJ2K.
 class JPEG2KDecode : public JPEG2KBase
 {
 public:
@@ -393,142 +388,9 @@ public:
         return true;
     }
 
-    // KDU-parity single-shot decode. Each call creates a fresh codec,
-    // parses the main header, sets the discard factor, runs opj_decode
-    // against the currently-available bytes, and returns. Truncated
-    // codestreams are tolerated by the patched OpenJPEG (set_strict_mode
-    // OFF demotes "Stream too short" to warnings; the t2.c fix preserves
-    // codeblock chunks accumulated from earlier complete packets when a
-    // later packet truncates).
-    bool decode(U8* data, U32 dataSize, U32* channels, U8 discard_level,
-                S32 first_channel = 0, S32 max_channel_count = 4)
-    {
-        parameters.flags &= ~OPJ_DPARAMETERS_DUMP_FLAG;
 
-        decoder = opj_create_decompress(OPJ_CODEC_J2K);
-        if (!decoder)
-        {
-            return false;
-        }
-        opj_setup_decoder(decoder, &parameters);
-
-        opj_set_info_handler(decoder, info_callback, this);
-        opj_set_warning_handler(decoder, warning_callback, this);
-        opj_set_error_handler(decoder, error_callback, this);
-
-        opj_decoder_set_strict_mode(decoder, OPJ_FALSE);
-
-        stream = opj_stream_create(dataSize, OPJ_TRUE);
-        if (!stream)
-        {
-            return false;
-        }
-        opj_stream_set_user_data(stream, this, opj_free_user_data);
-        opj_stream_set_user_data_length(stream, dataSize);
-        opj_stream_set_read_function(stream, opj_read);
-        opj_stream_set_write_function(stream, opj_write);
-        opj_stream_set_skip_function(stream, opj_skip);
-        opj_stream_set_seek_function(stream, opj_seek);
-
-        buffer = data;
-        size = dataSize;
-        offset = 0;
-
-        if (!opj_read_header(stream, decoder, &image))
-        {
-            // OJ may have already destroyed *p_image on failure; null
-            // it so the destructor doesn't double-free.
-            image = nullptr;
-            return false;
-        }
-
-        // Cap the requested resolution factor to what the codestream
-        // actually contains.
-        U32 effective_discard = discard_level;
-        if (opj_codestream_info_v2_t* info = opj_get_cstr_info(decoder))
-        {
-            if (info->m_default_tile_info.tccp_info &&
-                    info->m_default_tile_info.tccp_info[0].numresolutions > 0)
-            {
-                U32 numres = info->m_default_tile_info.tccp_info[0].numresolutions;
-                if (effective_discard >= numres)
-                {
-                    effective_discard = numres - 1;
-                }
-            }
-            opj_destroy_cstr_info(&info);
-        }
-        opj_set_decoded_resolution_factor(decoder, effective_discard);
-
-        // Channel restriction (KDU-parity: apply_input_restrictions). OJ's
-        // opj_set_decoded_components requires apply_color_transforms ==
-        // OPJ_FALSE -- it cannot do the YCC->RGB inverse during a
-        // restricted decode. That's fine when the requested range lies
-        // entirely past the first three components (which is where MCT is
-        // applied), e.g. the aux-channel decode in llimageworker.cpp:209
-        // (first_channel=4, max_channel_count=4). For ranges that overlap
-        // the MCT components we DON'T restrict, decode everything, and
-        // the consumer extracts the slice at first_channel..first+N-1.
-        //
-        // After a restricted decode, opj_decode COMPACTS image->comps so
-        // that comps[0] holds the data for codestream component
-        // indices[0], comps[1] for indices[1], etc. -- and image->numcomps
-        // becomes the restricted count. mSrcChannelBase records where the
-        // consumer should start reading from in image->comps[].
-        if (image && image->numcomps > 0 && first_channel >= 3
-            && max_channel_count > 0)
-        {
-            const OPJ_UINT32 total = image->numcomps;
-            const OPJ_UINT32 first = (OPJ_UINT32)first_channel;
-            if (first < total)
-            {
-                const OPJ_UINT32 want = (OPJ_UINT32)max_channel_count;
-                const OPJ_UINT32 avail = total - first;
-                const OPJ_UINT32 n = (want < avail) ? want : avail;
-                std::vector<OPJ_UINT32> indices(n);
-                for (OPJ_UINT32 i = 0; i < n; ++i)
-                {
-                    indices[i] = first + i;
-                }
-                if (opj_set_decoded_components(decoder, n, indices.data(), OPJ_FALSE))
-                {
-                    // Output is compacted: comps[0..n-1] now hold
-                    // codestream comps first..first+n-1.
-                    mSrcChannelBase = 0;
-                    mRestrictedCount = (S32)n;
-                }
-            }
-        }
-
-        if (channels)
-        {
-            // Report the codestream's full component count regardless of
-            // restriction. The consumer uses (image_channels - first_channel)
-            // to know how many components are available; combined with
-            // mSrcChannelBase it can locate them in image->comps[].
-            *channels = image->numcomps;
-        }
-
-        if (!opj_decode(decoder, stream, image))
-        {
-            opj_end_decompress(decoder, stream);
-            return false;
-        }
-
-        opj_end_decompress(decoder, stream);
-        return image && image->numcomps;
-    }
-
-    opj_image_t* getImage() { return image; }
     std::string getLastError() const { return joinedMessages(); }
 
-    // Where the consumer should start reading from in image->comps[].
-    // Defaults to first_channel (uncompacted layout); becomes 0 when
-    // opj_set_decoded_components compacted the output.
-    S32 getSrcChannelBase(S32 first_channel) const
-    {
-        return (mSrcChannelBase >= 0) ? mSrcChannelBase : first_channel;
-    }
 
 private:
     opj_dparameters_t         parameters;
@@ -536,12 +398,7 @@ private:
     opj_codec_t*              decoder = nullptr;
     opj_stream_t*             stream = nullptr;
     opj_codestream_info_v2_t* codestream_info = nullptr;
-    // -1 means "no channel restriction applied; consumer should use
-    // first_channel as the base index into image->comps[]". When a
-    // restriction is applied this is set to 0 and image->comps[] is
-    // compacted to hold just the requested slice.
-    S32                       mSrcChannelBase = -1;
-    S32                       mRestrictedCount = 0;
+
 };
 
 class JPEG2KEncode : public JPEG2KBase
@@ -971,12 +828,11 @@ bool LLImageJ2COJ::decodeImpl(LLImageJ2C &base, LLImageRaw &raw_image, F32 decod
         ++position;
     }
 
-#if defined(AL_EXPERIMENTAL_OPENHTJ2K) && AL_EXPERIMENTAL_OPENHTJ2K
     // Keep the original per-call byte limit and raw-image contract. The outer
     // ImageDecode pool owns parallelism; each codec stays on its calling thread.
     static const bool announced = []
     {
-        LL_INFOS("Texture") << "Experimental JPEG2000 decoder: OpenHTJ2K 0.27.0; "
+        LL_INFOS("Texture") << "JPEG2000 pixel decoder: OpenHTJ2K 0.27.0; "
                             << "one caller thread per image" << LL_ENDL;
         return true;
     }();
@@ -1068,112 +924,6 @@ bool LLImageJ2COJ::decodeImpl(LLImageJ2C &base, LLImageRaw &raw_image, F32 decod
         LL_DEBUGS("Texture") << "OpenHTJ2K decode failed: " << error.what() << LL_ENDL;
     }
     return true; // done; LLImageJ2C deletes raw data when decodeFailed() was set
-#else
-    // Single-shot decode. Matches KDU's per-call decode pattern: build a
-    // fresh codec, parse header, decode whatever bytes are present, copy
-    // out, destroy. The patched OpenJPEG handles truncation tolerantly
-    // (set_strict_mode OFF + t2.c chunk-preservation fix); each call's
-    // output reflects only what the current bytestream supports.
-    JPEG2KDecode decoder(0);
-
-    U32 image_channels = 0;
-    S32 data_size = base.getDataSize();
-    S32 max_bytes = base.getMaxBytes() ? base.getMaxBytes() : data_size;
-    if (max_bytes > data_size)
-    {
-        max_bytes = data_size;
-    }
-    bool decoded = decoder.decode(base.getData(), max_bytes, &image_channels,
-                                  base.mDiscardLevel,
-                                  first_channel, max_channel_count);
-
-    S32 channels = (S32)image_channels - first_channel;
-    channels = llmin(channels, max_channel_count);
-    channels = llmax(channels, 0);
-
-    if (!decoded)
-    {
-        std::string opj_err = decoder.getLastError();
-        base.setLastError(opj_err.empty() ? std::string("OpenJPEG decode failed") : opj_err);
-        base.decodeFailed();
-
-        if (channels > 0 && raw_image.getComponents() != channels)
-        {
-            raw_image.resize(raw_image.getWidth(), raw_image.getHeight(), S8(channels));
-        }
-
-        LL_DEBUGS("Texture") << "ERROR -> decodeImpl: failed to decode image! "
-                             << (opj_err.empty() ? "(no OpenJPEG message)" : opj_err) << LL_ENDL;
-        return true; // done
-    }
-
-    opj_image_t *image = decoder.getImage();
-    if (!image || !image->numcomps)
-    {
-        base.setLastError("OpenJPEG returned no image components");
-        base.decodeFailed();
-        return true; // done
-    }
-    if (channels <= 0)
-    {
-        base.setLastError("Requested first_channel beyond decoded components");
-        base.decodeFailed();
-        return true; // done
-    }
-
-    // Where to start reading from in image->comps[]. When OJ's channel
-    // restriction was applied, the output is compacted (comps[0..N-1]
-    // hold the requested slice) and src_base == 0. Otherwise the
-    // codestream's full component set is present and src_base ==
-    // first_channel.
-    const S32 src_base = decoder.getSrcChannelBase(first_channel);
-
-    // Dimensions come from the first component of the slice -- it's
-    // always populated. comps[0] could be data-NULL when the restriction
-    // path didn't run but the consumer asked for first_channel > 0.
-    if (src_base < 0 || (U32)src_base >= image->numcomps)
-    {
-        base.setLastError("Source component base out of range");
-        base.decodeFailed();
-        return true; // done
-    }
-    U32 comp_width = image->comps[src_base].w;
-    U32 f = image->comps[src_base].factor;
-    U32 width = image->comps[src_base].w;
-    U32 height = image->comps[src_base].h;
-
-    raw_image.resize(U16(width), U16(height), S8(channels));
-    U8 *rawp = raw_image.getData();
-
-    // Comp->raw copy with Y-flip (OJ comps are top-down; raw_image is
-    // bottom-up for OpenGL).
-    for (S32 dest = 0; dest < channels; dest++)
-    {
-        const S32 src_comp = src_base + dest;
-        if ((U32)src_comp >= image->numcomps || !image->comps[src_comp].data)
-        {
-            LL_DEBUGS("Texture") << "ERROR -> decodeImpl: src_comp " << src_comp
-                                 << " missing data (numcomps=" << image->numcomps
-                                 << ")" << LL_ENDL;
-            continue;
-        }
-
-        S32 offset = dest;
-        for (S32 y = (S32)(height - 1); y >= 0; y--)
-        {
-            const S32 src_row = y * (S32)comp_width;
-            for (U32 x = 0; x < width; x++)
-            {
-                rawp[offset] = (U8) image->comps[src_comp].data[src_row + (S32)x];
-                offset += channels;
-            }
-        }
-    }
-
-    base.setDiscardLevel(f);
-
-    return true; // done
-#endif
 }
 
 

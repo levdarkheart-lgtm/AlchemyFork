@@ -171,7 +171,6 @@ jobs:
             -DAL_USE_LTO=OFF -DAL_USE_TRACY=OFF -DAL_ENABLE_RELEASE_DEBUG_LOGGING=OFF \
             -DAL_USE_SENTRY=OFF -DAL_CHANNEL:STRING="$CHANNEL" -DAL_GRID=agni \
             -DAL_TEMPLATE_VERIFIER_MASTER_URL="file://$template" \
-            -DAL_EXPERIMENTAL_OPENHTJ2K=ON \
             -DAL_OPENHTJ2K_SOURCE_DIR="$RUNNER_TEMP/openhtj2k/source" \
             -DAL_OPENHTJ2K_LIBRARY="$RUNNER_TEMP/openhtj2k/build/libopenhtj2k.a" \
             -DAL_OPENHTJ2K_BUILD_RECEIPT="$RUNNER_TEMP/openhtj2k/build-receipt.json"

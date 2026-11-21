@@ -1,11 +1,16 @@
-# Required pinned CPU texture decoder. A CI build must carry a matching build receipt;
-# the original local experiment keeps its exact prebuilt-archive guard.
-option(AL_EXPERIMENTAL_OPENHTJ2K "Use the required OpenHTJ2K texture pixel decoder" ON)
-if(NOT AL_EXPERIMENTAL_OPENHTJ2K)
-  message(FATAL_ERROR "This viewer requires OpenHTJ2K texture pixel decoding; AL_EXPERIMENTAL_OPENHTJ2K cannot be OFF")
+# Sole required CPU texture pixel decoder. Receipt/archive/source checks apply
+# to every build; decoder selection is not a configuration option.
+include_guard(GLOBAL)
+if(DEFINED AL_EXPERIMENTAL_OPENHTJ2K)
+  if(NOT AL_EXPERIMENTAL_OPENHTJ2K)
+    message(FATAL_ERROR "This viewer requires OpenHTJ2K texture pixel decoding; the retired AL_EXPERIMENTAL_OPENHTJ2K option cannot be OFF")
+  endif()
+  message(STATUS "Migrating retired AL_EXPERIMENTAL_OPENHTJ2K=ON; OpenHTJ2K is unconditionally required")
+  unset(AL_EXPERIMENTAL_OPENHTJ2K CACHE)
+  unset(AL_EXPERIMENTAL_OPENHTJ2K)
 endif()
 if(AL_USE_KDU)
-  message(FATAL_ERROR "OpenHTJ2K experiment requires the open-source JPEG2000 implementation")
+  message(FATAL_ERROR "OpenHTJ2K pixel decoding requires the open-source JPEG2000 header/encoding implementation")
 endif()
 
 set(AL_OPENHTJ2K_SOURCE_DIR "" CACHE PATH "Pinned OpenHTJ2K source checkout")
@@ -13,13 +18,13 @@ set(AL_OPENHTJ2K_LIBRARY "" CACHE FILEPATH "Pinned ARM64 Release OpenHTJ2K stati
 set(AL_OPENHTJ2K_BUILD_RECEIPT "" CACHE FILEPATH "Receipt from tools/metal/build_openhtj2k.sh")
 foreach(path AL_OPENHTJ2K_SOURCE_DIR AL_OPENHTJ2K_LIBRARY)
   if(NOT IS_ABSOLUTE "${${path}}" OR NOT EXISTS "${${path}}")
-    message(FATAL_ERROR "${path} must point to the explicit local experiment dependency")
+    message(FATAL_ERROR "${path} must point to the explicit pinned OpenHTJ2K dependency")
   endif()
 endforeach()
 execute_process(COMMAND git -C "${AL_OPENHTJ2K_SOURCE_DIR}" rev-parse HEAD
   RESULT_VARIABLE openht_git_result OUTPUT_VARIABLE openht_revision OUTPUT_STRIP_TRAILING_WHITESPACE)
 if(NOT openht_git_result EQUAL 0 OR NOT openht_revision STREQUAL "72ea0450d2b522a88e7dbb9c1a9c164fb029c1f2")
-  message(FATAL_ERROR "OpenHTJ2K experiment requires the benchmarked 0.27.0 source revision")
+  message(FATAL_ERROR "OpenHTJ2K requires the pinned 0.27.0 source revision")
 endif()
 execute_process(COMMAND git -C "${AL_OPENHTJ2K_SOURCE_DIR}" status --porcelain --untracked-files=all
   RESULT_VARIABLE openht_status_result OUTPUT_VARIABLE openht_status OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -53,7 +58,7 @@ if(AL_OPENHTJ2K_BUILD_RECEIPT)
     message(FATAL_ERROR "OpenHTJ2K build receipt does not match the pinned clean ARM64 Release source/archive")
   endif()
 elseif(NOT openht_archive_sha256 STREQUAL "43190158ea345322dcdc89175d5ec36e8212933fdf83236b3f8fb668dd225182")
-  message(FATAL_ERROR "OpenHTJ2K experiment archive differs from the benchmarked ARM64 Release archive; rebuilt archives require AL_OPENHTJ2K_BUILD_RECEIPT")
+  message(FATAL_ERROR "OpenHTJ2K archive differs from the benchmarked ARM64 Release archive; rebuilt archives require AL_OPENHTJ2K_BUILD_RECEIPT")
 endif()
 file(READ "${AL_OPENHTJ2K_LIBRARY}" openht_archive_magic OFFSET 0 LIMIT 8 HEX)
 execute_process(COMMAND xcrun lipo -archs "${AL_OPENHTJ2K_LIBRARY}"
