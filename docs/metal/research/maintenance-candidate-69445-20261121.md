@@ -1,6 +1,6 @@
 # Maintenance candidate 69445 — 2026-11-21
 
-Status: **ready for owner testing**.
+Status: **owner verified; commit and push approved for this candidate**.
 
 Candidate: `/Users/dekstroza/Alchemy-candidates/Alchemy Metal Maintenance 69445.app`
 
@@ -10,8 +10,10 @@ Executable SHA256: `0c5de0c90878f85c7e71296c279d303adda475be39a9c31923b10a942e2b
 Metal library SHA256: `6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793`.
 
 Accepted 69417 remains separately preserved and its executable hash was rechecked.
-No viewer launch, login, saved-setting change or live performance recording was
-performed. All changes are local; pushing requires the owner's explicit approval.
+Qualification itself did not launch or log into the viewer or change saved settings.
+The owner then requested launch of the exact staged app, tested it and approved
+committing/pushing this maintenance scope. No automated performance collection
+was performed.
 
 ## Implemented scope
 
@@ -56,8 +58,8 @@ Host: Apple M1 Max, 64 GiB, macOS 26.5.2, Xcode 26.6.
 The main executable has bundle-relative and system Swift search paths, with no
 source/build-directory rpath or direct OpenGL/Vulkan framework dependency. This
 is static qualification; runtime context and foreign media subprocess gates remain
-separate. The candidate is for owner testing, with no whole-viewer FPS gain or
-complete-product/release claim.
+separate. The owner has accepted the candidate; no whole-viewer FPS gain or
+complete-product/release claim is established.
 
 Receipts, inventories, exact commands and retained failed attempts:
 `artifacts/metal/production-convergence-20261121/`. A compact copy is also at
@@ -75,8 +77,28 @@ Other retained work includes completion/service-age instrumentation, frame-trigg
 HTTP progress, cancellation-aware permit admission, General job separation, immutable
 geometry/render preparation, safe reply service around GPU waits, measured credit
 policies and upload CPU preparation. Memory and GPU-completion ownership bounds
-remain in force. Owner runtime checks should cover loading/teleport/refinement,
-preferences, shader reload and shutdown; broad parity and prolonged stability stay open.
+remain in force. Owner acceptance of this candidate does not separately establish
+exhaustive loading/teleport, reload/shutdown, broad parity or prolonged stability gates.
 
 [Defect register](../POST_PORT_DEFECTS.md) retains PPD-527–559 and all prior history.
 Automated checks do not close owner incidents or approve pushing.
+
+
+## Owner acceptance and publication approval
+
+On 2026-11-21, after the owner-requested launch of the exact staged69445 app,
+the owner reports **"looks good ...verified"** and explicitly instructs
+**"you can commit and push"**, then asks to display outstanding work.
+
+Approval covers the implemented Maintenance69445 code at a2aaaf2942 and its
+qualification, cleanup and handoff records on codex/apple-silicon-metal. PPD527–555
+and557–559 are verified with owner acceptance; PPD556 remains investigating.
+The publication is a normal push to origin/codex/apple-silicon-metal, with no tags,
+release, default-branch merge or authorization for future untested fixes. Exact
+outgoing/remote identity is retained in the private owner-approval-push receipt.
+
+Current rendering source remains indra6e3b13c1f4076c5244bfa708ce564d8e03cd6cdd.
+Owner acceptance supplements the executed tests; it does not invent a new FPS
+measurement, GPU capture or separate reproduction of earlier incidents. The
+[active next-work list](../work/active/metal-port.md#outstanding-work-in-priority-order)
+keeps those investigations distinct from completed maintenance repairs.

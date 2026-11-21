@@ -4,13 +4,14 @@ Observed 2026-11-21, Apple M1 Max / 64 GiB / macOS 26.5.2 / Xcode 26.6.
 Branch: codex/apple-silicon-metal, canonical checkout.
 **Renderer code checkpoint:** `a2aaaf2942`
 Indra tree: `6e3b13c1f4076c5244bfa708ce564d8e03cd6cdd`.
-Maintenance **26.4.0.69445 is staged and ready for owner testing**.
+Maintenance **26.4.0.69445 is owner verified; commit/push approved**.
 [Candidate report](../research/maintenance-candidate-69445-20261121.md) records scope,
 exact app/source hashes, validation and residuals.
 
 Owner authorizes coherent Apple-first repairs, removal of obsolete graphics
 preferences and abandoned disabled experiments, plus a separate candidate for
-manual testing. All changes remain local. Candidate creation performed no
+manual testing. Publication approval covers this accepted branch scope. Candidate
+creation performed no
 push/release, viewer launch/login, runtime settings modification or live profiling.
 The owner subsequently requested launch: the exact staged69445 executable/hash
 was verified and process11514 observed running. No login action or scene/profile
@@ -22,7 +23,8 @@ collection was requested or performed (owner-launch-69445.json).
 commands, source identities, failures, implemented scope and actionable residuals.
 [Source audit](../research/scheduling-source-assessment-20261121.md) distinguishes
 confirmed mechanisms from unmeasured costs. PPD-527–559 are retained in the
-[defect register](../POST_PORT_DEFECTS.md); owner acceptance remains pending.
+[defect register](../POST_PORT_DEFECTS.md). The owner accepted this maintenance
+candidate and explicitly authorized commit/push on2026-11-21.
 
 - Worker configuration is validated/logged. Timed retries release service,
   priority has bounded fairness and lifecycle/ticket identity, no-op updates
@@ -80,23 +82,28 @@ No current owner session or settings are inferred from this preserved app.
 | M-013 | doing | Alchemy/RLVa/media features retained; broader runtime qualification remains. |
 
 No product/release completion. PPD-319 GPU completion/performance, broad parity,
-loading, prolonged stability, foreign subprocess qualification and owner acceptance
-stay open. Reproducible distinct open-source release, strict no-GL and
+loading, prolonged stability and foreign subprocess qualification stay open.
+Candidate acceptance is complete; broad product acceptance remains distinct. Reproducible distinct open-source release, strict no-GL and
 independent build/review evidence remain required. Source/build/component checks
 do not establish whole-viewer runtime or performance acceptance. Prior evidence
 remains in [pre-convergence history](archive/CURRENT-pre-production-convergence-20261121.md).
 
 ## Exact next actions
 
-Owner tests the staged app at
-`/Users/dekstroza/Alchemy-candidates/Alchemy Metal Maintenance 69445.app`,
-covering loading/teleport/refinement, graphics controls, shader reload and shutdown.
-Executable SHA256: `0c5de0c90878f85c7e71296c279d303adda475be39a9c31923b10a942e2b9d89`.
-Do not launch/login/profile without the applicable owner instruction. No push is
-authorized by automated success or candidate delivery.
+Owner states "looks good ...verified" and "you can commit and push". Publication
+uses a normal push to origin/codex/apple-silicon-metal, with no tags or release;
+the private owner-approval-push receipt records exact local/remote identity. The
+staged app/source identities are unchanged. Present the outstanding-work list
+before selecting the next implementation.
 
-Engineering follow-through starts with PPD-556's bounded request scheduler and
-nonfatal admission design. Handoff/service-age instrumentation, immutable geometry
-preparation, queue service/capacity and upload CPU work remain in the linked ledger.
-PPD-527–555/557–559 are ready_for_owner; PPD-556 remains investigating.
-Owner acceptance, whole-viewer performance and release gates remain open.
+[Outstanding priorities](../work/active/metal-port.md#outstanding-work-in-priority-order)
+start with PPD-556's bounded request scheduler/nonfatal admission design, then
+asset service/cancellation, General jobs, immutable scene preparation, safe reply
+service, upload policies and compilation ownership. Earlier reports319/002/311/015
+and broader parity/runtime/release qualification remain distinct unresolved work.
+PPD-527–555/557–559 are verified with owner acceptance; PPD-556 stays investigating.
+
+Approval covers this tested candidate and its records. Future fixes require their
+own executed checks and applicable owner publication approval. No new viewer
+launch/login, performance collection or full-product completion is authorized or
+implied by committing/pushing this scope.

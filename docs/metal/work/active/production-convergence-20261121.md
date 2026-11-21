@@ -1,11 +1,12 @@
 # Production convergence candidate — 2026-11-21
 
-Status: candidate ready for owner testing
+Status: owner-verified candidate; publication approved
 Owner: root integrator, canonical codex/apple-silicon-metal worktree.
 Base: 83d33894c37087025616bd9aaf1d831cc574da97 / indra05091a15a7.
 Owner authorizes proper scheduling/ownership repairs, coherent Apple-first infrastructure,
 graphics preference cleanup, and a separate candidate viewer for manual testing.
-All proposed fixes stay local; no push/release or automatic login authorized.
+Publication was initially held for owner testing; the owner now explicitly approves
+commit/push of Maintenance69445. No release or automatic login is authorized.
 
 ## Ownership and acceptance
 
@@ -48,11 +49,11 @@ completion/performance, parity and product release gates remain open.
 
 ## Next executable action
 
-Owner tests the separate verified Maintenance69445 candidate; exact source/app
-identities and validation are in the final handoff below. No push is authorized.
-First engineering follow-through is PPD556's bounded request-owned scheduler and
-nonfatal admission, followed by the explicit residual action map. No implemented
-source edits or agent work remain in flight.
+Record the owner's verification; normal publication of the approved Maintenance69445
+scope uses origin/codex/apple-silicon-metal with no tags/release. Display the
+[ordered outstanding work](metal-port.md#outstanding-work-in-priority-order).
+PPD556 remains the first correctness implementation; other residuals below retain
+their architecture/policy/investigation boundaries. All existing source work is frozen.
 
 ## Root pre-fix ownership mapping
 
@@ -201,8 +202,7 @@ or first-live-decode evidence.
 | Upload/publication/producer credits | Keep memory, age/fairness and oversized progress bounds. Collect denials, backlog age and service capacity before revising per-frame credits; no universal default or FPS attribution established. |
 | Single upload owner CPU preparation | Preserve serial flush/batch ownership. Investigate immutable pixel conversion/alpha/mask preparation as an independent stage, with actual ownership/lifetime and total-cost evidence. |
 | Pipeline cache concurrency | Predictable point variants now eager. Archive cache mutex still covers native creation; separate archive mutation from compilation only after first-use/startup evidence and safety design. |
-| Required decoder559 | Implemented in a2aaaf2942: unconditional production OpenHT module/link/tests/notices, legacyON migration/OFF rejection and unreachable alternate pixel decode removed. Actual required decode/header/encoding/truncation checks and packaged licence must pass in final candidate. |
-| Owner/runtime acceptance | Test loading/teleport/refinement, stale/cancel/reload/shutdown and graphics controls in the separate candidate. Preserve accepted baseline. Whole-viewer performance, prolonged stability, broad parity, runtime no-GL and foreign subprocess/release gates remain open. |
+| Broader runtime qualification | Owner accepted Maintenance69445 and approved publication. Separate whole-viewer performance, prolonged stability, exhaustive parity, runtime no-GL and foreign subprocess/release gates remain open. Preserve accepted baselines and exact source/active-setting evidence. |
 
 Default-off alone does not identify dead code. Supported quality options and
 selected CPU producers, bounded main-lighting chain/shadow-view overlap, probe
@@ -322,3 +322,28 @@ checking no other Alchemy viewer process was present. Process11514 was observed
 running from that exact path; owner-launch-69445.json retains the observation.
 No agent login, destination/preset override, screenshot or live performance
 collection was performed. This is launch evidence, not owner test acceptance.
+
+
+## Owner verification and publication authorization — 2026-11-21
+
+After the exact staged viewer launch, owner states "looks good ...verified" and
+"you can commit and push", then requests the outstanding-items display. This
+authorizes the implemented69445 scope plus its qualification/cleanup/handoff
+records. PPD527–555 and557–559 move to verified, Owner verification passed and
+Push approval granted, retaining all earlier failures/history. PPD556's unresolved
+request/retry contract remains investigating; no future repair is approved here.
+
+Remote fetch observes origin/codex/apple-silicon-metal at797643859d, with0remote-only
+and25local commits througha7728fbc6a. The outgoing scope contains the accepted
+maintenance implementation and its source/qualification records, plus the two
+preceding source-identical shoreline investigation/owner-confirmation docs. It
+contains no candidate binary, private artifact/capture, unrelated worktree or
+unapproved source implementation. The rendering tree stays
+6e3b13c1f4076c5244bfa708ce564d8e03cd6cdd; no rebuild is needed for this approval-only
+documentation update. Run the ordinary harness, commit and perform a normal push
+with push.followTags=false; capture local/remote heads in owner-approval-push.json.
+
+Remaining scope is consolidated in the active ledger's nine ordered rows. The
+completed decoder migration is removed from the remaining-actions table; no
+current saturated-queue reproduction, FPS improvement, exhaustive feature test,
+release publication or closure of older owner incidents is invented.
