@@ -203,13 +203,12 @@ TEST_CASE("Producer recipes preserve special maps and do not request unsupported
     auto legacy = ALSceneProducerDrainNative::ordinaryFlavor(LLRenderPass::PASS_NORMSPEC + 1, info, policy);
     REQUIRE(legacy); CHECK(legacy->normal_map); CHECK(legacy->specular_map);
     CHECK(legacy->rigged); CHECK_FALSE(legacy->cohort_source);
-    policy.pass.animated_sources_active = policy.pass.animated_gpu_records_active = true;
+    policy.pass.animated_sources_active = true;
     legacy = ALSceneProducerDrainNative::ordinaryFlavor(LLRenderPass::PASS_NORMSPEC + 1, info, policy);
-    REQUIRE(legacy); CHECK_FALSE(legacy->animated_source); CHECK_FALSE(legacy->animated_gpu_source);
+    REQUIRE(legacy); CHECK_FALSE(legacy->animated_source);
     auto capture_policy = policy.pass; capture_policy.rigged = true;
-    const auto captured = ALSceneSourcePolicyNative::select(info, 1, false, false, capture_policy,
-        policy.native_visibility, policy.native_resources, policy.native_groups);
-    CHECK(captured.flavor.animated_source); CHECK(captured.flavor.animated_gpu_source);
+    const auto captured = ALSceneSourcePolicyNative::select(info, 1, false, false, capture_policy);
+    CHECK(captured.flavor.animated_source);
     CHECK_FALSE(ALSceneProducerDrainNative::ordinaryFlavor(999, info, policy));
     LLMatrix4 animated_uv;
     info.mTextureMatrix = &animated_uv;

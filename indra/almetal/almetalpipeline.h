@@ -500,10 +500,7 @@ private:
     void recordIndirectSubmission(std::uint32_t command_slots) noexcept;
     friend class ALMetalShadowIndirectCommands;
     friend class ALMetalShadowMaterials;
-    friend class ALMetalWorldResources;
     friend class ALMetalWorldSourceFrameView;
-    friend class ALMetalWorldSourceCommands;
-    friend class ALMetalWorldEarlyVisibilityRead;
 };
 
 class ALMetalComputeEncoder final
@@ -546,5 +543,4 @@ private:
     std::unique_ptr<Impl> mImpl;
     // Resource declarations only; bindings and dispatch remain wrapper-owned.
     void* nativeHandleForResources() const noexcept;
-    friend class ALMetalWorldSourceCommands;
 };

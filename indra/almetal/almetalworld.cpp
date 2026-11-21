@@ -12,6 +12,7 @@
 #include "almetaldiagnostictelemetry.h"
 #include "almetalworldprepare.h"
 #include "almetalworldvisibility.h"
+#include "almetalworldsourcepolicy.h"
 #include "almetalworldmaterialdata.h"
 #include "almetalshadowindirect.h"
 #include "almetalshadowmaterials.h"
@@ -1656,17 +1657,8 @@ struct ALMetalWorldFrameData::Impl
     std::shared_ptr<const ALMetalShaderLibrary> builtin_library;
     std::uint64_t builtin_library_epoch = 0;
     std::unique_ptr<ALMetalShadowMaterials> shadow_materials;
-    struct ResourceContext
-    {
-        void* library = nullptr;
-        ALMetalWorldResourceLimits limits;
-        std::weak_ptr<ALMetalWorldResources> value;
-    };
-    std::vector<ResourceContext> resource_contexts;
-    std::vector<std::weak_ptr<ALMetalWorldSourcePages>> source_contexts;
-    ALMetalWorldSourcePages::PublicationAdmission source_publication_admission;
-    std::shared_ptr<ALMetalWorldSourcePages::PublicationAdmission> direct_source_admission;
-    std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
+    ALMetalWorldPublicationAdmission source_publication_admission;
+    std::shared_ptr<ALMetalWorldPublicationAdmission> direct_source_admission;
     struct ProbeCandidateKey
     {
         ALMetalProbeCandidatePacket packet{};
@@ -1815,15 +1807,6 @@ void ALMetalWorldFrameData::beginFrame(std::uint64_t generation)
     mImpl->initialized = true;
     mImpl->generation = generation;
     if (mImpl->shadow_materials) mImpl->shadow_materials->beginFrame(generation);
-    if (mImpl->source_commands) mImpl->source_commands->trimUnusedBanks();
-    // This owner maintenance also runs while optional source banks are OFF.
-    // Idle weak cohort proofs must not retain native texture generations
-    // after their CPU/native publishers die; submitted views remain readers.
-    for (auto it=mImpl->source_contexts.begin();it!=mImpl->source_contexts.end();)
-    {
-        if (auto context=it->lock()) {context->trimUnusedCohorts();++it;}
-        else it=mImpl->source_contexts.erase(it);
-    }
     mImpl->entries.clear();
     mImpl->palettes.clear();
     mImpl->terrain_passes.clear();
@@ -1866,54 +1849,11 @@ ALMetalShadowMaterialStats ALMetalWorldFrameData::shadowMaterialStats() const no
         ? mImpl->shadow_materials->stats() : ALMetalShadowMaterialStats{};
 }
 
-std::shared_ptr<ALMetalWorldResources> ALMetalWorldFrameData::worldResources(
-    const ALMetalShaderLibrary& library, ALMetalWorldResourceLimits limits, std::string* error,
-    ALMetalWorldResourceFallback* failure)
-try
-{
-    if (failure) *failure = ALMetalWorldResourceFallback::none;
-    auto& contexts = mImpl->resource_contexts;
-    std::erase_if(contexts, [](const auto& context) { return context.value.expired(); });
-    for (const auto& context : contexts)
-        if (context.library == library.nativeHandle() &&
-            context.limits.maximum_tables == limits.maximum_tables &&
-            context.limits.maximum_buffer_bytes == limits.maximum_buffer_bytes)
-            if (auto value = context.value.lock()) return value;
-    auto value = ALMetalWorldResources::create(*mImpl->device, library, limits, error, failure);
-    if (value) contexts.push_back({library.nativeHandle(), limits, value});
-    return value;
-}
-catch (const std::bad_alloc&) { if (failure) *failure = ALMetalWorldResourceFallback::host_allocation; if (error) error->clear(); return {}; }
-
-std::shared_ptr<ALMetalWorldSourcePages> ALMetalWorldFrameData::worldSourcePages(
-    const ALMetalShaderLibrary& library, std::uint32_t max_anisotropy, std::string* error)
-try
-{
-    auto& contexts = mImpl->source_contexts;
-    std::erase_if(contexts, [](const auto& value) { return value.expired(); });
-    for (const auto& weak : contexts)
-        if (auto value = weak.lock(); value && value->belongsTo(*mImpl->device, library, max_anisotropy))
-            return value;
-    auto value = ALMetalWorldSourcePages::create(*mImpl->device, library, max_anisotropy, {}, error);
-    if (value)
-    {
-        value->setPublicationAdmission(mImpl->source_publication_admission);
-        contexts.push_back(value);
-    }
-    return value;
-}
-catch (const std::bad_alloc&) { return {}; }
-
 void ALMetalWorldFrameData::setSourcePublicationAdmission(
-    ALMetalWorldSourcePages::PublicationAdmission admission)
+    ALMetalWorldPublicationAdmission admission)
 {
     mImpl->source_publication_admission = std::move(admission);
     mImpl->direct_source_admission.reset();
-    if (mImpl->source_commands)
-        mImpl->source_commands->setPublicationAdmission(mImpl->source_publication_admission);
-    for (const auto& weak : mImpl->source_contexts)
-        if (auto context = weak.lock())
-            context->setPublicationAdmission(mImpl->source_publication_admission);
 }
 
 bool ALMetalWorldFrameData::requestSourcePublication(
@@ -1924,7 +1864,7 @@ bool ALMetalWorldFrameData::requestSourcePublication(
     try
     {
         if(!mImpl->direct_source_admission)
-            mImpl->direct_source_admission=std::make_shared<ALMetalWorldSourcePages::PublicationAdmission>(mImpl->source_publication_admission);
+            mImpl->direct_source_admission=std::make_shared<ALMetalWorldPublicationAdmission>(mImpl->source_publication_admission);
         // Reentrant policy replacement must not destroy a running callable.
         const auto policy=mImpl->direct_source_admission;
         credit=(*policy)(work);return bool(credit);
@@ -2124,31 +2064,6 @@ ALMetalProbeCandidatePreparation ALMetalWorldFrameData::prepareProbeCandidates(
         if (binding.native_prefix) return failure();
         return policy_decline(Reason::exception);
     }
-}
-
-std::shared_ptr<ALMetalWorldSourceCommands> ALMetalWorldFrameData::worldSourceCommands(std::string* error)
-{
-    if (!mImpl->source_commands)
-    {
-        auto commands = ALMetalWorldSourceCommands::create(*mImpl->device, {}, error);
-        if (!commands) return {};
-        commands->setPublicationAdmission(mImpl->source_publication_admission);
-        mImpl->source_commands = std::move(commands);
-    }
-    return mImpl->source_commands;
-}
-
-bool ALMetalWorldFrameData::reloadShadowMaterials(
-    const ALMetalShaderLibrary& library, std::string* error)
-{
-    if (!mImpl->shadow_materials) return true;
-    auto replacement = ALMetalShadowMaterials::create(*mImpl->device, library, error);
-    if (!replacement) return false;
-    if (mImpl->initialized) replacement->beginFrame(mImpl->generation);
-    // Passes hold the old Pool; submitted commands independently retain their
-    // immutable entries, slots and resources. No GPU wait or arena reset.
-    mImpl->shadow_materials.swap(replacement);
-    return true;
 }
 
 bool ALMetalWorldFrameData::publish(
@@ -3028,13 +2943,6 @@ struct ALMetalWorldGBufferRenderer::Impl
         return value && std::strcmp(value, "1") == 0;
     }();
     bool opaque_family_split_saw_timing = false;
-    // Diagnostic variant opt-in only. Normal rendering keeps the measured
-    // body/simple consumers and avoids unhelpful new-family preparation.
-    bool force_all_e6_prepared_consumers = []()
-    {
-        const char* value = std::getenv("ALCHEMY_METAL_E6_PREPARED_FORCE_ALL");
-        return value && std::strcmp(value, "1") == 0;
-    }();
     ALMetalWorldConstantStats constant_stats;
     std::unique_ptr<ALMetalProbeWorkloadCapture> probe_workload;
     std::array<std::array<std::shared_ptr<ALMetalRenderPipeline>, 3>, 2>
@@ -3052,15 +2960,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
-    std::array<MaterialRiggedPipelines, 2> resource_material_pipelines;
-    std::array<MaterialRiggedPipelines, 2> resource_pbr_pipelines;
-    std::array<NormalPipelines, 2> source_material_pipelines, source_pbr_pipelines;
-    std::array<NormalPipelines, 2> source_bank_material_pipelines, source_bank_pbr_pipelines;
-    std::array<NormalPipelines, 2> direct_bank_material_pipelines, direct_bank_pbr_pipelines;
-    std::array<NormalPipelines, 2> animated_material_pipelines,animated_pbr_pipelines;
     ALMetalWorldAnimatedStats animated_stats;
-    std::shared_ptr<ALMetalWorldSourcePages> source_pages;
-    std::shared_ptr<ALMetalWorldSourceCommands> source_commands;
     ALMetalWorldLightingTileStats lighting_tile_stats;
     void noteLightingTiles(bool base, ALMetalRasterTileSize requested,
         ALMetalRasterTileSize effective, const ALMetalRenderEncoder& encoder) noexcept
@@ -3092,24 +2992,15 @@ struct ALMetalWorldGBufferRenderer::Impl
         else ++lighting_tile_stats.other_passes;
     }
 
-    ALMetalWorldSourceDrawStats source_draw_stats;
-    ALMetalWorldSourceCommandDrawStats source_command_stats;
+    ALMetalWorldSourceRoutingStats source_routing_stats;
     ALMetalWorldCohortStats cohort_stats;
     ALMetalWorldCpuVisibilityStats cpu_visibility_stats;
-    ALMetalWorldEarlyVisibilityStats early_visibility_stats;
-    ALMetalWorldResourceLimits world_resource_limits;
-    std::shared_ptr<ALMetalWorldResources> world_resources;
-    std::unique_ptr<ALMetalSamplerState> world_resource_sampler;
-    ALMetalWorldResourceStats world_resource_draw_stats;
-    bool fail_world_resource_preparation = false;
     std::array<MaskPipelines, 2> fullbright_pipelines;
     std::array<RiggedPipelines, 2> shiny_pipelines;
-    decltype(shiny_pipelines) candidate_shiny_pipelines;
     std::array<RiggedPipelines, 2> emboss_pipelines;
     std::array<MaterialRiggedPipelines, 2> flat_alpha_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_alpha_pipelines;
     std::array<MaterialRiggedPipelines, 2> legacy_alpha_pipelines;
-    decltype(legacy_alpha_pipelines) candidate_legacy_alpha_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::array<NormalPipelines, 2> impostor_pipelines;
     std::array<NormalPipelines, 2> impostor_debug_pipelines;
@@ -3249,7 +3140,6 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderTarget> far_plane_overlay_target;
     std::array<OpaqueForwardRiggedPipelines, 2>
         opaque_forward_shiny_pipelines;
-    decltype(opaque_forward_shiny_pipelines) candidate_opaque_forward_shiny_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         opaque_forward_emboss_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -3305,16 +3195,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         pre_water_pbr_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         high_pre_water_pbr_pipelines;
-    // Optional prepared material/PBR consumers: exact HDR/coverage/rigging
-    // descriptors, with the existing High2 specialization retained.
-    decltype(pre_water_material_pipelines) candidate_pre_water_material_pipelines;
-    decltype(high_pre_water_material_pipelines) candidate_high_pre_water_material_pipelines;
-    decltype(pre_water_pbr_pipelines) candidate_pre_water_pbr_pipelines;
-    decltype(high_pre_water_pbr_pipelines) candidate_high_pre_water_pbr_pipelines;
-    // Lazily created only for the explicit experiment: HDR x coverage x rigged.
+    // Generic single-tap probe-shadow variant: HDR x coverage x rigged.
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         probe_pre_water_pbr_pipelines;
-    decltype(probe_pre_water_pbr_pipelines) candidate_probe_pre_water_pbr_pipelines;
     std::vector<PreWaterAlphaPipelineEntry>
         custom_pre_water_alpha_pipelines;
     std::array<PostWaterDepthPipelines, 2>
@@ -3490,89 +3373,13 @@ struct ALMetalWorldGBufferRenderer::Impl
         return cached.get();
     }
 
-    ALMetalRenderPipeline* resourcePipeline(bool hdr, bool rigged, bool normal_hdr,
-                                          bool pbr, std::string* error)
-    {
-        auto& result = (pbr ? resource_pbr_pipelines : resource_material_pipelines)[hdr][rigged][normal_hdr];
-        if (!result)
-        {
-            const auto* original = (pbr ? pbr_pipelines : material_pipelines)[hdr][rigged][normal_hdr].get();
-            if (!original) return nullptr;
-            auto descriptor = original->descriptor();
-            descriptor.library = library.get();
-            descriptor.fragment_function = pbr ? "almetal_world_pbr_resources_fragment" : "almetal_world_material_resources_fragment";
-            descriptor.label = "Alchemy G-buffer immutable native resource table pipeline";
-            result = ALMetalRenderPipeline::create(*device, descriptor, error);
-        }
-        return result.get();
-    }
 
-    ALMetalRenderPipeline* sourcePipeline(bool hdr, bool normal_hdr, bool pbr, std::string* error,
-                                        bool command_bank = false, bool direct_bound = false)
-    {
-        auto& variants = direct_bound
-            ? (pbr ? direct_bank_pbr_pipelines : direct_bank_material_pipelines)
-            : (command_bank
-                ? (pbr ? source_bank_pbr_pipelines : source_bank_material_pipelines)
-                : (pbr ? source_pbr_pipelines : source_material_pipelines));
-        auto& result = variants[hdr][normal_hdr];
-        if (!result)
-        {
-            const auto* original = (pbr ? pbr_pipelines : material_pipelines)[hdr][0][normal_hdr].get();
-            if (!original) return nullptr;
-            auto descriptor = original->descriptor();
-            descriptor.library = library.get();
-            descriptor.vertex_function = direct_bound
-                ? (pbr ? "almetal_world_pbr_direct_bound_vertex" : "almetal_world_material_direct_bound_vertex")
-                : (pbr ? "almetal_world_pbr_source_rows_vertex" : "almetal_world_material_source_rows_vertex");
-            descriptor.fragment_function = direct_bound
-                ? (pbr ? "almetal_world_pbr_resources_fragment" : "almetal_world_material_resources_fragment")
-                : (pbr ? "almetal_world_pbr_source_rows_fragment" : "almetal_world_material_source_rows_fragment");
-            // An older optional library can still render the entire required
-            // scene directly. Reject this private mode before freezing a view.
-            if (direct_bound && (!library->hasFunction(descriptor.vertex_function) ||
-                                 !library->hasFunction(descriptor.fragment_function)))
-                return nullptr;
-            descriptor.label = direct_bound ? "Alchemy direct-bound cohort G-buffer pipeline"
-                                            : "Alchemy native GPU source-row G-buffer pipeline";
-            descriptor.support_indirect_commands = command_bank;
-            result = ALMetalRenderPipeline::create(*device, descriptor, error);
-        }
-        return result.get();
-    }
 
-    ALMetalRenderPipeline* animatedPipeline(bool hdr,bool normal_hdr,bool pbr,bool gpu_visibility,std::string* error)
-    {
-        if(gpu_visibility&&!library->hasFunction("almetal_world_animated_visibility"))return nullptr;
-        auto& result=(pbr?animated_pbr_pipelines:animated_material_pipelines)[hdr][normal_hdr];
-        if(!result)
-        {
-            auto descriptor=(pbr?pbr_pipelines:material_pipelines)[hdr][1][normal_hdr]->descriptor();
-            descriptor.library=library.get();
-            descriptor.vertex_function=pbr?"almetal_world_pbr_animated_vertex":"almetal_world_material_animated_vertex";
-            descriptor.fragment_function=pbr?"almetal_world_pbr_resources_fragment":"almetal_world_material_resources_fragment";
-            if(!library->hasFunction(descriptor.vertex_function)||!library->hasFunction(descriptor.fragment_function))return nullptr;
-            descriptor.support_indirect_commands=true;descriptor.label="Alchemy retained animated G-buffer pipeline";
-            result=ALMetalRenderPipeline::create(*device,descriptor,error);
-        }
-        return result.get();
-    }
 
-    ALMetalRenderPipeline* candidateLegacyPipeline(
-        const ALMetalRenderPipeline& original,
-        std::unique_ptr<ALMetalRenderPipeline>& cached,
-        const char* fragment, std::string* error)
-    {
-        if (!cached)
-        {
-            auto descriptor = original.descriptor();
-            descriptor.library = library.get();
-            descriptor.fragment_function = fragment;
-            descriptor.label += " (prepared probes)";
-            cached = ALMetalRenderPipeline::create(*device, descriptor, error);
-        }
-        return cached.get();
-    }
+
+
+
+
 
     ALMetalRenderPipeline* candidateAvatarAlphaPipeline(
         bool hdr, bool coverage, bool shadow, std::size_t variant,
@@ -3595,15 +3402,13 @@ struct ALMetalWorldGBufferRenderer::Impl
     }
 
     ALMetalRenderPipeline* probePBRAlphaPipeline(
-        bool hdr, bool coverage, bool rigged, bool prepared, std::string* error)
+        bool hdr, bool coverage, bool rigged, std::string* error)
     {
-        auto& cached = (prepared ? candidate_probe_pre_water_pbr_pipelines
-                                : probe_pre_water_pbr_pipelines)[hdr ? 1u : 0u]
+        auto& cached = probe_pre_water_pbr_pipelines[hdr ? 1u : 0u]
             [coverage ? 1u : 0u][rigged ? 1u : 0u];
         if (!cached)
         {
-            const auto* runtime = (prepared ? candidate_pre_water_pbr_pipelines
-                                            : pre_water_pbr_pipelines)[hdr ? 1u : 0u]
+            const auto* runtime = pre_water_pbr_pipelines[hdr ? 1u : 0u]
                 [coverage ? 1u : 0u][rigged ? 1u : 0u].get();
             if (!runtime)
             {
@@ -3697,13 +3502,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         }
         if (prepared_probes)
         {
-            descriptor.fragment_function = family == PreWaterAlphaFamily::simple
-                ? (shadows != SimpleShadowMode::none
-                    ? "almetal_world_pre_water_simple_shadow_candidates_fragment"
-                    : "almetal_world_pre_water_simple_candidates_fragment")
-                : family == PreWaterAlphaFamily::material
-                ? "almetal_world_pre_water_material_candidates_fragment"
-                : "almetal_world_pre_water_pbr_candidates_fragment";
+            descriptor.fragment_function = shadows != SimpleShadowMode::none
+                ? "almetal_world_pre_water_simple_shadow_candidates_fragment"
+                : "almetal_world_pre_water_simple_candidates_fragment";
         }
         descriptor.label =
             "Alchemy world custom-blend pre-water alpha pipeline";
@@ -3829,7 +3630,6 @@ ALMetalWorldGBufferRenderer::createShadowEncodingContext(std::string* error) con
     peer->library = mImpl->library;
     peer->shader_generation = mImpl->shader_generation;
     peer->private_library = mImpl->private_library;
-    peer->force_all_e6_prepared_consumers = mImpl->force_all_e6_prepared_consumers;
     peer->max_anisotropy = mImpl->max_anisotropy;
     peer->shadow_submissions = mImpl->shadow_submissions;
     peer->shadow_visibility_pipeline = mImpl->shadow_visibility_pipeline;
@@ -3942,8 +3742,7 @@ bool ALMetalShadowEncodingContext::encode(ALMetalTexture& destination,
     ALMetalWorldGBufferRenderer::Impl::GBufferFailureScope failure(&state, error);
     const bool already_attempted = mImpl->encode_attempted;
     mImpl->encode_attempted = true;
-    if (already_attempted || scene.native_visibility ||
-        scene.visibility_bounds_count ||
+    if (already_attempted || scene.visibility_bounds_count ||
         scene.gpu_visibility || scene.metal4_visibility ||
         (scene.batch_count && !scene.source_owner))
     {
@@ -4107,9 +3906,6 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
                           next.probe_above_water_wave_pipelines) ||
         !rebuild_optional(rebuild_optional, mImpl->probe_pre_water_pbr_pipelines,
                           next.probe_pre_water_pbr_pipelines)) return {};
-    if (next.library->hasFunction("almetal_world_pre_water_pbr_candidates_fragment") &&
-        !rebuild_optional(rebuild_optional, mImpl->candidate_probe_pre_water_pbr_pipelines,
-                          next.candidate_probe_pre_water_pbr_pipelines)) return {};
     // Rebuild every already-used optional executable too. An explicitly
     // selected older library may lack these diagnostic entrypoints; only that
     // private path deliberately returns to its ordinary native binding path.
@@ -4136,20 +3932,7 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
         };
         return rebuild(rebuild, old, fresh);
     };
-    if (!rebuild_diagnostic(mImpl->resource_material_pipelines, next.resource_material_pipelines) ||
-        !rebuild_diagnostic(mImpl->resource_pbr_pipelines, next.resource_pbr_pipelines) ||
-        !rebuild_diagnostic(mImpl->source_material_pipelines, next.source_material_pipelines) ||
-        !rebuild_diagnostic(mImpl->source_pbr_pipelines, next.source_pbr_pipelines) ||
-        !rebuild_diagnostic(mImpl->source_bank_material_pipelines, next.source_bank_material_pipelines) ||
-        !rebuild_diagnostic(mImpl->source_bank_pbr_pipelines, next.source_bank_pbr_pipelines) ||
-        !rebuild_diagnostic(mImpl->animated_material_pipelines,next.animated_material_pipelines) ||
-        !rebuild_diagnostic(mImpl->animated_pbr_pipelines,next.animated_pbr_pipelines) ||
-        !rebuild_diagnostic(mImpl->direct_bank_material_pipelines, next.direct_bank_material_pipelines) ||
-        !rebuild_diagnostic(mImpl->direct_bank_pbr_pipelines, next.direct_bank_pbr_pipelines) ||
-        !rebuild_diagnostic(mImpl->candidate_avatar_alpha_pipelines, next.candidate_avatar_alpha_pipelines) ||
-        !rebuild_diagnostic(mImpl->candidate_shiny_pipelines, next.candidate_shiny_pipelines) ||
-        !rebuild_diagnostic(mImpl->candidate_legacy_alpha_pipelines, next.candidate_legacy_alpha_pipelines) ||
-        !rebuild_diagnostic(mImpl->candidate_opaque_forward_shiny_pipelines, next.candidate_opaque_forward_shiny_pipelines)) return {};
+    if (!rebuild_diagnostic(mImpl->candidate_avatar_alpha_pipelines, next.candidate_avatar_alpha_pipelines)) return {};
     for (const auto& entry : mImpl->custom_pre_water_alpha_pipelines)
     {
         if (entry.prepared_probes &&
@@ -4189,14 +3972,9 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.pbr_shadow_pso_diagnostics = mImpl->pbr_shadow_pso_diagnostics;
     next.water_shadow_pso_diagnostics = mImpl->water_shadow_pso_diagnostics;
     next.constant_stats = mImpl->constant_stats;
-    next.world_resource_limits = mImpl->world_resource_limits;
-    next.world_resource_draw_stats = mImpl->world_resource_draw_stats;
-    next.source_draw_stats = mImpl->source_draw_stats;
     next.animated_stats=mImpl->animated_stats;
-    next.source_command_stats = mImpl->source_command_stats;
     next.cohort_stats = mImpl->cohort_stats;
     next.cpu_visibility_stats = mImpl->cpu_visibility_stats;
-    next.early_visibility_stats = mImpl->early_visibility_stats;
     next.shadow_coalesced_draws = mImpl->shadow_coalesced_draws;
     next.shadow_covered_input_draws = mImpl->shadow_covered_input_draws;
     next.shadow_covered_coalesced_draws = mImpl->shadow_covered_coalesced_draws;
@@ -4359,63 +4137,15 @@ ALMetalWorldLightingTileStats ALMetalWorldGBufferRenderer::lightingTileStats() c
     return mImpl ? mImpl->lighting_tile_stats : ALMetalWorldLightingTileStats{};
 }
 
-ALMetalWorldResourceStats ALMetalWorldGBufferRenderer::worldResourceStats() const noexcept
-{
-    auto result = mImpl && mImpl->world_resources ? mImpl->world_resources->stats() : ALMetalWorldResourceStats{};
-    if (mImpl)
-    {
-        result.requested_draws = mImpl->world_resource_draw_stats.requested_draws;
-        result.bound_draws = mImpl->world_resource_draw_stats.bound_draws;
-        result.fallback_draws = mImpl->world_resource_draw_stats.fallback_draws;
-        result.fallback_reasons = mImpl->world_resource_draw_stats.fallback_reasons;
-        result.last_fallback = mImpl->world_resource_draw_stats.last_fallback;
-        result.failures += mImpl->world_resource_draw_stats.failures;
-        if (result.last_failure == ALMetalWorldResourceFallback::none)
-            result.last_failure = mImpl->world_resource_draw_stats.last_failure;
-    }
-    return result;
-}
 ALMetalWorldAnimatedStats ALMetalWorldGBufferRenderer::worldAnimatedStats() const noexcept
 {return mImpl?mImpl->animated_stats:ALMetalWorldAnimatedStats{};}
 
-ALMetalWorldSourceDrawStats ALMetalWorldGBufferRenderer::worldSourceStats() const noexcept
-{
-    auto stats = mImpl ? mImpl->source_draw_stats : ALMetalWorldSourceDrawStats{};
-    if (mImpl && mImpl->source_pages) stats.pages = mImpl->source_pages->stats();
-    return stats;
-}
-ALMetalWorldSourceCommandDrawStats ALMetalWorldGBufferRenderer::worldSourceCommandStats() const noexcept
-{
-    auto result = mImpl ? mImpl->source_command_stats : ALMetalWorldSourceCommandDrawStats{};
-    result.shared_cache = mImpl && mImpl->frame_data;
-    if (mImpl && mImpl->source_commands) result.cache = mImpl->source_commands->stats();
-    return result;
-}
+ALMetalWorldSourceRoutingStats ALMetalWorldGBufferRenderer::worldSourceRoutingStats() const noexcept
+{ return mImpl ? mImpl->source_routing_stats : ALMetalWorldSourceRoutingStats{}; }
 ALMetalWorldCohortStats ALMetalWorldGBufferRenderer::worldCohortStats() const noexcept
 { return mImpl ? mImpl->cohort_stats : ALMetalWorldCohortStats{}; }
 ALMetalWorldCpuVisibilityStats ALMetalWorldGBufferRenderer::worldCpuVisibilityStats() const noexcept
 { return mImpl ? mImpl->cpu_visibility_stats : ALMetalWorldCpuVisibilityStats{}; }
-ALMetalWorldEarlyVisibilityStats ALMetalWorldGBufferRenderer::worldEarlyVisibilityStats() const noexcept
-{ return mImpl ? mImpl->early_visibility_stats : ALMetalWorldEarlyVisibilityStats{}; }
-void ALMetalWorldGBufferRenderer::clearWorldSourceCommands() noexcept
-{ if (mImpl && mImpl->source_commands) mImpl->source_commands->clear(); }
-void ALMetalWorldGBufferRenderer::failNextWorldSourceCommandPublicationForTesting() noexcept
-{ if (mImpl && mImpl->source_commands) mImpl->source_commands->failNextPublicationForTesting(); }
-void ALMetalWorldGBufferRenderer::configureWorldResources(ALMetalWorldResourceLimits limits) noexcept
-{
-    if (!mImpl) return;
-    mImpl->world_resource_limits = limits;
-    mImpl->world_resources.reset();
-}
-void ALMetalWorldGBufferRenderer::clearWorldResourceLookup() noexcept
-{
-    if (mImpl && mImpl->world_resources) mImpl->world_resources->clearLookup();
-}
-void ALMetalWorldGBufferRenderer::failNextWorldResourcePreparationForTesting() noexcept
-{
-    if (mImpl) mImpl->fail_world_resource_preparation = true;
-}
-
 bool ALMetalWorldGBufferRenderer::setAnisotropy(
     std::uint32_t max_anisotropy,
     std::string* error)
@@ -4449,8 +4179,6 @@ bool ALMetalWorldGBufferRenderer::setAnisotropy(
     // Recreate the optional material sampler with the new filtering settings
     // on its next use. Pending material tables own their previous sampler.
     mImpl->shadow_material_sampler.reset();
-    mImpl->world_resource_sampler.reset();
-    mImpl->source_pages.reset();
     return true;
 }
 
@@ -7249,35 +6977,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     return nullptr;
                 }
 
-                const auto prepare_family = [&](const char* fragment,
-                    const auto& ordinary, const auto& high,
-                    auto& prepared, auto& prepared_high)
-                {
-                    // Explicit older libraries retain their original executables.
-                    if (!impl->library->hasFunction(fragment)) return true;
-                    const auto make = [&](const auto& source, auto& destination)
-                    {
-                        auto descriptor = source->descriptor();
-                        descriptor.library = impl->library.get();
-                        descriptor.fragment_function = fragment;
-                        descriptor.label += " (prepared probes)";
-                        destination = ALMetalRenderPipeline::create(device, descriptor, error);
-                        return bool(destination);
-                    };
-                    return make(ordinary, prepared) && make(high, prepared_high);
-                };
-                if (impl->force_all_e6_prepared_consumers &&
-                    (!prepare_family("almetal_world_pre_water_material_candidates_fragment",
-                        impl->pre_water_material_pipelines[hdr][coverage][rigged],
-                        impl->high_pre_water_material_pipelines[hdr][coverage][rigged],
-                        impl->candidate_pre_water_material_pipelines[hdr][coverage][rigged],
-                        impl->candidate_high_pre_water_material_pipelines[hdr][coverage][rigged]) ||
-                    !prepare_family("almetal_world_pre_water_pbr_candidates_fragment",
-                        impl->pre_water_pbr_pipelines[hdr][coverage][rigged],
-                        impl->high_pre_water_pbr_pipelines[hdr][coverage][rigged],
-                        impl->candidate_pre_water_pbr_pipelines[hdr][coverage][rigged],
-                        impl->candidate_high_pre_water_pbr_pipelines[hdr][coverage][rigged])))
-                    return nullptr;
+
             }
 
             for (std::size_t shadows = 0; shadows < 2; ++shadows)
@@ -8900,11 +8600,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
     constexpr std::size_t minimum_bulk_run = 64;
     constexpr std::size_t minimum_bulk_draws = 128;
     constexpr std::size_t minimum_opaque_indirect_run = 2048;
-    if (scene.native_visibility && (scene.indirect_draws || scene.opaque_indirect_draws || scene.bulk_draws))
-    {
-        setError(error, "Shared shadow visibility requires scalar ordered encoding");
-        return false;
-    }
+
     const bool use_indirect = scene.indirect_draws &&
         mImpl->shadow_indirect && mImpl->shadow_indirect->supported();
     const bool opaque_indirect = !use_indirect && scene.opaque_indirect_draws &&
@@ -9431,12 +9127,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         mImpl->finishCommandBuffer(owned_command, false, error);
         return false;
     }
-    std::shared_ptr<ALMetalWorldVisibilityArguments> shared_visibility_arguments;
-    if (command && scene.native_visibility && scene.native_visibility->size() == scene.batch_count && scene.batch_count)
-    {
-        std::string optional_error;
-        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error,mImpl->frame_data.get());
-    }
+
     if (command && query_results && !query_results->attachCommand(*command, error))
     {
         mImpl->finishCommandBuffer(owned_command, false, error);
@@ -10153,7 +9844,7 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
         std::size_t merged_batch_count = 1;
         // Full scene validation above remains authoritative for every source
         // record. Coalescing is a direct-only emission choice, after admission.
-        if (!shared_visibility_arguments && scene.bulk_draws && !use_indirect && covered && !rigged && !batch.avatar)
+        if (scene.bulk_draws && !use_indirect && covered && !rigged && !batch.avatar)
         {
             while (merged_batch_count < scene.batch_count - index &&
                    (visibility_index == scene.visibility_query_count ||
@@ -10355,13 +10046,8 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
                     4, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error));
         }
-        const bool shared_visible_draw = shared_visibility_arguments && !rigged && !batch.avatar_cloth &&
-            merged_batch_count == 1 && shared_visibility_arguments->appliesTo(index, batch.index_count, batch.modelview_projection, scene.depth_clamp);
-        encoded = encoded && (shared_visible_draw
-            ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
-                *batch.indices, batch.index_offset, batch.index_count, error)
-            : encoder->drawIndexed(ALMetalPrimitiveType::triangle, merged_index_count,
-                batch.index_type, *batch.indices, batch.index_offset, 1, error));
+        encoded = encoded && encoder->drawIndexed(ALMetalPrimitiveType::triangle, merged_index_count,
+            batch.index_type, *batch.indices, batch.index_offset, 1, error);
         if (encoded)
         {
             covered_coalesced_draws += merged_batch_count - 1;
@@ -11456,16 +11142,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         setError(error, "Metal world G-buffer renderer is unavailable");
         return nullptr;
     }
-    if (scene.source_direct_command_banks && !scene.source_command_banks)
-    {
-        setError(error, "Direct-bound cohort commands require source command banks");
-        return nullptr;
-    }
-    if (scene.source_gpu_visibility && (!scene.source_command_banks || !scene.source_direct_command_banks))
-    {
-        setError(error, "Static GPU visibility requires direct-bound source command banks");
-        return nullptr;
-    }
+
+
 
     const std::size_t draw_count = scene.drawCount();
     {
@@ -11715,528 +11393,39 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     for (std::size_t i=0;i<scene.cohort_count;++i)
         if (!command->retainUntilCompletion(scene.cohorts[i].native_owner,error)) return nullptr;
 
-    ALMetalWorldEarlyVisibilityStats early_visibility_stats;
-    std::shared_ptr<const ALMetalWorldEarlyVisibilityRead> early_visibility_arguments;
-    if (scene.early_visibility)
-    {
-        early_visibility_stats.requested_views=1;
-        for (std::size_t i=0;i<scene.cohort_count;++i)
-            early_visibility_stats.requested_cohort_draws+=scene.cohorts[i].cohort->size();
-        if (!scene.cpu_cohort_visibility && !scene.native_visibility && !scene.source_command_banks &&
-            !scene.join_adjacent_static_draws)
-        {
-            try
-            {
-                std::string optional_error;
-                early_visibility_arguments=scene.early_visibility->adoptCompleted(
-                    *command,std::span(scene.cohorts,scene.cohort_count),&optional_error);
-            }
-            catch (const std::bad_alloc&) {} // Speculative work never removes required geometry.
-        }
-        early_visibility_stats.adopted_views=bool(early_visibility_arguments);
-    }
-    std::shared_ptr<ALMetalWorldVisibilityArguments> shared_visibility_arguments;
-    if (!scene.cpu_cohort_visibility && scene.native_visibility && scene.native_visibility->size() == draw_count && draw_count)
-    {
-        std::string optional_error;
-        shared_visibility_arguments = ALMetalWorldVisibility::encode(*command, *scene.native_visibility, &optional_error,mImpl->frame_data.get());
-    }
     if (query_results && !query_results->attachCommand(*command, error))
     {
         return nullptr;
     }
-    auto resource_setup_failure = ALMetalWorldResourceFallback::unsupported;
-    if (scene.material_argument_buffers && (scene.batch_count || scene.reference_count))
-    {
-        // Entirely optional. Preserve the ordinary native path on unsupported
-        // devices, shader/resource allocation pressure or sampler failure.
-        try
-        {
-            std::string optional_error;
-            if (!mImpl->world_resources)
-                mImpl->world_resources = mImpl->frame_data
-                    ? mImpl->frame_data->worldResources(*mImpl->library, mImpl->world_resource_limits, &optional_error, &resource_setup_failure)
-                    : ALMetalWorldResources::create(*mImpl->device, *mImpl->library, mImpl->world_resource_limits, &optional_error, &resource_setup_failure);
-            if (mImpl->world_resources && mImpl->world_resources->supported())
-            {
-                if (!mImpl->world_resource_sampler)
-                {
-                    auto descriptor = worldDiffuseSamplerDescriptor(mImpl->max_anisotropy, true);
-                    descriptor.label = "Alchemy world resource-table anisotropic wrap sampler";
-                    mImpl->world_resource_sampler = ALMetalSamplerState::create(*mImpl->device, descriptor, &optional_error);
-                }
-                resource_setup_failure = mImpl->world_resource_sampler
-                    ? ALMetalWorldResourceFallback::none : ALMetalWorldResourceFallback::native_allocation;
-                if (mImpl->fail_world_resource_preparation)
-                {
-                    mImpl->world_resources->failNextPreparationForTesting();
-                    mImpl->fail_world_resource_preparation = false;
-                }
-            }
-            else if (mImpl->world_resources) resource_setup_failure = ALMetalWorldResourceFallback::unsupported;
-        }
-        catch (const std::bad_alloc&) { resource_setup_failure = ALMetalWorldResourceFallback::host_allocation; }
-        if (resource_setup_failure != ALMetalWorldResourceFallback::none)
-        {
-            ++mImpl->world_resource_draw_stats.failures;
-            mImpl->world_resource_draw_stats.last_failure = resource_setup_failure;
-        }
-    }
-    // Freeze only copied provenance and exact native leases. The optional
-    // source-row path never places CPU source descriptions on the command.
-    // Each request preserves its original logical index and query boundary.
-    constexpr auto no_source_row = std::numeric_limits<std::uint32_t>::max();
-    std::shared_ptr<const ALMetalWorldSourceFrameView> source_frame;
-    std::uint64_t source_bound_draws = 0;
-    std::vector<std::uint32_t> source_request_for_draw;
-    if (!scene.cpu_cohort_visibility && scene.source_rows && !scene.source_rows->candidates.empty())
-    {
-        auto& stats = mImpl->source_draw_stats;
-        const auto& metadata = *scene.source_rows;
-        stats.requested += metadata.candidates.size();
-        stats.last_failure = "metadata";
-        try
-        {
-            bool valid = scene.source_owner && !scene.native_visibility &&
-                metadata.candidates.size() <= alMetalWorldSourceMaximumRows &&
-                !metadata.regions.empty() && metadata.regions.size() <= alMetalWorldSourceMaximumRows;
-            std::vector<ALMetalWorldSourceRequest> requests;
-            if (valid)
-            {
-                requests.reserve(metadata.candidates.size());
-                source_request_for_draw.assign(draw_count, no_source_row);
-            }
-            for (const auto& candidate : metadata.candidates)
-            {
-                stats.last_failure = "metadata";
-                if (!valid || candidate.draw_index >= draw_count ||
-                    candidate.region >= metadata.regions.size() ||
-                    !candidate.key.identity || !candidate.key.revision ||
-                    source_request_for_draw[candidate.draw_index] != no_source_row)
-                { valid = false; break; }
-                if (alMetalWorldCohortAt(scene,candidate.draw_index))
-                { valid=false;break; }
-                const auto draw = scene.draw(candidate.draw_index);
-                if(draw.animatedReference()){valid=false;break;}
-                const auto& batch = draw.source();
-                const auto& region = metadata.regions[candidate.region];
-                if (std::memcmp(region.modelview_projection, draw.modelviewProjection(), sizeof(region.modelview_projection)) ||
-                    std::memcmp(region.modelview, draw.modelview(), sizeof(region.modelview)) ||
-                    std::memcmp(region.normal_matrix, draw.normalMatrix(), sizeof(region.normal_matrix)) ||
-                    std::memcmp(batch.texture_matrix, draw.textureMatrix(), sizeof(batch.texture_matrix)))
-                { valid = false; break; }
-                std::string optional_error;
-                stats.last_failure = "pipeline";
-                if (!mImpl->sourcePipeline(scene.hdr, scene.normal_hdr, isPBRBatch(batch), &optional_error,
-                                          scene.source_command_banks))
-                { valid = false; break; }
-                source_request_for_draw[candidate.draw_index] = static_cast<std::uint32_t>(requests.size());
-                requests.push_back({candidate.key, &batch, scene.cpu_source_owner,
-                    {scene.source_owner, {}, {}}, candidate.region});
-            }
-            if (valid)
-            {
-                std::string optional_error;
-                stats.last_failure = "context";
-                if (!mImpl->source_pages)
-                    mImpl->source_pages = mImpl->frame_data
-                        ? mImpl->frame_data->worldSourcePages(*mImpl->library, mImpl->max_anisotropy, &optional_error)
-                        : ALMetalWorldSourcePages::create(*mImpl->device, *mImpl->library, mImpl->max_anisotropy, {}, &optional_error);
-                ALMetalWorldSourceGlobals globals;
-                std::memcpy(globals.mirror_clip_plane, scene.mirror_clip_plane, sizeof(globals.mirror_clip_plane));
-                globals.flags[0] = scene.reverse_z;
-                globals.flags[1] = scene.mirror_clip;
-                globals.flags[2] = scene.normal_hdr;
-                if (mImpl->source_pages)
-                {
-                    stats.last_failure = "publication";
-                    source_frame = mImpl->source_pages->freezeForCommand(
-                        *command, requests, metadata.regions, globals, &optional_error);
-                }
-            }
-        }
-        catch (const std::bad_alloc&) { stats.last_failure = "host-allocation"; }
-        if (!source_frame)
-        {
-            ++stats.setup_failures;
-            stats.fallback += metadata.candidates.size();
-            source_request_for_draw.clear();
-        }
-        else stats.last_failure = "none";
-    }
-    struct SourceBankRun
-    {
-        std::size_t first=0,count=0;
-        std::shared_ptr<const ALMetalWorldSourceCommands::Batch> batch;
-    };
-    std::vector<SourceBankRun> source_banks;
-    std::size_t source_bank_cursor=0;
-    ALMetalWorldSourceCommandDrawStats source_bank_stats;
-    const bool source_routing=scene.source_routing && !scene.wireframe &&
-        !scene.stamp_opaque_coverage && !scene.native_visibility && !scene.early_visibility &&
-        !scene.cpu_cohort_visibility && !scene.source_command_banks && !scene.join_adjacent_static_draws;
-    std::vector<std::size_t> routed_native_cohorts,routed_cpu_cohorts;
-    if(source_routing)try
-    {
-        for(std::size_t i=0;i<scene.cohort_count;++i)
-        {
-            const auto& view=scene.cohorts[i];const auto& cohort=*view.cohort;
-            ++source_bank_stats.routing_cohorts;
-            auto route=ALMetalWorldSourceCommandRoute::direct;
-            if(cohort.hasBoundsPublication() && cohort.qualifiedBoundsCount())
-            {
-                const auto coarse=alMetalClassifyWorldBoundsCPU(cohort.qualifiedBoundsUnion(),view.view.modelview_projection);
-                if(coarse==ALMetalWorldCpuVisibilityResult::outside)route=ALMetalWorldSourceCommandRoute::cpu_visibility;
-                else if(coarse==ALMetalWorldCpuVisibilityResult::partial && scene.source_native_visibility &&
-                    (cohort.family()==1||cohort.family()==2))
-                {
-                    // Only an admitted, completed bounds capability reaches
-                    // this row inspection. No PSO/SourcePages/bank exists yet.
-                    if(!mImpl->source_commands)mImpl->source_commands=mImpl->frame_data
-                        ?mImpl->frame_data->worldSourceCommands():ALMetalWorldSourceCommands::create(*mImpl->device);
-                    ALMetalWorldSourceCommandContext context;
-                    context.pipeline_supports_indirect=mImpl->library->hasFunction(cohort.family()==2?
-                        "almetal_world_pbr_direct_bound_vertex":"almetal_world_material_direct_bound_vertex") &&
-                        mImpl->library->hasFunction(cohort.family()==2?
-                        "almetal_world_pbr_resources_fragment":"almetal_world_material_resources_fragment");
-                    context.ordered_ranges=cohort.size()+std::min(scene.visibility_query_count,scene.drawCount());
-                    if(mImpl->source_commands)route=mImpl->source_commands->applicability(view,context,scene.source_routing_policy).route;
-                }
-            }
-            if(route==ALMetalWorldSourceCommandRoute::gpu_visibility)
-            {routed_native_cohorts.push_back(i);++source_bank_stats.routing_native;}
-            else if(route==ALMetalWorldSourceCommandRoute::cpu_visibility)
-            {routed_cpu_cohorts.push_back(i);++source_bank_stats.routing_cpu;}
-            else ++source_bank_stats.routing_scalar;
-        }
-    }
-    catch(const std::bad_alloc&)
-    {
-        // No optional native prefix exists: a failed route-list allocation
-        // retains the complete original scalar/CPU path.
-        routed_native_cohorts.clear();routed_cpu_cohorts.clear();
-    }
-    if (!scene.cpu_cohort_visibility && scene.source_command_banks && scene.source_rows)
-    {
-        source_bank_stats.requested_draws = scene.source_rows->candidates.size();
-        const auto fallback = [&](ALMetalWorldSourceCommandFailure reason, std::size_t count)
-        {
-            source_bank_stats.fallback_draws += count;
-            source_bank_stats.fallback_reasons[static_cast<std::size_t>(reason)] += count;
-            source_bank_stats.last_fallback = reason;
-        };
-        if (!source_frame)
-            fallback(ALMetalWorldSourceCommandFailure::source_setup, source_bank_stats.requested_draws);
-        else try
-        {
-            if (!mImpl->source_commands)
-                mImpl->source_commands = mImpl->frame_data
-                    ? mImpl->frame_data->worldSourceCommands()
-                    : ALMetalWorldSourceCommands::create(*mImpl->device);
-            std::size_t query=0;
-            for (std::size_t first=0; first<draw_count;)
-            {
-                if (const auto* cohort=alMetalWorldCohortAt(scene,first))
-                { first=cohort->logical_begin+cohort->cohort->size();continue; }
-                if (source_request_for_draw[first] == no_source_row) { ++first; continue; }
-                const auto& initial = scene.draw(first).source();
-                const bool pbr = isPBRBatch(initial);
-                const bool two_sided = pbr && initial.double_sided;
-                std::size_t end=first+1;
-                while (query<scene.visibility_query_count &&
-                       scene.visibility_queries[query].batch_offset<=first) ++query;
-                const auto query_boundary = query<scene.visibility_query_count
-                    ? scene.visibility_queries[query].batch_offset : draw_count;
-                while (end<draw_count && end<query_boundary &&
-                       source_request_for_draw[end] != no_source_row)
-                {
-                    const auto& next = scene.draw(end).source();
-                    if (isPBRBatch(next)!=pbr || (pbr && next.double_sided)!=two_sided) break;
-                    ++end;
-                }
-                const auto count=end-first;
-                if (count<std::max<std::uint32_t>(2,scene.source_command_minimum_run))
-                    fallback(ALMetalWorldSourceCommandFailure::short_run,count);
-                else
-                {
-                    std::vector<ALMetalWorldSourceCommandDraw> draws; draws.reserve(count);
-                    for (auto index=first; index<end; ++index)
-                    {
-                        const auto request=source_request_for_draw[index];
-                        const auto& source=scene.draw(index).source();
-                        draws.push_back({scene.source_rows->candidates[request].key,request,
-                            source.indices,source.index_offset,source.index_count,source.index_type});
-                    }
-                    std::string optional_error;
-                    auto reason=ALMetalWorldSourceCommandFailure::unsupported;
-                    auto bank=mImpl->source_commands
-                        ? mImpl->source_commands->prepareForCommand(*command,source_frame,draws,&optional_error,&reason)
-                        : nullptr;
-                    if (bank) source_banks.push_back({first,count,std::move(bank)});
-                    else fallback(reason,count);
-                }
-                first=end;
-            }
-        }
-        catch (const std::bad_alloc&)
-        {
-            // Already prepared runs remain valid; only the unselected suffix
-            // uses ordinary native commands. Never omit a captured draw.
-            const auto accounted=source_bank_stats.fallback_draws+
-                std::accumulate(source_banks.begin(),source_banks.end(),std::uint64_t{0},
-                    [](auto total,const auto& run){return total+run.count;});
-            fallback(ALMetalWorldSourceCommandFailure::host_allocation,
-                source_bank_stats.requested_draws-accounted);
-        }
-    }
-    struct CohortBank
-    {
-        std::shared_ptr<const ALMetalWorldSourceFrameView> frame;
-        std::shared_ptr<const ALMetalWorldSourceCommands::Batch> bank;
-        const ALMetalRenderPipeline* pipeline=nullptr;
-        std::size_t count=0,run=0;
-    };
-    struct CohortBankRange
-    {
-        std::size_t logical_begin=0,logical_end=0,first=0,bank=0;
-    };
-    std::vector<CohortBank> cohort_banks;
-    std::vector<CohortBankRange> cohort_bank_ranges;
-    std::size_t cohort_bank_cursor=0;
-    bool cohort_bank_prefix_emitted=false;
-    if (!scene.cpu_cohort_visibility && (scene.source_command_banks||!routed_native_cohorts.empty()) && scene.cohort_count)
-    {
-        const auto fallback=[&](ALMetalWorldSourceCommandFailure reason,std::size_t count)
-        {
-            source_bank_stats.fallback_draws+=count;
-            source_bank_stats.fallback_reasons[static_cast<std::size_t>(reason)]+=count;
-            source_bank_stats.last_fallback=reason;
-        };
-        if(scene.source_command_banks)for (std::size_t i=0;i<scene.cohort_count;++i)
-            source_bank_stats.requested_draws+=scene.cohorts[i].cohort->size();
-        const auto same_region=[](const ALMetalWorldViewMatrices& a,const ALMetalWorldViewMatrices& b)
-        {
-            return !std::memcmp(a.modelview_projection,b.modelview_projection,64) &&
-                !std::memcmp(a.modelview,b.modelview,64) && !std::memcmp(a.normal_matrix,b.normal_matrix,48);
-        };
-        std::size_t at=0,requested_count=0;
-        bool rows_requested=false;
-        try
-        {
-            cohort_banks.reserve(scene.cohort_count);cohort_bank_ranges.reserve(scene.cohort_count);
-            ALMetalWorldSourceGlobals globals;
-            std::memcpy(globals.mirror_clip_plane,scene.mirror_clip_plane,sizeof(globals.mirror_clip_plane));
-            globals.flags[0]=scene.reverse_z;globals.flags[1]=scene.mirror_clip;globals.flags[2]=scene.normal_hdr;
-            while (at<scene.cohort_count)
-            {
-                rows_requested=false;requested_count=0;
-                if(source_routing&&!std::binary_search(routed_native_cohorts.begin(),routed_native_cohorts.end(),at))
-                {++at;continue;}
-                const auto family=scene.cohorts[at].cohort->family();
-                if (family==0 || scene.native_visibility)
-                {fallback(ALMetalWorldSourceCommandFailure::unsupported,scene.cohorts[at++].cohort->size());continue;}
-                if (scene.cohorts[at].cohort->size()>alMetalWorldSourceMaximumRows)
-                {fallback(ALMetalWorldSourceCommandFailure::capacity,scene.cohorts[at++].cohort->size());continue;}
-                // A pass may span ordinary raw/ref gaps. Only actual shader,
-                // row-capacity or regional-transform incompatibility splits it.
-                std::unordered_map<std::uint64_t,const ALMetalWorldSourceCohortView*> regions;
-                std::size_t end=at,count=0;
-                for (;end<scene.cohort_count;++end)
-                {
-                    const auto& view=scene.cohorts[end];const auto n=view.cohort->size();
-                    if(source_routing&&!std::binary_search(routed_native_cohorts.begin(),routed_native_cohorts.end(),end))break;
-                    if (view.cohort->family()!=family || n>alMetalWorldSourceMaximumRows-count)break;
-                    const auto identity=view.cohort->regionIdentity();const auto found=regions.find(identity);
-                    if (found!=regions.end() && !same_region(found->second->view,view.view))break;
-                    regions.try_emplace(identity,&view);count+=n;
-                }
-                if (count<std::max<std::uint32_t>(2,scene.source_command_minimum_run))
-                {fallback(ALMetalWorldSourceCommandFailure::short_run,count);at=end;continue;}
-                std::string optional_error;
-                if(source_routing)source_bank_stats.requested_draws+=count;
-                const bool direct_bindings=source_routing||scene.source_direct_command_banks;
-                const auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,family==2,&optional_error,true,
-                                                          direct_bindings);
-                if (!pipeline) {fallback(ALMetalWorldSourceCommandFailure::pipeline,count);at=end;continue;}
-                mImpl->source_draw_stats.requested+=count;rows_requested=true;requested_count=count;
-                if (!mImpl->source_pages)
-                    mImpl->source_pages=mImpl->frame_data
-                        ? mImpl->frame_data->worldSourcePages(*mImpl->library,mImpl->max_anisotropy,&optional_error)
-                        : ALMetalWorldSourcePages::create(*mImpl->device,*mImpl->library,mImpl->max_anisotropy,{},&optional_error);
-                const auto selection=std::span(scene.cohorts+at,end-at);
-                auto frame=mImpl->source_pages
-                    ? mImpl->source_pages->freezeCohortsForCommand(*command,selection,globals,&optional_error,mImpl->frame_data.get(),
-                                                                 direct_bindings) : nullptr;
-                if (!frame)
-                {
-                    ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=count;
-                    mImpl->source_draw_stats.last_failure="cohort-publication";
-                    fallback(ALMetalWorldSourceCommandFailure::source_setup,count);at=end;continue;
-                }
-                const auto membership=frame->commandMembership();const auto ranges=frame->cohortRanges();
-                bool valid=membership && frame->size()==count && membership->calls().size()==count && ranges.size()==selection.size() &&
-                    frame->directBindings()==direct_bindings &&
-                    (!direct_bindings ||
-                        (frame->directNormalHDR()==scene.normal_hdr && frame->directBindingSlot()));
-                std::size_t next=0;
-                // The private membership already certified every static call
-                // and raster run cold. Warm work checks only G dynamic ranges.
-                if (valid)for (std::size_t i=0;i<ranges.size();++i)
-                {
-                    const auto& range=ranges[i];
-                    if (range.logical_begin!=selection[i].logical_begin || range.first!=next ||
-                        range.count!=selection[i].cohort->size() || range.count>count-next) {valid=false;break;}
-                    next+=range.count;
-                }
-                if (!valid || next!=count || membership->runs().empty())
-                {fallback(ALMetalWorldSourceCommandFailure::validation,count);at=end;continue;}
-                if (!mImpl->source_commands)
-                    mImpl->source_commands=mImpl->frame_data
-                        ? mImpl->frame_data->worldSourceCommands(&optional_error)
-                        : ALMetalWorldSourceCommands::create(*mImpl->device,{},&optional_error);
-                auto reason=ALMetalWorldSourceCommandFailure::unsupported;
-                std::shared_ptr<const ALMetalWorldSourceCommands::Batch> bank;
-                if(mImpl->source_commands && (source_routing||scene.source_gpu_visibility))
-                {
-                    auto prepared=mImpl->source_commands->prepareVisibleCohortChecked(
-                        *command,frame,*mImpl->device,*mImpl->library,&optional_error,&reason);
-                    if(!prepared && prepared.native_prefix)
-                    {
-                        setError(error,"Static source visibility failed after a native compute prefix");
-                        return nullptr; // Owning/borrowed command must be abandoned by the outer owner.
-                    }
-                    bank=std::move(prepared.batch);
-                }
-                else if(mImpl->source_commands)
-                    bank=mImpl->source_commands->prepareCohortForCommand(*command,frame,&optional_error,&reason);
-                if (!bank) {fallback(reason,count);at=end;continue;}
-                if (bank->size()!=count) {fallback(ALMetalWorldSourceCommandFailure::validation,count);at=end;continue;}
-                const auto owner=cohort_banks.size();
-                cohort_banks.push_back({std::move(frame),std::move(bank),pipeline,count,0});
-                for (const auto& range:ranges)
-                {
-                    if (!cohort_bank_ranges.empty() && cohort_bank_ranges.back().bank==owner &&
-                        cohort_bank_ranges.back().logical_end==range.logical_begin)
-                        cohort_bank_ranges.back().logical_end+=range.count;
-                    else cohort_bank_ranges.push_back({range.logical_begin,range.logical_begin+range.count,range.first,owner});
-                }
-                mImpl->source_draw_stats.last_failure="none";at=end;
-            }
-        }
-        catch (const std::bad_alloc&)
-        {
-            if (rows_requested)
-            {
-                ++mImpl->source_draw_stats.setup_failures;mImpl->source_draw_stats.fallback+=requested_count;
-                mImpl->source_draw_stats.last_failure="host-allocation";
-            }
-            // No native range has emitted yet. Prepared earlier compositions
-            // remain valid; this whole suffix retains the required direct path.
-            for (;at<scene.cohort_count;++at)
-                fallback(ALMetalWorldSourceCommandFailure::host_allocation,scene.cohorts[at].cohort->size());
-        }
-    }
-    struct AnimatedRange
-    {
-        std::size_t first,count,bank_first;
-        std::shared_ptr<const ALMetalWorldSourceCommands::Batch> bank;
-        const ALMetalRenderPipeline* pipeline;
-        bool double_sided;
-    };
-    std::vector<AnimatedRange> animated_ranges;
+    ALMetalWorldSourceRoutingStats source_routing_stats;
     ALMetalWorldAnimatedStats animated_stats;
-    const bool animated_use_visibility=scene.animated_gpu_records?scene.animated_gpu_visibility:true;
-    if(scene.animated_gpu_records||(source_routing&&scene.source_native_visibility&&scene.reference_count))
+    const bool source_routing = scene.source_routing && !scene.wireframe &&
+        !scene.stamp_opaque_coverage && !scene.join_adjacent_static_draws;
+    std::vector<std::size_t> routed_cpu_cohorts;
+    if (source_routing) try
     {
-        // CPU shape/pose ownership was qualified at adoption. Only references
-        // enter this late overlay; ordinary/body/cloth remain required native.
-        ALMetalWorldDrawCursor cursor(scene);
-        std::vector<const ALMetalWorldSourceReference*> candidates;
-        std::vector<std::size_t> logical;
-        try
+        for (std::size_t index=0; index<scene.cohort_count; ++index)
         {
-            for(std::size_t index=0;index<draw_count;++index,cursor.advance())
-                if(const auto* reference=cursor.draw().animatedReference())
-                {
-                    ++animated_stats.requested_draws;
-                    if(reference->animated_source->gpuReady() && !scene.wireframe && !scene.stamp_opaque_coverage &&
-                       std::memcmp(reference->view.texture_matrix,reference->source->texture_matrix,64)==0)
-                    {candidates.push_back(reference);logical.push_back(index);}
-                }
-            ALMetalWorldSourceGlobals globals;
-            std::memcpy(globals.mirror_clip_plane,scene.mirror_clip_plane,16);
-            globals.flags[0]=scene.reverse_z;globals.flags[1]=scene.mirror_clip;globals.flags[2]=scene.normal_hdr;
-            for(std::size_t first=0;first<candidates.size();first+=alMetalWorldSourceMaximumRows)
-            {
-                const auto count=std::min(alMetalWorldSourceMaximumRows,candidates.size()-first);
-                if(!scene.animated_gpu_records)
-                {
-                    if(!mImpl->source_commands)mImpl->source_commands=mImpl->frame_data
-                        ?mImpl->frame_data->worldSourceCommands():ALMetalWorldSourceCommands::create(*mImpl->device);
-                    ALMetalWorldSourceCommandContext context;
-                    context.pipeline_supports_indirect=mImpl->library->hasFunction("almetal_world_animated_visibility") &&
-                        mImpl->library->hasFunction("almetal_world_material_animated_vertex") &&
-                        mImpl->library->hasFunction("almetal_world_pbr_animated_vertex");
-                    context.ordered_ranges=count+std::min(scene.visibility_query_count,draw_count);
-                    if(!mImpl->source_commands||mImpl->source_commands->applicability(
-                        std::span(candidates).subspan(first,count),context,scene.source_routing_policy).route!=
-                            ALMetalWorldSourceCommandRoute::gpu_visibility)continue;
-                }
-                std::vector<const ALMetalRenderPipeline*> pipelines;pipelines.reserve(count);
-                std::string optional_error;bool ready=true;
-                for(std::size_t at=first;at<first+count;++at)
-                {
-                    auto* pipeline=mImpl->animatedPipeline(scene.hdr,scene.normal_hdr,
-                        isPBRBatch(*candidates[at]->source),animated_use_visibility,&optional_error);
-                    if(!pipeline){ready=false;break;}pipelines.push_back(pipeline);
-                }
-                if(!ready || !mImpl->frame_data)continue;
-                if(!mImpl->source_pages)mImpl->source_pages=mImpl->frame_data->worldSourcePages(*mImpl->library,mImpl->max_anisotropy,&optional_error);
-                if(!mImpl->source_commands)mImpl->source_commands=mImpl->frame_data->worldSourceCommands(&optional_error);
-                if(!mImpl->source_pages||!mImpl->source_commands)continue;
-                std::vector<ALMetalWorldAnimatedGpuView> gpu_views;
-                const auto before=mImpl->source_pages->stats().animated_source_publications;
-                if(!mImpl->source_pages->prepareAnimatedSourcesForCommand(*command,
-                    std::span(candidates).subspan(first,count),gpu_views,&optional_error))continue;
-                auto prepared=mImpl->source_commands->prepareAnimatedChecked(*command,*mImpl->device,*mImpl->library,
-                    std::move(gpu_views),globals,*mImpl->frame_data,&optional_error,animated_use_visibility);
-                if(!prepared && prepared.native_prefix)
-                {
-                    setError(error,"Animated source visibility failed after a native compute prefix");
-                    return nullptr; // Do not hide an unknown prefix with the ordinary draw path.
-                }
-                auto bank=std::move(prepared.batch);
-                if(!bank)continue;
-                animated_stats.source_publications+=mImpl->source_pages->stats().animated_source_publications-before;
-                animated_stats.current_pose_publications+=count;
-                if(animated_use_visibility)++animated_stats.visibility_dispatches;
-                for(std::size_t at=0;at<count;++at)
-                {
-                    const bool cull=isPBRBatch(*candidates[first+at]->source)&&candidates[first+at]->source->double_sided;
-                    if(!animated_ranges.empty() && animated_ranges.back().bank==bank &&
-                       animated_ranges.back().first+animated_ranges.back().count==logical[first+at] &&
-                       animated_ranges.back().pipeline==pipelines[at] && animated_ranges.back().double_sided==cull)
-                        ++animated_ranges.back().count;
-                    else animated_ranges.push_back({logical[first+at],1,at,bank,pipelines[at],cull});
-                }
-            }
+            const auto& view=scene.cohorts[index];
+            const auto& cohort=*view.cohort;
+            ++source_routing_stats.cohorts;
+            const bool outside=cohort.hasBoundsPublication() && cohort.qualifiedBoundsCount() &&
+                alMetalClassifyWorldBoundsCPU(cohort.qualifiedBoundsUnion(),view.view.modelview_projection)==
+                    ALMetalWorldCpuVisibilityResult::outside;
+            if (outside) { routed_cpu_cohorts.push_back(index); ++source_routing_stats.cpu; }
+            else ++source_routing_stats.scalar;
         }
-        catch(const std::bad_alloc&){animated_ranges.clear();}
     }
-    std::size_t animated_range_cursor=0;bool animated_prefix_emitted=false;
+    catch (const std::bad_alloc&)
+    {
+        // Allocation pressure retains complete scalar rendering.
+        routed_cpu_cohorts.clear();
+    }
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world simple G-buffer encoder", error);
     if (!encoder)
     {
         return nullptr;
-    }
-
-    ALMetalWorldSourceCommands::DeclarationScope animated_declarations;
-    if(!animated_ranges.empty())
-    {
-        std::string optional_error;
-        animated_declarations=mImpl->source_commands->makeDeclarationScope(*encoder,*command,&optional_error);
-        // Empty on allocation failure: retain the safe self-declaring route.
     }
 
     const ALMetalDepthStencilState* depth = scene.reverse_z
@@ -12338,7 +11527,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     ALMetalWorldDataSlice previous_world_slice;
     bool have_previous_world_constants = false;
     ALMetalWorldConstantStats constant_stats;
-    ALMetalWorldResourceStats resource_stats;
     // One completion owner avoids adding/scanning an individual command
     // retainer per draw. A small raw identity cache also avoids duplicate
     // strong leases for recurring nonadjacent sources. The vector owns every
@@ -12395,48 +11583,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         {
             break;
         }
-        while(animated_range_cursor<animated_ranges.size() &&
-            animated_ranges[animated_range_cursor].first+animated_ranges[animated_range_cursor].count<=index)++animated_range_cursor;
-        if(animated_range_cursor<animated_ranges.size())
-        {
-            auto& range=animated_ranges[animated_range_cursor];
-            if(range.bank && index>=range.first)
-            {
-                auto end=range.first+range.count;
-                if(visibility_index<scene.visibility_query_count)end=std::min(end,scene.visibility_queries[visibility_index].batch_offset);
-                const auto count=end-index;std::string optional_error;
-                const bool accepted=count && encoder->setIndexedTriangleJoining(false,&optional_error) &&
-                    encoder->setDepthBias(0.f,0.f,0.f,&optional_error) &&
-                    encoder->setCullMode(range.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,&optional_error) &&
-                    encoder->setPipeline(*range.pipeline,&optional_error) &&
-                    (animated_declarations
-                        ? mImpl->source_commands->executeRange(*encoder,*command,*range.bank,
-                            range.bank_first+index-range.first,count,animated_declarations,&optional_error)
-                        : mImpl->source_commands->executeRange(*encoder,*command,*range.bank,
-                            range.bank_first+index-range.first,count,&optional_error));
-                if(accepted)
-                {
-                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr;
-                    have_previous_world_constants=false;animated_prefix_emitted=true;
-                    animated_stats.gpu_draws+=count;++animated_stats.execute_calls;
-                    source_bank_stats.last_pipeline_validation=range.pipeline->shaderValidationMode();
-                    if(animated_use_visibility)for(std::size_t at=index;at<end;++at)
-                    {
-                        const auto* reference=scene.draw(at).animatedReference();
-                        if(reference->animated_source->boundsQualified())++animated_stats.bounds_tests;
-                        else ++animated_stats.bounds_unknown;
-                    }
-                    draw_cursor.advance(count-1);index+=count-1;continue;
-                }
-                if(animated_prefix_emitted){setError(error,"Animated command failed after an emitted prefix");encoded=false;break;}
-                for(auto& remaining:animated_ranges)remaining.bank.reset();
-            }
-        }
         const auto* current_cohort=draw_cursor.cohort();
         const bool routed_cpu=source_routing && !routed_cpu_cohorts.empty() && current_cohort &&
             std::binary_search(routed_cpu_cohorts.begin(),routed_cpu_cohorts.end(),
                 static_cast<std::size_t>(current_cohort-scene.cohorts));
-        if(scene.cpu_cohort_visibility||routed_cpu)
+        if(routed_cpu)
         {
             using Result=ALMetalWorldCpuVisibilityResult;
             if(!current_cohort)
@@ -12494,46 +11645,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             }
         }
         if(!current_cohort)scalar_common_cohort=nullptr;
-        while (cohort_bank_cursor<cohort_bank_ranges.size() && cohort_bank_ranges[cohort_bank_cursor].logical_end<=index)
-            ++cohort_bank_cursor;
-        if (current_cohort && cohort_bank_cursor<cohort_bank_ranges.size() &&
-            cohort_bank_ranges[cohort_bank_cursor].logical_begin<=index)
-        {
-            const auto& range=cohort_bank_ranges[cohort_bank_cursor];auto& bank=cohort_banks[range.bank];
-            if (bank.bank)
-            {
-                const auto local=range.first+index-range.logical_begin;
-                const auto runs=bank.frame->commandMembership()->runs();
-                while (bank.run<runs.size() && runs[bank.run].first+runs[bank.run].count<=local)++bank.run;
-                if (bank.run==runs.size()) {encoded=false;break;}
-                const auto& run=runs[bank.run];
-                if (local<run.first) {encoded=false;break;}
-                auto end=index+std::min(range.logical_end-index,run.first+run.count-local);
-                if (visibility_index<scene.visibility_query_count)
-                    end=std::min(end,scene.visibility_queries[visibility_index].batch_offset);
-                const auto count=end-index;
-                if (!count || !encoder->setIndexedTriangleJoining(false,error)) {encoded=false;break;}
-                std::string optional_error;
-                const bool executed=encoder->setCullMode(run.double_sided?ALMetalCullMode::none:ALMetalCullMode::back,&optional_error) &&
-                    encoder->setPipeline(*bank.pipeline,&optional_error) &&
-                    mImpl->source_commands->executeRange(*encoder,*command,*bank.bank,local,count,&optional_error);
-                if (executed)
-                {
-                    scalar_common_cohort=nullptr;scalar_common_animated=nullptr;private_pose_record=nullptr; // Never bridge a native-bank gap.
-                    cohort_bank_prefix_emitted=true;source_bound_draws+=count;cohort_draws+=count;
-                    source_bank_stats.bank_draws+=count;++source_bank_stats.execute_calls;
-                    source_bank_stats.last_pipeline_validation=bank.pipeline->shaderValidationMode();
-                    draw_cursor.advance(count-1);index+=count-1;continue;
-                }
-                // No fallback/replay is legal after any native pass prefix.
-                // Before the first emission, this entire composition can use
-                // its original shaders, including later cohorts and raw gaps.
-                if (cohort_bank_prefix_emitted) {setError(error,"Metal cohort command range failed after emission");encoded=false;break;}
-                source_bank_stats.fallback_draws+=bank.count;
-                source_bank_stats.fallback_reasons[static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::execution)]+=bank.count;
-                source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;bank.bank.reset();
-            }
-        }
         const auto draw=draw_cursor.draw();
         const auto* animated_reference=draw.animatedReference();
         if(!animated_reference)
@@ -12747,47 +11858,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             }
             continue;
         }
-        if (!current_cohort && source_bank_cursor < source_banks.size() && source_banks[source_bank_cursor].first == index)
-        {
-            const auto& run=source_banks[source_bank_cursor++];
-            std::string optional_error;
-            auto* pipeline=mImpl->sourcePipeline(scene.hdr,scene.normal_hdr,isPBRBatch(batch),&optional_error,true);
-            const bool executed=pipeline && encoder->setCullMode(isPBRBatch(batch) && batch.double_sided
-                    ? ALMetalCullMode::none : ALMetalCullMode::back,&optional_error) &&
-                encoder->setPipeline(*pipeline,&optional_error) &&
-                mImpl->source_commands->execute(*encoder,*command,*run.batch,&optional_error);
-            if (executed)
-            {
-                source_bound_draws += run.count;
-                source_bank_stats.bank_draws += run.count;
-                ++source_bank_stats.execute_calls;
-                draw_cursor.advance(run.count-1);
-                index += run.count-1;
-                continue;
-            }
-            // execute rejects only before native ICB submission. Restore all
-            // ordinary bindings through the existing path for this whole run.
-            source_bank_stats.fallback_draws += run.count;
-            source_bank_stats.fallback_reasons[static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::execution)] += run.count;
-            source_bank_stats.last_fallback=ALMetalWorldSourceCommandFailure::execution;
-        }
-        if (!current_cohort && !scene.source_command_banks && source_frame && source_request_for_draw[index] != no_source_row)
-        {
-            // This branch deliberately precedes packing the 400-byte common
-            // record. Matrix rows and source resources are bound as a view,
-            // and instance_id selects the immutable GPU source independently
-            // of the packed per-vertex material index in position.w.
-            auto* pipeline = mImpl->sourcePipeline(scene.hdr, scene.normal_hdr, isPBRBatch(batch), error);
-            encoded = pipeline && source_frame->bind(*encoder, *command, error) &&
-                encoder->setCullMode(isPBRBatch(batch) && batch.double_sided
-                    ? ALMetalCullMode::none : ALMetalCullMode::back, error) &&
-                encoder->setPipeline(*pipeline, error) &&
-                encoder->drawIndexedWithBaseInstance(ALMetalPrimitiveType::triangle,
-                    batch.index_count, batch.index_type, *batch.indices, batch.index_offset,
-                    source_frame->rowId(source_request_for_draw[index]), error);
-            if (encoded) ++source_bound_draws;
-            continue;
-        }
         std::optional<WorldSimpleConstants> owned_constants;
         ALMetalWorldScalarRecipe scalar_recipe;
         const bool recipe_draw=(current_cohort || animated_reference);
@@ -12835,29 +11905,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         const bool material_specular_map = recipe_draw ? scalar_recipe.specular_map : materialHasSpecularMap(batch);
         const bool stable_tables = current_cohort || animated_reference ||
             (batch.native_material_source && batch.native_material_source->matches(batch));
-        const ALMetalRenderPipeline* resource_pipeline = nullptr;
-        bool resource_bound = false;
-        auto resource_failure = resource_setup_failure;
-        if (!current_cohort && !animated_reference && scene.material_argument_buffers && (material || pbr))
-        {
-            ++resource_stats.requested_draws;
-            if (!batch.native_resource_source) resource_failure = ALMetalWorldResourceFallback::missing_source;
-            else if (!batch.native_resource_source->matches(batch)) resource_failure = ALMetalWorldResourceFallback::unmatched_source;
-            else if (
-                mImpl->world_resources && mImpl->world_resource_sampler)
-            {
-                try
-                {
-                    std::string optional_error;
-                    auto table = mImpl->world_resources->prepare(batch.native_resource_source, *mImpl->world_resource_sampler, &optional_error, &resource_failure);
-                    resource_pipeline = table ? mImpl->resourcePipeline(scene.hdr, rigged, scene.normal_hdr, pbr, &optional_error) : nullptr;
-                    if (table && !resource_pipeline) resource_failure = ALMetalWorldResourceFallback::pipeline_creation;
-                    resource_bound = resource_pipeline && mImpl->world_resources->bind(*encoder, *command, batch.native_resource_source, table, &optional_error, &resource_failure);
-                }
-                catch (const std::bad_alloc&) { resource_failure = ALMetalWorldResourceFallback::host_allocation; }
-            }
-        }
-        if (!current_cohort && !animated_reference && stable_tables && !resource_bound)
+
+        if (!current_cohort && !animated_reference && stable_tables)
         {
             if (!material_owners)
             {
@@ -12896,7 +11945,6 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                                       [batch.alpha_mask ? 1 : 0]
                                       [rigged ? 1 : 0]
                                       [scene.normal_hdr ? 1 : 0].get()));
-        if (resource_bound) pipeline = resource_pipeline;
 
         encoded =
             encoder->setCullMode(
@@ -12911,7 +11959,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
             bind_world_constants(constants_data, known_common_equal) &&
-            (resource_bound || encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error));
+            encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
         if (encoded && !avatar)
         {
             encoded = encoder->setVertexBuffer(
@@ -13022,7 +12070,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
             }
         }
         for (std::size_t texture_index = 0;
-             encoded && !resource_bound && texture_index < batch.texture_count;
+             encoded && texture_index < batch.texture_count;
              ++texture_index)
         {
             encoded = avatar && !batch.avatar_diffuse_srgb
@@ -13033,7 +12081,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                       static_cast<std::uint32_t>(texture_index),
                       batch.diffuse_textures[texture_index], error);
         }
-        if (encoded && material && !resource_bound)
+        if (encoded && material)
         {
             for (std::size_t slot = 0;
                  encoded && slot < batch.material_slot_count;
@@ -13059,7 +12107,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         specular_texture, error);
             }
         }
-        if (encoded && pbr && !resource_bound)
+        if (encoded && pbr)
         {
             for (std::size_t slot = 0;
                  encoded && slot < batch.pbr_slot_count;
@@ -13081,39 +12129,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
                         pbr_slot.emissive_texture, error);
             }
         }
-        const bool shared_visible_draw = shared_visibility_arguments && !avatar && !rigged &&
-            !batch.avatar_cloth && (current_cohort
-                ? shared_visibility_arguments->appliesToCohort(index,batch.index_count,*current_cohort)
-                : shared_visibility_arguments->appliesTo(index,batch.index_count,draw.modelviewProjection()));
-        const bool early_visible_draw = early_visibility_arguments && current_cohort && !avatar && !rigged &&
-            !batch.avatar_cloth && early_visibility_arguments->appliesToCohort(index,batch.index_count,*current_cohort);
-        encoded = encoded && (early_visible_draw
-            ? early_visibility_arguments->drawIndexed(*encoder,*command,index,batch.index_type,
-                *batch.indices,batch.index_offset,batch.index_count,error)
-            : shared_visible_draw
-                ? shared_visibility_arguments->drawIndexed(*encoder, *command, index, batch.index_type,
-                    *batch.indices, batch.index_offset, batch.index_count, error)
-                : encoder->drawIndexed(ALMetalPrimitiveType::triangle,
-                    batch.index_count, batch.index_type, *batch.indices, batch.index_offset, 1, error));
-        if (encoded && early_visible_draw) ++early_visibility_stats.indirect_draws;
+        encoded = encoded && encoder->drawIndexed(ALMetalPrimitiveType::triangle,
+            batch.index_count, batch.index_type, *batch.indices, batch.index_offset, 1, error);
         if (encoded && current_cohort) ++cohort_draws;
         if (encoded && animated_reference) ++animated_stats.direct_draws;
         if (encoded && (material || pbr))
         {
-            source_bank_stats.last_pipeline_validation =
-                static_cast<std::uint32_t>(pipeline->shaderValidationMode());
             if (stable_tables) ++constant_stats.material_source_draws;
             else ++constant_stats.material_source_fallback_draws;
-            if (!current_cohort && !animated_reference && scene.material_argument_buffers)
-            {
-                if (resource_bound) ++resource_stats.bound_draws;
-                else
-                {
-                    ++resource_stats.fallback_draws;
-                    ++resource_stats.fallback_reasons[static_cast<std::size_t>(resource_failure)];
-                    resource_stats.last_fallback = resource_failure;
-                }
-            }
+
         }
     }
 
@@ -13195,26 +12219,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         mImpl->frame_data->mImpl->statistics.terrain_source_draws+=terrain_source_draws;
         mImpl->frame_data->mImpl->statistics.terrain_source_fallback_draws+=terrain_source_fallback_draws;
     }
-    if (scene.early_visibility)
-    {
-        auto& total=mImpl->early_visibility_stats;
-        total.requested_views+=early_visibility_stats.requested_views;
-        total.adopted_views+=early_visibility_stats.adopted_views;
-        total.requested_cohort_draws+=early_visibility_stats.requested_cohort_draws;
-        total.indirect_draws+=early_visibility_stats.indirect_draws;
-        total.fallback_draws+=early_visibility_stats.requested_cohort_draws-early_visibility_stats.indirect_draws;
-    }
+
     mImpl->cohort_stats.scalar_common_builds+=scalar_common_builds;
-    animated_stats.fallback_draws=animated_stats.requested_draws-animated_stats.gpu_draws;
-    mImpl->animated_stats.requested_draws+=animated_stats.requested_draws;
-    mImpl->animated_stats.gpu_draws+=animated_stats.gpu_draws;
-    mImpl->animated_stats.fallback_draws+=animated_stats.fallback_draws;
-    mImpl->animated_stats.execute_calls+=animated_stats.execute_calls;
-    mImpl->animated_stats.current_pose_publications+=animated_stats.current_pose_publications;
-    mImpl->animated_stats.source_publications+=animated_stats.source_publications;
-    mImpl->animated_stats.bounds_tests+=animated_stats.bounds_tests;
-    mImpl->animated_stats.bounds_unknown+=animated_stats.bounds_unknown;
-    mImpl->animated_stats.visibility_dispatches+=animated_stats.visibility_dispatches;
     mImpl->animated_stats.direct_draws+=animated_stats.direct_draws;
     mImpl->animated_stats.direct_recipe_reads+=animated_stats.direct_recipe_reads;
     mImpl->animated_stats.direct_common_builds+=animated_stats.direct_common_builds;
@@ -13223,12 +12229,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->animated_stats.direct_pose_publications+=animated_stats.direct_pose_publications;
     mImpl->cohort_stats.scalar_recipe_reads+=scalar_recipe_reads;
     mImpl->cohort_stats.scalar_common_reuses+=scalar_common_reuses;
-    if(scene.cpu_cohort_visibility||cpu_visibility_stats.coarse_tests)
+    if(cpu_visibility_stats.coarse_tests)
     {
         // Automatic routing classifies only selected cohorts. Every other
         // logical row remains CPU-visible without another source walk.
-        if(!scene.cpu_cohort_visibility)
-            cpu_visibility_stats.visible_draws=draw_count-cpu_visibility_stats.culled_draws;
+        cpu_visibility_stats.visible_draws=draw_count-cpu_visibility_stats.culled_draws;
         auto& total=mImpl->cpu_visibility_stats;
         ++total.views;
         total.groups+=cpu_visibility_stats.groups;
@@ -13247,27 +12252,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     mImpl->constant_stats.reused_bindings += constant_stats.reused_bindings;
     mImpl->constant_stats.material_source_draws += constant_stats.material_source_draws;
     mImpl->constant_stats.material_source_fallback_draws += constant_stats.material_source_fallback_draws;
-    mImpl->world_resource_draw_stats.requested_draws += resource_stats.requested_draws;
-    mImpl->world_resource_draw_stats.bound_draws += resource_stats.bound_draws;
-    mImpl->world_resource_draw_stats.fallback_draws += resource_stats.fallback_draws;
-    for (std::size_t index = 0; index < resource_stats.fallback_reasons.size(); ++index)
-        mImpl->world_resource_draw_stats.fallback_reasons[index] += resource_stats.fallback_reasons[index];
-    if (resource_stats.fallback_draws) mImpl->world_resource_draw_stats.last_fallback = resource_stats.last_fallback;
-    mImpl->source_command_stats.requested_draws += source_bank_stats.requested_draws;
-    mImpl->source_command_stats.bank_draws += source_bank_stats.bank_draws;
-    mImpl->source_command_stats.fallback_draws += source_bank_stats.fallback_draws;
-    mImpl->source_command_stats.execute_calls += source_bank_stats.execute_calls;
-    mImpl->source_command_stats.routing_cohorts+=source_bank_stats.routing_cohorts;
-    mImpl->source_command_stats.routing_scalar+=source_bank_stats.routing_scalar;
-    mImpl->source_command_stats.routing_cpu+=source_bank_stats.routing_cpu;
-    mImpl->source_command_stats.routing_native+=source_bank_stats.routing_native;
-    if(source_bank_stats.last_pipeline_validation!=UINT32_MAX)
-        mImpl->source_command_stats.last_pipeline_validation=source_bank_stats.last_pipeline_validation;
-    for (std::size_t i=0;i<source_bank_stats.fallback_reasons.size();++i)
-        mImpl->source_command_stats.fallback_reasons[i] += source_bank_stats.fallback_reasons[i];
-    if (source_bank_stats.fallback_draws)
-        mImpl->source_command_stats.last_fallback = source_bank_stats.last_fallback;
-    mImpl->source_draw_stats.bound += source_bound_draws;
+    mImpl->source_routing_stats.cohorts += source_routing_stats.cohorts;
+    mImpl->source_routing_stats.scalar += source_routing_stats.scalar;
+    mImpl->source_routing_stats.cpu += source_routing_stats.cpu;
     if (scene.cohort_count)
     {
         ++mImpl->cohort_stats.views;
@@ -21287,34 +20274,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     if (std::isfinite(forward_probe_constants.config[0]))
         candidate_decision.probe_count = static_cast<std::uint32_t>(
             std::clamp(forward_probe_constants.config[0], 0.f, 256.f));
-    const auto has_candidate_family = [&](Impl::PreWaterAlphaFamily family)
-    {
-        if (family != Impl::PreWaterAlphaFamily::simple &&
-            !mImpl->force_all_e6_prepared_consumers) return false;
-        if (scene.batch_count == 0) return false;
-        return std::any_of(scene.batches, scene.batches + scene.batch_count,
-            [&](const ALMetalWorldSimpleBatch& batch)
+    const bool candidate_simple_family = scene.batch_count != 0 &&
+        std::any_of(scene.batches, scene.batches + scene.batch_count,
+            [](const ALMetalWorldSimpleBatch& batch)
             {
-                const bool matching = family == Impl::PreWaterAlphaFamily::simple
-                    ? batch.pre_water_simple : family == Impl::PreWaterAlphaFamily::material
-                    ? batch.pre_water_material : batch.pre_water_pbr;
                 const bool color_avatar = batch.avatar_alpha && batch.avatar_color_write;
-                return matching && (batch.pre_water_alpha || batch.post_water_alpha || color_avatar) &&
+                return batch.pre_water_simple &&
+                    (batch.pre_water_alpha || batch.post_water_alpha || color_avatar) &&
                     !batch.post_water_depth_only;
             });
-    };
-    const bool candidate_simple_family = has_candidate_family(Impl::PreWaterAlphaFamily::simple);
-    const bool candidate_material_family = has_candidate_family(Impl::PreWaterAlphaFamily::material);
-    const bool candidate_pbr_family = has_candidate_family(Impl::PreWaterAlphaFamily::pbr);
-    const bool has_candidate_alpha = candidate_simple_family || candidate_material_family || candidate_pbr_family;
-    const bool candidate_shiny_family = has_shiny && mImpl->force_all_e6_prepared_consumers;
-    const bool has_candidate_forward = has_candidate_alpha || candidate_shiny_family;
+    const bool has_candidate_alpha = candidate_simple_family;
+    const bool has_candidate_forward = candidate_simple_family;
     const auto hdr_index = scene.hdr ? 1u : 0u;
-    const bool has_candidate_pipeline =
-        (candidate_simple_family && mImpl->candidate_pre_water_simple_pipelines[hdr_index][0][0][0]) ||
-        (candidate_material_family && mImpl->candidate_pre_water_material_pipelines[hdr_index][0][0]) ||
-        (candidate_pbr_family && mImpl->candidate_pre_water_pbr_pipelines[hdr_index][0][0]) ||
-        (candidate_shiny_family && mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment"));
+    const bool has_candidate_pipeline = candidate_simple_family &&
+        mImpl->candidate_pre_water_simple_pipelines[hdr_index][0][0][0];
     if (has_candidate_forward)
     {
         if (!scene.forward_probe_projection_valid)
@@ -21367,9 +20340,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         forward_candidate_constants.grid=forward_candidates.grid;
     }
     std::uint64_t candidate_simple_batches=0,candidate_simple_shadow_batches=0;
-    std::uint64_t candidate_material_batches=0,candidate_pbr_batches=0;
     std::uint64_t candidate_avatar_batches=0;
-    std::uint64_t candidate_shiny_batches=0;
     ALMetalWorldProbeCandidateActivity candidate_activity;
     int last_probe_validation = -1, last_water_validation = -1;
 
@@ -22631,14 +21602,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ? (simple_shadow_mode == Impl::SimpleShadowMode::none
                     ? "almetal_world_pre_water_simple_candidates_fragment"
                     : "almetal_world_pre_water_simple_shadow_candidates_fragment")
-                : alpha_family == Impl::PreWaterAlphaFamily::material
-                ? "almetal_world_pre_water_material_candidates_fragment"
-                : alpha_family == Impl::PreWaterAlphaFamily::pbr
-                ? "almetal_world_pre_water_pbr_candidates_fragment" : nullptr;
+                : nullptr;
             bool selected_custom_candidates = false;
             const bool candidate_family_permitted =
-                alpha_family == Impl::PreWaterAlphaFamily::simple ||
-                mImpl->force_all_e6_prepared_consumers;
+                alpha_family == Impl::PreWaterAlphaFamily::simple;
             bool candidate_avatar = false;
             ALMetalRenderPipeline* alpha_pipeline = nullptr;
             if (batch.avatar_alpha)
@@ -22777,8 +21744,6 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
 
             bool candidate_simple = selected_custom_candidates && alpha_family == Impl::PreWaterAlphaFamily::simple;
-            bool candidate_material = selected_custom_candidates && alpha_family == Impl::PreWaterAlphaFamily::material;
-            bool candidate_pbr = selected_custom_candidates && alpha_family == Impl::PreWaterAlphaFamily::pbr;
             if (forward_candidates.masks && standard_blend && !batch.avatar_alpha &&
                 !batch.post_water_depth_only && alpha_family==Impl::PreWaterAlphaFamily::simple)
             {
@@ -22800,34 +21765,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 else ++candidate_decision.pipeline_fallback_batches;
             }
 
-            if (standard_blend && !batch.avatar_alpha && !batch.post_water_depth_only &&
-                (alpha_family == Impl::PreWaterAlphaFamily::material ||
-                 alpha_family == Impl::PreWaterAlphaFamily::pbr))
+            if (standard_blend && !batch.avatar_alpha && !batch.post_water_depth_only && probe_pbr_shadow)
             {
-                const bool material_family = alpha_family == Impl::PreWaterAlphaFamily::material;
-                const bool high = highShadowQuality(alpha_shadow_constants);
-                ALMetalRenderPipeline* prepared = nullptr;
-                if (mImpl->force_all_e6_prepared_consumers && forward_candidates.masks)
-                {
-                    const auto& pipelines = material_family
-                        ? (high ? mImpl->candidate_high_pre_water_material_pipelines
-                                : mImpl->candidate_pre_water_material_pipelines)
-                        : (high ? mImpl->candidate_high_pre_water_pbr_pipelines
-                                : mImpl->candidate_pre_water_pbr_pipelines);
-                    prepared = pipelines[scene.hdr ? 1 : 0]
-                        [batch.pre_water_alpha_writes_coverage ? 1 : 0][rigged ? 1 : 0].get();
-                    if (!prepared) ++candidate_decision.pipeline_fallback_batches;
-                }
-                if (probe_pbr_shadow)
-                {
-                    alpha_pipeline = mImpl->probePBRAlphaPipeline(
-                        scene.hdr, batch.pre_water_alpha_writes_coverage, rigged,
-                        prepared != nullptr, error);
-                    if (!alpha_pipeline) return fail_command();
-                }
-                else if (prepared) alpha_pipeline = prepared;
-                candidate_material = prepared && material_family;
-                candidate_pbr = prepared && !material_family;
+                alpha_pipeline = mImpl->probePBRAlphaPipeline(
+                    scene.hdr, batch.pre_water_alpha_writes_coverage, rigged, error);
+                if (!alpha_pipeline) return fail_command();
             }
 
             const bool writes_depth = batch.avatar_alpha
@@ -23056,7 +21998,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             error);
                 }
             }
-            if (encoded && (candidate_simple || candidate_material || candidate_pbr || candidate_avatar))
+            if (encoded && (candidate_simple || candidate_avatar))
             {
                 encoded=mImpl->setFragmentData(*encoder,*command,8,&forward_candidate_constants,
                     sizeof(forward_candidate_constants),error) &&
@@ -23110,22 +22052,6 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 if (simple_shadow_mode==Impl::SimpleShadowMode::none) ++candidate_simple_batches;
                 else ++candidate_simple_shadow_batches;
             }
-            if (encoded && !batch.avatar_alpha && !batch.post_water_depth_only)
-            {
-                const std::size_t owner=batch.post_water_alpha?1:0;
-                if (alpha_family==Impl::PreWaterAlphaFamily::material)
-                {
-                    ++candidate_activity.material_eligible_batches[owner];
-                    if (candidate_material) ++candidate_activity.material_prepared_batches[owner];
-                }
-                else if (alpha_family==Impl::PreWaterAlphaFamily::pbr)
-                {
-                    ++candidate_activity.pbr_eligible_batches[owner];
-                    if (candidate_pbr) ++candidate_activity.pbr_prepared_batches[owner];
-                }
-            }
-            if (encoded && candidate_material) ++candidate_material_batches;
-            if (encoded && candidate_pbr) ++candidate_pbr_batches;
             if (encoded && !batch.post_water_depth_only &&
                 (batch.pre_water_simple || batch.pre_water_material || batch.pre_water_pbr) &&
                 (batch.pre_water_alpha || batch.post_water_alpha || (batch.avatar_alpha && batch.avatar_color_write)))
@@ -23187,8 +22113,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (encoded && selected_pbr_shadow_psos)
             {
                 const auto& selected = alpha_pipeline->descriptor();
-                if ((selected.fragment_function == "almetal_world_pre_water_pbr_fragment" ||
-                     selected.fragment_function == "almetal_world_pre_water_pbr_candidates_fragment") &&
+                if (selected.fragment_function == "almetal_world_pre_water_pbr_fragment" &&
                     selected.colors[0].write_mask != ALMetalColorWriteMask::none)
                 {
                     std::size_t constant_state = 0;
@@ -23381,7 +22306,6 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             continue;
         }
         const ALMetalRenderPipeline* pipeline = nullptr;
-        bool candidate_shiny = false;
         if (batch.impostor_emboss)
         {
             pipeline = mImpl->opaque_forward_emboss_pipelines
@@ -23391,17 +22315,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             pipeline = mImpl->opaque_forward_shiny_pipelines
                 [scene.hdr ? 1 : 0][rigged ? 1 : 0].get();
-            if (mImpl->force_all_e6_prepared_consumers && forward_candidates.masks &&
-                mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment"))
-            {
-                pipeline = mImpl->candidateLegacyPipeline(*pipeline,
-                    mImpl->candidate_opaque_forward_shiny_pipelines[scene.hdr ? 1 : 0][rigged ? 1 : 0],
-                    "almetal_world_shiny_candidates_fragment", error);
-                if (!pipeline) return fail_command();
-                candidate_shiny = true;
-            }
-            else if (mImpl->force_all_e6_prepared_consumers && forward_candidates.masks)
-                ++candidate_decision.pipeline_fallback_batches;
+
         }
         else
         {
@@ -23518,10 +22432,6 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoded = mImpl->setFragmentData(*encoder, *command,
                 0, &shiny_environment,
                 sizeof(shiny_environment), error);
-            if (encoded && candidate_shiny)
-                encoded=mImpl->setFragmentData(*encoder,*command,8,&forward_candidate_constants,
-                    sizeof(forward_candidate_constants),error) &&
-                    encoder->setFragmentBuffer(9,*forward_candidates.masks,0,error);
         }
         for (std::size_t texture = 0;
              encoded && texture < batch.texture_count; ++texture)
@@ -23536,10 +22446,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (encoded && batch.impostor_shiny)
         {
             last_probe_validation = pipeline->shaderValidationMode();
-            ++candidate_activity.shiny_eligible_batches;
-            if (candidate_shiny) ++candidate_activity.shiny_prepared_batches;
         }
-        if (encoded && candidate_shiny) ++candidate_shiny_batches;
     }
 
     encoded = encoded && seed_cutout_coverage();
@@ -25032,10 +23939,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     }
     mImpl->opaque_diagnostics.probe_candidate_simple_batches=candidate_simple_batches;
     mImpl->opaque_diagnostics.probe_candidate_simple_shadow_batches=candidate_simple_shadow_batches;
-    mImpl->opaque_diagnostics.probe_candidate_material_batches=candidate_material_batches;
-    mImpl->opaque_diagnostics.probe_candidate_pbr_batches=candidate_pbr_batches;
     mImpl->opaque_diagnostics.probe_candidate_avatar_batches=candidate_avatar_batches;
-    mImpl->opaque_diagnostics.probe_candidate_shiny_batches=candidate_shiny_batches;
     mImpl->opaque_diagnostics.last_probe_consumer_shader_validation=last_probe_validation;
     mImpl->opaque_diagnostics.last_water_consumer_shader_validation=last_water_validation;
     mImpl->opaque_diagnostics.probe_candidate_frame_index=scene.diagnostic_frame_index;
@@ -25048,22 +23952,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     mImpl->probe_candidate_activity.avatar_prepared_batches+=candidate_activity.avatar_prepared_batches;
     candidate_decision.eligible_batches+=candidate_activity.avatar_eligible_batches;
     candidate_decision.prepared_batches+=candidate_activity.avatar_prepared_batches;
-    mImpl->probe_candidate_activity.shiny_eligible_batches+=candidate_activity.shiny_eligible_batches;
-    mImpl->probe_candidate_activity.shiny_prepared_batches+=candidate_activity.shiny_prepared_batches;
-    candidate_decision.eligible_batches+=candidate_activity.shiny_eligible_batches;
-    candidate_decision.prepared_batches+=candidate_activity.shiny_prepared_batches;
     for (std::size_t owner=0;owner<2;++owner)
     {
         mImpl->probe_candidate_activity.eligible_batches[owner]+=candidate_activity.eligible_batches[owner];
         mImpl->probe_candidate_activity.prepared_batches[owner]+=candidate_activity.prepared_batches[owner];
-        mImpl->probe_candidate_activity.material_eligible_batches[owner]+=candidate_activity.material_eligible_batches[owner];
-        mImpl->probe_candidate_activity.material_prepared_batches[owner]+=candidate_activity.material_prepared_batches[owner];
-        mImpl->probe_candidate_activity.pbr_eligible_batches[owner]+=candidate_activity.pbr_eligible_batches[owner];
-        mImpl->probe_candidate_activity.pbr_prepared_batches[owner]+=candidate_activity.pbr_prepared_batches[owner];
-        candidate_decision.eligible_batches += candidate_activity.eligible_batches[owner] +
-            candidate_activity.material_eligible_batches[owner] + candidate_activity.pbr_eligible_batches[owner];
-        candidate_decision.prepared_batches += candidate_activity.prepared_batches[owner] +
-            candidate_activity.material_prepared_batches[owner] + candidate_activity.pbr_prepared_batches[owner];
+        candidate_decision.eligible_batches += candidate_activity.eligible_batches[owner];
+        candidate_decision.prepared_batches += candidate_activity.prepared_batches[owner];
     }
     if (candidate_decision.eligible_batches && !candidate_decision.masks_bound)
         ++mImpl->probe_candidate_activity.unavailable_calls[
@@ -27621,8 +26515,6 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         impostor_probe_snapshot.emplace(scene.reflection_probes->constants);
     const auto* impostor_probe_constants = impostor_probe_snapshot
         ? &*impostor_probe_snapshot : nullptr;
-    std::array<float,16> impostor_projection{};
-    std::copy_n(scene.forward_probe_projection,16,impostor_projection.data());
     ALMetalRenderPassConfig pass_config;
     for (std::size_t attachment = 0; attachment < 4; ++attachment)
     {
@@ -27649,45 +26541,6 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     {
         return false;
     }
-    ALMetalProbeCandidateBinding impostor_candidates;
-    struct alignas(16) ImpostorCandidateConstants
-    {
-        std::array<float,16> projection{};
-        std::array<std::uint32_t,4> grid{};
-    } impostor_candidate_constants;
-    static_assert(sizeof(ImpostorCandidateConstants)==80);
-    const bool has_legacy_probe_work = has_legacy_alpha && std::any_of(
-        scene.batches,scene.batches+scene.batch_count,[](const ALMetalWorldSimpleBatch& batch)
-        {
-            if (batch.material_slot_count==0 || batch.material_alpha_mode!=1) return false;
-            for (std::size_t slot=0;slot<batch.material_slot_count;++slot)
-                if (batch.materialSlots()[slot].env_intensity>0.f) return true;
-            return false;
-        });
-    const bool has_candidate_function = mImpl->force_all_e6_prepared_consumers &&
-        ((has_shiny && mImpl->library->hasFunction("almetal_world_shiny_candidates_fragment")) ||
-         (has_legacy_probe_work && mImpl->library->hasFunction("almetal_world_legacy_alpha_candidates_fragment")));
-    if (scene.forward_probe_projection_valid && has_candidate_function &&
-        impostor_probe_constants && mImpl->frame_data && mImpl->probe_candidate_pipeline)
-    {
-        std::array<ALMetalProbeCandidateSphere,256> spheres{};
-        for (std::size_t index=0;index<spheres.size();++index)
-        {
-            std::copy_n(impostor_probe_constants->ref_sphere[index],4,spheres[index].center_radius);
-            spheres[index].priority=impostor_probe_constants->ref_index[index][3];
-        }
-        const auto packet=alMetalBuildProbeEyeCandidates(spheres,impostor_probe_constants->config[0],
-            impostor_projection,scene.width,scene.height);
-        const std::array<float,16> unused_inverse{};
-        const auto prepared=mImpl->frame_data->prepareProbeCandidates(*command,
-            mImpl->probe_candidate_pipeline.get(),mImpl->library,mImpl->frame_data->builtinLibraryEpoch(),
-            packet,*impostor_probe_constants,impostor_projection,unused_inverse,scene.reverse_z,
-            impostor_candidates,error);
-        if (prepared==ALMetalProbeCandidatePreparation::failed) return false;
-        impostor_candidate_constants.projection=impostor_projection;
-        impostor_candidate_constants.grid=impostor_candidates.grid;
-    }
-    std::array<std::uint64_t,2> candidate_eligible{},candidate_prepared{};
     int last_impostor_validation = -1;
     auto encoder = ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world impostor post-deferred encoder",
@@ -27821,19 +26674,6 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             pipeline = mImpl->flat_alpha_pipelines[scene.hdr ? 1 : 0]
                                                    [rigged ? 1 : 0]
                                                    [scene.normal_hdr ? 1 : 0].get();
-        }
-        const char* candidate_fragment = shiny_batch ? "almetal_world_shiny_candidates_fragment"
-            : material_probe_work ? "almetal_world_legacy_alpha_candidates_fragment" : nullptr;
-        bool candidate_bound = false;
-        if (mImpl->force_all_e6_prepared_consumers && impostor_candidates.masks &&
-            candidate_fragment && mImpl->library->hasFunction(candidate_fragment))
-        {
-            auto& cached = shiny_batch
-                ? mImpl->candidate_shiny_pipelines[scene.hdr ? 1 : 0][rigged ? 1 : 0][scene.normal_hdr ? 1 : 0]
-                : mImpl->candidate_legacy_alpha_pipelines[scene.hdr ? 1 : 0][rigged ? 1 : 0][scene.normal_hdr ? 1 : 0];
-            pipeline = mImpl->candidateLegacyPipeline(*pipeline,cached,candidate_fragment,error);
-            if (!pipeline) return false;
-            candidate_bound = true;
         }
 
         WorldSimpleConstants world{};
@@ -28033,19 +26873,12 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                     batch.diffuse_textures[slot], error);
             }
         }
-        if (encoded && candidate_bound)
-            encoded = encoder->setFragmentBytes(8,&impostor_candidate_constants,
-                sizeof(impostor_candidate_constants),error) &&
-                encoder->setFragmentBuffer(9,*impostor_candidates.masks,0,error);
         encoded = encoded && encoder->drawIndexed(
             ALMetalPrimitiveType::triangle, batch.index_count,
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
         if (encoded && (shiny_batch || material_probe_work))
         {
             last_impostor_validation = pipeline->shaderValidationMode();
-            const std::size_t owner=shiny_batch?0:1;
-            ++candidate_eligible[owner];
-            if (candidate_bound) ++candidate_prepared[owner];
         }
     }
 
@@ -28102,12 +26935,6 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     if (!command->commit(error)) return false;
     if (completion_out) *completion_out = completion;
     mImpl->opaque_diagnostics.last_impostor_consumer_shader_validation=last_impostor_validation;
-    ++mImpl->probe_candidate_activity.impostor_encoded_calls;
-    for (std::size_t owner=0;owner<2;++owner)
-    {
-        mImpl->probe_candidate_activity.impostor_eligible_batches[owner]+=candidate_eligible[owner];
-        mImpl->probe_candidate_activity.impostor_prepared_batches[owner]+=candidate_prepared[owner];
-    }
     return true;
 }
 

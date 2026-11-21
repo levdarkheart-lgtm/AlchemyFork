@@ -14,8 +14,6 @@
 #include "almetalprobeworkload.h"
 #include "almetalworldresources.h"
 #include "almetalworlddraws.h"
-#include "almetalworldsourceview.h"
-#include "almetalworldsourcecommands.h"
 #include "almetalworldcohort.h"
 #include "almetalworldanimated.h"
 
@@ -36,8 +34,6 @@
 struct ALMetalWorldModernSkyScene;
 class ALMetalShadowSourceRecord;
 class ALMetalWorldViewInputs;
-class ALMetalWorldVisibilityView;
-class ALMetalWorldEarlyVisibilityArguments;
 class ALMetalWorldMaterialSource;
 class ALMetalWorldMaterialDataCache;
 class ALMetalWorldTerrainPass;
@@ -460,7 +456,6 @@ struct ALMetalWorldSpotShadowScene
     // Optional shared native visibility experiment. One membership/argument
     // slot per original draw; null retains ordinary native encoding. Shadow
     // callers explicitly select scalar mode (all bulk/ICB switches false).
-    std::shared_ptr<const ALMetalWorldVisibilityView> native_visibility;
     // The immutable admitted packet pins native producer generations through
     // encoded/uncommitted work and actual GPU completion. The renderer retains
     // this owner once per consuming command; source prototypes never own it.
@@ -1265,46 +1260,10 @@ struct alignas(16) ALMetalWorldVisibilityQuery
     std::uint32_t count_samples = 0;
 };
 
-// Accepted native encoding only, not GPU completion or executed vertices.
-struct ALMetalWorldEarlyVisibilityStats
-{
-    std::uint64_t requested_views=0,adopted_views=0,requested_cohort_draws=0;
-    std::uint64_t indirect_draws=0,fallback_draws=0;
-};
-
 struct ALMetalWorldGBufferScene
 {
-    // Optional copied owner provenance for native GPU source rows. CPU-only;
-    // commands retain a separate native FrameView after publication.
-    std::shared_ptr<const ALMetalWorldSourceView> source_rows;
-    // Separate, default-off ordered native command-bank experiment. Failed or
-    // short runs use the ordinary native shader, not the scalar row pilot.
-    bool source_command_banks = false;
-    // Retained regular-rigged GPU source/pose commands. Default-off experiment;
-    // body/cloth/special state keeps the ordinary native contract.
-    bool animated_gpu_records = false;
-    // Independent mechanism control within the default-off animated path.
-    // Full-count banks keep the same late poses, without a visibility dispatch.
-    bool animated_gpu_visibility = true;
-    // Experimental CPU rejection before ordinary bindings. Only privately
-    // qualified cohort bounds participate; raw/unknown inputs stay visible.
-    // This takes precedence over optional GPU visibility/source-row/bank work.
-    bool cpu_cohort_visibility = false;
-    // Opt-in direct buffer bindings inside retained cohort command banks.
-    // Requires source_command_banks; its existing row-bank mode stays separate.
-    bool source_direct_command_banks = false;
-    // Same-command GPU bounds update of ordered static DIRECT-bank calls.
-    // Requires both bank switches; unknown bounds retain their original draw.
-    bool source_gpu_visibility = false;
-    // Production routing over already-published conservative source facts.
-    // Scalar/CPU alternatives run before optional PSO/SourcePages setup.
-    // Native selection remains a separate provisional qualification control.
+    // Production scalar/coarse CPU routing over published source facts.
     bool source_routing = false;
-    bool source_native_visibility = false;
-    ALMetalWorldSourceCommandPolicy source_routing_policy;
-    std::uint32_t source_command_minimum_run = 2;
-    // Diagnostic native resource-table path; optional failure stays direct.
-    bool material_argument_buffers = false;
     // Immutable producer-generation leases for borrowed batch resources.
     // Each consuming command retains this aggregate until actual completion
     // or uncommitted abandonment, independently of any submission-scope credit.
@@ -1313,13 +1272,6 @@ struct ALMetalWorldGBufferScene
     // preparation and encoding. Commands retain source_owner (native tuples)
     // separately; they must not retain this CPU description graph.
     std::shared_ptr<const void> cpu_source_owner;
-    // Optional shared native visibility experiment. One membership/argument
-    // slot per original draw; null retains ordinary native encoding. Shadow
-    // callers explicitly select scalar mode (all bulk/ICB switches false).
-    std::shared_ptr<const ALMetalWorldVisibilityView> native_visibility;
-    // Earlier bounds-only compute may be adopted only after successful GPU
-    // completion and exact current cohort/native/view qualification.
-    std::shared_ptr<const ALMetalWorldEarlyVisibilityArguments> early_visibility;
     // Selected star attachment is black before opaque geometry; -1 keeps ordinary clear.
     std::int32_t sky_star_attachment = -1;
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -1379,30 +1331,10 @@ struct ALMetalWorldGBufferScene
     bool forward_probe_projection_valid = false;
 };
 
-struct ALMetalWorldSourceDrawStats
+struct ALMetalWorldSourceRoutingStats
 {
-    // requested/fallback/setup_failures count optional setup attempts. bound
-    // counts draws in accepted G-buffer renders, never GPU completion.
-    std::uint64_t requested = 0, bound = 0, fallback = 0, setup_failures = 0;
-    const char* last_failure = "none";
-    ALMetalWorldSourcePageStats pages;
-};
-
-struct ALMetalWorldSourceCommandDrawStats
-{
-    bool shared_cache=false;
-    // Accepted-render requests/fallbacks count candidate intents (including
-    // rejected metadata); bank_draws counts actual encoded logical commands.
-    std::uint64_t requested_draws=0,bank_draws=0,fallback_draws=0,execute_calls=0;
-    // Policy classifications before optional publication/admission failures;
-    // actual native execution is reported separately by bank_draws/cache.
-    std::uint64_t routing_cohorts=0,routing_scalar=0,routing_cpu=0,routing_native=0;
-    // Actual selected owner PSO mode: native MTLShaderValidation value,
-    // UINT32_MAX when no routed/native source PSO has been observed.
-    std::uint32_t last_pipeline_validation=UINT32_MAX;
-    std::array<std::uint64_t,static_cast<std::size_t>(ALMetalWorldSourceCommandFailure::count)> fallback_reasons{};
-    ALMetalWorldSourceCommandFailure last_fallback=ALMetalWorldSourceCommandFailure::none;
-    ALMetalWorldSourceCommandStats cache;
+    // Conservative CPU route classifications; actual rejections are separate.
+    std::uint64_t cohorts=0, scalar=0, cpu=0;
 };
 
 struct ALMetalWorldCohortStats
@@ -2797,21 +2729,14 @@ public:
     ALMetalWorldFrameDataStats stats() const noexcept;
     ALMetalShadowMaterials* shadowMaterials(
         const ALMetalShaderLibrary& library, std::string* error = nullptr);
-    std::shared_ptr<ALMetalWorldResources> worldResources(
-        const ALMetalShaderLibrary&, ALMetalWorldResourceLimits = {}, std::string* error = nullptr,
-        ALMetalWorldResourceFallback* failure = nullptr);
-    std::shared_ptr<ALMetalWorldSourcePages> worldSourcePages(
-        const ALMetalShaderLibrary&, std::uint32_t max_anisotropy,
-        std::string* error = nullptr);
     // Application-owner policy injection, normally before any source context
     // exists. Generic native callers have no global frame-budget dependency.
-    void setSourcePublicationAdmission(ALMetalWorldSourcePages::PublicationAdmission);
+    void setSourcePublicationAdmission(ALMetalWorldPublicationAdmission);
     // Other native metadata owners share the injected policy/credit class.
     // Their lazy closure preserves its own pending age, independently of
     // page/command contexts. No policy means standalone callers stay allowed.
     bool requestSourcePublication(const ALMetalWorldSourcePublicationWork&,
                                   std::shared_ptr<const void>& credit);
-    std::shared_ptr<ALMetalWorldSourceCommands> worldSourceCommands(std::string* error=nullptr);
     // Existing submission-owner thread only. No queue/commit/wait/readback.
     // Compare the complete mask-producing packet and kernel library/epoch,
     // not a frame/hash or unrelated lighting values. Validate the current
@@ -2972,18 +2897,10 @@ public:
         ALMetalShadowPrepareFailure failure) noexcept;
     void failNextOpaqueIndirectPublicationForTesting() noexcept;
     ALMetalWorldConstantStats constantStats() const noexcept;
-    ALMetalWorldResourceStats worldResourceStats() const noexcept;
-    ALMetalWorldSourceDrawStats worldSourceStats() const noexcept;
-    ALMetalWorldSourceCommandDrawStats worldSourceCommandStats() const noexcept;
+    ALMetalWorldSourceRoutingStats worldSourceRoutingStats() const noexcept;
     ALMetalWorldCohortStats worldCohortStats() const noexcept;
     ALMetalWorldAnimatedStats worldAnimatedStats() const noexcept;
     ALMetalWorldCpuVisibilityStats worldCpuVisibilityStats() const noexcept;
-    ALMetalWorldEarlyVisibilityStats worldEarlyVisibilityStats() const noexcept;
-    void clearWorldSourceCommands() noexcept;
-    void failNextWorldSourceCommandPublicationForTesting() noexcept;
-    void configureWorldResources(ALMetalWorldResourceLimits) noexcept;
-    void clearWorldResourceLookup() noexcept;
-    void failNextWorldResourcePreparationForTesting() noexcept;
     ALMetalWorldPostDiagnostics opaquePostDiagnostics() const noexcept;
 
     std::unique_ptr<ALMetalRenderTarget> render(

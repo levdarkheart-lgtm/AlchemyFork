@@ -139,18 +139,9 @@ struct ALMetalWorldProbeCandidateActivity
     std::uint64_t encoded_calls = 0;
     // Disjoint pre-water/post-water owners; only simple-alpha draws (standard or custom blend).
     std::array<std::uint64_t, 2> eligible_batches{}, prepared_batches{};
-    // The same disjoint pre/post owners for the material and PBR consumers.
-    // Existing eligible/prepared_batches above retain their simple-only meaning.
-    std::array<std::uint64_t, 2> material_eligible_batches{}, material_prepared_batches{};
-    std::array<std::uint64_t, 2> pbr_eligible_batches{}, pbr_prepared_batches{};
     // Avatar/body alpha is a separate ordered owner, not a pre/post-water pool.
     // Depth-only/color-disabled replays do not need probe candidates.
     std::uint64_t avatar_eligible_batches = 0, avatar_prepared_batches = 0;
-    std::uint64_t shiny_eligible_batches = 0, shiny_prepared_batches = 0;
-    // Separate compositor calls, published only after successful commit.
-    // Array owners: shiny0, standalone legacy-material-alpha1. Not completion.
-    std::uint64_t impostor_encoded_calls = 0;
-    std::array<std::uint64_t, 2> impostor_eligible_batches{}, impostor_prepared_batches{};
     // Eligible calls without a usable shared mask, grouped by their final
     // preparation decision; separate from per-draw missing-variant fallback.
     std::array<std::uint64_t, alMetalProbeCandidateReasonCount> unavailable_calls{};
@@ -181,10 +172,7 @@ struct ALMetalWorldPostDiagnostics
     // prepared simple-alpha entry points, independent of timing. Not GPU work.
     std::uint64_t probe_candidate_simple_batches = 0;
     std::uint64_t probe_candidate_simple_shadow_batches = 0;
-    std::uint64_t probe_candidate_material_batches = 0;
-    std::uint64_t probe_candidate_pbr_batches = 0;
     std::uint64_t probe_candidate_avatar_batches = 0;
-    std::uint64_t probe_candidate_shiny_batches = 0;
     // Last actually encoded relevant consumer's effective native PSO enum;
     // -1 means unavailable/no such consumer. Encoding is not GPU completion.
     std::int32_t last_probe_consumer_shader_validation = -1;

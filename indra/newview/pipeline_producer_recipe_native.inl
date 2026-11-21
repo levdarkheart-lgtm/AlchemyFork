@@ -7,15 +7,13 @@ namespace ALSceneProducerDrainNative
 {
 struct Policy
 {
-    bool native_visibility = false, native_resources = false, native_groups = false;
+    bool native_groups = false;
     bool cohort_bounds = false, heavy_bounds = false;
     ALSceneSourcePolicyNative::OrdinaryPass pass;
     U64 signature() const noexcept
     {
-        return 1 | (U64(native_visibility) << 1) | (U64(native_resources) << 2) |
-            (U64(native_groups) << 3) | (U64(cohort_bounds) << 4) |
-            (U64(pass.source_rows_active) << 5) | (U64(pass.animated_sources_active) << 6) |
-            (U64(pass.animated_gpu_records_active) << 7) |
+        return 1 | (U64(native_groups) << 3) | (U64(cohort_bounds) << 4) |
+            (U64(pass.animated_sources_active) << 6) |
             (U64(pass.animated_direct_stability) << 8) | (U64(heavy_bounds) << 9);
     }
 };
@@ -65,12 +63,11 @@ inline std::optional<ALScenePublicationNative::WorldFlavor> ordinaryFlavor(
         }
     }
     if (!supported) return {};
-    auto flavor = ALSceneSourcePolicyNative::select(info, family, indexed, false, pass,
-        policy.native_visibility, policy.native_resources, policy.native_groups).flavor;
+    auto flavor = ALSceneSourcePolicyNative::select(info, family, indexed, false, pass).flavor;
     // The base producer ticket must not nest the separate per-source animated
-    // capability admission. Current poses remain live; optional animated/GPU
+    // capability admission. Current poses remain live; optional animated
     // certificates use their existing admitted promotion phase over this base.
-    flavor.animated_source = flavor.animated_gpu_source = flavor.stabilize_animated_direct = false;
+    flavor.animated_source = flavor.stabilize_animated_direct = false;
     // Cohort certificates are optional supersets, not different shading keys.
     flavor.cohort_source = policy.native_groups && !pass.rigged && !info.mTextureMatrix &&
         (type == LLRenderPass::PASS_SIMPLE || family != 0);

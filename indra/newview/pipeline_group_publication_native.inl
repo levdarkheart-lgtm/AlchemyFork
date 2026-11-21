@@ -93,13 +93,6 @@ struct Payload
     U64 index_count = 0;
     U64 region_identity = 0, material_flavor = 0;
 };
-// Defined by pipeline_early_visibility_native.inl after this producer helper.
-// The optional index owns weak identities only and cannot reject publication.
-namespace early
-{
-inline void registerResident(const std::shared_ptr<ALNativePublication::State>&,
-    const std::shared_ptr<const Payload>&) noexcept;
-}
 // Group retention is independently budgeted. Evicting a child's lookup cache
 // does not mutate its native tuple; its active group can remain resident.
 // Actual producer changes (including resource withdrawal) reach the child
@@ -730,7 +723,6 @@ try
     dependency_owner = std::move(dependencies);
     layout_owner = std::move(layout);
     ++statistics.builds;
-    early::registerResident(state, value);
     return value;
 }
 catch (const std::bad_alloc&)
@@ -1040,7 +1032,6 @@ try
     { drop_candidate();recordFailure(FailureStage::host_allocation);return {}; }
     dependency_owner = std::move(dependencies);layout_owner = std::move(layout);
     ++statistics.builds;++statistics.material_builds;
-    early::registerResident(state, value);
     return value;
 }
 catch (const std::bad_alloc&) { recordFailure(FailureStage::host_allocation);return {}; }

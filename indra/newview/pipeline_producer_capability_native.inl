@@ -102,7 +102,7 @@ try
                !geometry || !geometry->hasPublishedMetalVertexBuffer() ||
                !geometry->hasPublishedMetalIndexBuffer()){invalid=true;break;}
             flavor->cohort_source=flavor->cohort_bounds=true;
-            flavor->animated_source=flavor->animated_gpu_source=flavor->stabilize_animated_direct=false;
+            flavor->animated_source=flavor->stabilize_animated_direct=false;
             requests.push_back({ALScenePublicationNative::producerSource(*pin),*flavor});
             pins.push_back(std::move(pin));
         }

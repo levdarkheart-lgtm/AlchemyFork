@@ -5,11 +5,13 @@
  */
 #pragma once
 #include "almetalworlddraws.h"
-#include "almetalworldsourcepages.h"
+#include "almetalworldsourcepolicy.h"
 #include "almetalworldvisibility.h"
 #include <memory>
 #include <span>
 #include <string>
+
+class ALMetalTexture;
 
 struct ALMetalWorldKeyedSource
 {

@@ -67,7 +67,7 @@ void run(bool many)
         // Exactly one NativeFont owner. Geometry/texture/material authoring is
         // excluded; both arms' FIRST source/group/recipe publication is timed.
         MaterialGroupPublication f(shape.family?shape.family:1);
-        Inputs::gSavedSettings.native_resources=false;Inputs::gSavedSettings.native_visibility=false;
+
         std::array<Inputs::ALScenePublicationNative::WorldFlavor,2> flavors;
         for(U32 family=1;family<=2;++family)
         {auto& flavor=flavors[family-1];flavor.family=static_cast<Inputs::ALScenePublicationNative::WorldFamily>(family);
@@ -234,7 +234,7 @@ void run(bool many)
                     value.order_bytes+=capture.draw_order.size()*sizeof(ALMetalWorldDrawIndex);value.cohort_bytes+=capture.source_cohorts.size()*sizeof(ALMetalWorldSourceCohortView);
                     value.cpu_pins+=capture.source_cohorts.size()+(capture.cpu_sources?capture.cpu_sources->owners.size():0);
                     value.native_pins+=capture.source_cohorts.size()+capture.world_resources->owners.size();
-                    CHECK(capture.source_references.empty());CHECK_FALSE(capture.source_rows);
+                    CHECK(capture.source_references.empty());
                     arm.queries.resize(visible_groups+1);
                     for(U32 query=0;query<arm.queries.size();++query)
                     {auto& q=arm.queries[query];q={};std::memcpy(q.modelview_projection,f.model.getF32ptr(),sizeof(q.modelview_projection));
@@ -243,7 +243,7 @@ void run(bool many)
                      q.center[0]=.35f;q.center[1]=-.5f;q.center[2]=-.5f;q.half_extent[0]=q.half_extent[1]=q.half_extent[2]=.08f;
                      q.batch_offset=query?query*shape.sources:shape.sources/2;q.fan=7;q.count_samples=1;}
                     auto scene=f.scene(capture);scene.visibility_queries=arm.queries.data();scene.visibility_query_count=arm.queries.size();
-                    scene.material_argument_buffers=false;scene.source_command_banks=false;scene.source_direct_command_banks=false;
+
                     auto inputs=ALMetalWorldViewInputs::adopt(scene,std::move(capture.batches),std::move(capture.source_references),
                         std::move(capture.draw_order),std::move(capture.source_cohorts),std::move(arm.queries),std::move(capture.cpu_sources),
                         capture.world_resources,arm.native_epoch,&f.error);INFO(f.error);REQUIRE(inputs);scene={};

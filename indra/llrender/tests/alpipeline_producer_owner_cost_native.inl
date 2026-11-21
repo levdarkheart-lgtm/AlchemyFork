@@ -72,7 +72,7 @@ TEST_CASE("Actual producer preparation and selective CPU routing include capture
     std::array<Arm,2> arms;
     const auto all_sources=fixture.group->draws;
     LLMatrix4a model=LLMatrix4a::identity();ALNativeRegionModel region;REQUIRE(region.update(model,LLVector3(0,0,0)));
-    Inputs::gSavedSettings.native_groups=Inputs::gSavedSettings.native_resources=Inputs::gSavedSettings.native_visibility=false;
+    Inputs::gSavedSettings.native_groups=false;
     auto library_data=ALMetalWorldFrameData::create(*fixture.device,&fixture.error);REQUIRE(library_data);
     auto library=library_data->builtinLibrary(&fixture.error);REQUIRE(library);
     for(U32 mode=0;mode<2;++mode)
@@ -208,8 +208,6 @@ TEST_CASE("Actual producer preparation and selective CPU routing include capture
                 require(completion->waitUntilCompleted(&fixture.error),fixture.error);
                 require(completion->gpuTime(sample.intervals[view])==ALMetalCommandTimingStatus::ready,"missing actual owner GPU interval");
                 sample.gpu+=sample.intervals[view].elapsed_nanoseconds;
-                const auto actual=renderer.worldSourceCommandStats();
-                require((mode&&packet&&cell==3)||actual.last_pipeline_validation==2,"actual fragment validation not disabled");
                 capture.clearDraws();capture.world_resources.reset();
                 completion.reset();
                 if(retain)retained[view]=std::move(target);

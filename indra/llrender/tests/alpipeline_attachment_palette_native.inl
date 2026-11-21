@@ -16,7 +16,7 @@ struct AttachmentPalettePublication : MaterialGroupPublication
     AttachmentPalettePublication(U32 family,U32 joint_count,U32 draws=1,bool unique=false)
         : MaterialGroupPublication(family),joints(joint_count)
     {
-        Inputs::gSavedSettings.native_resources=false;flavor.native_resources=false;
+        flavor.native_resources=false;
         for(U32 at=0;at<(unique?draws:1u);++at)
         {auto avatar=std::make_unique<Inputs::LLVOAvatar>();avatar->palette.mMatrixPalette.resize(joints);avatars.push_back(std::move(avatar));}
         pose(0.f);

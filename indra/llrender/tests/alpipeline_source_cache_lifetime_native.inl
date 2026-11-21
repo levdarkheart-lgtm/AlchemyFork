@@ -38,7 +38,7 @@ TEST_CASE("Actual same-frame main and probe source factories distinguish entry o
         // main/probe flavor policy, with distinct numeric bytes per producer.
         MaterialGroupPublication f(1, 12);
         f.flavor.native_resources = false;
-        Inputs::gSavedSettings.native_resources = false;
+
         for (U32 row = 0; row < sources; ++row)
         {
             auto& info = f.materialDraw(row % 2 != 0);

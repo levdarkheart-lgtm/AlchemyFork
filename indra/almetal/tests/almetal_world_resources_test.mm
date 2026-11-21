@@ -215,18 +215,9 @@ void publishResourceBatch(WorldResourceFixture& f, ALMetalWorldSimpleBatch& batc
     REQUIRE(source == batch.native_resource_source);
 }
 
-void checkResourcePath(const ALMetalWorldResourceStats& before,
-    const ALMetalWorldResourceStats& after, unsigned draws)
-{
-    CHECK(after.requested_draws - before.requested_draws == draws);
-    CHECK(after.bound_draws - before.bound_draws == draws);
-    CHECK(after.fallback_draws == before.fallback_draws);
-    CHECK(after.buffer_bind_calls - before.buffer_bind_calls >= draws);
-    CHECK(after.declared_resources > before.declared_resources);
-}
 }
 
-TEST_CASE("almetal: world resource tables preserve visible indexed and query boundaries",
+TEST_CASE("almetal: world scalar resources preserve visible indexed and query boundaries",
           "[almetal][world-resources]")
 {
     @autoreleasepool
@@ -261,16 +252,6 @@ TEST_CASE("almetal: world resource tables preserve visible indexed and query bou
                     {first, second}, resourceQueries(count), true, ++frame);
                 CHECK(owned_input.pixels == expected.pixels);
                 CHECK(owned_input.queries == expected.queries);
-                scene.material_argument_buffers = true;
-                for (bool prepare : {false, true})
-                {
-                    const auto before = f.renderer->worldResourceStats();
-                    const auto actual = renderResourceView(f, *f.renderer, scene,
-                        {first, second}, resourceQueries(count), prepare, ++frame);
-                    CHECK(actual.pixels == expected.pixels);
-                    CHECK(actual.queries == expected.queries);
-                    checkResourcePath(before, f.renderer->worldResourceStats(), 2);
-                }
                 if (!masked && format == 0)
                 {
                     // Both commands have exactly equal depth. The later
@@ -283,129 +264,68 @@ TEST_CASE("almetal: world resource tables preserve visible indexed and query bou
                     CHECK_FALSE(original.pixels == expected.pixels);
                 }
             }
-            const auto before_sampler = f.renderer->worldResourceStats();
             const auto current_anisotropy = f.renderer->anisotropy();
             REQUIRE(f.renderer->setAnisotropy(current_anisotropy == 4 ? 8 : 4, &f.error));
             auto scene = f.scene(); scene.hdr = true;
             const auto direct = renderResourceView(f, *f.renderer, scene, {first, second}, {}, false, ++frame);
-            scene.material_argument_buffers = true;
             const auto edited_sampler = renderResourceView(f, *f.renderer, scene, {first, second}, {}, true, ++frame);
             CHECK(edited_sampler.pixels == direct.pixels);
-            CHECK(f.renderer->worldResourceStats().table_creates > before_sampler.table_creates);
         }
     }
 }
 
-TEST_CASE("almetal: world resource generations survive pending GPU work and retire on settlement",
+TEST_CASE("almetal: scalar world commands retain exact native generations through settlement",
           "[almetal][world-resources]")
 {
     @autoreleasepool
     {
-        for (unsigned family : {1u, 2u})
+        for (unsigned family : {1u, 2u}) for (bool owned_input : {false, true})
         for (bool abandon : {false, true})
         {
-            CAPTURE(family, abandon);
+            CAPTURE(family, owned_input, abandon);
             WorldResourceFixture f;
             ALMetalWorldMaterialDataCache material_cache(*f.device);
             auto batch = f.material(family, 8);
             publishResourceBatch(f, batch, material_cache);
             auto scene = f.scene(); scene.hdr = true;
             const auto expected = renderResourceView(f, *f.renderer, scene, {batch}, {}, false, 2).pixels;
-            auto old_source = batch.native_resource_source;
-            std::weak_ptr<const ALMetalWorldResourceSource> weak_source = old_source;
-            std::weak_ptr<const ALMetalTexture> weak_texture;
-            for (const auto& lease : f.resources->textures)
-                if (lease.get() == f.diffuse[0]) weak_texture = lease;
-            REQUIRE_FALSE(weak_texture.expired());
-            // Upload before closing the GPU gate; no readback/upload may wait
-            // behind our deliberately pending command.
-            const auto* fresh = f.patternedTexture(7, 0);
-            auto changed = batch; changed.diffuse_textures[0] = fresh;
-            if (family == 1) changed.materialSlots()[0].env_intensity = .8f;
-            else changed.pbrSlots()[0].roughness_factor = .9f;
-            CHECK_FALSE(old_source->matches(changed));
-            publishResourceBatch(f, changed, material_cache);
-            CHECK(changed.native_resource_source != old_source);
-
-            // Geometry ownership deliberately excludes textures. The resource
-            // certificate/table must supply their exact C++ generation leases.
-            auto geometry = std::make_shared<Resources>();
-            geometry->buffers = f.resources->buffers;
-            scene.source_owner = geometry;
-            scene.material_argument_buffers = true;
-            scene.batches = &batch; scene.batch_count = 1;
-            id<MTLSharedEvent> gate = [(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent];
-            REQUIRE(gate);
+            std::weak_ptr<Resources> weak_native = f.resources;
+            std::weak_ptr<const ALMetalWorldResourceSource> weak_cpu = batch.native_resource_source;
+            std::weak_ptr<const ALMetalBuffer> weak_uniform = family == 1
+                ? batch.native_material_source->materialLease() : batch.native_material_source->pbrLease(true);
+            scene.batches = &batch; scene.batch_count = 1; scene.source_owner = f.resources;
+            id<MTLSharedEvent> gate = [(__bridge id<MTLDevice>)f.device->nativeHandle() newSharedEvent]; REQUIRE(gate);
             struct ReleaseGate { id<MTLSharedEvent> value; ~ReleaseGate() { value.signaledValue = 1; } } release{gate};
             if (!abandon)
             {
-                auto blocker = f.device->makeCommandBuffer("Hold world resource generation", &f.error);
-                REQUIRE(blocker);
+                auto blocker = f.device->makeCommandBuffer("Hold scalar world native generations", &f.error); REQUIRE(blocker);
                 [(__bridge id<MTLCommandBuffer>)blocker->nativeHandle() encodeWaitForEvent:gate value:1];
                 REQUIRE(blocker->commit(&f.error));
             }
-            REQUIRE(f.renderer->beginCommandBatch("World resource generation settlement", &f.error));
-            const auto before = f.renderer->worldResourceStats();
+            REQUIRE(f.renderer->beginCommandBatch("Scalar native generation settlement", &f.error));
             std::unique_ptr<ALMetalRenderTarget> target;
-            if (family == 2)
+            if (owned_input)
             {
-                auto inputs = ALMetalWorldViewInputs::adopt(scene, {batch}, {}, geometry, 3, &f.error);
-                REQUIRE(inputs);
-
-                auto ready = inputs; REQUIRE(ready);
-                target = f.renderer->renderOwnedInputs(*ready, &f.error);
+                auto inputs = ALMetalWorldViewInputs::adopt(scene, {batch}, {}, f.resources, 3, &f.error); REQUIRE(inputs);
+                target = f.renderer->renderOwnedInputs(*inputs, &f.error);
             }
             else target = f.renderer->render(scene, &f.error);
             INFO(f.error); REQUIRE(target);
-            checkResourcePath(before, f.renderer->worldResourceStats(), 1);
-            auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion);
-            CHECK_FALSE(completion->isComplete());
-            if (!abandon)
-            {
-                REQUIRE(f.renderer->commitCommandBatch(&f.error));
-                REQUIRE(f.renderer->setAnisotropy(8, &f.error));
-            }
-            f.renderer->clearWorldResourceLookup();
-            batch.native_resource_source.reset(); old_source.reset();
-            f.resources->textures.clear();
-            CHECK_FALSE(weak_source.expired());
-            CHECK_FALSE(weak_texture.expired());
+            auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion); CHECK_FALSE(completion->isComplete());
+            if (!abandon) REQUIRE(f.renderer->commitCommandBatch(&f.error));
+            batch = {}; scene = {}; f.resources.reset(); material_cache.clear();
+            CHECK(weak_cpu.expired()); // No command needs the CPU resource-source description.
+            CHECK_FALSE(weak_native.expired()); CHECK_FALSE(weak_uniform.expired());
             if (abandon) f.renderer->cancelCommandBatch();
             else
             {
-                CHECK_FALSE(completion->isComplete());
-                gate.signaledValue = 1;
-                REQUIRE(f.device->waitUntilIdle(&f.error));
-                CHECK(f.read(*target) == expected);
-                CHECK(completion->isComplete());
+                CHECK_FALSE(completion->isComplete()); gate.signaledValue = 1;
+                REQUIRE(f.device->waitUntilIdle(&f.error)); CHECK(f.read(*target) == expected);
             }
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-            while ((!weak_source.expired() || !weak_texture.expired()) &&
+            while ((!weak_native.expired() || !weak_uniform.expired()) &&
                    std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
-            CHECK(weak_source.expired()); CHECK(weak_texture.expired());
-
-            // A new context/sampler generation must encode the edited source,
-            // while the completed old pixels remain owned by the old target.
-            scene = f.scene(); scene.hdr = true; scene.material_argument_buffers = true;
-            const auto warm = renderResourceView(f, *f.renderer, scene, {changed}, {}, false, 4);
-            if (!abandon)
-            {
-                // Reload initializes unrelated lookup textures with ordered
-                // commitAndWait uploads; never hold our synthetic GPU gate.
-                const auto shader = f.renderer->shaderGeneration();
-                REQUIRE(f.renderer->reloadShaders(&f.error));
-                CHECK(f.renderer->shaderGeneration() > shader);
-            }
-            scene.material_argument_buffers = false;
-            const auto manual = renderResourceView(f, *f.renderer, scene, {changed}, {}, false, 5);
-            scene.material_argument_buffers = true;
-            const auto new_before = f.renderer->worldResourceStats();
-            const auto actual = renderResourceView(f, *f.renderer, scene, {changed}, {}, true, 6);
-            CHECK(actual.pixels == manual.pixels);
-            CHECK(actual.pixels == warm.pixels);
-            CHECK_FALSE(actual.pixels == expected);
-            checkResourcePath(new_before, f.renderer->worldResourceStats(), 1);
-            if (!abandon) CHECK(f.renderer->worldResourceStats().table_creates > new_before.table_creates);
+            CHECK(completion->isComplete()); CHECK(weak_native.expired()); CHECK(weak_uniform.expired());
         }
     }
 }
@@ -436,103 +356,38 @@ TEST_CASE("almetal: rigged world resource pipelines preserve single material out
                     [reverse = scene.reverse_z](auto value) { return value != (reverse ? 0u : 0x3f800000u); }));
                 const auto owned_input = renderResourceView(f, *f.renderer, scene, {batch}, {}, true, ++frame);
                 CHECK(owned_input.pixels == expected.pixels);
-                scene.material_argument_buffers = true;
-                for (bool prepare : {false, true})
-                {
-                    const auto before = f.renderer->worldResourceStats();
-                    const auto actual = renderResourceView(f, *f.renderer, scene, {batch}, {}, prepare, ++frame);
-                    CHECK(actual.pixels == expected.pixels);
-                    checkResourcePath(before, f.renderer->worldResourceStats(), 1);
-                }
             }
         }
     }
 }
 
-TEST_CASE("almetal: optional world resource failures preserve exact direct rendering",
+TEST_CASE("almetal: scalar resource publication rejects unowned generations without replacing prior proof",
           "[almetal][world-resources]")
 {
     @autoreleasepool
     {
         WorldResourceFixture f;
         ALMetalWorldMaterialDataCache material_cache(*f.device);
-        std::uint64_t frame = 1;
         for (unsigned family : {1u, 2u})
         {
-            auto batch = f.material(family, 8, true);
+            auto batch = f.material(family, 8);
             publishResourceBatch(f, batch, material_cache);
-            auto scene = f.scene(); scene.hdr = true;
-            const auto expected = renderResourceView(f, *f.renderer, scene, {batch}, {}, false, ++frame);
-            scene.material_argument_buffers = true;
-            // Warm once so fault injection must also override a fast hit.
-            renderResourceView(f, *f.renderer, scene, {batch}, {}, false, ++frame);
-            for (unsigned failure = 0; failure < 4; ++failure)
-            for (bool owned_input : {false, true})
-            {
-                CAPTURE(family, failure, owned_input);
-                auto candidate = batch;
-                if (failure == 0) candidate.native_resource_source.reset();
-                if (failure == 1)
-                {
-                    candidate.diffuse_textures[0] = f.diffuse[7];
-                    CHECK_FALSE(candidate.native_resource_source->matches(candidate));
-                }
-                if (failure == 2) f.renderer->configureWorldResources({0, 0});
-                if (failure == 3) f.renderer->failNextWorldResourcePreparationForTesting();
-                const auto before = f.renderer->worldResourceStats();
-                auto direct_scene = scene; direct_scene.material_argument_buffers = false;
-                const auto reference = failure == 1
-                    ? renderResourceView(f, *f.renderer, direct_scene, {candidate}, {}, owned_input, ++frame) : expected;
-                const auto actual = renderResourceView(f, *f.renderer, scene, {candidate}, {}, owned_input, ++frame);
-                CHECK(actual.pixels == reference.pixels);
-                const auto after = f.renderer->worldResourceStats();
-                CHECK(after.requested_draws - before.requested_draws == 1);
-                CHECK(after.bound_draws == before.bound_draws);
-                CHECK(after.fallback_draws - before.fallback_draws == 1);
-                constexpr std::array reasons{ALMetalWorldResourceFallback::missing_source,
-                    ALMetalWorldResourceFallback::unmatched_source, ALMetalWorldResourceFallback::capacity,
-                    ALMetalWorldResourceFallback::injected};
-                const auto reason = static_cast<std::size_t>(reasons[failure]);
-                CHECK(after.last_fallback == reasons[failure]);
-                CHECK(after.fallback_reasons[reason] - before.fallback_reasons[reason] == 1);
-                if (failure == 2) f.renderer->configureWorldResources({});
-            }
+            const auto prior = batch.native_resource_source;
             auto unowned = batch; unowned.diffuse_textures[0] = f.diffuse[7];
             ALMetalWorldResourceFallback failure = ALMetalWorldResourceFallback::none;
             CHECK_FALSE(ALMetalWorldResourceSource::publish(*f.device, unowned, {}, &f.error, &failure));
             CHECK(failure == ALMetalWorldResourceFallback::validation);
-            CHECK(unowned.native_resource_source == batch.native_resource_source);
-            if (family == 1)
-                for (unsigned maps = 0; maps < 3; ++maps)
-                {
-                    CAPTURE(maps);
-                    auto optional_maps = batch;
-                    for (unsigned slot = 0; slot < optional_maps.material_slot_count; ++slot)
-                    {
-                        if (!(maps & 1)) optional_maps.materialSlots()[slot].normal_texture = nullptr;
-                        if (!(maps & 2)) optional_maps.materialSlots()[slot].specular_texture = nullptr;
-                    }
-                    publishResourceBatch(f, optional_maps, material_cache);
-                    auto direct_scene = scene; direct_scene.material_argument_buffers = false;
-                    const auto reference = renderResourceView(f, *f.renderer, direct_scene, {optional_maps}, {}, false, ++frame);
-                    for (bool owned_input : {false, true})
-                    {
-                        const auto resource_before = f.renderer->worldResourceStats();
-                        const auto actual = renderResourceView(f, *f.renderer, scene, {optional_maps}, {}, owned_input, ++frame);
-                        CHECK(actual.pixels == reference.pixels);
-                        checkResourcePath(resource_before, f.renderer->worldResourceStats(), 1);
-                    }
-                }
+            CHECK(unowned.native_resource_source == prior);
             auto invalid = batch; invalid.pbr_slot_count = 9;
-            scene.batches = &invalid; scene.batch_count = 1;
-            const auto before = f.renderer->worldResourceStats();
+            auto scene = f.scene(); scene.batches = &invalid; scene.batch_count = 1;
             CHECK_FALSE(f.renderer->render(scene, &f.error));
-            CHECK(f.renderer->worldResourceStats().bound_draws == before.bound_draws);
+            auto inputs = ALMetalWorldViewInputs::adopt(scene, {invalid}, {}, f.resources, 1, &f.error);
+            REQUIRE(inputs); CHECK_FALSE(f.renderer->renderOwnedInputs(*inputs, &f.error));
         }
     }
 }
 
-TEST_CASE("almetal: argument resource declarations preserve adjacent native indexed joining",
+TEST_CASE("almetal: scalar resource bindings preserve adjacent native indexed joining",
           "[almetal][world-resources]")
 {
     @autoreleasepool
@@ -559,97 +414,64 @@ TEST_CASE("almetal: argument resource declarations preserve adjacent native inde
             const auto before = ALMetalDevice::encodedDrawCallCount();
             const auto expected = renderResourceView(f, *f.renderer, scene, {first, second}, {}, false, ++frame);
             REQUIRE(ALMetalDevice::encodedDrawCallCount() - before == 1);
-            scene.material_argument_buffers = true;
             for (bool owned_input : {false, true})
             {
                 const auto draws_before = ALMetalDevice::encodedDrawCallCount();
-                const auto resource_before = f.renderer->worldResourceStats();
+
                 const auto actual = renderResourceView(f, *f.renderer, scene, {first, second}, {}, owned_input, ++frame);
                 CHECK(actual.pixels == expected.pixels);
                 CHECK(ALMetalDevice::encodedDrawCallCount() - draws_before == 1);
-                checkResourcePath(resource_before, f.renderer->worldResourceStats(), 2);
             }
         }
     }
 }
 
-TEST_CASE("almetal: immutable resource hot proofs preserve invalidation and old table leases",
-          "[almetal][world-resources]")
+
+TEST_CASE("almetal: immutable resource sources pin exact texture and registry generations",
+          "[almetal][world-resources][metal-resource-plan-native]")
 {
     @autoreleasepool
     {
-        WorldResourceFixture f;
-        ALMetalWorldMaterialDataCache material_cache(*f.device);
-        auto batch = f.material(1, 1);
-        publishResourceBatch(f, batch, material_cache);
-        auto changed = batch;
-        changed.diffuse_textures[0] = f.diffuse[1];
-        publishResourceBatch(f, changed, material_cache);
-        auto library = ALMetalShaderLibrary::loadBuiltin(*f.device, &f.error);
-        INFO(f.error); REQUIRE(library);
-        ALMetalSamplerDescriptor sampler_descriptor;
-        sampler_descriptor.support_argument_buffers = true;
-        auto sampler = ALMetalSamplerState::create(*f.device, sampler_descriptor, &f.error);
-        INFO(f.error); REQUIRE(sampler);
-        std::array<std::shared_ptr<ALMetalWorldResources>, 6> contexts;
-        for (auto& context : contexts)
+        for (bool pbr : {false, true})
         {
-            context = ALMetalWorldResources::create(*f.device, *library, {}, &f.error);
-            INFO(f.error); REQUIRE(context); REQUIRE(context->supported());
-        }
-        auto old_table = contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error);
-        INFO(f.error); REQUIRE(old_table);
-        const auto warm_before = contexts[0]->stats();
-        CHECK(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error) == old_table);
-        CHECK(contexts[0]->stats().cache_hits == warm_before.cache_hits + 1);
-        contexts[0]->failNextPreparationForTesting();
-        ALMetalWorldResourceFallback failure = ALMetalWorldResourceFallback::none;
-        CHECK_FALSE(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error, &failure));
-        CHECK(failure == ALMetalWorldResourceFallback::injected);
-        REQUIRE(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error) == old_table);
+            CAPTURE(pbr);
+            std::string error;
+            auto device = ALMetalDevice::create(&error, ALMetalResourcePlanMode::enabled); REQUIRE(device);
+            ALMetalTextureDescriptor descriptor;
+            descriptor.width = descriptor.height = 1;
+            descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+            descriptor.usage = ALMetalTextureUsage::shader_read;
+            std::shared_ptr<const ALMetalTexture> generation = ALMetalTexture::create(*device, descriptor, &error);
+            INFO(error); REQUIRE(generation); REQUIRE(generation->resourceView());
+            REQUIRE(generation->resourceView().canIssueGeneration());
+            ALMetalWorldSimpleBatch batch;
+            batch.texture_count = 1; batch.diffuse_textures[0] = generation.get();
+            if (pbr)
+            {
+                batch.pbr_slot_count = 1;
+                auto& slot = batch.pbrSlots()[0];
+                slot.normal_texture = slot.orm_texture = slot.emissive_texture = generation.get();
+            }
+            else batch.material_slot_count = 1;
+            ALMetalWorldMaterialDataCache materials(*device);
+            REQUIRE(ALMetalWorldMaterialSource::publish(*device, batch, materials, &error));
+            std::array<std::shared_ptr<const ALMetalTexture>, 1> leases{generation};
+            auto source = ALMetalWorldResourceSource::publish(*device, batch, leases, &error);
+            INFO(error); REQUIRE(source); REQUIRE(source->matches(batch));
+            CHECK(source->generationLeases().size() == 1);
+            CHECK(source->generationLeases().front() == generation);
+            CHECK(ALMetalWorldResourceSource::publish(*device, batch, leases, &error) == source);
+            CHECK_FALSE(generation->resourceView().canIssueGeneration());
+            batch.native_resource_source.reset(); source.reset();
+            CHECK(generation->resourceView().canIssueGeneration());
 
-        sampler_descriptor.max_anisotropy = 4;
-        auto edited_sampler = ALMetalSamplerState::create(*f.device, sampler_descriptor, &f.error);
-        REQUIRE(edited_sampler);
-        auto edited_table = contexts[0]->prepare(batch.native_resource_source, *edited_sampler, &f.error);
-        INFO(f.error); REQUIRE(edited_table); CHECK(edited_table != old_table);
-        REQUIRE(contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error) == old_table);
-        contexts[0]->clearLookup();
-        const auto cleared_before = contexts[0]->stats();
-        auto current_table = contexts[0]->prepare(batch.native_resource_source, *sampler, &f.error);
-        INFO(f.error); REQUIRE(current_table); CHECK(current_table != old_table);
-        CHECK(contexts[0]->stats().table_creates == cleared_before.table_creates + 1);
-        sampler_descriptor.support_argument_buffers = false;
-        auto unsupported_sampler = ALMetalSamplerState::create(*f.device, sampler_descriptor, &f.error);
-        REQUIRE(unsupported_sampler);
-        CHECK_FALSE(contexts[0]->prepare(batch.native_resource_source, *unsupported_sampler, &f.error, &failure));
-        CHECK(failure == ALMetalWorldResourceFallback::validation);
-
-        // More live contexts than the source's four private fast slots force
-        // the original tables out without changing their native tuple/lease.
-        for (unsigned context = 1; context < contexts.size(); ++context)
-        {
-            auto table = contexts[context]->prepare(batch.native_resource_source, *sampler, &f.error);
-            INFO(f.error); REQUIRE(table); CHECK(table != current_table);
+            source = ALMetalWorldResourceSource::publish(*device, batch, leases, &error); REQUIRE(source);
+            std::weak_ptr<const ALMetalTexture> weak_generation = generation;
+            generation.reset(); leases[0].reset();
+            CHECK_FALSE(weak_generation.expired());
+            batch.native_resource_source.reset(); source.reset();
+            CHECK(weak_generation.expired());
         }
-        auto target = f.renderer->render(f.scene(), &f.error);
-        INFO(f.error); REQUIRE(target);
-        ALMetalRenderPassConfig config;
-        auto pass = target->makeRenderPass(config, &f.error); REQUIRE(pass);
-        auto command = f.device->makeCommandBuffer("Old native resource lease proof", &f.error); REQUIRE(command);
-        auto encoder = ALMetalRenderEncoder::begin(*command, *pass, "Old native resource lease proof", &f.error);
-        INFO(f.error); REQUIRE(encoder);
-        CHECK_FALSE(contexts[0]->bind(*encoder, *command, changed.native_resource_source, old_table, &f.error, &failure));
-        CHECK(failure == ALMetalWorldResourceFallback::validation);
-        CHECK_FALSE(contexts[1]->bind(*encoder, *command, batch.native_resource_source, old_table, &f.error, &failure));
-        CHECK(failure == ALMetalWorldResourceFallback::validation);
-        // Lookup clear and fast-slot eviction invalidate reuse, not a valid
-        // table already leased by an independently ordered command.
-        REQUIRE(contexts[0]->bind(*encoder, *command, batch.native_resource_source, old_table, &f.error, &failure));
-        CHECK(failure == ALMetalWorldResourceFallback::none);
-        REQUIRE(contexts[0]->bind(*encoder, *command, batch.native_resource_source, current_table, &f.error));
-        REQUIRE(encoder->end(&f.error));
-        REQUIRE(command->commitAndWait(&f.error));
     }
 }
 
@@ -659,10 +481,9 @@ TEST_CASE("almetal: recurring source ownership survives bounded cache collisions
     @autoreleasepool
     {
         for (unsigned family : {1u, 2u})
-        for (bool arguments : {false, true})
         for (bool abandon : {false, true})
         {
-            CAPTURE(family, arguments, abandon);
+            CAPTURE(family, abandon);
             WorldResourceFixture f;
             ALMetalWorldMaterialDataCache material_cache(*f.device);
             constexpr unsigned source_count = 17; // Pigeonhole collision in either 16-entry owner cache.
@@ -692,13 +513,11 @@ TEST_CASE("almetal: recurring source ownership survives bounded cache collisions
             auto scene = f.scene(); scene.hdr = true;
             const auto expected = renderResourceView(f, *f.renderer, scene, batches, queries, false, 2);
             REQUIRE(expected.queries.front() > 0);
-            scene.material_argument_buffers = arguments;
-            if (arguments) renderResourceView(f, *f.renderer, scene, batches, queries, false, 3);
             auto geometry = std::make_shared<Resources>();
             geometry->buffers = f.resources->buffers;
             // Numeric uniform sources own no texture generations. Their
             // ordinary scene owner still supplies that independent contract.
-            scene.source_owner = arguments ? geometry : f.resources;
+            scene.source_owner = f.resources;
             scene.batches = batches.data(); scene.batch_count = batches.size();
             scene.visibility_queries = queries.data(); scene.visibility_query_count = queries.size();
             std::weak_ptr<const ALMetalTexture> old_texture;
@@ -715,7 +534,7 @@ TEST_CASE("almetal: recurring source ownership survives bounded cache collisions
                 REQUIRE(blocker->commit(&f.error));
             }
             REQUIRE(f.renderer->beginCommandBatch("Recurring source ownership", &f.error));
-            const auto before = f.renderer->worldResourceStats();
+
             std::shared_ptr<ALMetalVisibilityResultBatch> results;
             std::unique_ptr<ALMetalRenderTarget> target;
             if (family == 2)
@@ -728,19 +547,13 @@ TEST_CASE("almetal: recurring source ownership survives bounded cache collisions
             }
             else target = f.renderer->render(scene, &f.error, &results);
             INFO(f.error); REQUIRE(target); REQUIRE(results);
-            if (arguments) checkResourcePath(before, f.renderer->worldResourceStats(), batches.size());
             auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion);
             if (!abandon) REQUIRE(f.renderer->commitCommandBatch(&f.error));
-            f.renderer->clearWorldResourceLookup();
             sources.clear(); batches.clear();
-            if (arguments) f.resources->textures.clear();
             for (const auto& source : material_sources) CHECK_FALSE(source.expired());
             for (const auto& uniform : uniforms) CHECK_FALSE(uniform.expired());
-            if (arguments)
-            {
-                for (const auto& source : resource_sources) CHECK_FALSE(source.expired());
-                CHECK_FALSE(old_texture.expired());
-            }
+            for (const auto& source : resource_sources) CHECK(source.expired());
+            CHECK_FALSE(old_texture.expired());
             CHECK_FALSE(completion->isComplete());
             if (abandon) f.renderer->cancelCommandBatch();
             else
@@ -815,276 +628,17 @@ TEST_CASE("almetal: world resources preserve the previous compiled scalar shader
                     {first, second}, resourceQueries(count), false, ++frame);
                 CHECK(direct.pixels == old.pixels);
                 CHECK(direct.queries == old.queries);
-                scene.material_argument_buffers = true;
                 for (bool owned_input : {false, true})
                 {
-                    const auto before = f.renderer->worldResourceStats();
+
                     const auto actual = renderResourceView(f, *f.renderer, scene,
                         {first, second}, resourceQueries(count), owned_input, ++frame);
                     CHECK(actual.pixels == old.pixels);
                     CHECK(actual.queries == old.queries);
-                    checkResourcePath(before, f.renderer->worldResourceStats(), 2);
                 }
             }
         }
         std::cout << "world_resources_previous_shader baseline_entrypoints_absent=1"
-                     " family_slot_mask_format_tuples=64 old_direct_new_direct_new_argument=1\n";
-    }
-}
-
-TEST_CASE("almetal: world resource complete path cold warm and churn costs",
-          "[almetal][.world-resources-cost]")
-{
-    @autoreleasepool
-    {
-        WorldResourceFixture f;
-        auto probes = ALMetalWorldGBufferRenderer::create(*f.device, &f.error);
-        REQUIRE(probes); probes->setFrameData(f.data);
-        REQUIRE(f.renderer->setAnisotropy(4, &f.error));
-        REQUIRE(probes->setAnisotropy(4, &f.error));
-        ALMetalWorldMaterialDataCache material_cache(*f.device);
-        std::uint64_t serial = 1;
-        const auto cpu_ns = []
-        {
-            timespec time{}; REQUIRE(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time) == 0);
-            return static_cast<std::uint64_t>(time.tv_sec) * 1'000'000'000ULL + time.tv_nsec;
-        };
-        const auto total_stats = [&]
-        {
-            auto result = f.renderer->worldResourceStats();
-            const auto other = probes->worldResourceStats();
-            result.requests += other.requests; result.cache_hits += other.cache_hits;
-            result.table_creates += other.table_creates; result.published_bytes += other.published_bytes;
-            result.argument_encoder_creations += other.argument_encoder_creations;
-            result.declared_resources += other.declared_resources; result.buffer_bind_calls += other.buffer_bind_calls;
-            result.bound_draws += other.bound_draws; result.fallback_draws += other.fallback_draws;
-            return result;
-        };
-        const auto exact_leases = [&](const ALMetalWorldSimpleBatch& batch)
-        {
-            std::vector<std::shared_ptr<const ALMetalTexture>> leases;
-            const auto add = [&](const ALMetalTexture* texture)
-            {
-                if (std::any_of(leases.begin(), leases.end(), [&](const auto& value) { return value.get() == texture; })) return;
-                const auto at = std::find_if(f.resources->textures.begin(), f.resources->textures.end(),
-                    [&](const auto& value) { return value.get() == texture; });
-                REQUIRE(at != f.resources->textures.end()); leases.push_back(*at);
-            };
-            for (unsigned slot = 0; slot < batch.texture_count; ++slot)
-            {
-                add(batch.diffuse_textures[slot]);
-                if (batch.material_slot_count)
-                { add(batch.materialSlots()[slot].normal_texture); add(batch.materialSlots()[slot].specular_texture); }
-                else
-                { add(batch.pbrSlots()[slot].normal_texture); add(batch.pbrSlots()[slot].orm_texture); add(batch.pbrSlots()[slot].emissive_texture); }
-            }
-            return leases;
-        };
-        const auto resource_key_count = [](const auto& sources, unsigned used)
-        {
-            // Within one view the family, sampler and other maps are fixed.
-            // Count actual diffuse native-view tuples, not uniform variants.
-            std::vector<std::array<void*, 8>> keys;
-            for (unsigned variant = 0; variant < used; ++variant)
-            {
-                std::array<void*, 8> key{};
-                for (unsigned slot = 0; slot < sources[variant].texture_count; ++slot)
-                    key[slot] = sources[variant].diffuse_textures[slot]->nativeHandle();
-                if (std::find(keys.begin(), keys.end(), key) == keys.end()) keys.push_back(key);
-            }
-            return keys.size();
-        };
-        constexpr unsigned samples = 12, warmups = 2;
-        // New allocations have identical texels, but genuinely distinct native
-        // generations. Upload and owner-span construction are outside timing.
-        std::array<std::array<const ALMetalTexture*, 8>, samples + warmups> churn;
-        for (auto& generation : churn)
-            for (unsigned variant = 0; variant < generation.size(); ++variant)
-                generation[variant] = f.patternedTexture(variant, 0);
-
-        for (unsigned family : {1u, 2u})
-        for (unsigned slots : {1u, 8u})
-        for (bool distinct_resources : {false, true})
-        {
-            std::array<ALMetalWorldSimpleBatch, 8> prototypes;
-            for (unsigned variant = 0; variant < prototypes.size(); ++variant)
-            {
-                prototypes[variant] = f.material(family, slots);
-                if (distinct_resources)
-                    for (unsigned slot = 0; slot < slots; ++slot)
-                        prototypes[variant].diffuse_textures[slot] = f.diffuse[(slot + variant) % f.slots];
-                if (family == 1) prototypes[variant].materialSlots()[0].env_intensity = .05f * variant;
-                else prototypes[variant].pbrSlots()[0].roughness_factor = .1f + .1f * variant;
-            }
-            const auto uniform_before = material_cache.stats().published_bytes;
-            const auto uniform_start = cpu_ns();
-            for (auto& prototype : prototypes)
-                REQUIRE(ALMetalWorldMaterialSource::publish(*f.device, prototype, material_cache, &f.error));
-            const auto uniform_cpu = cpu_ns() - uniform_start;
-            const auto uniform_after = material_cache.stats().published_bytes;
-            std::array<std::vector<std::shared_ptr<const ALMetalTexture>>, 8> base_leases;
-            for (unsigned variant = 0; variant < prototypes.size(); ++variant)
-                base_leases[variant] = exact_leases(prototypes[variant]);
-            std::array<std::array<std::vector<std::shared_ptr<const ALMetalTexture>>, 8>, samples + warmups> churn_leases;
-            for (unsigned sample = 0; sample < churn.size(); ++sample)
-                for (unsigned variant = 0; variant < prototypes.size(); ++variant)
-                {
-                    auto changed = prototypes[variant];
-                    changed.diffuse_textures[0] = churn[sample][distinct_resources ? variant : 0];
-                    churn_leases[sample][variant] = exact_leases(changed);
-                }
-            std::cout << "world_resources_setup family=" << family << " slots=" << slots
-                << " resource_pattern=" << (distinct_resources ? "distinct_texture_tuples" : "shared_texture_tuple")
-                << " uniform_publication_cpu_ms=" << uniform_cpu / 1e6
-                << " uniform_publication_bytes=" << uniform_after - uniform_before
-                << " source_variants_available=8 resource_keys_available_per_view=" << resource_key_count(prototypes, 8)
-                << " churn_texture_generations_precreated=112 owner_spans_prebuilt=1"
-                   " renderer_owners=2 shared_frame_data=1 encode_clock=host_wall cpu_clock=owner_thread\n";
-            constexpr std::array main_counts{1u, 4u, 16u, 512u, 512u};
-            for (unsigned shape = 0; shape < main_counts.size(); ++shape)
-            for (unsigned pattern = 0; pattern < 3; ++pattern)
-            {
-                std::array<Pixels, 3> reference;
-                for (bool arguments : {false, true})
-                {
-                    const unsigned main_count = main_counts[shape];
-                    const unsigned views = shape == main_counts.size() - 1 ? 3 : 1;
-                    const unsigned used_sources = std::min<unsigned>(prototypes.size(), main_count);
-                    const std::array<unsigned, 3> counts{main_count, 128, 128};
-                    auto sources = prototypes;
-                    const auto keys_per_view = resource_key_count(sources, used_sources);
-                    f.renderer->clearWorldResourceLookup(); probes->clearWorldResourceLookup();
-                    const auto setup_start = cpu_ns();
-                    if (arguments && pattern == 1)
-                        for (unsigned variant = 0; variant < used_sources; ++variant)
-                            REQUIRE(ALMetalWorldResourceSource::publish(*f.device, sources[variant], base_leases[variant], &f.error));
-                    const auto resource_setup_cpu = cpu_ns() - setup_start;
-                    std::array<std::vector<ALMetalWorldSimpleBatch>, 3> capture;
-                    std::array<std::vector<ALMetalWorldVisibilityQuery>, 3> queries;
-                    for (unsigned view = 0; view < views; ++view) capture[view].reserve(counts[view]);
-                    std::array<double, samples> encode_ms{}, cpu_ms{}, complete_ms{}, tail_ms{};
-                    std::uint64_t source_cpu_total = 0, table_bytes = 0, table_creates = 0, hits = 0, binds = 0, declared = 0;
-                    for (unsigned sample = 0; sample < samples + warmups; ++sample)
-                    {
-                        std::array<std::unique_ptr<ALMetalRenderTarget>, 3> targets;
-                        const auto before = total_stats();
-                        const auto begin = std::chrono::steady_clock::now();
-                        const auto owner_cpu_start = cpu_ns();
-                        ALMetalWorldResourceStats view_work;
-                        // This is the outer frame: all view transactions share
-                        // one epoch and its native data-page lifetime.
-                        f.data->beginFrame(++serial);
-                        if (arguments && pattern == 0)
-                        {
-                            for (unsigned variant = 0; variant < used_sources; ++variant)
-                                sources[variant].native_resource_source.reset();
-                            f.renderer->clearWorldResourceLookup(); probes->clearWorldResourceLookup();
-                        }
-                        if (pattern == 2)
-                            for (unsigned variant = 0; variant < used_sources; ++variant)
-                                sources[variant].diffuse_textures[0] = churn[sample][distinct_resources ? variant : 0];
-                        const auto source_cpu_start = cpu_ns();
-                        if (arguments && pattern != 1)
-                            for (unsigned variant = 0; variant < used_sources; ++variant)
-                                REQUIRE(ALMetalWorldResourceSource::publish(*f.device, sources[variant],
-                                    pattern == 2 ? churn_leases[sample][variant] : base_leases[variant], &f.error));
-                        const auto source_cpu = cpu_ns() - source_cpu_start;
-                        for (unsigned view = 0; view < views; ++view)
-                        {
-                            auto& batches = capture[view];
-                            const float camera = .001f * sample + .04f * view;
-                            for (unsigned draw = 0; draw < counts[view]; ++draw)
-                            {
-                                batches.push_back(sources[draw % sources.size()]);
-                                batches.back().modelview_projection[12] = camera;
-                                batches.back().modelview[12] = camera;
-                            }
-                            auto scene = f.scene(); scene.hdr = true;
-                            scene.reverse_z = sample & 1;
-                            scene.material_argument_buffers = arguments;
-                            scene.source_owner = f.resources;
-                            auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(batches),
-                                std::move(queries[view]), f.resources, serial, &f.error);
-                            INFO(f.error); REQUIRE(inputs);
-                            scene = inputs->scene(); scene.source_owner = inputs->resourceLease();
-                            auto& renderer = view == 0 ? *f.renderer : *probes;
-                            const auto view_before = renderer.worldResourceStats();
-                            REQUIRE(renderer.beginCommandBatch("Complete world resource view", &f.error));
-                            targets[view] = renderer.render(scene, &f.error);
-                            INFO(f.error); REQUIRE(targets[view]);
-                            REQUIRE(ALMetalWorldViewInputs::reclaimCpuStorage(inputs, batches, queries[view]));
-                            REQUIRE(renderer.commitCommandBatch(&f.error));
-                            const auto view_after = renderer.worldResourceStats();
-                            // Context counters may be shared between renderer
-                            // owners. Serial per-view deltas count each event
-                            // once; summing outer context snapshots would not.
-                            view_work.published_bytes += view_after.published_bytes - view_before.published_bytes;
-                            view_work.table_creates += view_after.table_creates - view_before.table_creates;
-                            view_work.cache_hits += view_after.cache_hits - view_before.cache_hits;
-                            view_work.buffer_bind_calls += view_after.buffer_bind_calls - view_before.buffer_bind_calls;
-                            view_work.declared_resources += view_after.declared_resources - view_before.declared_resources;
-                        }
-                        const auto owner_cpu = cpu_ns() - owner_cpu_start;
-                        const auto encoded = std::chrono::steady_clock::now();
-                        REQUIRE(f.device->waitUntilIdle(&f.error));
-                        const auto completed = std::chrono::steady_clock::now();
-                        const auto after = total_stats();
-                        if (sample == 1)
-                        {
-                            CHECK(resource_key_count(sources, used_sources) == keys_per_view);
-                            for (unsigned view = 0; view < views; ++view)
-                            {
-                                const auto actual = f.read(*targets[view]);
-                                if (!arguments) reference[view] = actual;
-                                else CHECK(actual == reference[view]);
-                            }
-                        }
-                        if (sample >= warmups)
-                        {
-                            const unsigned at = sample - warmups;
-                            encode_ms[at] = std::chrono::duration<double, std::milli>(encoded - begin).count();
-                            cpu_ms[at] = owner_cpu / 1e6;
-                            complete_ms[at] = std::chrono::duration<double, std::milli>(completed - begin).count();
-                            tail_ms[at] = std::chrono::duration<double, std::milli>(completed - encoded).count();
-                            source_cpu_total += source_cpu;
-                            table_bytes += view_work.published_bytes;
-                            table_creates += view_work.table_creates;
-                            hits += view_work.cache_hits;
-                            binds += view_work.buffer_bind_calls;
-                            declared += view_work.declared_resources;
-                            CHECK(after.argument_encoder_creations == before.argument_encoder_creations);
-                            if (arguments)
-                            {
-                                CHECK(after.bound_draws - before.bound_draws == main_count + (views - 1) * 128);
-                                CHECK(after.fallback_draws == before.fallback_draws);
-                                if (pattern == 1) CHECK(view_work.table_creates == 0);
-                            }
-                            CHECK(material_cache.stats().published_bytes == uniform_after);
-                        }
-                    }
-                    const auto summary = [](auto values)
-                    {
-                        std::sort(values.begin(), values.end());
-                        return std::array<double, 2>{(values[5] + values[6]) * .5, values.back()};
-                    };
-                    const auto encode = summary(encode_ms), cpu = summary(cpu_ms), complete = summary(complete_ms), tail = summary(tail_ms);
-                    std::cout << "world_resources_complete_path family=" << family << " slots=" << slots
-                        << " main_count=" << main_count << " views=" << views
-                        << " resource_pattern=" << (distinct_resources ? "distinct_texture_tuples" : "shared_texture_tuple")
-                        << " source_variants_used=" << used_sources << " resource_keys_per_view=" << keys_per_view
-                        << " pattern=" << (pattern == 0 ? "cold" : pattern == 1 ? "warm" : "churn")
-                        << " mode=" << (arguments ? "argument_resources" : "native_direct")
-                        << " samples=12 warmups=2 source_setup_cpu_ms=" << resource_setup_cpu / 1e6
-                        << " sampled_source_cpu_ms=" << source_cpu_total / 1e6
-                        << " encode_median_ms=" << encode[0] << " encode_max_ms=" << encode[1]
-                        << " cpu_median_ms=" << cpu[0] << " cpu_max_ms=" << cpu[1]
-                        << " complete_median_ms=" << complete[0] << " complete_max_ms=" << complete[1]
-                        << " gpu_wait_tail_median_ms=" << tail[0] << " gpu_wait_tail_max_ms=" << tail[1]
-                        << " sampled_table_creates=" << table_creates << " sampled_table_publication_bytes=" << table_bytes
-                        << " sampled_cache_hits=" << hits << " sampled_buffer_binds=" << binds
-                        << " sampled_declared_resources=" << declared << '\n';
-                }
-            }
-        }
+                     " family_slot_mask_format_tuples=64 old_raw_new_raw_new_owned=1\n";
     }
 }

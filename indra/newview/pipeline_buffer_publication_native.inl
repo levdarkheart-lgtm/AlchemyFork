@@ -97,11 +97,8 @@ try
         !mMetalWorldSimpleCapture->pass_active) return;
     auto& capture = *mMetalWorldSimpleCapture;
     if (!capture.complete || !params.mCount) return;
-    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
-    static LLCachedControl<bool> native_resources(gSavedSettings, "RenderMetalWorldResourceTables", false);
-    static LLCachedControl<bool> native_groups(gSavedSettings, "RenderMetalGroupSources", false);
     const auto selected = ALSceneSourcePolicyNative::select(params, family, indexed, editable,
-        capture, native_visibility(), native_resources(), native_groups());
+        capture);
     const auto& flavor = selected.flavor;
     const bool ordinary_animated = selected.ordinary_animated;
     auto source = ALScenePublicationNative::world(params, flavor,
@@ -145,12 +142,11 @@ try
     }
     if(capture.tryCaptureAnimatedSource(params,source,flavor,view,palette,ordinary_animated))return;
     const bool ordinary_source = !editable &&
-        !native_visibility() && !capture.rigged && !capture.impostor_bake &&
+        !capture.rigged && !capture.impostor_bake &&
         !capture.impostor_alpha_active && !capture.world_post_deferred_active &&
         !capture.pbr_glow && !capture.impostor_fullbright &&
         !capture.impostor_shiny && !capture.impostor_emboss &&
         (family != 1 || capture.material_alpha_mode != 1);
-    capture.captureSourceRow(params, source, flavor, view, ordinary_source);
     const bool compact = capture.compact_gbuffer_active && ordinary_source;
     if (compact)
     {
@@ -165,52 +161,7 @@ try
     std::memcpy(batch.normal_matrix, view.normal_matrix, sizeof(batch.normal_matrix));
     std::memcpy(batch.rigged_normal_matrix, view.rigged_normal_matrix, sizeof(batch.rigged_normal_matrix));
     std::memcpy(batch.texture_matrix, view.texture_matrix, sizeof(batch.texture_matrix));
-    if (native_visibility() && !capture.visibility_metadata_failed && !capture.rigged && source.owner->bounds.qualified)
-    {
-        try
-        {
-            if (ALScenePublicationNative::visibilityMetadataAllocationForTesting)
-                ALScenePublicationNative::visibilityMetadataAllocationForTesting();
-            if (sNativeSceneVisibilityDevice != capture.device || !sNativeSceneVisibility)
-            {
-                sNativeSceneVisibility = ALMetalWorldVisibility::create(*capture.device);
-                sNativeSceneVisibilityDevice = capture.device;
-            }
-            if (!sNativeSceneVisibility)
-            {
-                capture.world_visibility_members.clear();capture.world_visibility_indices.clear();
-                capture.visibility_metadata_failed = true;++capture.visibility_metadata_failures;
-            }
-            if (sNativeSceneVisibility)
-            {
-                auto& metadata = *params.mMetalShadowSource;
-                if (metadata.visibility.lock() != sNativeSceneVisibility ||
-                    metadata.bounds_revision != source.owner->producer_revision)
-                {
-                    metadata.bounds = sNativeSceneVisibility->publishBounds(params.metalSourcePublication()->identity(),
-                        source.owner->producer_revision, source.owner->bounds);
-                    metadata.bounds_revision = source.owner->producer_revision;
-                    metadata.visibility = sNativeSceneVisibility;
-                }
-                if (metadata.bounds.identity && capture.logicalDrawCount() <= std::numeric_limits<U32>::max())
-                {
-                    ALMetalWorldVisibilityMember member;
-                    std::memcpy(member.modelview_projection, batch.modelview_projection, sizeof(member.modelview_projection));
-                    member.identity = metadata.bounds.identity; member.revision = metadata.bounds.revision;
-                    member.slot = metadata.bounds.slot; member.index_count = batch.index_count; member.enabled = 1;
-                    capture.world_visibility_members.push_back(member);
-                    capture.world_visibility_indices.push_back(static_cast<U32>(capture.logicalDrawCount() - 1));
-                }
-            }
-        }
-        catch (const std::bad_alloc&)
-        {
-            // PPD-224: this optional transaction cannot clear required scene
-            // geometry, native leases, ordering, queries or cohort captures.
-            capture.world_visibility_members.clear();capture.world_visibility_indices.clear();
-            capture.visibility_metadata_failed = true;++capture.visibility_metadata_failures;
-        }
-    }
+
     if (capture.rigged)
     {
         capture.retainCpu(palette);

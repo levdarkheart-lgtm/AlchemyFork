@@ -63,7 +63,7 @@ private:
                 scene.visibility_query_count != queries->size() ||
                 scene.visibility_queries != queries->data())) ||
             (queries && scene.visibility_query_count != queries->size()) || scene.visibility_bounds_count ||
-            scene.native_visibility || scene.gpu_visibility || scene.metal4_visibility)
+            scene.gpu_visibility || scene.metal4_visibility)
         {
             if (error) *error = "Captured shadow packet requires owned batch/query inputs";
             return nullptr;

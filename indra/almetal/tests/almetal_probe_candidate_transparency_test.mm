@@ -401,13 +401,7 @@ void encoded(const Inputs::Rendered& value,bool shadow,unsigned count)
     CHECK(value.diagnostics.probe_candidate_simple_batches==(shadow?0u:count));
     CHECK(value.diagnostics.probe_candidate_simple_shadow_batches==(shadow?count:0u));
 }
-void encodedFamily(const Inputs::Rendered& value,unsigned family,unsigned count)
-{
-    CHECK(value.diagnostics.probe_candidate_simple_batches==0);
-    CHECK(value.diagnostics.probe_candidate_simple_shadow_batches==0);
-    CHECK(value.diagnostics.probe_candidate_material_batches==(family==1?count:0u));
-    CHECK(value.diagnostics.probe_candidate_pbr_batches==(family==2?count:0u));
-}
+
 struct ImpostorPlanes
 {
     std::array<std::vector<std::uint8_t>,4> colors;
@@ -426,46 +420,9 @@ ImpostorPlanes readImpostor(Fixture& f,const ALMetalRenderTarget& target)
     }
     return result;
 }
-struct ImpostorResult {ImpostorPlanes before,after;ALMetalWorldProbeCandidateActivity activity;};
-void retainImpostorControl(const Inputs& input,const char* label,const ImpostorResult& value)
-{
-    const char* directory=std::getenv("ALCHEMY_E6_LEGACY_CONTROL_ARTIFACT_DIR");
-    if(!label || !directory || !*directory)return;
-    const bool material=input.batches.front().pre_water_material;
-    const auto cell="material-"+std::to_string(material)+"-skinned-"+std::to_string(input.cell.skinned)+
-        "-reverse-"+std::to_string(input.cell.reverse);
-    const auto out=std::filesystem::path(directory)/cell/label;
-    REQUIRE_FALSE(std::filesystem::exists(out));REQUIRE(std::filesystem::create_directories(out));
-    std::filesystem::permissions(out,std::filesystem::perms::owner_all);
-    const auto save=[&](const std::string& name,const void* bytes,std::size_t size)
-    {
-        std::ofstream file(out/name,std::ios::binary);REQUIRE(file.good());
-        file.write(static_cast<const char*>(bytes),std::streamsize(size));REQUIRE(file.good());
-    };
-    for(const auto* phase:{"before","after"})
-    {
-        const auto& planes=std::strcmp(phase,"before")==0?value.before:value.after;
-        for(unsigned i=0;i<4;++i)save(std::string(phase)+"-mrt"+std::to_string(i)+".raw",
-            planes.colors[i].data(),planes.colors[i].size());
-        save(std::string(phase)+"-depth.raw",planes.planes.depth.data(),planes.planes.depth.size()*sizeof(std::uint32_t));
-        save(std::string(phase)+"-stencil.raw",planes.planes.stencil.data(),planes.planes.stencil.size());
-    }
-    save("probe-constants.raw",&input.probes.constants,sizeof(input.probes.constants));
-    save("legacy-lighting.raw",&input.lighting,sizeof(input.lighting));
-    save("shadow-constants.raw",&input.shadows.constants,sizeof(input.shadows.constants));
-    save("forward-projection.raw",input.scene.forward_probe_projection,sizeof(input.scene.forward_probe_projection));
-    std::ofstream parameters(out/"parameters.txt");REQUIRE(parameters.good());
-    parameters<<"width="<<input.cell.width<<" height="<<input.cell.height
-        <<" shadow="<<input.cell.shadow<<" hdr="<<input.cell.hdr
-        <<" material="<<material<<" skinned="<<input.cell.skinned<<" reverse="<<input.cell.reverse
-        <<" diffuse_alpha_slot0_byte="<<unsigned(input.diffuse_alpha[0])
-        <<" diffuse_alpha_slot1_byte="<<unsigned(input.diffuse_alpha[1])<<" specular_texture_alpha_byte=192\n";
-    if(material)for(unsigned i=0;i<2;++i)
-        parameters<<"slot="<<i<<" env_intensity="<<input.batches.front().materialSlots()[i].env_intensity
-            <<" glossiness="<<input.batches.front().materialSlots()[i].specular_color[3]<<'\n';
-    REQUIRE(parameters.good());
-}
-ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared,const char* evidence_label=nullptr)
+struct ImpostorResult {ImpostorPlanes before,after;};
+
+ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared)
 {
     ALMetalRenderTargetDescriptor descriptor;descriptor.width=input.cell.width;descriptor.height=input.cell.height;
     descriptor.color_attachment_count=4;descriptor.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
@@ -489,8 +446,7 @@ ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared,const char*
     std::copy_n(input.scene.forward_probe_projection,16,scene.forward_probe_projection);
     scene.forward_probe_projection_valid=prepared;
     REQUIRE(f.renderer->compositeImpostorPostDeferred(*target,scene,&f.error));INFO(f.error);
-    result.after=readImpostor(f,*target);result.activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-    retainImpostorControl(input,evidence_label,result);
+    result.after=readImpostor(f,*target);
     CHECK(result.after.colors[0]!=result.before.colors[0]);
     for(unsigned i=1;i<4;++i)CHECK(result.after.colors[i]==result.before.colors[i]);
     CHECK(result.after.planes.stencil==result.before.planes.stencil);
@@ -498,115 +454,16 @@ ImpostorResult renderImpostor(Fixture& f,Inputs& input,bool prepared,const char*
 }
 }
 
-TEST_CASE("Prepared legacy walks preserve main shiny and impostor material ownership",
-          "[almetal][probe-candidate-transparency][probe-candidate-legacy]")
-{
-    @autoreleasepool
-    {
-        Fixture f;
-        for(bool material:{false,true})for(bool skinned:{false,true})for(bool reverse:{false,true})
-        {
-            CAPTURE(material,skinned,reverse);
-            Inputs input(f,{skinned,material,reverse,false,true,97,65});
-            if(material)
-            {
-                input.family(1);
-                for(auto& batch:input.batches)batch.pre_water_alpha=false;
-                auto original_alpha=renderImpostor(f,input,false,"original-alpha-generic");
-                auto original_alpha_prepared=renderImpostor(f,input,true,"original-alpha-prepared");
-                CHECK(original_alpha_prepared.after==original_alpha.after);
-                // Standalone legacy alpha keeps flat diffuse RGB. Probe glare
-                // changes only max(diffuse alpha, glare), so author a low
-                // diffuse-alpha floor to make the valid glare observable.
-                auto upload=f.device->makeCommandBuffer("Legacy material glare coverage control",&f.error);REQUIRE(upload);
-                const std::array<std::array<std::uint8_t,4>,2> colors{{{{224,128,64,16}},{{80,184,240,16}}}};
-                for(unsigned i=0;i<2;++i)
-                {
-                    REQUIRE(input.diffuse[i]->upload(*upload,0,0,{},colors[i].data(),4,&f.error));
-                    input.diffuse_alpha[i]=colors[i][3];
-                }
-                REQUIRE(upload->commitAndWait(&f.error));
-            }
-            else input.shiny();
-            const std::size_t owner=material?1:0;
-            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            const auto original_probes=input.probes.constants;
-            auto generic=renderImpostor(f,input,false,"generic");auto prepared=renderImpostor(f,input,true,"prepared");
-            CHECK(prepared.after==generic.after);
-            CHECK(prepared.activity.impostor_eligible_batches[owner]==before.impostor_eligible_batches[owner]+4);
-            CHECK(prepared.activity.impostor_prepared_batches[owner]==before.impostor_prepared_batches[owner]+2);
-            input.probes.constants.ref_sphere[1][0]=1000.f;
-            auto changed=renderImpostor(f,input,false,"changed-generic");CHECK(changed.after.colors[0]!=generic.after.colors[0]);
-            auto changed_prepared=renderImpostor(f,input,true,"changed-prepared");CHECK(changed_prepared.after==changed.after);
-            input.probes.constants=original_probes;
-            auto restored=renderImpostor(f,input,false,"restored-generic");CHECK(restored.after==generic.after);
-            auto restored_prepared=renderImpostor(f,input,true,"restored-prepared");CHECK(restored_prepared.after==generic.after);
-            input.probes.constants.ref_index[1][3]=1;
-            input.probes.constants.ref_index[2][3]=-1;identity(input.probes.constants.ref_box[2]);input.probes.constants.ref_box[2][14]=4.f;
-            input.probes.constants.ref_index[1][1]=0;input.probes.constants.ref_index[1][2]=64;
-            for(unsigned i=0;i<64;++i)input.probes.constants.ref_neighbor[i]=i<60?-1:static_cast<int>(i-59);
-            auto manual=renderImpostor(f,input,false,"manual-generic");auto manual_prepared=renderImpostor(f,input,true,"manual-prepared");CHECK(manual_prepared.after==manual.after);
-            // This projection is unsupported by the proof; no guessed matrix
-            // reconstruction may remove an otherwise valid probe.
-            input.scene.forward_probe_projection[0]=1e10f;
-            const auto stats=f.data->stats();auto unsupported=renderImpostor(f,input,true,"unsupported");
-            CHECK(unsupported.after==manual.after);CHECK(f.data->stats().candidate_preparations==stats.candidate_preparations);
-            CHECK(unsupported.activity.impostor_prepared_batches==manual_prepared.activity.impostor_prepared_batches);
-        }
-        for(bool skinned:{false,true})for(bool reverse:{false,true})
-        {
-            Inputs input(f,{skinned,false,reverse,false,true,97,65});input.shiny();
-            auto generic=input.render(false);positive(generic.planes);
-            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
-            CHECK(prepared.diagnostics.probe_candidate_shiny_batches==2);
-            input.probes.constants.ref_sphere[1][0]=1000.f;
-            auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
-            auto changed_prepared=input.render(true);CHECK(changed_prepared.planes==changed.planes);
-            CHECK(changed_prepared.diagnostics.probe_candidate_shiny_batches==2);
-        }
-    }
-}
 
-TEST_CASE("New legacy and body consumers preserve frozen-library outputs",
-          "[almetal][probe-candidate-legacy][.probe-candidate-previous-library]")
+
+TEST_CASE("Prepared body and cloth preserve frozen-library outputs",
+          "[almetal][probe-candidate-avatar][.probe-candidate-previous-library]")
 {
     @autoreleasepool
     {
         const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
         REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
         Fixture f;
-        for(bool material:{false,true})for(bool skinned:{false,true})
-        {
-            Inputs input(f,{skinned,material,true,false,true,97,65});
-            if(material){input.family(1);for(auto& batch:input.batches)batch.pre_water_alpha=false;}
-            else input.shiny();
-            const char* optional=material?"almetal_world_legacy_alpha_candidates_fragment":"almetal_world_shiny_candidates_fragment";
-            REQUIRE(f.renderer->shaderLibrary()->hasFunction(optional));
-            const auto generic=renderImpostor(f,input,false);const auto prepared=renderImpostor(f,input,true);
-            CHECK(prepared.after==generic.after);
-            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));
-            REQUIRE_FALSE(f.renderer->shaderLibrary()->hasFunction(optional));
-            const auto stats=f.data->stats();const auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            const auto previous=renderImpostor(f,input,true);CHECK(previous.after==generic.after);
-            CHECK(previous.activity.impostor_prepared_batches==activity.impostor_prepared_batches);
-            CHECK(f.data->stats().candidate_preparations==stats.candidate_preparations);
-            CHECK(f.data->stats().candidate_reuses==stats.candidate_reuses);
-            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
-            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
-            CHECK(renderImpostor(f,input,true).after==generic.after);
-        }
-        for(bool skinned:{false,true})
-        {
-            Inputs input(f,{skinned,false,true,false,true,97,65});input.shiny();
-            const auto generic=input.render(false);const auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
-            CHECK(prepared.diagnostics.probe_candidate_shiny_batches==2);
-            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));
-            const auto previous=input.render(true);CHECK(previous.planes==generic.planes);
-            CHECK(previous.diagnostics.probe_candidate_shiny_batches==0);
-            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
-            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
-            CHECK(input.render(true).planes==generic.planes);
-        }
         for(unsigned variant=0;variant<3;++variant)
         {
             Inputs input(f,{false,true,true,false,true,97,65});input.avatar(variant);
@@ -622,7 +479,7 @@ TEST_CASE("New legacy and body consumers preserve frozen-library outputs",
 }
 
 TEST_CASE("Empty forward batch spans do not prepare masks or publish consumer activity",
-          "[almetal][probe-candidate-transparency][probe-candidate-material]")
+          "[almetal][probe-candidate-transparency][probe-candidate-policy]")
 {
     @autoreleasepool
     {
@@ -632,17 +489,13 @@ TEST_CASE("Empty forward batch spans do not prepare masks or publish consumer ac
         const auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
         auto generic=input.render(false);auto projected=input.render(true);
         CHECK(projected.planes==generic.planes);
-        encoded(projected,false,0);encodedFamily(projected,1,0);encodedFamily(projected,2,0);
+        encoded(projected,false,0);
         CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
         CHECK(f.data->stats().candidate_reuses==before.candidate_reuses);
         const auto& after=projected.diagnostics.probe_candidate_activity;
         CHECK(after.encoded_calls==activity.encoded_calls+2);
         CHECK(after.eligible_batches==activity.eligible_batches);
         CHECK(after.prepared_batches==activity.prepared_batches);
-        CHECK(after.material_eligible_batches==activity.material_eligible_batches);
-        CHECK(after.material_prepared_batches==activity.material_prepared_batches);
-        CHECK(after.pbr_eligible_batches==activity.pbr_eligible_batches);
-        CHECK(after.pbr_prepared_batches==activity.pbr_prepared_batches);
     }
 }
 
@@ -693,285 +546,17 @@ TEST_CASE("Prepared avatar masks preserve rigid body cloth and depth-only owners
     }
 }
 
-TEST_CASE("Prepared material and PBR masks preserve the complete ordered alpha owner",
-          "[almetal][probe-candidate-transparency][probe-candidate-material]")
-{
-    @autoreleasepool
-    {
-        Fixture f;
-        constexpr std::array<Cell,8> cells{{
-            {false,false,false,false,false,96,64},{false,true,true,false,true,97,65},
-            {true,false,false,true,true,97,65},{true,true,true,true,false,96,64},
-            {false,false,true,true,true,97,65},{false,true,false,true,false,96,64},
-            {true,false,true,false,false,96,64},{true,true,false,false,true,97,65}}};
-        unsigned frame=1000;
-        for(unsigned family:{1u,2u}) for(bool post:{false,true})
-        for(unsigned i=0;i<cells.size();++i)
-        {
-            CAPTURE(family,post,i);
-            f.data->beginFrame(++frame);Inputs input(f,cells[i]);input.family(family);
-            if(post)input.postWaterOnly();
-            input.scene.diagnostic_frame_index=frame;
-            input.scene.diagnostic_view_kind=1;input.scene.diagnostic_view_index=0;
-            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            auto generic=input.render(false);positive(generic.planes,!post||cells[i].skinned,cells[i].reverse);
-            encodedFamily(generic,family,0);
-            const auto cold=f.data->stats();auto prepared=input.render(true);
-            CHECK(prepared.planes==generic.planes);encodedFamily(prepared,family,2);
-            CHECK(f.data->stats().candidate_preparations+f.data->stats().candidate_reuses>
-                  cold.candidate_preparations+cold.candidate_reuses);
-            const auto warm=f.data->stats();auto reused=input.render(true);
-            CHECK(reused.planes==generic.planes);encodedFamily(reused,family,2);
-            CHECK(f.data->stats().candidate_preparations==warm.candidate_preparations);
-            CHECK(f.data->stats().candidate_reuses>warm.candidate_reuses);
-            const auto& activity=reused.diagnostics.probe_candidate_activity;
-            const auto& eligible=family==1?activity.material_eligible_batches:activity.pbr_eligible_batches;
-            const auto& original_eligible=family==1?before.material_eligible_batches:before.pbr_eligible_batches;
-            const auto& selected=family==1?activity.material_prepared_batches:activity.pbr_prepared_batches;
-            const auto& original_selected=family==1?before.material_prepared_batches:before.pbr_prepared_batches;
-            CHECK(eligible[post?1:0]==original_eligible[post?1:0]+6);
-            CHECK(selected[post?1:0]==original_selected[post?1:0]+4);
-            CHECK(reused.diagnostics.probe_candidate_frame_index==frame);
-            input.probes.constants.ref_params[1][0]=.25f;
-            auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
-            auto changed_prepared=input.render(true);
-            CHECK(changed_prepared.planes==changed.planes);encodedFamily(changed_prepared,family,2);
-            if(cells[i].skinned)
-            {
-                input.palette[0]=.25f;
-                auto posed=input.render(false);CHECK(posed.planes.color!=changed.planes.color);
-                auto posed_prepared=input.render(true);
-                CHECK(posed_prepared.planes==posed.planes);encodedFamily(posed_prepared,family,2);
-            }
-            if(i==0)
-            {
-                std::swap(input.batches[0],input.batches[1]);
-                auto reordered=input.render(false);CHECK(reordered.planes.color!=changed.planes.color);
-                auto reordered_prepared=input.render(true);
-                CHECK(reordered_prepared.planes==reordered.planes);encodedFamily(reordered_prepared,family,2);
-            }
-        }
-    }
-}
 
-TEST_CASE("Prepared material and PBR preserve manual neighbors default and cap semantics",
-          "[almetal][probe-candidate-transparency][probe-candidate-material]")
-{
-    @autoreleasepool
-    {
-        Fixture f;
-        for(unsigned family:{1u,2u}) for(unsigned layout=0;layout<4;++layout)
-        {
-            CAPTURE(family,layout);
-            f.data->beginFrame(2000+family*10+layout);
-            Inputs input(f,{true,true,true,true,true,97,65});input.family(family);
-            auto& p=input.probes.constants;
-            if(layout==0)
-            {
-                p.ref_index[1][3]=1; // Manual sphere, remaining local autos stay bounded.
-                p.ref_index[2][3]=-1;identity(p.ref_box[2]);p.ref_box[2][14]=4.f;
-            }
-            else if(layout==1)
-            {
-                p.ref_index[1][1]=0;p.ref_index[1][2]=64;
-                for(unsigned i=0;i<64;++i)p.ref_neighbor[i]=i<60?-1:static_cast<int>(i-59);
-            }
-            else if(layout==2)
-            {
-                p.config[0]=1; // Default-only pack deliberately selects generic fallback.
-            }
-            else
-            {
-                p.config[0]=40;
-                for(unsigned i=1;i<32;++i)p.ref_sphere[i][3]=128.f;
-                // Eight bounded remaining rows keep preparation useful while
-                // the original accepted32/default rule remains authoritative.
-            }
-            for(bool classic:{false,true})
-            {
-                input.lighting.parameters[3]=classic?1.f:0.f;
-                auto generic=input.render(false);positive(generic.planes);
-                auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);
-                encodedFamily(prepared,family,layout==2?0:2);
-            }
-        }
-    }
-}
 
-TEST_CASE("Prepared material and PBR retain active SSR history and the later hero finish",
-          "[almetal][probe-candidate-transparency][probe-candidate-material]")
-{
-    @autoreleasepool
-    {
-        Fixture f;
-        ALMetalTextureDescriptor descriptor;
-        descriptor.type=ALMetalTextureType::texture_cube;descriptor.format=ALMetalPixelFormat::rgba8_unorm;
-        auto hero_texture=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(hero_texture);
-        descriptor.type=ALMetalTextureType::texture_2d;
-        auto history_color=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(history_color);
-        descriptor.format=ALMetalPixelFormat::r32_float;
-        auto history_depth=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(history_depth);
-        auto upload=f.device->makeCommandBuffer("Prepared alpha independent SSR and hero inputs",&f.error);REQUIRE(upload);
-        const std::array<std::uint8_t,4> green{{0,255,0,255}},red{{255,0,0,255}};
-        const float depth=.5f;
-        for(unsigned face=0;face<6;++face)REQUIRE(hero_texture->upload(*upload,0,face,{},green.data(),4,&f.error));
-        REQUIRE(history_color->upload(*upload,0,0,{},red.data(),4,&f.error));
-        REQUIRE(history_depth->upload(*upload,0,0,{},&depth,sizeof(depth),&f.error));
-        REQUIRE(upload->commitAndWait(&f.error));
-        ALMetalWorldHeroProbe hero;hero.radiance_texture=hero_texture.get();
-        hero.constants.hero_sphere[2]=-4.f;hero.constants.hero_sphere[3]=128.f;
-        hero.constants.clip_plane[3]=1.f;hero.constants.config[0]=1;hero.constants.config[1]=1;
-        ALMetalWorldScreenSpaceReflections ssr;
-        ssr.scene_color=history_color.get();ssr.scene_depth=history_depth.get();
-        identity(ssr.constants.projection);identity(ssr.constants.inverse_projection);
-        identity(ssr.constants.inverse_modelview_delta);ssr.constants.inverse_projection[14]=-4.f;
-        ssr.constants.screen[0]=96;ssr.constants.screen[1]=ssr.constants.screen[2]=64;
-        ssr.constants.trace[0]=4;ssr.constants.trace[1]=.1f;ssr.constants.trace[2]=.2f;ssr.constants.trace[3]=.001f;
-        ssr.constants.sampling[0]=1;ssr.constants.sampling[1]=1.6f;ssr.constants.config[1]=1;
-        for(unsigned family:{1u,2u})
-        {
-            CAPTURE(family);
-            Inputs input(f,{false,true,false,false,true,96,64});input.family(family);
-            for(auto& batch:input.batches)for(unsigned slot=0;slot<2;++slot)
-            {
-                if(family==1)batch.materialSlots()[slot].specular_color[3]=.9f;
-                else batch.pbrSlots()[slot].roughness_factor=.2f;
-            }
-            input.scene.screen_space_reflections=&ssr;
-            auto history=input.render(false);positive(history.planes);
-            auto history_prepared=input.render(true);CHECK(history_prepared.planes==history.planes);encodedFamily(history_prepared,family,2);
-            input.scene.hero_probe=&hero;
-            auto finished=input.render(false);positive(finished.planes);
-            CHECK(finished.planes.color!=history.planes.color); // Later hero contribution must remain observable.
-            auto finished_prepared=input.render(true);CHECK(finished_prepared.planes==finished.planes);encodedFamily(finished_prepared,family,2);
-            input.scene.hero_probe=nullptr;
-            auto restored=input.render(true);CHECK(restored.planes==history.planes);encodedFamily(restored,family,2);
-        }
-        // This authors an active valid SSR-history path and proves its complete
-        // generic/prepared output. A positive SSR hit is not inferred from a
-        // bound history; the independent hero omission above is the positive control.
-    }
-}
 
-TEST_CASE("Prepared PBR preserves runtime and optional probe shadow executables",
-          "[almetal][probe-candidate-transparency][probe-candidate-material]")
-{
-    @autoreleasepool
-    {
-        Fixture f;
-        for(bool probe:{false,true})for(bool custom:{false,true})
-        {
-            CAPTURE(probe,custom);
-            Inputs input(f,{true,true,true,false,true,97,65});input.family(2);input.postWaterOnly();
-            input.scene.probe_pbr_shadow_specialization=probe;
-            input.scene.diagnostic_view_kind=3;input.scene.diagnostic_view_index=2;
-            input.shadows.constants.config[3]=probe
-                ? 2u|ALMetalWorldDirectionalShadowConstants::probe_single_tap : 3u;
-            if(custom)for(auto& batch:input.batches)
-            {
-                batch.pre_water_source_rgb=ALMetalBlendFactor::one;
-                batch.pre_water_destination_rgb=ALMetalBlendFactor::one;
-            }
-            auto generic=input.render(false);positive(generic.planes);
-            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);encodedFamily(prepared,2,2);
-            // Reload must preserve already-used optional/custom executables.
-            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
-            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
-            auto restored=input.render(true);CHECK(restored.planes==generic.planes);encodedFamily(restored,2,2);
-        }
-    }
-}
 
-TEST_CASE("Prepared material and PBR preserve a frozen generic library and reload fallback",
-          "[almetal][probe-candidate-material][.probe-candidate-previous-library]")
-{
-    @autoreleasepool
-    {
-        const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
-        REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
-        for(unsigned family:{1u,2u})for(bool custom:{false,true})
-        {
-            CAPTURE(family,custom);
-            Fixture f;Inputs input(f,{true,true,true,true,true,97,65});input.family(family);input.postWaterOnly();
-            if(custom)for(auto& batch:input.batches)
-            {
-                batch.pre_water_source_rgb=ALMetalBlendFactor::one;
-                batch.pre_water_destination_rgb=ALMetalBlendFactor::one;
-            }
-            const char* optional=family==1?"almetal_world_pre_water_material_candidates_fragment"
-                                           :"almetal_world_pre_water_pbr_candidates_fragment";
-            REQUIRE(f.renderer->shaderLibrary()->hasFunction(optional));
-            auto generic=input.render(false);positive(generic.planes);
-            auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);encodedFamily(prepared,family,2);
-            REQUIRE(f.renderer->reloadShaders(std::string(baseline),&f.error));INFO(f.error);
-            REQUIRE_FALSE(f.renderer->shaderLibrary()->hasFunction(optional));
-            const auto before=f.data->stats();auto previous=input.render(true);positive(previous.planes);
-            CHECK(previous.planes==generic.planes);encodedFamily(previous,family,0);
-            CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
-            CHECK(f.data->stats().candidate_reuses==before.candidate_reuses);
-            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
-            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));INFO(f.error);
-            auto restored=input.render(true);CHECK(restored.planes==generic.planes);encodedFamily(restored,family,2);
-        }
-    }
-}
 
-TEST_CASE("Prepared lit custom blends keep cache identity failure fallback and reload activity",
-          "[almetal][probe-candidate-transparency][probe-candidate-material]")
-{
-    @autoreleasepool
-    {
-        Fixture f;
-        for(unsigned family:{1u,2u})
-        {
-            Inputs input(f,{true,true,false,false,true,96,64});input.family(family);input.postWaterOnly();
-            input.scene.diagnostic_frame_index=3000+family;
-            for(unsigned blend=0;blend<3;++blend)
-            {
-                CAPTURE(family,blend);
-                for(auto& batch:input.batches)
-                {
-                    batch.pre_water_source_rgb=blend==0?ALMetalBlendFactor::one:ALMetalBlendFactor::source_alpha;
-                    batch.pre_water_destination_rgb=blend==1?ALMetalBlendFactor::one:ALMetalBlendFactor::zero;
-                }
-                auto generic=input.render(false);positive(generic.planes);
-                auto prepared=input.render(true);CHECK(prepared.planes==generic.planes);encodedFamily(prepared,family,2);
-            }
-            const auto initial=input.probes.constants;
-            unsigned admissions=0;
-            f.data->setSourcePublicationAdmission([&](const ALMetalWorldSourcePublicationWork&)->std::shared_ptr<const void>{++admissions;return {};});
-            input.probes.constants.ref_sphere[1][0]=1000.f;
-            auto denied_generic=input.render(false);auto denied=input.render(true);
-            CHECK(denied.planes==denied_generic.planes);encodedFamily(denied,family,0);CHECK(admissions>0);
-            input.probes.constants=initial;admissions=0;
-            input.probes.constants.ref_params[1][0]=.25f;
-            auto current=input.render(false);const auto cached=f.data->stats();auto hit=input.render(true);
-            CHECK(hit.planes==current.planes);encodedFamily(hit,family,2);CHECK(admissions==0);
-            CHECK(f.data->stats().candidate_preparations==cached.candidate_preparations);
-            CHECK(f.data->stats().candidate_reuses>cached.candidate_reuses);
-            f.data->setSourcePublicationAdmission({});
-            const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            std::array<ALMetalWorldGBufferRenderer*,1> owners{{f.renderer.get()}};
-            REQUIRE(ALMetalWorldGBufferRenderer::reloadSharedShaders(*f.data,owners,&f.error));
-            const auto after=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            CHECK(after.material_eligible_batches==before.material_eligible_batches);
-            CHECK(after.material_prepared_batches==before.material_prepared_batches);
-            CHECK(after.pbr_eligible_batches==before.pbr_eligible_batches);
-            CHECK(after.pbr_prepared_batches==before.pbr_prepared_batches);
-            auto reloaded=input.render(true);CHECK(reloaded.planes==current.planes);encodedFamily(reloaded,family,2);
-            auto gbuffer=input.seeded(true),composed=input.seeded(false);
-            input.batches[0].pre_water_alpha=true; // Invalid both-stage preflight must publish nothing.
-            auto invalid=input.scene;invalid.gbuffer=gbuffer.get();invalid.composed_lighting=composed.get();
-            CHECK_FALSE(f.renderer->renderOpaquePostDeferred(invalid,&f.error));
-            const auto failed=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-            CHECK(failed.encoded_calls==reloaded.diagnostics.probe_candidate_activity.encoded_calls);
-            CHECK(failed.material_eligible_batches==reloaded.diagnostics.probe_candidate_activity.material_eligible_batches);
-            CHECK(failed.material_prepared_batches==reloaded.diagnostics.probe_candidate_activity.material_prepared_batches);
-            CHECK(failed.pbr_eligible_batches==reloaded.diagnostics.probe_candidate_activity.pbr_eligible_batches);
-            CHECK(failed.pbr_prepared_batches==reloaded.diagnostics.probe_candidate_activity.pbr_prepared_batches);
-        }
-    }
-}
+
+
+
+
+
+
 
 TEST_CASE("Prepared probe masks preserve ordered rigid and skinned simple alpha",
           "[almetal][probe-candidate-transparency]")
@@ -1293,10 +878,9 @@ TEST_CASE("Forward probe decisions retain distinct conservative and admission fa
     }
 }
 
-TEST_CASE("Default prepared lighting keeps body and simple consumers with generic new families",
-          "[almetal][.probe-candidate-default-policy]")
+TEST_CASE("Prepared lighting keeps body and simple consumers with generic other families",
+          "[almetal][probe-candidate-transparency][probe-candidate-policy]")
 {
-    REQUIRE(std::getenv("ALCHEMY_METAL_E6_PREPARED_FORCE_ALL")==nullptr);
     @autoreleasepool
     {
         Fixture f;
@@ -1330,8 +914,6 @@ TEST_CASE("Default prepared lighting keeps body and simple consumers with generi
             auto generic=input.render(false);positive(generic.planes);
             const auto before=f.data->stats();auto selected=input.render(true);
             CHECK(selected.planes==generic.planes);unchanged_preparation(before);
-            CHECK(selected.diagnostics.probe_candidate_material_batches==0);
-            CHECK(selected.diagnostics.probe_candidate_pbr_batches==0);
             CHECK_FALSE(selected.diagnostics.probe_candidate_decision.masks_bound);
             for(auto& value:input.probes.constants.ref_params){value[0]*=.25f;value[1]*=.5f;}
             auto changed=input.render(false);CHECK(changed.planes.color!=generic.planes.color);
@@ -1341,7 +923,7 @@ TEST_CASE("Default prepared lighting keeps body and simple consumers with generi
         auto shiny_generic=shiny.render(false);positive(shiny_generic.planes);
         auto before=f.data->stats();auto shiny_selected=shiny.render(true);
         CHECK(shiny_selected.planes==shiny_generic.planes);unchanged_preparation(before);
-        CHECK(shiny_selected.diagnostics.probe_candidate_shiny_batches==0);
+        CHECK_FALSE(shiny_selected.diagnostics.probe_candidate_decision.masks_bound);
 
         // A shared body mask must not select an unhelpful custom consumer.
         Inputs material(f,{false,true,false,false,true,97,65});material.family(1);
@@ -1354,416 +936,12 @@ TEST_CASE("Default prepared lighting keeps body and simple consumers with generi
         CHECK(mixed_prepared.planes==mixed_generic.planes);
         CHECK(mixed_prepared.diagnostics.probe_candidate_decision.masks_bound);
         CHECK(mixed_prepared.diagnostics.probe_candidate_avatar_batches==1);
-        CHECK(mixed_prepared.diagnostics.probe_candidate_material_batches==0);
-        CHECK(mixed_prepared.diagnostics.probe_candidate_pbr_batches==0);
+        CHECK(mixed_prepared.diagnostics.probe_candidate_decision.prepared_batches==1);
 
         // The compositor's new families remain generic before mask work.
         auto impostor_generic=renderImpostor(f,shiny,false);
-        before=f.data->stats();auto activity=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
+        before=f.data->stats();
         auto impostor_selected=renderImpostor(f,shiny,true);
         CHECK(impostor_selected.after==impostor_generic.after);unchanged_preparation(before);
-        CHECK(impostor_selected.activity.impostor_prepared_batches==activity.impostor_prepared_batches);
-    }
-}
-
-namespace e6_cost
-{
-using Clock = std::chrono::steady_clock;
-using Library = std::shared_ptr<const ALMetalShaderLibrary>;
-bool enabled(const char* name)
-{
-    const char* value=std::getenv(name);
-    return value && *value && std::strcmp(value,"0")!=0;
-}
-unsigned cell()
-{
-    const char* value=std::getenv("ALCHEMY_E6_COST_CELL");
-    REQUIRE(value);REQUIRE(std::strlen(value)==1);
-    REQUIRE(value[0]>='0');REQUIRE(value[0]<='8');
-    return unsigned(value[0]-'0');
-}
-std::optional<std::uint64_t> cpuNow()
-{
-    timespec value{};
-    if(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&value)!=0 || value.tv_sec<0 ||
-       std::uint64_t(value.tv_sec)>std::numeric_limits<std::uint64_t>::max()/1000000000ull)
-        return {};
-    return std::uint64_t(value.tv_sec)*1000000000ull+std::uint64_t(value.tv_nsec);
-}
-std::uint64_t elapsed(Clock::time_point started)
-{
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count();
-}
-std::shared_ptr<ALMetalDevice> device(std::string& error)
-{
-    const char* value=std::getenv("ALCHEMY_E6_RESOURCE_PLAN_MODE");
-    const std::string_view mode=value?value:"disabled";
-#if __has_include("../almetalresourceplan.h")
-    auto policy=ALMetalResourcePlanMode::disabled;
-    if(mode=="accounting_only")policy=ALMetalResourcePlanMode::accounting_only;
-    else if(mode=="enabled")policy=ALMetalResourcePlanMode::enabled;
-    else REQUIRE(mode=="disabled");
-    return ALMetalDevice::create(&error,policy);
-#else
-    REQUIRE(mode=="disabled");
-    return ALMetalDevice::create(&error);
-#endif
-}
-void raw(const std::filesystem::path& path,const void* bytes,std::size_t count)
-{
-    std::ofstream file(path,std::ios::binary);
-    REQUIRE(file.good());
-    file.write(static_cast<const char*>(bytes),std::streamsize(count));
-    REQUIRE(file.good());
-}
-void raw(const std::filesystem::path& prefix,const Planes& value)
-{
-    raw(prefix.string()+"-color.raw",value.color.data(),value.color.size()*sizeof(Pixel));
-    raw(prefix.string()+"-depth.raw",value.depth.data(),value.depth.size()*sizeof(std::uint32_t));
-    raw(prefix.string()+"-stencil.raw",value.stencil.data(),value.stencil.size());
-}
-void factorySentinel(const ALMetalDevice& device,const Library& library,unsigned arm)
-{
-    std::string error;
-    ALMetalRenderPipelineDescriptor descriptor;descriptor.library=library.get();
-    descriptor.vertex_function="almetal_world_shiny_vertex";
-    descriptor.fragment_function="almetal_world_shiny_fragment";
-    descriptor.colors[0].format=ALMetalPixelFormat::rgba16_float;
-    descriptor.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
-    auto graphics=ALMetalRenderPipeline::create(device,descriptor,&error);INFO(error);REQUIRE(graphics);
-    auto native=(__bridge id<MTLRenderPipelineState>)graphics->nativeHandle();
-    REQUIRE(native.shaderValidation==MTLShaderValidationDisabled);
-    ALMetalComputePipelineDescriptor compute;compute.library=library.get();
-    compute.function="almetal_world_probe_candidate_tiles";
-    auto kernel=ALMetalComputePipeline::create(device,compute,&error);INFO(error);REQUIRE(kernel);
-    auto native_compute=(__bridge id<MTLComputePipelineState>)kernel->nativeHandle();
-    REQUIRE(native_compute.shaderValidation==MTLShaderValidationDisabled);
-    std::cout<<"e6_factory_sentinel arm="<<arm<<" graphics_validation="<<native.shaderValidation
-        <<" compute_validation="<<native_compute.shaderValidation<<" selected_PSO_census=0\n";
-}
-void atlas(Inputs& input,unsigned count,unsigned selected_cell)
-{
-    REQUIRE(count<=128);
-    auto& f=input.f;
-    ALMetalTextureDescriptor descriptor;descriptor.type=ALMetalTextureType::texture_cube_array;
-    descriptor.array_length=count;descriptor.format=ALMetalPixelFormat::rgba8_unorm;
-    auto radiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(radiance);
-    descriptor={};descriptor.width=4;descriptor.height=count;descriptor.format=ALMetalPixelFormat::rgba32_uint;
-    auto irradiance=ALMetalTexture::create(*f.device,descriptor,&f.error);REQUIRE(irradiance);
-    std::vector<std::uint32_t> coefficients(count*16);
-    auto command=f.device->makeCommandBuffer("E6 fixed authored packed4 atlas",&f.error);REQUIRE(command);
-    for(unsigned row=0;row<count;++row)
-    {
-        const std::array<std::uint8_t,4> color{{
-            std::uint8_t(32+(row*17)%192),std::uint8_t(32+(row*29)%192),
-            std::uint8_t(32+(row*41)%192),255}};
-        for(unsigned face=0;face<6;++face)
-            REQUIRE(radiance->upload(*command,0,row*6+face,{},color.data(),4,&f.error));
-        std::copy_n(input.packedSH.data()+(row%40)*16,16,coefficients.data()+row*16);
-    }
-    REQUIRE(irradiance->upload(*command,0,0,{},coefficients.data(),64,&f.error));
-    REQUIRE(command->commitAndWait(&f.error));
-    input.radiance=std::move(radiance);input.irradiance=std::move(irradiance);
-    input.probes.radiance_texture=input.radiance.get();input.probes.irradiance_texture=input.irradiance.get();
-    auto& p=input.probes.constants;p={};p.config[0]=float(count);
-    for(unsigned row=0;row<count;++row)
-    {
-        p.ref_sphere[row][0]=row?(-2.8f+.7f*((row-1)%9)):0.f;
-        p.ref_sphere[row][1]=row?(-1.9f+.6f*(((row-1)/9)%7)):0.f;
-        p.ref_sphere[row][2]=-4.f;p.ref_sphere[row][3]=row?.8f:128.f;
-        p.ref_index[row][0]=row;p.ref_index[row][1]=-1;
-        p.ref_params[row][0]=p.ref_params[row][1]=p.ref_params[row][2]=1.f;
-        if(selected_cell==6 && row>0 && row<=31)
-        {
-            p.ref_sphere[row][0]=p.ref_sphere[row][1]=0.f;p.ref_sphere[row][3]=6.f;
-            p.ref_index[row][3]=row<=3?1:0;
-        }
-        if(selected_cell==7 && row)
-        {
-            p.ref_sphere[row][0]=p.ref_sphere[row][1]=0.f;p.ref_sphere[row][3]=128.f;
-            p.ref_index[row][3]=1;
-        }
-    }
-    for(auto& bucket:p.ref_bucket)bucket[0]=1;
-}
-std::unique_ptr<ALMetalRenderTarget> impostorTarget(Inputs& input)
-{
-    ALMetalRenderTargetDescriptor d;d.width=input.cell.width;d.height=input.cell.height;
-    d.color_attachment_count=4;d.depth_stencil_format=ALMetalPixelFormat::depth32_float_stencil8;
-    d.colors[0].format=ALMetalPixelFormat::rgba8_unorm_srgb;
-    d.colors[1].format=ALMetalPixelFormat::rgba8_unorm;
-    d.colors[2].format=ALMetalPixelFormat::rgba16_unorm;
-    d.colors[3].format=ALMetalPixelFormat::rg11b10_float;
-    auto value=ALMetalRenderTarget::create(*input.f.device,d,&input.f.error);REQUIRE(value);return value;
-}
-void seedImpostor(Fixture& f,ALMetalRenderTarget& target)
-{
-    ALMetalRenderPassConfig config;config.clear_depth=1.;config.clear_stencil=0x5a;
-    config.depth_store=config.stencil_store=ALMetalStoreAction::store;
-    for(auto& color:config.colors)color.clear={.03125,.0625,.125,.5};
-    auto pass=target.makeRenderPass(config,&f.error);REQUIRE(pass);
-    auto command=f.device->makeCommandBuffer("E6 fixed impostor destination seeding",&f.error);REQUIRE(command);
-    auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"E6 seed",&f.error);REQUIRE(encoder);
-    REQUIRE(encoder->end(&f.error));REQUIRE(command->commitAndWait(&f.error));
-}
-template<class Renderer>
-bool composite(Renderer& renderer,ALMetalRenderTarget& target,const ALMetalWorldGBufferScene& scene,
-               std::string* error,std::shared_ptr<const ALMetalCommandCompletion>* completion)
-{
-    if constexpr(requires { renderer.compositeImpostorPostDeferred(target,scene,error,completion); })
-        return renderer.compositeImpostorPostDeferred(target,scene,error,completion);
-    else
-    {
-        throw std::runtime_error("E6 compositor cost requires the matching actual-command completion_out API");
-    }
-}
-template<class Renderer>
-int validationMode(Renderer& renderer,bool impostor)
-{
-    if constexpr(requires { renderer.opaquePostDiagnostics().last_probe_consumer_shader_validation;
-                            renderer.opaquePostDiagnostics().last_impostor_consumer_shader_validation; })
-    {
-        const auto state=renderer.opaquePostDiagnostics();
-        return impostor?state.last_impostor_consumer_shader_validation:state.last_probe_consumer_shader_validation;
-    }
-    else return -1;
-}
-struct Observation
-{
-    ALMetalCommandGPUTime gpu;
-    std::uint64_t wall=0,cpu=0,preparations=0,reuses=0,declines=0,selected=0;
-    bool cpu_known=false,reason_known=true;
-    int validation=-1;
-    ALMetalProbeCandidateReason reason=ALMetalProbeCandidateReason::not_eligible;
-    std::unique_ptr<ALMetalRenderTarget> output;
-};
-Observation measure(Fixture& f,Inputs& input,ALMetalRenderTarget& gbuffer,ALMetalRenderTarget& composed,
-                    ALMetalRenderTarget* impostor,unsigned frame,bool prepared,bool retain)
-{
-    // Fixed input reset and its native transient objects are outside timing.
-    @autoreleasepool { if(impostor)seedImpostor(f,*impostor); }
-    const auto stats=f.data->stats();const auto before=f.renderer->opaquePostDiagnostics().probe_candidate_activity;
-    const auto check=[&](bool okay,const char* stage)
-    {
-        if(!okay)throw std::runtime_error(std::string("E6 cost ")+stage+": "+f.error);
-    };
-    const auto cpu=cpuNow();const auto started=Clock::now();
-    Observation result;
-    @autoreleasepool
-    {
-        f.data->beginFrame(frame);
-        std::shared_ptr<const ALMetalCommandCompletion> completion;
-        if(impostor)
-        {
-            ALMetalWorldGBufferScene scene;scene.batches=input.batches.data();scene.batch_count=input.batches.size();
-            scene.width=input.cell.width;scene.height=input.cell.height;scene.hdr=true;scene.normal_hdr=true;
-            scene.reflection_probes=&input.probes;scene.legacy_alpha_lighting=&input.lighting;
-            scene.directional_shadows=&input.shadows;
-            std::copy_n(input.scene.forward_probe_projection,16,scene.forward_probe_projection);
-            scene.forward_probe_projection_valid=prepared;
-            check(composite(*f.renderer,*impostor,scene,&f.error,&completion),"impostor encode/commit");
-        }
-        else
-        {
-            check(f.renderer->beginCommandBatch("E6 complete prepared-lighting owner",&f.error),"batch begin");
-            auto scene=input.scene;scene.gbuffer=&gbuffer;scene.composed_lighting=&composed;
-            scene.forward_probe_projection_valid=prepared;
-            result.output=f.renderer->renderOpaquePostDeferred(scene,&f.error);check(bool(result.output),"post encode");
-            completion=f.renderer->commandBatchCompletion();check(bool(completion),"completion receipt");
-            check(f.renderer->commitCommandBatch(&f.error),"batch commit");
-        }
-        check(bool(completion),"actual completion receipt");check(completion->waitUntilCompleted(&f.error),"actual completion wait");
-        check(completion->status()==ALMetalCommandStatus::completed,"native completion status");
-        check(completion->gpuTime(result.gpu)==ALMetalCommandTimingStatus::ready,"native GPU timestamps");
-        if(!retain)result.output.reset();
-        completion.reset();
-    }
-    result.wall=elapsed(started);
-    const auto end_cpu=cpuNow();
-    if(cpu && end_cpu && *end_cpu>=*cpu){result.cpu_known=true;result.cpu=*end_cpu-*cpu;}
-    const auto current=f.data->stats();const auto diagnostics=f.renderer->opaquePostDiagnostics();
-    result.preparations=current.candidate_preparations-stats.candidate_preparations;
-    result.reuses=current.candidate_reuses-stats.candidate_reuses;
-    result.declines=current.candidate_declines-stats.candidate_declines;
-    result.reason=diagnostics.probe_candidate_decision.reason;
-    result.reason_known=impostor==nullptr;
-    result.validation=validationMode(*f.renderer,impostor!=nullptr);
-    result.selected=impostor
-        ? diagnostics.probe_candidate_activity.impostor_prepared_batches[0]+diagnostics.probe_candidate_activity.impostor_prepared_batches[1]
-            -before.impostor_prepared_batches[0]-before.impostor_prepared_batches[1]
-        : diagnostics.probe_candidate_material_batches+diagnostics.probe_candidate_pbr_batches+
-            diagnostics.probe_candidate_avatar_batches+diagnostics.probe_candidate_shiny_batches;
-    return result;
-}
-void emit(unsigned cell,const char* kind,unsigned block,unsigned slot,unsigned arm,const Observation& value,double& last_end)
-{
-    REQUIRE(value.gpu.start_seconds>=last_end);REQUIRE(value.gpu.end_seconds>value.gpu.start_seconds);
-    last_end=value.gpu.end_seconds;
-    std::cout<<std::setprecision(17)<<"e6_cost_csv,"<<cell<<','<<kind<<','<<block<<','<<slot<<','<<arm<<','
-        <<value.gpu.start_seconds<<','<<value.gpu.end_seconds<<','<<value.gpu.elapsed_nanoseconds<<','
-        <<value.wall<<','<<value.cpu_known<<','<<value.cpu<<','<<value.preparations<<','<<value.reuses<<','
-        <<value.declines<<','<<value.selected<<','<<value.reason_known<<','<<unsigned(value.reason)<<','<<value.validation<<'\n';
-}
-} // namespace e6_cost
-
-TEST_CASE("E6 complete prepared-lighting owner costs retain construction and fallback negatives",
-          "[.][almetal][probe-candidate-cost]")
-{
-    if(!e6_cost::enabled("ALCHEMY_E6_COST"))SKIP("Explicit E6 cost opt-in required");
-#ifndef NDEBUG
-    SKIP("E6 cost requires an optimized matched build");
-#endif
-    const auto selected=e6_cost::cell();if(selected==8)SKIP("Cell8 is the actual water fixture");
-    for(const auto* name:{"MTL_DEBUG_LAYER","MTL_SHADER_VALIDATION","MTL_CAPTURE_ENABLED","MTL_HUD_ENABLED"})
-        REQUIRE_FALSE(e6_cost::enabled(name));
-    REQUIRE_FALSE(ALMetalDevice::commandTimingEnabled());
-    const char* baseline=std::getenv("ALCHEMY_PROBE_CANDIDATE_BASELINE_LIBRARY");
-    const char* directory=std::getenv("ALCHEMY_E6_COST_ARTIFACT_DIR");
-    REQUIRE(baseline);REQUIRE(std::filesystem::is_regular_file(baseline));
-    REQUIRE(directory);REQUIRE(std::filesystem::is_directory(directory));
-    const auto out=std::filesystem::path(directory)/("cell-"+std::to_string(selected));
-    REQUIRE_FALSE(std::filesystem::exists(out));REQUIRE(std::filesystem::create_directory(out));
-    std::filesystem::permissions(out,std::filesystem::perms::owner_all);
-    @autoreleasepool
-    {
-        std::string error;auto device=e6_cost::device(error);INFO(error);REQUIRE(device);
-        REQUIRE_FALSE(device->pipelineCache().stats().enabled);
-        std::cout<<"e6_pipeline_archive enabled=0 driver_cache_cold_claim=0\n";
-        std::array<e6_cost::Library,3> libraries;
-        auto started=e6_cost::Clock::now();
-        @autoreleasepool { libraries[0]=ALMetalShaderLibrary::loadFile(*device,baseline,&error); }
-        const auto old_load_wall=e6_cost::elapsed(started);INFO(error);REQUIRE(libraries[0]);
-        std::cout<<"e6_library_load arm=0 wall_ns="<<old_load_wall<<'\n';
-        started=e6_cost::Clock::now();@autoreleasepool { libraries[1]=ALMetalShaderLibrary::loadBuiltin(*device,&error); }
-        const auto current_load_wall=e6_cost::elapsed(started);REQUIRE(libraries[1]);
-        libraries[2]=libraries[1];std::cout<<"e6_library_load arm=1 wall_ns="<<current_load_wall<<" shared_with=2\n";
-        REQUIRE_FALSE(libraries[0]->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
-        REQUIRE(libraries[1]->hasFunction("almetal_world_legacy_alpha_candidates_fragment"));
-        for(unsigned arm=0;arm<2;++arm)e6_cost::factorySentinel(*device,libraries[arm],arm);
-        std::array<std::unique_ptr<Fixture>,3> owners;
-        for(unsigned round=0;round<2;++round)for(unsigned slot=0;slot<3;++slot)
-        {
-            const unsigned arm=round?2-slot:slot;
-            owners[arm].reset();
-            owners[arm]=std::make_unique<Fixture>(device,libraries[arm],false);
-            const auto cpu=e6_cost::cpuNow();started=e6_cost::Clock::now();
-            @autoreleasepool
-            {
-                owners[arm]->renderer=ALMetalWorldGBufferRenderer::create(*device,1,libraries[arm],&owners[arm]->error);
-                if(owners[arm]->renderer)owners[arm]->renderer->setFrameData(owners[arm]->data);
-            }
-            const auto wall=e6_cost::elapsed(started);const auto end=e6_cost::cpuNow();
-            INFO(owners[arm]->error);REQUIRE(owners[arm]->renderer);
-            std::cout<<"e6_construction round="<<round<<" slot="<<slot<<" arm="<<arm<<" wall_ns="<<wall
-                <<" cpu_known="<<bool(cpu&&end&&*end>=*cpu)<<" cpu_ns="<<(cpu&&end&&*end>=*cpu?*end-*cpu:0)
-                <<" driver_cache_cold_claim=0 includes_FrameData=0 transient_autorelease_drain=1\n";
-        }
-        const bool impostor=selected==4;
-        Inputs input(*owners[0],{selected!=0&&selected!=3,true,false,false,true,impostor?256u:1024u,impostor?256u:576u});
-        const unsigned probes=selected==6?128u:((selected==0||selected==2||impostor)?47u:54u);
-        if(selected==2)input.avatar(2);
-        else if(selected==3)input.shiny();
-        else input.family(selected==0||impostor?1:2);
-        if(selected==1)for(auto& batch:input.batches)
-        {batch.pre_water_source_rgb=ALMetalBlendFactor::one;batch.pre_water_destination_rgb=ALMetalBlendFactor::one;}
-        if(selected!=2&&selected!=3&&!impostor)input.postWaterOnly();
-        if(impostor)
-        {
-            for(auto& batch:input.batches)batch.pre_water_alpha=false;
-            auto& shiny=input.batches[1];shiny.material_slot_count=0;shiny.material_alpha_mode=0;
-            shiny.pre_water_material=shiny.pre_water_shadows=false;shiny.impostor_shiny=true;
-        }
-        e6_cost::atlas(input,probes,selected);
-        const auto initial=input.probes.constants;
-        std::array<std::unique_ptr<ALMetalRenderTarget>,3> gbuffer,composed,targets;
-        for(unsigned arm=0;arm<3;++arm)
-        {
-            gbuffer[arm]=input.seeded(true);composed[arm]=input.seeded(false);
-            if(impostor)targets[arm]=e6_cost::impostorTarget(input);
-        }
-        e6_cost::raw(out/"probe-pack.raw",&initial,sizeof(initial));
-        const char* resource_mode=std::getenv("ALCHEMY_E6_RESOURCE_PLAN_MODE");
-        std::cout<<"e6_scope cell="<<selected<<" configured_probes="<<probes<<" width="<<input.cell.width<<" height="<<input.cell.height
-            <<" resource_plan_mode="<<(resource_mode?resource_mode:"disabled")
-            <<" current_generic_arm=1 prepared_arm=2 old_generic_arm=0 authored_distribution=1 captured_scene_claim=0 FPS_claim=0"
-            <<" includes_current_frame_preparation_commit_completion_dynamic_output_retirement=1 input_seed_in_wall=0"
-            <<" transient_autorelease_drain_in_wall=1 persistent_renderer_caches_follow_existing_retirement=1"
-            <<" first_use_retains_output_for_outside_wall_parity=1 sentinel_not_selected_PSO_census=1 thermal_start="
-            <<[[NSProcessInfo processInfo] thermalState]<<'\n';
-        std::cout<<"e6_cost_csv,cell,kind,block,slot,arm,gpu_start_s,gpu_end_s,gpu_ns,owner_wall_ns,cpu_known,owner_cpu_ns,preparations,reuses,declines,prepared_draws,decision_known,decision,actual_consumer_validation\n";
-        unsigned frame=1;double last_end=0;
-        std::array<Planes,3> first;std::array<ImpostorPlanes,3> first_impostor;
-        std::array<std::uint64_t,3> first_selected{};
-        ImpostorPlanes clear_impostor;
-        if(impostor)
-        {
-            e6_cost::seedImpostor(*owners[0],*targets[0]);
-            clear_impostor=readImpostor(*owners[0],*targets[0]);
-        }
-        for(unsigned arm=0;arm<3;++arm)
-        {
-            auto value=e6_cost::measure(*owners[arm],input,*gbuffer[arm],*composed[arm],targets[arm].get(),frame++,arm==2,true);
-            e6_cost::emit(selected,"first_use",0,arm,arm,value,last_end);
-            first_selected[arm]=value.selected;
-            if(impostor)
-            {
-                first_impostor[arm]=readImpostor(*owners[arm],*targets[arm]);
-                for(unsigned attachment=0;attachment<4;++attachment)e6_cost::raw(out/("arm"+std::to_string(arm)+"-mrt"+std::to_string(attachment)+".raw"),
-                    first_impostor[arm].colors[attachment].data(),first_impostor[arm].colors[attachment].size());
-                e6_cost::raw(out/("arm"+std::to_string(arm)),first_impostor[arm].planes);
-            }
-            else
-            {
-                first[arm]=owners[arm]->read(*value.output);e6_cost::raw(out/("arm"+std::to_string(arm)),first[arm]);
-            }
-            REQUIRE(value.validation==2);
-        }
-        REQUIRE(first_selected[0]==0);REQUIRE(first_selected[1]==0);
-        REQUIRE(first_selected[2]==(selected==7?0u:2u));
-        if(impostor)
-        {
-            REQUIRE(first_impostor[0]==first_impostor[1]);REQUIRE(first_impostor[0]==first_impostor[2]);
-            REQUIRE(first_impostor[0].colors[0]!=clear_impostor.colors[0]);
-            for(unsigned attachment=1;attachment<4;++attachment)
-                REQUIRE(first_impostor[0].colors[attachment]==clear_impostor.colors[attachment]);
-            REQUIRE(first_impostor[0].planes.stencil==clear_impostor.planes.stencil);
-        }
-        else
-        {
-            positive(first[0],selected!=0,false);
-            REQUIRE(first[0]==first[1]);REQUIRE(first[0]==first[2]);
-        }
-        if(e6_cost::enabled("ALCHEMY_E6_COST_PRECHECK_ONLY"))
-        {
-            std::cout<<"e6_terminal cell="<<selected
-                <<" precheck_only=1 measured=0 warm=0 first_use=3 thermal_end="
-                <<[[NSProcessInfo processInfo] thermalState]<<'\n';
-            return;
-        }
-        const auto observe=[&](const char* kind,unsigned block,unsigned slot,unsigned arm)
-        {
-            auto value=e6_cost::measure(*owners[arm],input,*gbuffer[arm],*composed[arm],targets[arm].get(),frame++,arm==2,false);
-            REQUIRE(value.validation==2);
-            if(arm==2&&selected!=7){REQUIRE(value.selected==2);REQUIRE(value.preparations+value.reuses>0);}
-            else REQUIRE(value.selected==0);
-            if(arm==2&&selected==7){REQUIRE(value.reason==ALMetalProbeCandidateReason::all_full);REQUIRE(value.preparations+value.reuses==0);}
-            e6_cost::emit(selected,kind,block,slot,arm,value,last_end);
-        };
-        for(unsigned warm=0;warm<5;++warm)for(unsigned arm=0;arm<3;++arm)observe("warm",warm,arm,arm);
-        constexpr unsigned orders[3][6]={{0,1,2,2,1,0},{1,2,0,0,2,1},{2,0,1,1,0,2}};
-        for(unsigned block=0;block<75;++block)
-        {
-            if(selected==5)input.probes.constants.ref_sphere[1][0]=initial.ref_sphere[1][0]+.05f*(block+1);
-            else input.probes.constants.ref_params[1][0]=.5f+.01f*(block%7);
-            if(selected==2)
-            {
-                for(unsigned joint=0;joint<15;++joint)input.avatar_palette[joint*4+3]=.01f*(block%11);
-                for(auto& batch:input.batches)batch.avatar_wind[3]=.1f+.005f*(block%5);
-            }
-            for(unsigned slot=0;slot<6;++slot)observe("measure",block,slot,orders[block%3][slot]);
-            std::cout.flush();
-        }
-        std::cout<<"e6_terminal cell="<<selected<<" blocks=75 measured=450 warm=15 first_use=3 thermal_end="
-            <<[[NSProcessInfo processInfo] thermalState]<<" source_scene_match_claim=0\n";
     }
 }

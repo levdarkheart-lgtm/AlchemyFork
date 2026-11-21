@@ -103,12 +103,11 @@ TEST_CASE("almetal: published CPU visibility preserves interleaved raw reference
                 const auto expected=render(f,scene);REQUIRE(expected.queries.front()>0);
                 scene.batches=raw.data();scene.batch_count=raw.size();scene.references=&reference;scene.reference_count=1;
                 scene.draw_order=order.data();scene.draw_order_count=order.size();scene.cohorts=&group;scene.cohort_count=1;scene.cpu_source_owner=cpu_owner;
-                const auto before=f.renderer->worldCpuVisibilityStats();scene.cpu_cohort_visibility=true;
-                CHECK(render(f,scene)==expected);const auto after=f.renderer->worldCpuVisibilityStats();
-                CHECK(after.views==before.views+1);CHECK(after.groups==before.groups+1);
-                CHECK(after.culled_draws==before.culled_draws+1);CHECK(after.visible_draws==before.visible_draws+6);
-                CHECK(after.raw_visible_draws==before.raw_visible_draws+4);CHECK(after.unknown_draws==before.unknown_draws+1);
-                CHECK(f.renderer->worldSourceCommandStats().bank_draws==0);
+                const auto before=f.renderer->worldSourceRoutingStats();scene.source_routing=true;
+                CHECK(render(f,scene)==expected);const auto after=f.renderer->worldSourceRoutingStats();
+                // A partially visible qualified union stays on the scalar route.
+                CHECK(after.cohorts==before.cohorts+1);CHECK(after.scalar==before.scalar+1);
+                CHECK(after.cpu==before.cpu);
             }
         }
     }
@@ -151,13 +150,15 @@ TEST_CASE("almetal: published CPU classifier is conservative at clip eye and flo
             std::copy(test.mvp.begin(),test.mvp.end(),group.view.view.modelview_projection);
             auto scene=f.scene();scene.hdr=true;scene.reverse_z=at%2;scene.source_owner=f.resources;
             scene.cohorts=&group.view;scene.cohort_count=1;
-            const auto reference=render(f,scene);scene.cpu_cohort_visibility=true;const auto before=f.renderer->worldCpuVisibilityStats();
+            const auto reference=render(f,scene);scene.source_routing=true;const auto before=f.renderer->worldCpuVisibilityStats();
             CHECK(render(f,scene)==reference);const auto after=f.renderer->worldCpuVisibilityStats();
             const auto classification=alMetalClassifyWorldBoundsCPU(group.record->bounds(),test.mvp.data());
-            if(classification==ALMetalWorldCpuVisibilityResult::inside)
-            {CHECK(after.coarse_inside==before.coarse_inside+1);CHECK(after.fine_tests==before.fine_tests);}
+            if(classification!=ALMetalWorldCpuVisibilityResult::outside)
+            {CHECK(after.coarse_tests==before.coarse_tests);CHECK(after.fine_tests==before.fine_tests);}
+            else
+            {CHECK(after.coarse_outside==before.coarse_outside+1);CHECK(after.culled_draws==before.culled_draws+1);}
             if(classification==ALMetalWorldCpuVisibilityResult::outside)
-            {scene.cpu_cohort_visibility=false;scene.cohorts=nullptr;scene.cohort_count=0;CHECK(render(f,scene)==reference);}
+            {scene.source_routing=false;scene.cohorts=nullptr;scene.cohort_count=0;CHECK(render(f,scene)==reference);}
         }
     }
 }
@@ -185,7 +186,7 @@ TEST_CASE("almetal: unqualified members prevent coarse rejection of their visibl
         CHECK(group.cohort->qualifiedBoundsUnion().qualified);CHECK(group.cohort->qualifiedBoundsCount()==2);
         CHECK(alMetalClassifyWorldBoundsCPU(group.cohort->qualifiedBoundsUnion(),group.view.modelview_projection)==ALMetalWorldCpuVisibilityResult::outside);
         auto scene=f.scene();scene.source_owner=f.resources;scene.cohorts=&group;scene.cohort_count=1;
-        const auto expected=render(f,scene);scene.cpu_cohort_visibility=true;const auto before=f.renderer->worldCpuVisibilityStats();
+        const auto expected=render(f,scene);scene.source_routing=true;const auto before=f.renderer->worldCpuVisibilityStats();
         CHECK(render(f,scene)==expected);const auto after=f.renderer->worldCpuVisibilityStats();
         CHECK(after.culled_draws==before.culled_draws+2);CHECK(after.visible_draws==before.visible_draws+1);CHECK(after.unknown_draws==before.unknown_draws+1);
     }
@@ -198,7 +199,7 @@ TEST_CASE("almetal: CPU visibility releases CPU certificates while queued draws 
     @autoreleasepool
     {
         RetainedVisibilityFixture f(2);auto group=f.view();auto scene=f.scene();scene.source_owner=f.native;
-        scene.cohorts=&group;scene.cohort_count=1;scene.cpu_cohort_visibility=true;
+        scene.cohorts=&group;scene.cohort_count=1;scene.source_routing=true;
         const auto expected=render(f,scene);
         REQUIRE(f.renderer->beginCommandBatch("Abandon published CPU visibility",&f.error));
         auto abandoned=f.renderer->render(scene,&f.error);REQUIRE(abandoned);auto abandoned_completion=f.renderer->commandBatchCompletion();
@@ -224,7 +225,7 @@ TEST_CASE("almetal: CPU visibility releases CPU certificates while queued draws 
         const auto retired=std::chrono::steady_clock::now()+std::chrono::seconds(2);
         while(!weak_native.expired()&&std::chrono::steady_clock::now()<retired)std::this_thread::yield();CHECK(weak_native.expired());
         auto current=f.scene();current.cohorts=&next.view;current.cohort_count=1;current.source_owner=f.resources;
-        const auto next_reference=render(f,current);current.cpu_cohort_visibility=true;CHECK(render(f,current)==next_reference);
+        const auto next_reference=render(f,current);current.source_routing=true;CHECK(render(f,current)==next_reference);
     }
 }
 }

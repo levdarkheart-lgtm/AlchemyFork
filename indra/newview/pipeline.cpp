@@ -426,15 +426,6 @@ struct ALViewerMetalShadowSourceCache
     // Immutable CPU preparation facts; native generations remain weak inside.
     std::shared_ptr<const void> native_scene_recipe;
     U64 native_scene_revision = 0;
-    std::weak_ptr<ALMetalWorldVisibility> visibility;
-    ALMetalWorldBoundsHandle bounds;
-    U64 bounds_revision = 0;
-    ~ALViewerMetalShadowSourceCache()
-    {
-        // This metadata belongs only to LLDrawInfo on the scene owner. Native
-        // packets retain Payload instead and never retire owner tables.
-        if (auto table = visibility.lock()) table->retire(bounds);
-    }
 };
 #include "pipeline_scene_publication_native.inl"
 #include "pipeline_source_policy_native.inl"
@@ -442,24 +433,17 @@ struct ALViewerMetalShadowSourceCache
 #include "pipeline_producer_source_drain_native.inl"
 #include "pipeline_group_publication_native.inl"
 #include "pipeline_shadow_membership_native.inl"
-#include "pipeline_early_visibility_native.inl"
 #include "pipeline_cohort_compilation_native.inl"
 namespace
 {
-// The cost-qualified CPU/scalar route is the default. Hardware visibility and
-// the independently rejected old prototypes retain explicit opt-in controls.
+// Published coarse CPU rejection precedes the ordinary scalar draw path.
 bool nativeSourceRoutingEnabled() noexcept
 {
     static const bool enabled=[] { const char* value=std::getenv("ALCHEMY_METAL_SOURCE_ROUTING");
         return !value || std::strcmp(value,"1")==0; }();
     return enabled;
 }
-bool nativeSourceVisibilityEnabled() noexcept
-{
-    static const bool enabled=[] { const char* value=std::getenv("ALCHEMY_METAL_SOURCE_NATIVE_VISIBILITY");
-        return value && std::strcmp(value,"1")==0; }();
-    return enabled;
-}
+
 ALNativeSourceWorkingSet sNativeSceneSources;
 bool shadowMembershipEnabled() noexcept
 {
@@ -482,16 +466,6 @@ ALMetalShadowMembershipCache* shadowMembershipCache() noexcept
 }
 std::optional<U64> sNativeSceneSourceConfiguredBudget;
 U64 sNativeSceneSerial = 0;
-std::shared_ptr<ALMetalWorldVisibility> sNativeSceneVisibility;
-const ALMetalDevice* sNativeSceneVisibilityDevice = nullptr;
-std::shared_ptr<ALMetalWorldVisibility> sNativeEarlySceneVisibility;
-const ALMetalDevice* sNativeEarlySceneVisibilityDevice = nullptr;
-struct EarlyVisibilityProducerStats
-{
-    U64 frames=0,disabled=0,unsupported=0,unavailable=0,empty=0;
-    U64 submitted=0,failed=0,groups=0,draws=0,cpu_bytes=0,max_cpu_bytes=0,owner_ns=0;
-};
-EarlyVisibilityProducerStats sEarlyVisibilityProducerStats;
 void trimShadowSourceWorkingSet() { sNativeSceneSources.trim(gFrameCount); }
 
 #include "pipeline_terrain_preflight_types_native.inl"
@@ -1137,10 +1111,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     } main_lighting_pass;
     U64 scene_source_failures = 0;
     const char* last_scene_source_failure = nullptr;
-    std::vector<ALMetalWorldVisibilityMember> world_visibility_members;
-    std::vector<U32> world_visibility_indices;
-    bool visibility_metadata_failed = false;
-    U64 visibility_metadata_failures = 0;
     std::shared_ptr<WorldResourceLease> world_resources = std::make_shared<WorldResourceLease>();
     void retainGeometry(const LLVertexBuffer& buffer)
     {
@@ -1165,7 +1135,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::shared_ptr<WorldCpuLease> cpu_sources;
     bool compact_gbuffer_active = false;
     U64 same_view_cohort_groups = 0, same_view_cohort_draws = 0;
-#include "pipeline_source_rows_capture_native.inl"
+#include "pipeline_animated_capture_native.inl"
 #include "pipeline_compact_capture_native.inl"
     std::vector<ALMetalWorldVisibilityQuery> visibility_queries;
     std::vector<ALQueryTicket> visibility_tickets;
@@ -3466,27 +3436,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << '/' << prepared.probe_candidate_activity.eligible_batches[1]
                     << ", cumulative_prepared(pre/post)=" << prepared.probe_candidate_activity.prepared_batches[0]
                     << '/' << prepared.probe_candidate_activity.prepared_batches[1]
-                    << ", last_encoded_material/pbr=" << prepared.probe_candidate_material_batches
-                    << '/' << prepared.probe_candidate_pbr_batches
-                    << ", cumulative_material_eligible(pre/post)=" << prepared.probe_candidate_activity.material_eligible_batches[0]
-                    << '/' << prepared.probe_candidate_activity.material_eligible_batches[1]
-                    << ", cumulative_material_prepared(pre/post)=" << prepared.probe_candidate_activity.material_prepared_batches[0]
-                    << '/' << prepared.probe_candidate_activity.material_prepared_batches[1]
-                    << ", cumulative_pbr_eligible(pre/post)=" << prepared.probe_candidate_activity.pbr_eligible_batches[0]
-                    << '/' << prepared.probe_candidate_activity.pbr_eligible_batches[1]
-                    << ", cumulative_pbr_prepared(pre/post)=" << prepared.probe_candidate_activity.pbr_prepared_batches[0]
-                    << '/' << prepared.probe_candidate_activity.pbr_prepared_batches[1]
-                    << ", last_encoded_avatar/shiny=" << prepared.probe_candidate_avatar_batches
-                    << '/' << prepared.probe_candidate_shiny_batches
+                    << ", last_encoded_avatar=" << prepared.probe_candidate_avatar_batches
                     << ", cumulative_avatar_eligible/prepared=" << prepared.probe_candidate_activity.avatar_eligible_batches
                     << '/' << prepared.probe_candidate_activity.avatar_prepared_batches
-                    << ", cumulative_shiny_eligible/prepared=" << prepared.probe_candidate_activity.shiny_eligible_batches
-                    << '/' << prepared.probe_candidate_activity.shiny_prepared_batches
-                    << ", cumulative_impostor_calls=" << prepared.probe_candidate_activity.impostor_encoded_calls
-                    << ", cumulative_impostor_eligible(shiny/legacy)=" << prepared.probe_candidate_activity.impostor_eligible_batches[0]
-                    << '/' << prepared.probe_candidate_activity.impostor_eligible_batches[1]
-                    << ", cumulative_impostor_prepared(shiny/legacy)=" << prepared.probe_candidate_activity.impostor_prepared_batches[0]
-                    << '/' << prepared.probe_candidate_activity.impostor_prepared_batches[1]
                     << ", unavailable_calls=" << reasons(prepared.probe_candidate_activity.unavailable_calls)
                     << ", missing_variant_batches=" << prepared.probe_candidate_activity.pipeline_fallback_batches
                     << ", scope=renderer_lifetime_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
@@ -3503,10 +3455,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", eligible/prepared/missing_variant=" << decision.eligible_batches
                     << '/' << decision.prepared_batches << '/' << decision.pipeline_fallback_batches
                     << ", scope=latest_successful_cpu_encoding_not_gpu_completion" << LL_ENDL;
-                static LLCachedControl<bool> cpu_visibility_requested(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
                 const auto cpu_visibility=value->renderer ? value->renderer->worldCpuVisibilityStats() : ALMetalWorldCpuVisibilityStats{};
                 LL_INFOS("MetalScene") << "Native published CPU visibility: view=" << view
-                    << ", requested=" << cpu_visibility_requested()
+                    << ", requested=" << nativeSourceRoutingEnabled()
                     << ", accepted_views/groups=" << cpu_visibility.views << '/' << cpu_visibility.groups
                     << ", coarse(inside/outside/partial/unknown)=" << cpu_visibility.coarse_inside << '/' << cpu_visibility.coarse_outside
                     << '/' << cpu_visibility.coarse_partial << '/' << cpu_visibility.coarse_unknown
@@ -3523,7 +3474,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     << ", source_failures=" << value->scene_source_failures
                     << ", probe_lighting_encoded(tile/separate)=" << value->probe_tile_lighting_encoded
                     << '/' << value->probe_separate_lighting_encoded
-                    << ", optional_visibility_metadata_failures=" << value->visibility_metadata_failures
                     << ", encoded_owned_scalar_views=" << value->scalar_world_views
                     << ", cpu_packet_reclaimed/retained=" << value->cpu_packets_reclaimed << '/' << value->cpu_packets_retained
                     << ", direct_cohort_appends/draws=" << value->direct_cohort_appends << '/' << value->direct_cohort_draws
@@ -3682,129 +3632,22 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << ", failure_reasons=" << source_resource_reasons.str()
                 << ", last_failure=" << alMetalWorldResourceFallbackName(ALScenePublicationNative::resource_source_last_failure)
                 << LL_ENDL;
-            const auto log_resource_tables = [](const char* owner, const ALMetalWorldGBufferRenderer* renderer)
-            {
-                if (!renderer) return;
-                const auto stats = renderer->worldResourceStats();
-                std::ostringstream reasons;
-                for (std::size_t index = 0; index < stats.fallback_reasons.size(); ++index)
-                    if (stats.fallback_reasons[index])
-                        reasons << alMetalWorldResourceFallbackName(static_cast<ALMetalWorldResourceFallback>(index))
-                            << ':' << stats.fallback_reasons[index] << ',';
-                LL_INFOS("MetalScene") << "Native material resource tables: view=" << owner
-                    << ", cache_scope=shader_context, draw_scope=renderer"
-                    << ", requested/bound/fallback_draws=" << stats.requested_draws << '/'
-                    << stats.bound_draws << '/' << stats.fallback_draws
-                    << ", requests/hits/creates/bytes/failures=" << stats.requests << '/' << stats.cache_hits
-                    << '/' << stats.table_creates << '/' << stats.published_bytes << '/' << stats.failures
-                    << ", encoders/declarations/binds=" << stats.argument_encoder_creations << '/'
-                    << stats.declared_resources << '/' << stats.buffer_bind_calls
-                    << ", live_tables/bytes/lookup=" << stats.live_tables << '/' << stats.live_buffer_bytes
-                    << '/' << stats.lookup_entries
-                    << ", accepted_fallback_reasons=" << reasons.str()
-                    << ", last_fallback=" << alMetalWorldResourceFallbackName(stats.last_fallback)
-                    << ", last_helper_failure=" << alMetalWorldResourceFallbackName(stats.last_failure) << LL_ENDL;
-            };
-            log_resource_tables("main", capture.renderer.get());
-            log_resource_tables("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
-            const auto log_source_rows = [](const char* owner, const ALMetalWorldGBufferRenderer* renderer)
-            {
-                if (!renderer) return;
-                const auto stats = renderer->worldSourceStats();
-                LL_INFOS("MetalScene") << "Native GPU source rows: view=" << owner
-                    << ", requested/bound/fallback/setup_failures=" << stats.requested << '/'
-                    << stats.bound << '/' << stats.fallback << '/' << stats.setup_failures
-                    << ", last_failure=" << stats.last_failure
-                    << ", rows/hits/publications=" << stats.pages.rows << '/' << stats.pages.hits << '/' << stats.pages.row_publications
-                    << ", encoded_row/mapping/copied_page/copied_bank/view_bytes=" << stats.pages.encoded_row_bytes << '/'
-                    << stats.pages.encoded_mapping_bytes << '/' << stats.pages.copied_page_bytes << '/' << stats.pages.copied_bank_bytes << '/' << stats.pages.view_bytes
-                    << ", publication_admission_requests/denials=" << stats.pages.admission_requests << '/' << stats.pages.admission_denials
-                    << ", admitted_charged_logical_work_bytes=" << stats.pages.admitted_bytes
-                    << ", cohort_cache_requests/hits/builds/failures=" << stats.pages.cohort_requests << '/' << stats.pages.cohort_hits
-                    << '/' << stats.pages.cohort_builds << '/' << stats.pages.cohort_failures
-                    << ", cached_compositions/cohorts/rows/metadata_bytes=" << stats.pages.cached_compositions << '/'
-                    << stats.pages.cached_cohorts << '/' << stats.pages.cached_cohort_rows
-                    << '/' << stats.pages.cached_cohort_metadata_bytes
-                    << ", cached_cohort_native_asset_bytes/cap=" << stats.pages.cached_cohort_native_asset_bytes
-                    << '/' << stats.pages.cached_cohort_native_asset_limit
-                    << ", cohort_arena_views/copied_bytes=" << stats.pages.arena_views << '/' << stats.pages.arena_view_bytes
-                    << ", direct_policy_logical_bytes=" << stats.pages.direct_policy_bytes
-                    << ", cohort_declaration_calls/resources=" << stats.pages.cohort_declaration_calls << '/' << stats.pages.cohort_declared_resources
-                    << ", direct_slot_allocations/hits/view_copy_bytes=" << stats.pages.direct_slot_allocations << '/' << stats.pages.direct_slot_hits << '/' << stats.pages.direct_view_bytes
-                    << ", live_direct_slots/native_allocated_bytes=" << stats.pages.live_direct_slots << '/' << stats.pages.live_direct_slot_bytes
-                    << ", live_metadata_bytes=" << stats.pages.live_metadata_bytes << LL_ENDL;
-                const auto banks=renderer->worldSourceCommandStats();
-                LL_INFOS("MetalScene") << "Native source command banks: view=" << owner
-                    << ", enabled=" << gSavedSettings.getBOOL("RenderMetalSourceCommandBanks")
-                    << ", direct_bindings_requested=" << gSavedSettings.getBOOL("RenderMetalSourceDirectCommandBanks")
-                    << ", static_gpu_visibility_requested=" << gSavedSettings.getBOOL("RenderMetalSourceGpuVisibility")
-                    << ", accepted_requested_candidates=" << banks.requested_draws
-                    << ", accepted_bank_logical_draws=" << banks.bank_draws
-                    << ", accepted_fallback_candidates=" << banks.fallback_draws
-                    << ", accepted_native_execute_calls=" << banks.execute_calls
-                    << ", last_fallback=" << alMetalWorldSourceCommandFailureName(banks.last_fallback)
-                    << ", cache_scope=" << (banks.shared_cache ? "shared_frame_data" : "renderer")
-                    << ", cache_run_prepares/hits/bank_builds/evictions=" << banks.cache.requests << '/' << banks.cache.hits << '/'
-                    << banks.cache.builds << '/' << banks.cache.evictions
-                    << ", cache_encoded_execute_calls/logical_draws=" << banks.cache.executions << '/' << banks.cache.logical_draws
-                    << ", helper_declaration_attempts=" << banks.cache.declaration_calls
-                    << ", publication_admission_requests/denials=" << banks.cache.admission_requests << '/' << banks.cache.admission_denials
-                    << ", charged_logical_indexed_argument_bytes=" << banks.cache.charged_logical_argument_bytes
-                    << ", charged_logical_buffer_binding_bytes=" << banks.cache.charged_logical_binding_bytes
-                    << ", direct_bank_builds/hits/encoded_calls=" << banks.cache.direct_builds << '/' << banks.cache.direct_hits << '/' << banks.cache.direct_encoded_calls
-                    << ", static_visibility_encoded_dispatches/rows/qualified=" << banks.cache.static_visibility_dispatches << '/' << banks.cache.static_visibility_rows << '/' << banks.cache.static_visibility_qualified_rows
-                    << ", static_visibility_counts_are_encoded_not_executed=1"
-                    << ", gross_retained_binding_bytes/cap=" << banks.cache.unique_retained_binding_bytes << '/' << banks.cache.retained_binding_limit_bytes
-                    << ", live_icb_allocated_bytes=" << banks.cache.live_icb_allocated_bytes
-                    << ", unique_retained_existing_index_bytes=" << banks.cache.unique_retained_index_bytes
-                    << ", cached/live_banks=" << banks.cache.cached_banks << '/' << banks.cache.live_banks
-                    << ", cache_last_failure=" << alMetalWorldSourceCommandFailureName(banks.cache.last_failure)
-                    << LL_ENDL;
-                for (std::size_t reason=1;reason<banks.fallback_reasons.size();++reason)
-                    if (banks.fallback_reasons[reason] || banks.cache.failures[reason])
-                        LL_INFOS("MetalScene") << "Native source command fallback: view=" << owner
-                            << ", reason=" << alMetalWorldSourceCommandFailureName(
-                                static_cast<ALMetalWorldSourceCommandFailure>(reason))
-                            << ", accepted_fallback_candidates=" << banks.fallback_reasons[reason]
-                            << ", cache_preparation_or_execution_failures=" << banks.cache.failures[reason] << LL_ENDL;
-            };
-            log_source_rows("main", capture.renderer.get());
-            log_source_rows("probe", mMetalProbeWorldSimpleCapture ? mMetalProbeWorldSimpleCapture->renderer.get() : nullptr);
-            const auto log_source_capture = [](const char* owner, const MetalWorldSimpleCapture* source)
-            {
-                if (!source) return;
-                const auto& stats = source->source_rows_stats;
-                LL_INFOS("MetalScene") << "Native GPU source capture: view=" << owner
-                    << ", enabled_views/registered_models=" << stats.enabled_views << '/' << stats.registered_models
-                    << ", ordinary_requested/emitted=" << stats.requested_ordinary_rows << '/' << stats.emitted_candidates
-                    << ", unsupported/owner_proof_skips/metadata_failures=" << stats.unsupported_skips << '/'
-                    << stats.owner_proof_skips << '/' << stats.optional_metadata_failures << LL_ENDL;
-            };
-            log_source_capture("main", &capture);
-            log_source_capture("probe", mMetalProbeWorldSimpleCapture.get());
             const auto log_animated_capture=[](const char* owner,const MetalWorldSimpleCapture* source)
             {
                 if(!source)return;
                 const auto& stats=source->animated_source_stats;
                 LL_INFOS("MetalScene") << "Native animated capture: view=" << owner
-                    << ", source_capture_enabled=" << (gSavedSettings.getBOOL("RenderMetalAnimatedSources") || gSavedSettings.getBOOL("RenderMetalAnimatedGpuRecords"))
-                    << ", gpu_commands_requested=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuRecords")
+                    << ", source_capture_enabled=" << (gSavedSettings.getBOOL("RenderMetalAnimatedSources"))
                     << ", enabled_views/requested/captured=" << stats.enabled_views << '/' << stats.requested_draws << '/' << stats.captured_draws
-                    << ", gpu_requested_views/capability_missing_draws=" << stats.gpu_requested_views << '/' << stats.gpu_capability_missing_draws
                     << ", unsupported/source/owner/pose/capacity/allocation_fallbacks=" << stats.unsupported_skips << '/' << stats.source_unavailable
                     << '/' << stats.owner_proof_skips << '/' << stats.pose_unavailable << '/' << stats.capacity_fallbacks << '/' << stats.allocation_fallbacks << LL_ENDL;
                 if(!source->renderer)return;
                 const auto gpu=source->renderer->worldAnimatedStats();
                 LL_INFOS("MetalScene") << "Native animated submission: view=" << owner
-                    << ", requested/accepted_gpu/fallback/execute_calls=" << gpu.requested_draws << '/' << gpu.gpu_draws << '/' << gpu.fallback_draws << '/' << gpu.execute_calls
                     << ", direct_record_draws/cpu_recipe_reads/common_builds/common_reuses=" << gpu.direct_draws << '/' << gpu.direct_recipe_reads
                     << '/' << gpu.direct_common_builds << '/' << gpu.direct_common_reuses
                     << ", direct_pose_pair_publications/cache_hits=" << gpu.direct_pose_publications << '/' << gpu.direct_pose_cache_hits
-                    << ", current_pose/source_publications=" << gpu.current_pose_publications << '/' << gpu.source_publications
-                    << ", encoded_visibility_dispatches=" << gpu.visibility_dispatches
-                    << ", visibility_requested=" << gSavedSettings.getBOOL("RenderMetalAnimatedGpuVisibility")
-                    << ", unknown_bounds/compute_bounds_tests=" << gpu.bounds_unknown << '/' << gpu.bounds_tests
-                    << ", accepted_gpu_includes_zero_index_culled_commands=1" << LL_ENDL;
+                    << LL_ENDL;
             };
             log_animated_capture("main",&capture);
             log_animated_capture("probe",mMetalProbeWorldSimpleCapture.get());
@@ -3813,9 +3656,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << animated_compilation.requests << '/' << animated_compilation.admitted << '/' << animated_compilation.deferred << '/'
                 << animated_compilation.duplicate_views << '/' << animated_compilation.published << '/' << animated_compilation.failed
                 << ", stability_deferred=" << animated_compilation.stability_deferred
-                << ", requested/admitted_work_bytes/saturated=" << animated_compilation.requested_bytes << '/' << animated_compilation.admitted_bytes << '/' << animated_compilation.saturated
+                << ", requested/admitted_work_bytes=" << animated_compilation.requested_bytes << '/' << animated_compilation.admitted_bytes
                 << ", sealed_sources/fallbacks=" << ALScenePublicationNative::animated_source_publications << '/' << ALScenePublicationNative::animated_source_fallbacks
-                << ", direct_only/gpu_ready_source_publications=" << ALScenePublicationNative::animated_direct_source_publications << '/' << ALScenePublicationNative::animated_gpu_source_publications << LL_ENDL;
+                << LL_ENDL;
             const auto log_terrain_preflight=[](const char* owner,const MetalWorldSimpleCapture* source)
             {
                 if(!source || (!source->terrain_preflight_failures &&
@@ -3913,36 +3756,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << '/' << unsupported_causes[4] << '/' << unsupported_causes[5] << '/' << unsupported_causes[6] << '/' << unsupported_causes[7]
                 << ", declined_mask_total/aggregate=" << declined_masks << '/' << groups.declined
                 << ", cause_bits_overlap=1" << LL_ENDL;
-            const auto early_index=ALSceneGroupPublicationNative::early::stats();
-            const auto early_consumer=capture.renderer?capture.renderer->worldEarlyVisibilityStats():ALMetalWorldEarlyVisibilityStats{};
-            const auto& early=sEarlyVisibilityProducerStats;
-            LL_INFOS("MetalScene") << "Native early visibility: requested=" << gSavedSettings.getBOOL("RenderMetalEarlyGroupVisibility")
-                << ", frames/disabled/unsupported/unavailable/empty=" << early.frames << '/' << early.disabled << '/' << early.unsupported << '/' << early.unavailable << '/' << early.empty
-                << ", prefixes(submitted/failed)/groups/draws=" << early.submitted << '/' << early.failed << '/' << early.groups << '/' << early.draws
-                << ", owner_ns=" << early.owner_ns
-                << ", cpu_descriptor_closure_bytes(total/max)=" << early.cpu_bytes << '/' << early.max_cpu_bytes
-                << ", registered/denied/pruned=" << early_index.registrations << '/' << early_index.registration_denials << '/' << early_index.stale_pruned
-                << ", index(groups/rows/estimated_closure_bytes)=" << early_index.resident_groups << '/' << early_index.resident_rows << '/' << early_index.resident_estimated_cpu_bytes
-                << ", snapshot(calls/candidates/region_misses/denials)=" << early_index.snapshots << '/' << early_index.candidates << '/' << early_index.region_misses << '/' << early_index.snapshot_denials
-                << ", consumer(requested/adopted/cohort_draws/indirect/fallback)=" << early_consumer.requested_views << '/' << early_consumer.adopted_views << '/' << early_consumer.requested_cohort_draws << '/' << early_consumer.indirect_draws << '/' << early_consumer.fallback_draws
-                << ", indirect_counts_are_encoded_not_executed=1" << LL_ENDL;
-            if (sNativeSceneVisibility)
-            {
-                const auto visibility=sNativeSceneVisibility->stats();
-                LL_INFOS("MetalScene") << "Native retained visibility: compute_views/cohort_compute_views=" << visibility.views << '/' << visibility.cohort_views
-                    << ", cohort_groups/candidates=" << visibility.cohort_groups << '/' << visibility.cohort_candidates
-                    << ", cohort_row_builds/hits=" << visibility.cohort_row_builds << '/' << visibility.cohort_row_hits
-                    << ", cohort_dispatches/batched=" << visibility.cohort_dispatches << '/' << visibility.batched_cohort_dispatches
-                    << ", cohort_descriptor_upload/native_allocated_bytes=" << visibility.cohort_descriptor_upload_bytes << '/' << visibility.cohort_descriptor_allocated_bytes
-                    << ", live_cohort_descriptor_bytes/cap=" << visibility.live_cohort_descriptor_bytes << '/' << visibility.cohort_descriptor_limit_bytes
-                    << ", cohort_row_upload_bytes=" << visibility.cohort_row_upload_bytes
-                    << ", cohort_row_native_allocation_bytes=" << visibility.cohort_row_allocated_bytes
-                    << ", expanded_base_member_bytes=" << visibility.expanded_member_bytes
-                    << ", cached_rows/live_native_row_bytes=" << visibility.cached_cohort_rows << '/' << visibility.live_cohort_row_bytes
-                    << ", publication_requests/denials/logical_bytes=" << visibility.admission_requests << '/'
-                    << visibility.admission_denials << '/' << visibility.admitted_logical_bytes
-                    << ", fallbacks=" << visibility.fallbacks << LL_ENDL;
-            }
             const auto publication = LLImageGL::metalPublicationStats();
             const auto uploads = LLVertexBuffer::metalUploadStats();
             const auto source_cache=sNativeSceneSources.stats();
@@ -4254,21 +4067,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // Keep the immutable reference consumer available for native scene work,
     // but real unique-source costs have not earned unconditional activation.
     static LLCachedControl<bool> compact_inputs(gSavedSettings, "RenderMetalCompactInputs", false);
-    static LLCachedControl<bool> source_rows(gSavedSettings, "RenderMetalSourceRows", false);
-    static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
-    static LLCachedControl<bool> group_sources(gSavedSettings, "RenderMetalGroupSources", false);
-    // PPD-228: cohort banks must retain ordinary raw fallback. The older
-    // scalar route is explicit, or belongs to standalone non-cohort banks.
-    capture.beginSourceRows((source_rows() || (source_banks() && !group_sources())) && !capture.impostor_bake);
-    static LLCachedControl<bool> animated_gpu_records(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
     static LLCachedControl<bool> animated_sources(gSavedSettings, "RenderMetalAnimatedSources", false);
-    capture.beginAnimatedSources((animated_sources() || animated_gpu_records()) && !capture.impostor_bake,
-        animated_gpu_records() && !capture.impostor_bake, nullptr, true);
-    capture.compact_gbuffer_active = compact_inputs() || capture.source_rows_active;
-    if (capture.source_rows_active)
-        for (const auto* region : LLWorld::getInstance()->getRegionList())
-            if (region) capture.registerSourceModel(&region->mRenderMatrix, region->nativeModelSnapshot());
-    capture.world_visibility_members.clear();
+    capture.beginAnimatedSources(animated_sources() && !capture.impostor_bake, nullptr, true);
+    capture.compact_gbuffer_active = compact_inputs();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.visibility_queries.clear();
     capture.visibility_tickets.clear();
@@ -4740,7 +4541,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
 
     capture.clearDraws();
     capture.avatar_palettes.clear();
-    capture.world_visibility_members.clear();
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.width = width;
     capture.height = height;
@@ -11758,83 +11558,7 @@ static bool buildMetalWorldDrawMatrices(
         modelview_projection);
 }
 
-void LLPipeline::beginMetalEarlyWorldVisibility()
-{
-    auto& stats=sEarlyVisibilityProducerStats;
-    ++stats.frames;
-    mMetalEarlyWorldVisibility.reset();
-    static LLCachedControl<bool> requested(gSavedSettings,"RenderMetalEarlyGroupVisibility",false);
-    static LLCachedControl<bool> group_sources(gSavedSettings,"RenderMetalGroupSources",false);
-    ALSceneGroupPublicationNative::early::enable(requested() && group_sources());
-    if (!requested())
-    {
-        ++stats.disabled;
-        sNativeEarlySceneVisibility.reset();sNativeEarlySceneVisibilityDevice=nullptr;
-        return;
-    }
-    if (!group_sources() || !isMainWorldPass() || mRT!=&mMainRT || gSnapshot || gCubeSnapshot ||
-        sShadowRender || sImpostorRender || sRenderingHUDs || mRenderDebugMask || cullingToCutoutSubject() ||
-        gSavedSettings.getBOOL("RenderMetalNativeVisibility") || gSavedSettings.getBOOL("RenderMetalCpuCohortVisibility") ||
-        gSavedSettings.getBOOL("RenderMetalSourceCommandBanks") || gSavedSettings.getBOOL("RenderMetalJoinStaticDraws") ||
-        gSavedSettings.getBOOL("RenderDepthPrePass") ||
-        gSavedSettings.getBOOL("RenderMetalSourceGpuVisibility") ||
-        (ALMetalStageTimingScope::current() && ALMetalStageTimingScope::current()->window()))
-    { ++stats.unsupported;return; }
-    auto* device=getViewerMetalDevice();
-    if (!device || LLStartUp::getStartupState()<STATE_STARTED || !mMetalWorldSimpleCapture ||
-        mMetalWorldSimpleCapture->device!=device || !mMetalWorldSimpleCapture->frame_data)
-    { ++stats.unavailable;return; }
-    struct OwnerTime
-    {
-        U64& total;
-        std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
-        ~OwnerTime(){total+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();}
-    } timing{stats.owner_ns};
-    try
-    {
-        std::vector<ALNativeRegionModel::Snapshot> regions;
-        regions.reserve(LLWorld::getInstance()->getRegionList().size());
-        for (const auto* region:LLWorld::getInstance()->getRegionList())
-            if (region) { auto value=region->nativeModelSnapshot();if(value)regions.push_back(value); }
-        auto candidates=ALSceneGroupPublicationNative::early::snapshot(regions);
-        std::vector<ALMetalWorldSourceCohortView> groups;groups.reserve(candidates.size());
-        std::size_t count=0;U64 bytes=0;
-        for (const auto& candidate:candidates)
-        {
-            LLMatrix4a model(candidate.region.model.data()),modelview,inverse,projection;
-            if (!buildMetalWorldDrawMatrices(&model,modelview,inverse,projection)) continue;
-            ALMetalWorldSourceCohortView group;
-            group.logical_begin=count;group.base_before=0;
-            group.cohort=candidate.cohort;group.cpu_owner=candidate.cpu_owner;group.native_owner=candidate.native_owner;
-            std::memcpy(group.view.modelview_projection,projection.getF32ptr(),sizeof(group.view.modelview_projection));
-            std::memcpy(group.view.modelview,modelview.getF32ptr(),sizeof(group.view.modelview));
-            for (U32 column=0;column<3;++column)for(U32 row=0;row<3;++row)
-            {
-                group.view.normal_matrix[column][row]=inverse.getF32ptr()[row*4+column];
-                group.view.rigged_normal_matrix[column][row]=modelview.getF32ptr()[column*4+row];
-            }
-            count+=group.cohort->size();bytes+=candidate.estimated_cpu_bytes;
-            groups.push_back(std::move(group));
-        }
-        if (groups.empty()) { ++stats.empty;return; }
-        if (!sNativeEarlySceneVisibility || sNativeEarlySceneVisibilityDevice!=device)
-        {
-            sNativeEarlySceneVisibility=ALMetalWorldVisibility::create(*device);
-            sNativeEarlySceneVisibilityDevice=device;
-        }
-        std::string error;
-        auto view=sNativeEarlySceneVisibility?sNativeEarlySceneVisibility->makeView({},groups,count,&error):nullptr;
-        auto command=view?device->makeCommandBuffer("Alchemy early resident static bounds",&error):nullptr;
-        auto result=command?ALMetalWorldVisibility::encodeEarly(*command,*view,&error,mMetalWorldSimpleCapture->frame_data.get()):nullptr;
-        if (!result || !command->commit(&error)) { ++stats.failed;return; }
-        mMetalEarlyWorldVisibility=std::move(result);mMetalEarlyWorldVisibilityFrame=gFrameCount;
-        ++stats.submitted;stats.groups+=groups.size();stats.draws+=count;stats.cpu_bytes+=bytes;
-        stats.max_cpu_bytes=std::max(stats.max_cpu_bytes,bytes);
-        // Locals release every producer/native geometry owner before CPU cull.
-        // Only copied bounds buffers and weak proof metadata survive in result.
-    }
-    catch (const std::bad_alloc&) { ++stats.failed; }
-}
+
 
 #include "pipeline_group_capture_native.inl"
 
@@ -17109,21 +16833,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     ALMetalWorldGBufferScene scene;
     scene.source_owner = capture.world_resources;
     scene.cpu_source_owner = capture.cpu_sources;
-    scene.source_rows = capture.source_rows;
-    scene.animated_gpu_records = capture.animated_gpu_records_active && !impostor_bake;
     scene.source_routing = nativeSourceRoutingEnabled() && !impostor_bake;
-    scene.source_native_visibility = scene.source_routing && nativeSourceVisibilityEnabled();
-    static LLCachedControl<bool> animated_gpu_visibility(gSavedSettings, "RenderMetalAnimatedGpuVisibility", false);
-    scene.animated_gpu_visibility = animated_gpu_visibility();
-    static LLCachedControl<bool> source_banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
-    static LLCachedControl<bool> direct_source_banks(gSavedSettings, "RenderMetalSourceDirectCommandBanks", false);
-    static LLCachedControl<S32> source_bank_minimum(gSavedSettings, "RenderMetalSourceCommandMinimumRun", 2);
-    scene.source_command_banks = source_banks() && !impostor_bake;
-    scene.source_direct_command_banks = scene.source_command_banks && direct_source_banks();
-    static LLCachedControl<bool> source_gpu_visibility(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
-    static LLCachedControl<bool> gpu_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
-    scene.source_gpu_visibility = scene.source_direct_command_banks && gpu_group_sources() && source_gpu_visibility();
-    scene.source_command_minimum_run = static_cast<U32>(llclamp(source_bank_minimum(), 2, 4096));
     scene.references = capture.source_references.data();
     scene.reference_count = capture.source_references.size();
     scene.draw_order = capture.draw_order.data();
@@ -17139,8 +16849,6 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.normal_hdr = capture.normal_hdr;
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
-    static LLCachedControl<bool> native_resource_tables(gSavedSettings, "RenderMetalWorldResourceTables", false);
-    scene.material_argument_buffers = native_resource_tables();
     if (capture.modern_sky_valid &&
         (capture.modern_sky.scene.constants.config[0] & ALSkyLayers::STARS))
         scene.sky_star_attachment = ALSkyLayers::starAttachment(mResourceInputs.mEmissive);
@@ -17158,10 +16866,6 @@ void LLPipeline::endMetalWorldGBufferCapture()
     // excluded. Profile bakes did not stamp and retain their prior toggle.
     scene.join_adjacent_static_draws =
         !(impostor_bake && !capture.impostor_profile) && join_static_draws();
-    static LLCachedControl<bool> cpu_cohort_visibility(
-        gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-    scene.cpu_cohort_visibility = cpu_cohort_visibility() && !impostor_bake &&
-        !scene.wireframe && !scene.join_adjacent_static_draws;
     if (scene.wireframe)
     {
         constexpr F32 gray = 0.5f;
@@ -17277,28 +16981,6 @@ void LLPipeline::endMetalWorldGBufferCapture()
             error.clear();
         }
     }
-    if (batch_main_world && mMetalEarlyWorldVisibilityFrame==gFrameCount)
-        scene.early_visibility=std::exchange(mMetalEarlyWorldVisibility,{});
-    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
-    const bool qualified_visibility_work=!capture.world_visibility_members.empty() ||
-        std::any_of(capture.source_cohorts.begin(),capture.source_cohorts.end(),
-            [](const auto& group){return group.cohort->qualifiedBoundsCount()!=0;});
-    if (!scene.cpu_cohort_visibility && native_visibility() && !capture.visibility_metadata_failed && qualified_visibility_work && !scene.join_adjacent_static_draws)
-    {
-        if (sNativeSceneVisibilityDevice != capture.device || !sNativeSceneVisibility)
-        {
-            sNativeSceneVisibility = ALMetalWorldVisibility::create(*capture.device);
-            sNativeSceneVisibilityDevice = capture.device;
-        }
-        if (sNativeSceneVisibility)
-            scene.native_visibility = sNativeSceneVisibility->makeView(std::move(capture.world_visibility_members),
-                std::move(capture.world_visibility_indices),capture.source_cohorts, scene.drawCount(), &error);
-        if (!scene.native_visibility)
-        {
-            LL_WARNS_ONCE("Metal") << "Native scene visibility retained direct draws: " << error << LL_ENDL;
-            error.clear();
-        }
-    }
     const auto epoch = ++capture.world_input_epoch;
     auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
         std::move(capture.source_references), std::move(capture.draw_order),
@@ -17323,7 +17005,6 @@ void LLPipeline::endMetalWorldGBufferCapture()
             // Native commands retain resources and constant pages separately.
             // CPU storage returns only after encoding and query settlement.
             scene.cpu_source_owner.reset();
-            scene.source_rows.reset();
             batches.clear();
             references.clear();
             order.clear();
@@ -18404,11 +18085,6 @@ void LLPipeline::cleanup()
     sNativeShadowMembership.reset();
     sNativeSceneSources.clear();
     ALScenePublicationNative::clearMaterialDataCache();
-    sNativeSceneVisibility.reset();
-    sNativeSceneVisibilityDevice = nullptr;
-    mMetalEarlyWorldVisibility.reset();
-    sNativeEarlySceneVisibility.reset();sNativeEarlySceneVisibilityDevice=nullptr;
-    ALSceneGroupPublicationNative::early::enable(false);
     mSky.cleanup();
     mMetalSkyEnvironment.reset();
     mMetalSkyEnvironmentDevice = nullptr;
@@ -19257,7 +18933,6 @@ void LLPipeline::refreshCachedSettings()
 
 void LLPipeline::releaseAllRenderResources()
 {
-    mMetalEarlyWorldVisibility.reset();
     finishMetalShadowEncoding(false);
     mSky.releaseNative();
     mMetalSkyEnvironment.reset();
@@ -22211,11 +21886,6 @@ bool nativeMaterialGroupFlavor(U32 type, ALScenePublicationNative::WorldFlavor& 
     // direct-probe consumers. Rigged (+1), blended, glow and special passes
     // retain their original maps and capture paths.
     flavor = {};
-    static LLCachedControl<bool> gpu_bounds(gSavedSettings, "RenderMetalNativeVisibility", false);
-    static LLCachedControl<bool> cpu_bounds(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-    static LLCachedControl<bool> early_bounds(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
-    static LLCachedControl<bool> command_bounds(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
-    flavor.cohort_bounds = gpu_bounds() || cpu_bounds() || early_bounds() || command_bounds();
     flavor.native_materials = true;
     for (const auto& pass : LLDrawPoolMaterials::DEFERRED_PASSES)
     {
@@ -22265,25 +21935,12 @@ bool nativeProducerPreparationEnabled() noexcept
 
 ALSceneProducerDrainNative::Policy nativeProducerPreparationPolicy()
 {
-    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
-    static LLCachedControl<bool> resources(gSavedSettings, "RenderMetalWorldResourceTables", false);
     static LLCachedControl<bool> groups(gSavedSettings, "RenderMetalGroupSources", false);
-    static LLCachedControl<bool> rows(gSavedSettings, "RenderMetalSourceRows", false);
-    static LLCachedControl<bool> banks(gSavedSettings, "RenderMetalSourceCommandBanks", false);
-    static LLCachedControl<bool> cpu_bounds(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-    static LLCachedControl<bool> early_bounds(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
-    static LLCachedControl<bool> command_bounds(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
     static LLCachedControl<bool> animated(gSavedSettings, "RenderMetalAnimatedSources", false);
-    static LLCachedControl<bool> animated_gpu(gSavedSettings, "RenderMetalAnimatedGpuRecords", false);
     ALSceneProducerDrainNative::Policy policy;
-    policy.native_visibility = native_visibility();
-    policy.native_resources = resources();
     policy.native_groups = groups();
     policy.heavy_bounds = nativeSourceRoutingEnabled();
-    policy.cohort_bounds = native_visibility() || cpu_bounds() || early_bounds() || command_bounds();
-    policy.pass.source_rows_active = rows() || (banks() && !groups());
-    policy.pass.animated_sources_active = animated() || animated_gpu();
-    policy.pass.animated_gpu_records_active = animated_gpu();
+    policy.pass.animated_sources_active = animated();
     policy.pass.animated_direct_stability = true;
     return policy;
 }
@@ -22331,11 +21988,7 @@ void LLPipeline::postSort(LLCamera &camera)
     }
 
     static LLCachedControl<bool> native_group_sources(gSavedSettings, "RenderMetalGroupSources", false);
-    static LLCachedControl<bool> native_visibility(gSavedSettings, "RenderMetalNativeVisibility", false);
-    static LLCachedControl<bool> cpu_cohort_visibility(gSavedSettings, "RenderMetalCpuCohortVisibility", false);
-    static LLCachedControl<bool> early_visibility(gSavedSettings, "RenderMetalEarlyGroupVisibility", false);
-    static LLCachedControl<bool> command_visibility(gSavedSettings, "RenderMetalSourceGpuVisibility", false);
-    const bool cohort_bounds = native_visibility() || cpu_cohort_visibility() || early_visibility() || command_visibility() || nativeSourceRoutingEnabled();
+    const bool cohort_bounds = nativeSourceRoutingEnabled();
     static LLCachedControl<bool> depth_prepass(gSavedSettings, "RenderDepthPrePass", false);
     const bool native_group_view = (native_group_sources() || nativeSourceRoutingEnabled()) &&
         !depth_prepass() &&

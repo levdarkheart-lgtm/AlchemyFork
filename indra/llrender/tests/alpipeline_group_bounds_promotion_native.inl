@@ -13,7 +13,7 @@ TEST_CASE("Actual warm SIMPLE Legacy and PBR groups acquire bounds once without 
     for(U32 family:{0u,1u,2u})for(bool qualified:{false,true})
     {
         CAPTURE(family,qualified);MaterialGroupPublication f(family);
-        Inputs::gSavedSettings.native_visibility=false;Inputs::gSavedSettings.native_resources=false;
+
         f.flavor.native_resources=false;
         for(unsigned row=0;row<2;++row)
         {

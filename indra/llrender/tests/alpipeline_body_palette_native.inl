@@ -60,7 +60,7 @@ struct Host : GroupPublication
     void capture(Inputs::LLPipeline& pipeline,bool certified,bool cloth_enabled=false)
     {
         auto& capture=*pipeline.mMetalWorldSimpleCapture;capture.clearDraws();capture.complete=true;
-        capture.compact_gbuffer_active=false;capture.beginSourceRows(false);
+        capture.compact_gbuffer_active=false;
         capture.world_resources=std::make_shared<Inputs::WorldResources>();raw.clear();
         for(U32 at=0;at<infos.size();++at)
         {
