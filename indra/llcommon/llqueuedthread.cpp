@@ -27,6 +27,7 @@
 #include "llqueuedthread.h"
 
 #include <chrono>
+#include <limits>
 
 #include "llstl.h"
 #include "lltimer.h"    // ms_sleep()
@@ -44,7 +45,6 @@ LLQueuedThread::LLQueuedThread(const std::string& name, bool threaded, bool shou
     mRequestQueue(name, 1024 * 1024)
 {
     llassert(threaded); // not threaded implementation is deprecated
-    mMainQueue = LL::WorkQueue::getInstance("mainloop");
 
     // The thread starts when the owner calls start(), once the object is made.
     if (mThreaded && should_pause)
@@ -75,29 +75,29 @@ LLQueuedThread::~LLQueuedThread()
 
 void LLQueuedThread::shutdown()
 {
+    lockData();
+    mShutdownStarted = true;
+    unlockData();
     setQuitting();
-
-    unpause(); // MAIN THREAD
+    unpause();
+    // A nonempty queue must close too. Existing tickets drain on the owner;
+    // retries observe quitting and finish aborted instead of posting again.
+    mRequestQueue.close();
     if (mThreaded)
     {
-        if (mRequestQueue.size() == 0)
+        LLTimer timer;
+        bool warned = false;
+        while (!isStopped())
         {
-            mRequestQueue.close();
-        }
-
-        S32 timeout = 50;
-        for ( ; timeout>0; timeout--)
-        {
-            if (isStopped())
+            if (!warned && timer.getElapsedTimeF32() >= 5.f)
             {
-                break;
+                LL_WARNS() << "Waiting for LLQueuedThread " << mName
+                           << " to stop before releasing its requests" << LL_ENDL;
+                warned = true;
             }
-            ms_sleep(100);
-            LLThread::yield();
-        }
-        if (timeout == 0)
-        {
-            LL_WARNS() << "~LLQueuedThread (" << mName << ") timed out!" << LL_ENDL;
+            // Destruction cannot safely free a request still in processRequest.
+            // This drain runs no foreground callbacks and needs no frame polling.
+            ms_sleep(1);
         }
     }
     else
@@ -105,38 +105,19 @@ void LLQueuedThread::shutdown()
         mStatus = STOPPED;
     }
 
-    QueuedRequest* req;
-    S32 queued_count = 0;
-    bool  has_active = false;
     lockData();
-    while ( (req = (QueuedRequest*)mRequestHash.pop_element()) )
+    while (auto* entry = mRequestHash.pop_element())
     {
-        if (req->getStatus() == STATUS_INPROGRESS)
-        {
-            has_active = true;
-            req->setFlags(FLAG_ABORT | FLAG_AUTO_COMPLETE);
-            continue;
-        }
+        auto* req = static_cast<QueuedRequest*>(entry);
         if (req->getStatus() == STATUS_QUEUED)
         {
-            ++queued_count;
-            req->setStatus(STATUS_ABORTED); // avoid assert in deleteRequest
+            req->setStatus(STATUS_ABORTED);
+            req->finishRequest(false);
         }
+        llassert_always(req->getStatus() != STATUS_INPROGRESS);
         req->deleteRequest();
     }
     unlockData();
-    if (queued_count)
-    {
-        LL_WARNS() << "~LLQueuedThread() called with unpocessed requests: " << queued_count << LL_ENDL;
-    }
-    if (has_active)
-    {
-        LL_WARNS() << "~LLQueuedThread() called with active requests!" << LL_ENDL;
-        ms_sleep(100); // last chance for request to finish
-        printQueueStats();
-    }
-
-    mRequestQueue.close();
 }
 
 //----------------------------------------------------------------------------
@@ -163,17 +144,21 @@ size_t LLQueuedThread::updateQueue(F32 max_time_ms)
     // Frame Update
     if (mThreaded)
     {
-        // schedule a call to threadedUpdate for every call to updateQueue
-        if (!isQuitting())
+        // Most queued-thread owners have no housekeeping. The fetch owner
+        // opts in; repeated frame polls coalesce while its callback is queued
+        // or executing, rather than manufacturing a file/cache backlog.
+        if (!isQuitting() && hasThreadedUpdate() &&
+            !mThreadedUpdatePending.exchange(true, std::memory_order_acq_rel))
         {
-            mRequestQueue.post([=, this]()
+            const bool posted = mRequestQueue.post([this]()
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qt - update");
                     mIdleThread = false;
-                    threadedUpdate();
+                    if (!isQuitting()) threadedUpdate();
                     mIdleThread = true;
-                }
-            );
+                    mThreadedUpdatePending.store(false, std::memory_order_release);
+                });
+            if (!posted) mThreadedUpdatePending.store(false, std::memory_order_release);
         }
 
         if(getPending() > 0)
@@ -215,7 +200,7 @@ void LLQueuedThread::waitOnPending()
     {
         update(0);
 
-        if (mIdleThread)
+        if (mIdleThread && getPending() == 0)
         {
             break;
         }
@@ -235,7 +220,7 @@ void LLQueuedThread::waitOnPending(F32 max_time_sec)
     {
         update(0);
 
-        if (mIdleThread)
+        if (mIdleThread && getPending() == 0)
         {
             break;
         }
@@ -271,31 +256,50 @@ void LLQueuedThread::printQueueStats()
 // MAIN thread
 LLQueuedThread::handle_t LLQueuedThread::generateHandle()
 {
-    U32 res = ++mNextHandle;
-    return res;
+    lockData();
+    handle_t handle;
+    do
+    {
+        handle = ++mNextHandle;
+    }
+    while (handle == nullHandle() || mRequestHash.find(handle));
+    unlockData();
+    return handle;
 }
 
-// MAIN thread
+// MAIN thread; ownership transfers only on successful registration.
 bool LLQueuedThread::addRequest(QueuedRequest* req)
 {
     LL_PROFILE_ZONE_SCOPED;
-    if (mStatus == QUITTING)
+    lockData();
+    if (mShutdownStarted || isQuitting() || mRequestHash.find(req->getHashKey()))
     {
+        unlockData();
         return false;
     }
-
-    lockData();
+    llassert_always(mNextGeneration != std::numeric_limits<U64>::max());
+    req->mGeneration = ++mNextGeneration;
+    req->mScheduleGeneration = 1;
+    req->mScheduled = true;
+    req->mImmediatePending = true;
     req->setStatus(STATUS_QUEUED);
     mRequestHash.insert(req);
-#if _DEBUG
-//  LL_INFOS() << llformat("LLQueuedThread::Added req [%08d]",handle) << LL_ENDL;
-#endif
+    const auto handle = req->getHashKey();
+    const auto generation = req->mGeneration;
     unlockData();
 
-    llassert(!mRunCondition->isSelfLocked());
-    mRequestQueue.post([this, req]() { processRequest(req); });
-
-    return true;
+    if (postRequest(handle, generation, 1, false, TimePoint::clock::now())) return true;
+    lockData();
+    auto* current = static_cast<QueuedRequest*>(mRequestHash.find(handle));
+    const bool still_owned = current && current->mGeneration == generation;
+    if (still_owned)
+    {
+        mRequestHash.erase(current);
+        current->setStatus(STATUS_UNKNOWN);
+    }
+    unlockData();
+    // A simultaneous shutdown may already have consumed the accepted request.
+    return !still_owned;
 }
 
 // MAIN thread
@@ -315,9 +319,9 @@ bool LLQueuedThread::waitForResult(LLQueuedThread::handle_t handle, bool auto_co
         {
             done = true; // request does not exist
         }
-        else if (req->getStatus() == STATUS_COMPLETE)
+        else if (req->getStatus() == STATUS_COMPLETE || req->getStatus() == STATUS_ABORTED)
         {
-            res = true;
+            res = req->getStatus() == STATUS_COMPLETE;
             if (auto_complete)
             {
                 mRequestHash.erase(handle);
@@ -376,6 +380,7 @@ void LLQueuedThread::abortRequest(handle_t handle, bool autocomplete)
         req->setFlags(FLAG_ABORT | (autocomplete ? FLAG_AUTO_COMPLETE : 0));
     }
     unlockData();
+    wakeRequest(handle);
 }
 
 // MAIN thread
@@ -435,123 +440,139 @@ bool LLQueuedThread::check()
 //============================================================================
 // Runs on its OWN thread
 
-void LLQueuedThread::processRequest(LLQueuedThread::QueuedRequest* req)
+bool LLQueuedThread::postRequest(handle_t handle, U64 generation, U64 schedule,
+                                 bool urgent, const TimePoint& when)
 {
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-
-    mIdleThread = false;
-    //threadedUpdate();
-
-    // Get next request from pool
-    lockData();
-
-    if ((req->getFlags() & FLAG_ABORT) || (mStatus == QUITTING))
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qtpr - abort");
-        req->setStatus(STATUS_ABORTED);
-        req->finishRequest(false);
-        if (req->getFlags() & FLAG_AUTO_COMPLETE)
-        {
-            mRequestHash.erase(req);
-            req->deleteRequest();
-//              check();
-        }
-        unlockData();
-    }
-    else
-    {
-        llassert_always(req->getStatus() == STATUS_QUEUED);
-
-        if (req)
-        {
-            req->setStatus(STATUS_INPROGRESS);
-        }
-        unlockData();
-
-        // This is the only place we will call req->setStatus() after
-        // it has initially been seet to STATUS_QUEUED, so it is
-        // safe to access req.
-        if (req)
-        {
-            // process request
-            bool complete = req->processRequest();
-
-            if (complete)
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qtpr - complete");
-                lockData();
-                req->setStatus(STATUS_COMPLETE);
-                req->finishRequest(true);
-                if (req->getFlags() & FLAG_AUTO_COMPLETE)
-                {
-                    mRequestHash.erase(req);
-                    req->deleteRequest();
-                    //              check();
-                }
-                unlockData();
-            }
-            else
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qtpr - retry");
-                //put back on queue and try again in 0.1ms
-                lockData();
-                req->setStatus(STATUS_QUEUED);
-
-                unlockData();
-
-                llassert(!mRunCondition->isSelfLocked());
-
-#if 0
-                // try again on next frame
-                // NOTE: tried using "post" with a time in the future, but this
-                // would invariably cause this thread to wait for a long time (10+ ms)
-                // while work is pending
-                bool ret = LL::WorkQueue::postMaybe(
-                    mMainQueue,
-                    [=]()
-                    {
-                        LL_PROFILE_ZONE_NAMED("processRequest - retry");
-                        mRequestQueue.post([=]()
-                            {
-                                LL_PROFILE_ZONE_NAMED("processRequest - retry"); // <-- not redundant, track retry on both queues
-                                processRequest(req);
-                            });
-                    });
-                llassert(ret);
-#else
-                using namespace std::chrono_literals;
-                auto retry_time = LL::WorkQueue::TimePoint::clock::now() + 16ms;
-                mRequestQueue.post([=, this]
-                    {
-                        LL_PROFILE_ZONE_NAMED("processRequest - retry");
-                        if (LL::WorkQueue::TimePoint::clock::now() < retry_time)
-                        {
-                            auto sleep_time = std::chrono::duration_cast<std::chrono::milliseconds>(retry_time - LL::WorkQueue::TimePoint::clock::now());
-
-                            if (sleep_time.count() > 0)
-                            {
-                                ms_sleep((U32)sleep_time.count());
-                            }
-                        }
-                        processRequest(req);
-                    });
-#endif
-
-            }
-        }
-    }
-
-    mIdleThread = true;
+    return mRequestQueue.post([this, handle, generation, schedule, urgent]()
+        { dispatchRequest(handle, generation, schedule, urgent); }, when);
 }
 
-// virtual
-bool LLQueuedThread::runCondition()
+// Any thread. The data lock serializes wake publication with the transition
+// from INPROGRESS to a timed retry, closing the notification-before-retry race.
+void LLQueuedThread::wakeRequest(handle_t handle, bool urgent)
 {
-    // mRunCondition must be locked here
-    if (mRequestQueue.size() == 0 && mIdleThread)
-        return false;
+    lockData();
+    auto* req = static_cast<QueuedRequest*>(mRequestHash.find(handle));
+    if (!req || mShutdownStarted)
+    {
+        unlockData();
+        return;
+    }
+    if (req->getStatus() == STATUS_INPROGRESS)
+    {
+        req->mWakeRequested = true;
+        unlockData();
+        return;
+    }
+    if (req->getStatus() != STATUS_QUEUED ||
+        (urgent ? req->mUrgentPending : req->mImmediatePending))
+    {
+        unlockData();
+        return;
+    }
+    const U64 generation = req->mGeneration;
+    llassert_always(req->mScheduleGeneration != std::numeric_limits<U64>::max());
+    const U64 schedule = ++req->mScheduleGeneration;
+    req->mScheduled = true;
+    req->mImmediatePending = true;
+    req->mUrgentPending = urgent;
+    unlockData();
+    if (!postRequest(handle, generation, schedule, urgent,
+                     urgent ? TimePoint::min() : TimePoint::clock::now()))
+    {
+        // A closed queue is drained by shutdown, which retains every request
+        // until the worker has stopped. No request pointer escaped the lock.
+        llassert(mRequestQueue.isClosed());
+    }
+}
+
+void LLQueuedThread::finishRequestLocked(QueuedRequest* req, bool complete)
+{
+    req->mScheduled = false;
+    req->mImmediatePending = false;
+    req->mUrgentPending = false;
+    req->setStatus(complete ? STATUS_COMPLETE : STATUS_ABORTED);
+    req->finishRequest(complete);
+    if (req->getFlags() & FLAG_AUTO_COMPLETE)
+    {
+        mRequestHash.erase(req);
+        req->deleteRequest();
+    }
+}
+
+// The worker is the sole dispatcher. Resolving both identities while locked
+// makes stale initial, delayed, woken and promoted tickets harmless, including
+// after completion, auto-deletion and reuse of a 32-bit public handle.
+void LLQueuedThread::dispatchRequest(handle_t handle, U64 generation, U64 schedule, bool urgent)
+{
+    lockData();
+    auto* req = static_cast<QueuedRequest*>(mRequestHash.find(handle));
+    if (!req || req->mGeneration != generation ||
+        req->mScheduleGeneration != schedule || !req->mScheduled ||
+        req->getStatus() != STATUS_QUEUED)
+    {
+        unlockData();
+        return;
+    }
+    if (urgent && mUrgentBurst >= 4 && !mShutdownStarted)
+    {
+        // Yield to normal tickets already ready. Promotion is bounded even
+        // when many urgent tickets were admitted before the first could run.
+        const U64 next = ++req->mScheduleGeneration;
+        req->mUrgentPending = false;
+        unlockData();
+        postRequest(handle, generation, next, false, TimePoint::clock::now());
+        return;
+    }
+    mUrgentBurst = urgent ? mUrgentBurst + 1 : 0;
+    req->mScheduled = false;
+    req->mImmediatePending = false;
+    req->mUrgentPending = false;
+    mIdleThread = false;
+    if ((req->getFlags() & FLAG_ABORT) || mShutdownStarted || isQuitting())
+    {
+        finishRequestLocked(req, false);
+        unlockData();
+        mIdleThread = true;
+        return;
+    }
+    req->setStatus(STATUS_INPROGRESS);
+    req->mWakeRequested = false;
+    unlockData();
+    processRequest(req);
+}
+
+void LLQueuedThread::processRequest(QueuedRequest* req)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
+    const bool complete = req->processRequest();
+    // A request remains INPROGRESS (and therefore undeletable) until this
+    // owner has inspected its event hint and published the terminal/retry state.
+    const bool waits_for_wake = !complete && req->waitsForWake();
+    lockData();
+    if (complete || (req->getFlags() & FLAG_ABORT) || mShutdownStarted || isQuitting())
+    {
+        finishRequestLocked(req, complete && !(req->getFlags() & FLAG_ABORT) &&
+                            !mShutdownStarted && !isQuitting());
+        unlockData();
+    }
     else
-        return true;
+    {
+        using namespace std::chrono_literals;
+        const auto delay = req->mWakeRequested ? 0ms : (waits_for_wake ? 250ms : 16ms);
+        const auto handle = req->getHashKey();
+        const U64 generation = req->mGeneration;
+        llassert_always(req->mScheduleGeneration != std::numeric_limits<U64>::max());
+        const U64 schedule = ++req->mScheduleGeneration;
+        req->setStatus(STATUS_QUEUED);
+        req->mScheduled = true;
+        req->mImmediatePending = delay == 0ms;
+        req->mWakeRequested = false;
+        unlockData();
+        // This is a timestamp in the schedule, never a sleeping callback.
+        postRequest(handle, generation, schedule, false, TimePoint::clock::now() + delay);
+    }
+    mIdleThread = true;
 }
 
 // virtual
@@ -562,26 +583,6 @@ void LLQueuedThread::run()
     startThread();
 
 
-    /*while (1)
-    {
-        LL_PROFILE_ZONE_SCOPED;
-        // this will block on the condition until runCondition() returns true, the thread is unpaused, or the thread leaves the RUNNING state.
-        checkPause();
-
-        mIdleThread = false;
-
-        threadedUpdate();
-
-        auto pending_work = processNextRequest();
-
-        if (pending_work == 0)
-        {
-            //LL_PROFILE_ZONE_NAMED("LLQueuedThread - sleep");
-            mIdleThread = true;
-            //ms_sleep(1);
-        }
-        //LLThread::yield(); // thread should yield after each request
-    }*/
     mRequestQueue.runUntilClose();
 
     endThread();

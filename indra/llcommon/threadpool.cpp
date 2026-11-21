@@ -70,7 +70,13 @@ LL::ThreadPoolBase::ThreadPoolBase(const std::string& name,
     mThreadCount(fixed_width ? threads : getConfiguredWidth(name, threads)),
     mQueue(queue),
     mAutomaticShutdown(auto_shutdown)
-{}
+{
+    if (fixed_width)
+    {
+        LL_INFOS("ThreadPool") << name << " workers=" << mThreadCount
+                               << "; source=fixed owner" << LL_ENDL;
+    }
+}
 
 void LL::ThreadPoolBase::start()
 {
@@ -101,6 +107,8 @@ void LL::ThreadPoolBase::start()
                 run(tname);
             });
     }
+
+    LL_INFOS("ThreadPool") << getKey() << " launched workers=" << mThreads.size() << LL_ENDL;
 
     if (!mAutomaticShutdown)
     {
@@ -202,13 +210,30 @@ size_t LL::ThreadPoolBase::getConfiguredWidth(const std::string& name, size_t df
         LL_WARNS("ThreadPool") << "Can't check 'ThreadPoolSizes': " << exc.what() << LL_ENDL;
     }
 
-    LL_DEBUGS("ThreadPool") << "ThreadPoolSizes = " << poolSizes << LL_ENDL;
     // LLSD treats an undefined value as an empty map when asked to retrieve a
     // key, so we don't need this to be conditional.
     LLSD sizeSpec{ poolSizes[name] };
     // We retrieve sizeSpec as LLSD, rather than immediately as LLSD::Integer,
     // so we can distinguish the case when it's undefined.
-    return sizeSpec.isInteger() ? sizeSpec.asInteger() : dft;
+    // A settings integer is signed; converting a negative directly to size_t
+    // used to request effectively unlimited threads, while zero launched none.
+    // This is a permissive resource-exhaustion guard, not a tuning target.
+    constexpr S32 maximum_configured_width = 256;
+    const bool valid = sizeSpec.isInteger() && sizeSpec.asInteger() > 0 &&
+                       sizeSpec.asInteger() <= maximum_configured_width;
+    const size_t width = valid ? static_cast<size_t>(sizeSpec.asInteger()) : dft;
+    const char* source = valid ? "ThreadPoolSizes" :
+                         sizeSpec.isDefined() ? "invalid override; constructor fallback" :
+                                                "constructor fallback";
+    if (sizeSpec.isDefined() && !valid)
+    {
+        LL_WARNS("ThreadPool") << "Ignoring invalid ThreadPoolSizes." << name
+                              << "; expected integer in [1," << maximum_configured_width
+                              << "]; fallback=" << dft << LL_ENDL;
+    }
+    LL_INFOS("ThreadPool") << name << " workers=" << width << "; source=" << source
+                           << "; constructor fallback=" << dft << LL_ENDL;
+    return width;
 }
 
 //static

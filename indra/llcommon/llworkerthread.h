@@ -151,6 +151,9 @@ public:
     bool haveWork() { return getFlags(WCF_HAVE_WORK); } // may still be true if aborted
     bool isWorking() { return getFlags(WCF_WORKING); }
     bool wasAborted() { return getFlags(WCF_ABORT_REQUESTED); }
+    // Any thread, while the caller retains this worker. Call only after
+    // releasing subclass data locks used by doWork()/finishWork().
+    void wakeWork();
 
     const std::string& getName() const { return mWorkerClassName; }
 

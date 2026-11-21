@@ -31,6 +31,7 @@
 #include <string>
 #include <map>
 #include <set>
+#include <atomic>
 
 #include "llatomic.h"
 
@@ -101,10 +102,24 @@ public:
         virtual bool processRequest() = 0; // Return true when request has completed
         virtual void finishRequest(bool completed); // Always called from thread after request has completed or aborted
         virtual void deleteRequest(); // Only method to delete a request
+        // Event-driven owners may use a longer safety retry. A wake received
+        // during processRequest() is retained until that call returns.
+        virtual bool waitsForWake() const { return false; }
 
     protected:
         LLAtomicBase<status_t> mStatus;
         U32 mFlags;
+
+    private:
+        // Protected by the queue's data lock. Neither timed nor promoted work
+        // captures a request pointer: handle reuse and superseded tickets must
+        // not revive a deleted request.
+        U64 mGeneration = 0;
+        U64 mScheduleGeneration = 0;
+        bool mScheduled = false;
+        bool mImmediatePending = false;
+        bool mUrgentPending = false;
+        bool mWakeRequested = false;
     };
 
     //------------------------------------------------------------------------
@@ -128,17 +143,25 @@ public:
     LLQueuedThread& operator=(const LLQueuedThread&) = delete;
 
 private:
-    virtual bool runCondition(void);
     virtual void run(void);
     virtual void startThread(void);
     virtual void endThread(void);
     virtual void threadedUpdate(void);
+    virtual bool hasThreadedUpdate() const { return false; }
 
 protected:
     handle_t generateHandle();
     bool addRequest(QueuedRequest* req);
     void processRequest(QueuedRequest* req);
     void incQueue();
+
+private:
+    using TimePoint = LL::WorkSchedule::TimePoint;
+    bool postRequest(handle_t handle, U64 generation, U64 schedule,
+                     bool urgent, const TimePoint& when);
+    void dispatchRequest(handle_t handle, U64 generation, U64 schedule, bool urgent);
+    void finishRequestLocked(QueuedRequest* req, bool complete);
+    void wakeRequest(handle_t handle, bool urgent);
 
 public:
     bool waitForResult(handle_t handle, bool auto_complete = true);
@@ -155,6 +178,11 @@ public:
 
     // Request accessors
     status_t getRequestStatus(handle_t handle);
+    // Any thread, with the queue owner kept alive by the caller. Wakes are
+    // coalesced; promotion also admits a not-yet-started request ahead of normal
+    // ready work, with at most four promoted starts before normal service.
+    void wakeRequest(handle_t handle) { wakeRequest(handle, false); }
+    void promoteRequest(handle_t handle) { wakeRequest(handle, true); }
     void abortRequest(handle_t handle, bool autocomplete);
     void setFlags(handle_t handle, U32 flags);
     bool completeRequest(handle_t handle);
@@ -172,14 +200,17 @@ protected:
 
     //typedef std::set<QueuedRequest*, queued_request_less> request_queue_t;
     //request_queue_t mRequestQueue;
-    LL::WorkQueue mRequestQueue;
-    LL::WorkQueue::weak_t mMainQueue;
+    LL::WorkSchedule mRequestQueue;
 
     enum { REQUEST_HASH_SIZE = 512 }; // must be power of 2
     typedef LLSimpleHash<handle_t, REQUEST_HASH_SIZE> request_hash_t;
     request_hash_t mRequestHash;
 
     handle_t mNextHandle;
+    U64 mNextGeneration = 0;
+    U32 mUrgentBurst = 0; // worker only
+    std::atomic<bool> mThreadedUpdatePending{false};
+    bool mShutdownStarted = false; // protected by data lock
 };
 
 #endif // LL_LLQUEUEDTHREAD_H
