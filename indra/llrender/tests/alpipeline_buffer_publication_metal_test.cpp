@@ -10,7 +10,6 @@
 #include "../../almetal/almetalworldanimated.h"
 #include "../../almetal/almetalworldcohort.h"
 #include "../../almetal/almetalworldprepare.h"
-#include "../../almetal/almetalworldencodetask.h"
 #include "../../almetal/almetalworldmaterialdata.h"
 #include "../../almetal/almetalworldresources.h"
 #include "../../almetal/almetalworldsourceview.h"
@@ -4399,7 +4398,6 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_static_visibility_commands_native.inl"
 
 #include "alpipeline_local_light_values_native.inl"
-#include "alpipeline_main_light_encoding_native.inl"
 
 #include "alpipeline_producer_preparation_native.inl"
 #include "alpipeline_producer_drain_native.inl"

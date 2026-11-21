@@ -8036,13 +8036,6 @@
     <key>Type</key><string>Boolean</string>
     <key>Value</key><integer>0</integer>
   </map>
-  <key>RenderMetalMainLightOverlap</key>
-  <map>
-    <key>Comment</key><string>Diagnostic exclusive native main G-buffer encoding while its owner prepares point-light values. Original admission, query settlement, deferred constants and projector resources remain authoritative. Disabled pending complete-path costs.</string>
-    <key>Persist</key><integer>0</integer>
-    <key>Type</key><string>Boolean</string>
-    <key>Value</key><integer>0</integer>
-  </map>
   <key>RenderMetalShadowViewOverlap</key>
   <map>
     <key>Comment</key><string>Diagnostic one-view CPU overlap: capture the next main shadow view while native encoding consumes the previous owned view. Original shadow submission admission and owner query/cache settlement remain authoritative. Disabled pending complete-path costs.</string>

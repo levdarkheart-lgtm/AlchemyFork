@@ -6,7 +6,6 @@
  * Original1eb44 pipeline11928ff limits before filters, fades/frustum-culls,
  * and orders camera-outside lights before camera-inside lights.
  */
-    values.ready = false;
     auto& bounded_lights = values.lights;
     auto& fullscreen_lights = values.inside_lights;
     bounded_lights.clear();
@@ -92,4 +91,3 @@
         bounded_lights.end(), fullscreen_lights.begin(), fullscreen_lights.end());
     fullscreen_lights.clear();
     values.additive_pass_count = light_capacity;
-    values.ready = true;

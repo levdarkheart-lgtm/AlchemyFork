@@ -221,7 +221,6 @@ if(AL_BUILD_TESTS)
       tests/alpipeline_early_visibility_native.inl
       tests/alpipeline_group_bounds_promotion_native.inl
       tests/alpipeline_local_light_values_native.inl
-      tests/alpipeline_main_light_encoding_native.inl
       tests/alpipeline_producer_drain_native.inl
       tests/alpipeline_producer_preparation_native.inl
       tests/alpipeline_shadow_membership_native.inl

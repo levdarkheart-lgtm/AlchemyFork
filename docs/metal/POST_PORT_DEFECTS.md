@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-543 -->
+<!-- next-defect-id: PPD-547 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12584,3 +12584,71 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 found during536 cleanup before persistence repair. A narrow retirement API owned by the settings group is required; preserve unknown foreign/newer settings and notifications instead of globally disabling unknown preservation.
+
+## PPD-543 — Rejected main encode/light overlap remains in the shipped code
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production experiment retirement integrator
+- Discovered: 2026-11-21
+- Original reference: Owner now explicitly requests retirement of dead disabled experiments as part of production maintenance. Prior test/cost records stay retained in documentation and Git history; default-off alone does not prove a feature dead.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); RenderMetalMainLightOverlap, ALMetalMainWorldEncodingTask and exclusive overlap fixtures; PPD307 cost history rejects selection.
+- Next action: Remove rejected overlap branch, task, admission/diagnostic fields, setting and dedicated tests; retain ordinary point-light extraction and selected main-lighting chain.
+- Verification: Source selection/history checked before removal. No removal or new candidate qualification yet; supported optional native features and shared active helpers must remain.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before removal following owner maintenance steering. Preserve prior positive and adverse evidence; retiring abandoned code is separate from asserting a runtime speedup.
+
+## PPD-544 — Unselected world preparation scheduler remains alongside the owned scalar path
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production experiment retirement integrator
+- Discovered: 2026-11-21
+- Original reference: Owner now explicitly requests retirement of dead disabled experiments as part of production maintenance. Prior test/cost records stay retained in documentation and Git history; default-off alone does not prove a feature dead.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); RenderMetalWorldPreparation, ALMetalWorldPreparation/prepared-ticket consumer and experiment-only tests.
+- Next action: Remove the unselected scheduler/prepared route and its exclusive tests while retaining immutable ALMetalWorldViewInputs adoption, resource leases, scalar encoding and lifetime/shape regression coverage.
+- Verification: Source selection/history checked before removal. No removal or new candidate qualification yet; supported optional native features and shared active helpers must remain.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before removal following owner maintenance steering. Preserve prior positive and adverse evidence; retiring abandoned code is separate from asserting a runtime speedup.
+
+## PPD-545 — Rejected source command-bank GPU and animated prototypes remain shipped
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production experiment retirement integrator
+- Discovered: 2026-11-21
+- Original reference: Owner explicitly requests removing dead disabled experiments, retaining functional Alchemy/native behavior and prior research history. Default-off alone is insufficient evidence; selection/cost history and actual dependencies distinguish abandoned routes.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); PPD191/229/301/302 and final E3 selection: ordinary CPU coarse/scalar selected, old command/GPU/animated prototypes unselected after adverse costs.
+- Next action: Retire abandoned command-bank/direct/GPUvisibility/animated optimization routes and their exclusive tests; retain default CPU source routing, immutable source/cohort/resource ownership, live publication admission and actual rigged output.
+- Verification: Source and prior selection records audited before removal. Shared publication-work/key types and CPU-only ownership must survive; no new build/runtime claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before removal. Preserve source-routing CPU gains, active probe candidates, shadow ICB/visibility owners and real quality features. Do not remove generic Metal ICB capability or original occlusion queries with abandoned world trials.
+
+## PPD-546 — Unselected early and retained world GPU visibility prototypes remain shipped
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Production experiment retirement integrator
+- Discovered: 2026-11-21
+- Original reference: Owner explicitly requests removing dead disabled experiments, retaining functional Alchemy/native behavior and prior research history. Default-off alone is insufficient evidence; selection/cost history and actual dependencies distinguish abandoned routes.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); PPD301 full24cell run rejects all16 active owner medians; PPD229 prior retained-visibility costs do not select the shipped route.
+- Next action: Remove early/retained world visibility GPU classes/hooks/shaders and exclusive tests; preserve conservative CPU bounds/classification, published CPU visibility regressions, ordinary occlusion query geometry and selected shadow visibility.
+- Verification: Source and prior selection records audited before removal. Shared publication-work/key types and CPU-only ownership must survive; no new build/runtime claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before removal. Preserve source-routing CPU gains, active probe candidates, shadow ICB/visibility owners and real quality features. Do not remove generic Metal ICB capability or original occlusion queries with abandoned world trials.

@@ -91,7 +91,6 @@
 #include "../almetal/almetalshadowprepare.h"
 #include "../almetal/almetalshadowcache.h"
 #include "../almetal/almetalworldprepare.h"
-#include "../almetal/almetalworldencodetask.h"
 #include "../almetal/almetalworldvisibility.h"
 #include "alnativeframebudget.h"
 #include "alnativeframeplan.h"
@@ -1118,14 +1117,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     U64 prepared_world_constant_bytes = 0, prepared_world_uncompacted_bytes = 0;
     U64 prepared_world_shared_common_records = 0;
     U64 cpu_packets_reclaimed = 0, cpu_packets_retained = 0;
-    std::unique_ptr<MetalLocalLightValues> prepared_local_light_values;
-    struct MainLightEncodingDiagnostics
-    {
-        U64 requested=0, started=0, budget_denied=0, declined=0;
-        U64 encoded=0, encode_failed=0, gather_failed=0, worker_exceptions=0;
-        U64 packet_hits=0, packet_misses=0, point_lights=0;
-        U64 encode_ns=0, gather_ns=0, observed_overlap_ns=0, join_ns=0;
-    } main_light_encoding;
     // Owner-only CPU staging, drained in composition before any encoder is
     // opened. Values/probes are owned; resource pointers refer to this exact
     // capture and remain valid through the synchronous compound call.
@@ -3573,14 +3564,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 LL_INFOS("MetalScene") << "Native probe preparation declines: reasons=" << reasons.str()
                     << ", scope=shared_main_probe_frame_data_cumulative_unavailable_only" << LL_ENDL;
             }
-            const auto& main_light = capture.main_light_encoding;
-            LL_INFOS("MetalFramePlan") << "Native main encode/light-values: requested/started/budget_denied/declined="
-                << main_light.requested << '/' << main_light.started << '/' << main_light.budget_denied << '/' << main_light.declined
-                << ", encoded/failed/gather_failed/worker_exceptions=" << main_light.encoded << '/' << main_light.encode_failed << '/' << main_light.gather_failed << '/' << main_light.worker_exceptions
-                << ", point_packet_hits/misses/lights=" << main_light.packet_hits << '/' << main_light.packet_misses << '/' << main_light.point_lights
-                << ", cpu_wall_ns(encode/gather/observed_overlap/join)=" << main_light.encode_ns << '/' << main_light.gather_ns
-                << '/' << main_light.observed_overlap_ns << '/' << main_light.join_ns
-                << ", scope=exclusive_main_encode_owner_point_values_not_gpu_or_fps" << LL_ENDL;
             const auto& lighting_pass = capture.main_lighting_pass;
             LL_INFOS("Metal") << "Native main lighting render-pass: requested/prepared/owner_excluded/encoded/structural_declined/failed_after_prefix/serial_failed/inputs_missing="
                 << lighting_pass.requested << '/' << lighting_pass.prepared << '/' << lighting_pass.owner_excluded << '/' << lighting_pass.encoded << '/' << lighting_pass.declined
@@ -4275,7 +4258,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         }
     }
 
-    capture.prepared_local_light_values.reset();
     capture.clearDraws();
     // Keep the immutable reference consumer available for native scene work,
     // but real unique-source costs have not earned unconditional activation.
@@ -17417,96 +17399,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
     const U64 native_draws_before = count_native_draws
         ? ALMetalDevice::encodedDrawCallCount() : 0;
     std::unique_ptr<ALMetalRenderTarget> target;
-    bool main_encoding_started = false;
-    static LLCachedControl<bool> main_light_overlap(gSavedSettings, "RenderMetalMainLightOverlap", false);
-    // PPD307: only one main transaction and one exclusive renderer reader.
-    // No sky/light-map/projector/native-resource work crosses this interval.
-    // Required query-pool settlement, commit and target publication stay below.
-    if (main_light_overlap() && batch_main_world && command_batch_active &&
-        inputs && !prepare_world && !gSnapshot && !gCubeSnapshot &&
-        !ALMetalStageTimingScope::current() && !mNearbyLights.empty())
-    {
-        auto& d = capture.main_light_encoding;
-        ++d.requested;
-        static LLCachedControl<S32> count_setting(gSavedSettings, "RenderLocalLightCount", 256);
-        static LLCachedControl<F32> scale_setting(gSavedSettings, "AlchemyGlobalLightScale", 1.f);
-        const S32 local_light_count = std::max<S32>(count_setting, 0);
-        const F32 light_scale = scale_setting;
-        LLViewerCamera& camera = *LLViewerCamera::getInstance();
-        const LLMatrix4a& modelview = LLViewerCamera::getCurrent().getModelview();
-        const U32 light_width = scene.width, light_height = scene.height;
-#include "pipeline_local_light_candidate_native.inl"
-        if (point_candidate)
-        {
-            std::unique_ptr<MetalLocalLightValues> packet;
-            ALMetalMainWorldEncodingTask task;
-            try
-            {
-                const auto capacity = std::min<std::size_t>(local_light_count, mNearbyLights.size());
-                auto reservation = ALNativeFrameBudget::instance().tryAcquire(
-                    ALNativeFrameBudget::Work::preparation,
-                    MetalLocalLightValues::requiredCPUBytes(capacity, sizeof(task))).credit;
-                if (!reservation) ++d.budget_denied;
-                else
-                {
-                    packet = std::make_unique<MetalLocalLightValues>();
-                    packet->cpu_reservation = std::move(reservation);
-                    // Apple's libc++ reserve allocates the requested capacity.
-                    // Every accepted point enters exactly one array; their sum
-                    // cannot exceed this limited prefix, so the final merge fits
-                    // the first allocation and requires no larger transient slab.
-                    packet->lights.reserve(capacity); packet->inside_lights.reserve(capacity);
-                    if (packet->ownedCPUBytes(sizeof(task)) > packet->cpu_reservation->logicalBytes())
-                    { packet.reset(); ++d.declined; }
-                }
-                if (packet && local_light_count > 0 && task.start(*capture.renderer, inputs, packet->cpu_reservation))
-                {
-                    ++d.started; main_encoding_started = true;
-                    const auto now = [] { return static_cast<U64>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch()).count()); };
-                    const auto gather_start = now();
-                    try
-                    {
-                        packet->setKey(gFrameCount, light_width, light_height, local_light_count,
-                            light_scale, sRenderAttachedLights, modelview, camera.getProjection(), camera.getOrigin());
-                        auto& values = *packet;
-#include "pipeline_local_light_values_native.inl"
-                        d.point_lights += values.lights.size();
-                        capture.prepared_local_light_values = std::move(packet);
-                    }
-                    catch (const std::bad_alloc&) { ++d.gather_failed; packet.reset(); }
-                    const auto gather_end = now();
-                    // Even an owner gather exception joins through the concrete
-                    // task destructor before CPU input retirement can run. No
-                    // renderer field or result is observed before this join.
-                    auto outcome = task.finish();
-                    d.join_ns += now() - gather_end;
-                    d.gather_ns += gather_end - gather_start;
-                    d.encode_ns += outcome.finished_ns - outcome.started_ns;
-                    const auto overlap_start = std::max<U64>(gather_start, outcome.started_ns);
-                    const auto overlap_end = std::min<U64>(gather_end, outcome.finished_ns);
-                    if (overlap_end > overlap_start) d.observed_overlap_ns += overlap_end - overlap_start;
-                    d.worker_exceptions += outcome.threw;
-                    if (outcome.target) ++d.encoded; else ++d.encode_failed;
-                    target = std::move(outcome.target);
-                    visibility_results = std::move(outcome.visibility_results);
-                    error = std::move(outcome.error);
-                }
-                else if (packet) ++d.declined;
-            }
-            catch (const std::bad_alloc&)
-            {
-                // Before dispatch this is an optional allocation decline. A task
-                // already started cannot reach this handler: its inner gather
-                // handles allocation failure and its result transfer is noexcept.
-                ++d.gather_failed;
-            }
-        }
-        else ++d.declined;
-    }
-    if (!main_encoding_started)
-        target = prepared ? capture.renderer->renderPrepared(*prepared, &error, &visibility_results)
-            : inputs && !prepare_world ? capture.renderer->renderOwnedInputs(*inputs, &error, &visibility_results) : nullptr;
+    target = prepared ? capture.renderer->renderPrepared(*prepared, &error, &visibility_results)
+        : inputs && !prepare_world ? capture.renderer->renderOwnedInputs(*inputs, &error, &visibility_results) : nullptr;
     if (target)
     {
         if (prepared)
@@ -17675,32 +17569,18 @@ void LLPipeline::renderMetalWorldLocalLights(
     }
 
     MetalLocalLightValues current_values;
-    auto prepared_values = std::move(capture.prepared_local_light_values);
-    auto* values_ptr = &current_values;
+    auto& values = current_values;
     const U32 light_width = capture.target->descriptor().width;
     const U32 light_height = capture.target->descriptor().height;
-    if (prepared_values && prepared_values->matches(gFrameCount,
-            light_width, light_height, local_light_count, light_scale,
-            sRenderAttachedLights, modelview, camera.getProjection(), camera.getOrigin()))
-    {
-        values_ptr = prepared_values.get();
-        ++capture.main_light_encoding.packet_hits;
-    }
-    else
-    {
-        if (prepared_values) ++capture.main_light_encoding.packet_misses;
-        prepared_values.reset();
-        auto& values = current_values;
 #include "pipeline_local_light_values_native.inl"
-    }
-    const auto& lights = values_ptr->lights;
-    const auto bounded_light_count = values_ptr->bounded_count;
+    const auto& lights = current_values.lights;
+    const auto bounded_light_count = current_values.bounded_count;
 
     ALMetalWorldLocalLightingScene scene;
     scene.gbuffer = capture.target.get();
     scene.lights = lights.empty() ? nullptr : lights.data();
     scene.light_count = lights.size();
-    scene.additive_pass_count = values_ptr->additive_pass_count;
+    scene.additive_pass_count = current_values.additive_pass_count;
     scene.bounded_light_count = bounded_light_count;
     LLMatrix4a inverse_projection;
     inverse_projection.setInverse(camera.getProjection());
@@ -17715,9 +17595,9 @@ void LLPipeline::renderMetalWorldLocalLights(
     if (capture.main_lighting_ready)
     {
         auto& ready = *capture.main_lighting_ready;
-        // Move the actual307 packet (including its CPU reservation), or the
-        // serial values, without allocating another wrapper or copying arrays.
-        ready.point_values.emplace(std::move(*values_ptr));
+        // Keep the owner-authored values through the compound lighting call
+        // without copying their arrays or retaining live scene pointers.
+        ready.point_values.emplace(std::move(current_values));
         ready.local = scene;
         ready.local.lights = ready.point_values->lights.empty()
             ? nullptr : ready.point_values->lights.data();

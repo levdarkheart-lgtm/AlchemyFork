@@ -103,10 +103,6 @@ struct Owner
     }
     void gather()
     {
-        values.ready = false;
-        values.setKey(71, light_width, light_height, local_light_count,
-            light_scale, sRenderAttachedLights, modelview,
-            camera.getProjection(), camera.getOrigin());
 #include "../../newview/pipeline_local_light_values_native.inl"
     }
 };
@@ -126,7 +122,6 @@ TEST_CASE("Actual main light values consume the original limit before exclusions
     owner.drawables[over_limit].forbid_reads = true;
     owner.local_light_count = 2;
     REQUIRE_NOTHROW(owner.gather());
-    CHECK(owner.values.ready);
     CHECK(owner.values.lights.empty());
     CHECK(owner.values.bounded_count == 0);
     CHECK(owner.values.additive_pass_count == 2);
@@ -213,7 +208,6 @@ TEST_CASE("Actual main light values preserve bounded then inside order and copie
         // bounded+inside merge uses at most four, without a transient grow.
         CHECK(owner.values.lights.capacity() == 4);
         CHECK(owner.values.inside_lights.capacity() == 4);
-        CHECK(owner.values.ownedCPUBytes(64) == MetalLocalLightValues::requiredCPUBytes(4,64));
         CHECK(owner.values.lights[0].position_radius[0] == .75f);
         CHECK(owner.values.lights[1].position_radius[0] == -.75f);
         CHECK(owner.values.lights[2].position_radius[0] == 0.f);
@@ -257,8 +251,7 @@ TEST_CASE("Actual main light values use copied view dimensions and production co
     CHECK(light.screen_rect[1] == 39);
     CHECK(light.screen_rect[2] == 26);
     CHECK(light.screen_rect[3] == 26);
-    CHECK(owner.values.matches(71, 128, 128, 256, 2.f, true,
-        owner.modelview, owner.camera.projection, owner.camera.origin));
+
 
     owner.light_width = 0;
     owner.light_height = 17;
@@ -268,47 +261,4 @@ TEST_CASE("Actual main light values use copied view dimensions and production co
     CHECK(owner.values.lights[0].screen_rect[1] == 0);
     CHECK(owner.values.lights[0].screen_rect[2] == 0);
     CHECK(owner.values.lights[0].screen_rect[3] == 17);
-}
-
-TEST_CASE("Actual main light packet key rejects each changed input and charges actual capacities",
-          "[main-light-values][almetal][pipeline-buffer-publication]")
-{
-    using namespace MainLightValuesTest;
-    MetalLocalLightValues values;
-    LLMatrix4a view, projection;
-    view.setIdentity();
-    projection.setIdentity();
-    const LLVector3 origin(.125f, .25f, .5f);
-    values.setKey(17, 128, 96, 23, .5f, true, view, projection, origin);
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .5f, true, view, projection, origin));
-    values.ready = true;
-    CHECK(values.matches(17, 128, 96, 23, .5f, true, view, projection, origin));
-    CHECK_FALSE(values.matches(18, 128, 96, 23, .5f, true, view, projection, origin));
-    CHECK_FALSE(values.matches(17, 129, 96, 23, .5f, true, view, projection, origin));
-    CHECK_FALSE(values.matches(17, 128, 97, 23, .5f, true, view, projection, origin));
-    CHECK_FALSE(values.matches(17, 128, 96, 24, .5f, true, view, projection, origin));
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .25f, true, view, projection, origin));
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .5f, false, view, projection, origin));
-    LLMatrix4a changed = view;
-    changed.setTranslation(LLVector3(.25f, 0.f, 0.f));
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .5f, true, changed, projection, origin));
-    changed = projection;
-    changed.setTranslation(LLVector3(0.f, .25f, 0.f));
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .5f, true, view, changed, origin));
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .5f, true, view, projection,
-        LLVector3(.125f, .25f, .75f)));
-    values.ready = false;
-    CHECK_FALSE(values.matches(17, 128, 96, 23, .5f, true, view, projection, origin));
-
-    values.lights.reserve(3);
-    values.inside_lights.reserve(7);
-    const auto capacity_bytes = (values.lights.capacity() + values.inside_lights.capacity()) *
-        sizeof(ALMetalWorldLocalLight);
-    CHECK(values.ownedCPUBytes(64) == sizeof(values) + capacity_bytes + 64);
-    values.lights.clear();
-    values.inside_lights.clear();
-    CHECK(values.ownedCPUBytes(0) == sizeof(values) + capacity_bytes);
-    CHECK(values.ownedCPUBytes(ALNativeFrameBudget::unknown_bytes) == ALNativeFrameBudget::unknown_bytes);
-    CHECK(MetalLocalLightValues::requiredCPUBytes(ALNativeFrameBudget::unknown_bytes,0) == ALNativeFrameBudget::unknown_bytes);
-    CHECK(MetalLocalLightValues::requiredCPUBytes(0,ALNativeFrameBudget::unknown_bytes) == ALNativeFrameBudget::unknown_bytes);
 }

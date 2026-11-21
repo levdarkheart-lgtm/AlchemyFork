@@ -80,3 +80,14 @@ PPD537 preserves the original main-owned complete callback model and existing
 safe pacing reply consumer. Use a live cached setting with finite bounded
 conversion. PPD538 removes foreground queue-count sleeps once worker service
 progress/no-op coalescing is integrated; actual LFS operations remain intact.
+
+## Owner maintenance extension: retire abandoned experiments
+
+Owner additionally requests removal of dead, disabled experiments from source and
+exclusive tests where coherent. PPD543 retires the rejected main-light overlap,
+retaining normal point values and active lighting chain. PPD544 retires the
+unselected world-preparation scheduler/prepared route while preserving immutable
+owned scalar packets. Inventory other controls by actual consumers and selection
+history; default-off quality features and active probe candidates are not deleted
+by name/default alone. Root handles all Git writes centrally because child agents
+retain the prior read-only .git sandbox; do not leave approval prompts waiting.
