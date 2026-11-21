@@ -220,3 +220,39 @@ are LOCAL, no push; public Alpha7/69412 is untouched. Next: after owner unlocks,
 verify exact running69417, let owner login/reproduce, inspect current log, and
 record whether the overlay remains complete while rotating the camera. Only a
 confirmed owner result can close the incident or support a requested fix push.
+
+
+## Owner accepted —2026-11-21
+
+The same process39451/69417 remains exact executable SHA0b8bab95fd3d and logs
+manual login at07:33:45Z, STATE_STARTED07:34:02Z. Native UI now independently
+shows Alchemy Metal Rigged Depth Fix26.4.0.69417; the Mac-unlock handoff ended.
+No scene screenshot/automated image-comparison or new capture is taken. Owner
+controls the view and reports “problem is fixed”, answers “Stays intact” to the
+same attachment/overlay under camera rotation, then repeats “its fixed”.
+PPD-522 and PPD-523 are verified/ownerpassed. Other asset/rigging defects and
+product completion gates remain unchanged; explicit fix-push approval remains
+not_granted. No further GPU capture is needed for this accepted incident.
+
+Private owner-acceptance-01.json records exact running identity and current log
+coverage. Login through07:36:34Z has140WARNING/0ERROR/FATAL; viewer remainslogged
+in, exit receipt absent, and owner is told normal logout is now fine. This is
+not a shutdown observation. A stable login-prefix-01.log retains the earlier
+07:33:45–07:35:29Z prefix133WARN for separate source-site review; later counts
+must retain their own cutoff. No build, native test, performance profile or
+capture overlaps this owner visual test. Proposed code and acceptance records
+are committed locally; no push or Alpha7/tag modification is authorized.
+
+Next: inspect normal logout if/when owner closes, retain final log warnings,
+and push only after an explicit owner request covering this accepted fix.
+
+
+Independent review of the133WARN snapshot finds26sites, no new renderer,
+rigging/palette/auxiliary-mask/decoder-failure category. Seven sites absent from
+the earlier69404 capture account for15rows; all exist in original1eb44:
+capabilities not yet available2+2, missing message handler1, obsolete media
+request1, complete texture response replacing previous partial data5 (not a
+decode failure), legacy teleport path1, different selected-parcel reply3.
+Existing17HTTP403 texture chains/nine status-1materials/tenHTTPtimeouts remain
+separate;16textures/all9materials match prior session privately. No link to
+the overlay is established. This source review does not close transport causes.

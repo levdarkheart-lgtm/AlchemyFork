@@ -12192,15 +12192,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-522 — BoM mesh overlay breaks into camera-dependent polygon patches
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex rendering investigation
 - Discovered: 2026-11-21
 - Original reference: Owner reports a BoM overlay on a mesh attachment breaks up when the camera turns; screenshot shows sharply bounded surface patches. Original-viewer depth/alpha/culling behavior and exact asset material/layer topology remain to be inspected. No cause is established from the screenshot.
 - Evidence: [Capture and investigation ledger](work/active/bom-overlay-rendering-20261121.md).
-- Next action: Owner retests candidate69417 at the same attachment and rotates the camera. Source precision mechanism is qualified under PPD-523; incident closure and push remain pending actual owner result.
-- Verification: Exact unchanged69404 source7d607/exe1a875/OpenHTJ2K verified. Failed bounded3sSystemTrace(-9/63.259s/712839904bytes/TOC10) retained unusable. Owner-authorized restart7831 produces error-free early162–163 and late1327–1328 GPUTraceDocuments. Late Xcode replay visibly reproduces the overlay, with12commandbuffers/36renderencoders/3239draws/5dispatches. Draw16866 diffuse/geometry/frame/palette exported. Neighbor16844 is a different origin/25joints and must not be assumed the same surface. Requested numeric depth export actually savedPNG, so it is not float-depth evidence. Owner remains logged in; replay stopped. No incident repair verified yet.
-- Owner verification: pending
+- Next action: Retain owner-accepted69417 and discriminating GPU controls. Reopen on recurrence; keep other asset/rigging causes separate. Await explicit owner approval before pushing this repair.
+- Verification: Original69404 late GPUTraceDocument1327–1328 visibly reproduces the patching; failed SystemTrace and numeric-depth export limitations retained. Native precision repair under PPD-523 passes final765exact-depth checks and13focusedCTests. Owner logs into exact69417/source8f2e56b5db/exe0b8bab95fd3d on2026-11-21 and explicitly reports the problem fixed, answers Stays intact while rotating the camera, then repeats its fixed. Runtime window/version/PID39451 and sole OpenHT0.27.0 independently verified; STATE_STARTED at07:34:02Z. Login log through07:36:34Z contains140WARNING/0ERROR/FATAL. Existing asset/transport warnings are separate from this accepted visual repair.
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -12209,17 +12209,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 Full Release69417/source8f2e56b5db/exe0b8bab95fd3d built0;13focusedCTests0(37.41s), final-library765/0,346ARM64/signature/strictGL0. CandidatePID39451 starts normal controls/no capture, sole OpenHT0.27.0 verified, STATE_LOGIN_WAIT. Mac locked prevents window/scene verification; owner unlock requested. No incident closure or push.
 
+- 2026-11-21 owner verifies exact69417 after login: problem is fixed, camera-rotation overlay Stays intact, and repeats its fixed. Corrective GPU/build/static evidence retained; mark this scoped repair verified. Acceptance does not grant push approval or close other asset/rigging/product gates.
+
 ## PPD-523 — Rigged shader families disagree on rebased position precision
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex rendering integrator
 - Discovered: 2026-11-21
 - Original reference: At1eb44bbd1bdc76d0100c75699bad1fb337e8cb45, class1/avatar/objectSkinV.glsl29–57 and109–124 explicitly require keeping vertex-varying coordinates avatar-local and transforming the large origin separately. Diffuse/material/alpha/fullbrightShiny use skinTransformH(modelview) then projection. Pre-repair Metal simple/material/bump/PBR reconstructed region-space position before matrix multiply, while shiny/legacy alpha/glow split the origin and local transforms. Algebraic equality does not guarantee equal F32 depth across passes.
 - Evidence: [BoM investigation and precision mapping](work/active/bom-overlay-rendering-20261121.md).
-- Next action: Owner verifies local69417 with the reported overlay under camera motion. Retain old/helper-only/invariance-only failures and all final-library/broad GPU evidence. Keep unrelated asset, rigging and other-target limits separate; no new fix push approval.
-- Verification: Source divergence confirmed. Captured draw16866 inputs are exported privately and use legacy-alpha-skinned vertex shader; no production repair or owner verification yet. CPU F32 diagnostic shows differing depth in both directions, but is not GPU rasterization proof. Existing fast-math compilation and absent position-invariance annotations require explicit validation rather than an assumed guarantee.
-- Owner verification: pending
+- Next action: Retain owner-accepted69417 and discriminating GPU controls. Reopen on recurrence; keep other asset/rigging causes separate. Await explicit owner approval before pushing this repair.
+- Verification: Shared split transforms plus preserved position invariance correct the source-confirmed precision divergence. Same actual9-VS GPU fixture765checks: old35fail/helper-only30fail/invariance-only80fail/final0fail,162ordered coplanar pairs; full69417Release0 and13focusedCTests0, including retained animated parity, native world and runtime shader reload. Owner confirms the camera-dependent overlay remains intact in the exact new candidate on2026-11-21. No depth bias, material/alpha mode, sorting, decoder or capture flag was used as a workaround.
+- Owner verification: passed
 - Push approval: not_granted
 
 ### History
@@ -12230,6 +12232,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-21 Final build-generated librarye69a532f0592 includes both reviewed animated corrections and passes765exact-depth checks/162ordered pairs. Full repository Release0,13focusedCTests0 include broad world131939assertions/65cases and animated attachment/parity. Two optional cache-validation cases skipped under defaults are separately executed under their required environments:882+98assertions, both0. Doctor/346ARM64/strictsignature/strictGL3647files0/harness33 pass. Exact69417 is waiting manual login, not visually accepted.
+
+- 2026-11-21 owner verifies exact69417 after login: problem is fixed, camera-rotation overlay Stays intact, and repeats its fixed. Corrective GPU/build/static evidence retained; mark this scoped repair verified. Acceptance does not grant push approval or close other asset/rigging/product gates.
 
 ## PPD-524 — Investigation snapshot copies two links with the wrong relative base
 
