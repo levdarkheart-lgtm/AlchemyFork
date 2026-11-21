@@ -264,7 +264,6 @@ bool LLFeatureManager::loadFeatureTables()
     // make this data driven.  Put it in the feature table and parse it
     // correctly
     mSkippedFeatures.insert("RenderGamma");
-    mSkippedFeatures.insert("RenderVBOEnable");
     mSkippedFeatures.insert("RenderFogRatio");
 
     // first table is install with app

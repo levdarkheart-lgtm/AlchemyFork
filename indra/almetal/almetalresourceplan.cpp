@@ -171,8 +171,8 @@ bool Command::useLocked(const View& view, unsigned bits)
 {
     if (!mStats.valid || mStats.retired || mSubmitting || mStats.submitted || !mActivePass ||
         view.mGeneration != view.mAllocation->mGeneration) return false;
-    auto [at, inserted] = mUses.try_emplace({view.identity(), view.mGeneration},
-        Use{view.mAllocation, 0, 0, mActivePass, mActivePass});
+    auto [at, inserted] = mUses.try_emplace(
+        Key{view.identity(), view.mGeneration}, view.mAllocation, mActivePass);
     auto& use = at->second;
     if (inserted)
     {

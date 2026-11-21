@@ -916,7 +916,9 @@ public:
     void createObjects(F32 max_dtime);
     void createObject(LLViewerObject* vobj);
     void processPartitionQ();
-    void updateGeom(F32 max_dtime);
+    // Required priority rebuilds and bridge updates; object creation has a
+    // separate soft time allowance. This phase is not safe to preempt midway.
+    void updatePriorityGeometry();
     void updateGL();
     void rebuildPriorityGroups();
     void rebuildGroups();

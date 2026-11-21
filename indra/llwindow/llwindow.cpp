@@ -388,8 +388,7 @@ LLWindow* LLWindowManager::createWindow(
     ALWindowBackend backend,
     bool ignore_pixel_depth,
     U32 fsaa_samples,
-    U32 max_cores,
-    F32 max_gl_version)
+    U32 max_cores)
 {
     LLWindow* new_window;
 

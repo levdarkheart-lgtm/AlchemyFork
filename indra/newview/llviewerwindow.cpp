@@ -2245,7 +2245,6 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     // create window
 
     U32 max_core_count = gSavedSettings.getU32("EmulateCoreCount");
-    F32 max_gl_version = gSavedSettings.getF32("RenderMaxOpenGLVersion");
 
     mWindow = LLWindowManager::createWindow(this,
         p.title, p.name, p.x, p.y, p.width, p.height, 0,
@@ -2255,8 +2254,7 @@ LLViewerWindow::LLViewerWindow(const Params& p)
         gHeadlessClient ? ALWindowBackend::Hidden : ALWindowBackend::Native,
         p.ignore_pixel_depth,
         0,
-        max_core_count,
-        max_gl_version); //don't use window level anti-aliasing, windows only
+        max_core_count); // Native post-processing owns antialiasing.
 
     if (NULL == mWindow)
     {

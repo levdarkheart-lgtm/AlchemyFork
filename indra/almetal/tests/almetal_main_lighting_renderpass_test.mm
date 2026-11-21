@@ -436,6 +436,66 @@ TEST_CASE("almetal: main lighting decline preserves prefix and cancellation perm
     }
 }
 
+TEST_CASE("almetal: lighting pages preserve distinct pending views and reuse completed storage",
+          "[almetal][main-lighting-renderpass][lighting-data]")
+{
+    @autoreleasepool
+    {
+        sky_test::Fixture f;
+        Inputs inputs(f);
+        inputs.populate(17, 0);
+        const auto bright_points = inputs.point_recipe;
+        std::array<std::vector<std::array<std::uint16_t, 4>>, 2> expected;
+        for (unsigned view = 0; view < expected.size(); ++view)
+        {
+            inputs.point_recipe = bright_points;
+            if (view)
+                for (auto& light : inputs.point_recipe)
+                    std::fill_n(light.color_falloff, 3, 0.f);
+            auto target = submit(f, *f.renderer, inputs, true, false);
+            expected[view] = inputs.pixels(*target);
+        }
+        REQUIRE(hasRGBIncrease(expected[0], expected[1]));
+
+        auto pages = ALMetalWorldFrameData::create(*f.device, &f.error);
+        REQUIRE(pages);
+        f.renderer->setFrameData(pages);
+        pages->beginFrame(100);
+        REQUIRE(f.renderer->beginCommandBatch("Two immutable lighting views", &f.error));
+        std::array<std::unique_ptr<ALMetalRenderTarget>, 2> outputs;
+        for (unsigned view = 0; view < outputs.size(); ++view)
+        {
+            inputs.point_recipe = bright_points;
+            if (view)
+                for (auto& light : inputs.point_recipe)
+                    std::fill_n(light.color_falloff, 3, 0.f);
+            outputs[view] = encode(*f.renderer, inputs, true, false, &f.error);
+            INFO(f.error); REQUIRE(outputs[view]);
+        }
+        // Reusing the caller's CPU list or beginning another frame must not
+        // overwrite either pending GPU view's immutable slices.
+        for (auto& light : inputs.point_recipe)
+            std::fill_n(light.color_falloff, 3, -100.f);
+        const auto published = pages->stats();
+        CHECK(published.pages_created == 1);
+        CHECK(published.published_bytes >= sizeof(ALMetalWorldReflectionProbeConstants) +
+            2 * bright_points.size() * sizeof(ALMetalWorldLocalLight));
+        pages->beginFrame(101);
+        CHECK(pages->stats().retired_pages == 1);
+        REQUIRE(f.renderer->commitCommandBatch(&f.error));
+        REQUIRE(f.device->waitUntilIdle(&f.error));
+        for (unsigned view = 0; view < outputs.size(); ++view)
+            CHECK(inputs.pixels(*outputs[view]) == expected[view]);
+
+        pages->beginFrame(102);
+        inputs.point_recipe = bright_points;
+        auto next = submit(f, *f.renderer, inputs, true, false);
+        CHECK(inputs.pixels(*next) == expected[0]);
+        CHECK(pages->stats().pages_created == published.pages_created);
+        CHECK(pages->stats().pages_reused > published.pages_reused);
+    }
+}
+
 TEST_CASE("almetal: shared main encoder preserves projector cookies, shadow slices and classic gain",
           "[almetal][main-lighting-renderpass]")
 {

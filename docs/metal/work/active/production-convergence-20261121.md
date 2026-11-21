@@ -49,3 +49,34 @@ completion/performance, parity and product release gates remain open.
 
 Implement independent worker/asset/preferences repairs, review and integrate them,
 then build and qualify one separate candidate. The owner controls its live test.
+
+## Root pre-fix ownership mapping
+
+PPD530 uses original upstream408fd6c priority rebuild semantics: full required
+priority traversal plus moved bridge updates, distinct from time-sliced object
+creation. Remove the misleading budget interface, name the required phase
+explicitly, and keep future immutable geometry decomposition as residual work.
+Do not insert unsafe timer breaks in live scene mutation.
+
+PPD534 is a new native resource registry: exact allocation identity/generation,
+per-command access escalation, submission and completion retirement remain
+unchanged. Construct the owning map value only on insertion; existing actual
+resource-plan tests cover repeated hits, generations and every terminal path.
+
+PPD535 uses original per-view lighting constants/list contents and bindings.
+Native ALMetalWorldFrameData pages already retain command completion tokens and
+reuse only after all readers complete. Publish immutable lighting slices on the
+exact command after validation/acquisition; preserve offsets and independent
+view contents. No shader math, material, pass order or depth policy changes.
+Standalone renderer callers without externally supplied frame data need a real
+owned arena too, rather than an inline-byte fallback for large probe constants.
+
+PPD539 mirrors existing eager main-projector PSO construction: build the finite
+HDR/LDR depth-bearing point-light descriptors alongside their ordinary variants,
+with the same library generation and error handling. Archive locking remains
+owned and serialized; no speculative compilation framework.
+
+PPD537 preserves the original main-owned complete callback model and existing
+safe pacing reply consumer. Use a live cached setting with finite bounded
+conversion. PPD538 removes foreground queue-count sleeps once worker service
+progress/no-op coalescing is integrated; actual LFS operations remain intact.

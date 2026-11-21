@@ -157,15 +157,12 @@ F32 LLRender::sAnisotropicFilteringLevel = 0.f;
 // Read by the native Win32 window alone, which makes a compatibility context when it is false
 // (RenderGLContextCoreProfile, which Intel's Windows driver is recommended off). Every other window,
 // and anything that never sets it, as the appearance utility does not, is core.
-bool LLRender::sGLCoreProfile = true;
-bool LLRender::sNsightDebugSupport = false;
 LLVector2 LLRender::sUIGLScaleFactor = LLVector2(1.f, 1.f);
 bool LLRender::sClassicMode = false;
 bool LLRender::sMirrorPass = false;
 bool LLRender::sReverseZ = false;
 bool LLRender::sCompute = false;
 bool LLRender::sGBufferNormHDR = true;
-bool LLRender::s10bitBackBuffer = false;
 
 
 const U32 immediate_mask = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_COLOR | LLVertexBuffer::MAP_TEXCOORD0;

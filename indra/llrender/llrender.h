@@ -690,12 +690,9 @@ public:
     static MetalCommandTiming metalCommandTiming();
 #endif
     static F32 sAnisotropicFilteringLevel;
-    static bool sGLCoreProfile;
-    static bool sNsightDebugSupport;
     static LLVector2 sUIGLScaleFactor;
     static bool sClassicMode; // classic sky mode active
     static bool sMirrorPass;  // hero-probe planar-reflection (mirror clip) pass active
-    static bool s10bitBackBuffer;
     // Reverse-Z depth active this session: Metal's [0,1] depth, reversed
     // projections (near=1, far=0), depth cleared to 0, default GREATER comparison.
     // Newview latches the setting before selecting native resources/constants.

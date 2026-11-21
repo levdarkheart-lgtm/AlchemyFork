@@ -155,6 +155,10 @@ private:
     struct Hash { std::size_t operator()(const Key&) const noexcept; };
     struct Use
     {
+        // try_emplace constructs this owner only for a new allocation key.
+        // Existing uses update access/pass state without shared ownership churn.
+        Use(const std::shared_ptr<Allocation>& backing, std::uint64_t pass)
+        : allocation(backing), first_pass(pass), last_pass(pass) {}
         std::shared_ptr<Allocation> allocation;
         unsigned access = 0, pass_kinds = 0;
         std::uint64_t first_pass = 0, last_pass = 0;

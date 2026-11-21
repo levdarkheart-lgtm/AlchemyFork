@@ -3438,12 +3438,12 @@ private:
         const ALMetalWorldProjectorLightingScene* projector = nullptr,
         const ALMetalWorldModernSkyScene* modern_sky = nullptr,
         bool* native_prefix = nullptr);
-    bool prepareLocalLighting(const ALMetalRenderTarget& target,
+    bool validateLocalLighting(const ALMetalRenderTarget& target,
         const ALMetalWorldLocalLightingScene& scene,
-        std::unique_ptr<ALMetalBuffer>& light_buffer, std::string* error);
+        std::string* error);
     bool encodeLocalLighting(ALMetalRenderEncoder& encoder,
-        const ALMetalWorldLocalLightingScene& scene,
-        const ALMetalBuffer* light_buffer, bool with_depth, std::string* error);
+        ALMetalCommandBuffer& command, const ALMetalWorldLocalLightingScene& scene,
+        bool with_depth, std::string* error);
     bool prepareProjectorLighting(const ALMetalRenderTarget& target,
         const ALMetalWorldProjectorLightingScene& scene,
         bool& needs_shadows, std::string* error);

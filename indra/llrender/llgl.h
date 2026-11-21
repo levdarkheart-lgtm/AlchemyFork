@@ -126,7 +126,6 @@ public:
     bool mIsSoftwareRenderer = false;
 
     // hints to the render pipe
-    U32 mDownScaleMethod = 0; // see settings.xml RenderDownScaleMethod
 
     // Compatibility requirement metadata still read by startup error handling.
     bool mHasRequirements;

@@ -10453,8 +10453,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         // presentation boundary.
                         presentation.dither_amount =
                             capture.hdr && dither_enabled ? 1.f : 0.f;
-                        presentation.dither_bits =
-                            LLRender::s10bitBackBuffer ? 10u : 8u;
+                        // SDR quantization is eight bits in the native
+                        // presentation contract; GL context hints do not select it.
+                        presentation.dither_bits = 8u;
                         presentation.dither_animated = dither_animated;
 
                         static LLCachedControl<S32> preview_mode(
@@ -21576,7 +21577,7 @@ void LLPipeline::rebuildPriorityGroups()
 
 }
 
-void LLPipeline::updateGeom(F32 max_dtime)
+void LLPipeline::updatePriorityGeometry()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 

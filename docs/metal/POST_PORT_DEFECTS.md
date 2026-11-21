@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-540 -->
+<!-- next-defect-id: PPD-542 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12477,6 +12477,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
 
+- 2026-11-21 pre-fix consumer audit confirms dead vbo/UseLightShaders lookups, dead VBOEnable/VBOMappingDisable/UseStreamVBO backend options and DownScaleMethod storage-only consumer. Advanced DoF/shadow controls are incorrectly chained through SSAO availability; stale antialiasing-restart text and English/eight-localization HiDPI OpenGL tooltips remain. Preserve live native AA/AF/SSAO/DoF/shadow/probe/mirror/waves quality and RenderMaxVBOSize mesh batching. Preferences owner may repair this scoped536 set; root removes consumer remnants in shared render/app/stats code.
+
+- 2026-11-21 follow-up consumer audit confirms RenderUseVAO and RenderPreferStreamDraw have no production consumers; remove these two additional GL-only definitions/localized descriptions. Performance floater ALM/shadow gates still use obsolete GL feature proxies; repair to native availability while retaining live quality controls.
+
 ## PPD-537 — Main reply budget is latched once despite mutable setting
 
 - Status: investigating
@@ -12527,3 +12531,39 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 owner authorizes coherent maintenance-focused repairs and a separately built candidate for manual testing. Registered before implementation. No push or release authorization; further discovered defects retain separate history.
+
+## PPD-540 — Queued-thread shutdown can destroy request state before its worker stops
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Worker scheduling integrator
+- Discovered: 2026-11-21
+- Original reference: Inherited LLQueuedThread shutdown closes an empty queue early, waits five seconds, then removes request state even if a nonempty service has not stopped. New timed retry ownership must preserve actual request lifetime rather than copy a handle-only ABA risk from upstream.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); scheduler pre-fix audit of llqueuedthread.cpp shutdown and processRequest at855be480b7.
+- Next action: Close scheduling at shutdown, retire queued retry/abort work on the owning worker, wait for actual worker termination before destroying requests, and use lifecycle plus ticket generations for dispatch/retry/wakeup identity. Bound or eliminate idle fallback delay without forced thread cancellation.
+- Verification: Source lifetime hazard confirmed before implementation; no observed viewer shutdown crash is attributed. Worker callback duration remains finite-work dependent and must be covered by shutdown/lifecycle tests.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 discovered during PPD531 repair design and registered before changes. Preserve old shutdown behavior in source history; new implementation must reject stale tickets and survive nonempty shutdown, cancellation and handle reuse. No tests or repair yet.
+
+- 2026-11-21 before repair, waitForResult also exits only on missing/COMPLETE, so a retained ABORTED request can spin indefinitely. Treat abort as terminal false with correct auto-completion; test no foreground callback pumping is needed to terminate worker shutdown.
+
+## PPD-541 — Advanced graphics callbacks outlive their preference panel
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Graphics preferences integrator
+- Discovered: 2026-11-21
+- Original reference: Advanced preference settings signals capture this; the panel destructor must disconnect every retained callback before releasing panel lifetime, as it already does for adjacent complexity/LOD callbacks.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); pre-fix llfloaterpreferencesgraphicsadvanced constructor/postBuild/destructor: mImpostorsChangedSignal and mNumImpostorsChangedSignal remain connected.
+- Next action: Disconnect both impostor-setting callbacks during destruction and test that subsequent setting changes cannot call the destroyed panel.
+- Verification: Missing disconnection is source-confirmed before repair. No observed owner crash is attributed; maintain live impostor/quality behavior.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 discovered during PPD536 maintenance and registered before correction. Two callbacks capture panel this while destructor already disconnects the adjacent controls; include lifecycle regression in the native graphics preference fixture.

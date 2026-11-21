@@ -141,7 +141,6 @@ LLTrace::SampleStatHandle<> FPS_SAMPLE("fpssample"),
                             NUM_MATERIALS("nummaterials"),
                             NUM_OBJECTS("numobjectsstat"),
                             NUM_ACTIVE_OBJECTS("numactiveobjectsstat"),
-                            ENABLE_VBO("enablevbo", "Vertex Buffers Enabled"),
                             VISIBLE_AVATARS("visibleavatars", "Visible Avatars"),
                             SHADER_OBJECTS("shaderobjects", "Object Shaders"),
                             DRAW_DISTANCE("drawdistance", "Draw Distance"),
@@ -380,8 +379,6 @@ void LLViewerStats::addToMessage(LLSD &body)
     LLSD &misc = body["misc"];
 
     misc["Version"] = true;
-    //TODO RN: get last value, not mean
-    misc["Vertex Buffers Enabled"] = getRecording().getMean(LLStatViewer::ENABLE_VBO);
 
     body["AgentPositionSnaps"] = getRecording().getSum(LLStatViewer::AGENT_POSITION_SNAP).value(); //mAgentPositionSnaps.asLLSD();
     LL_INFOS() << "STAT: AgentPositionSnaps: Mean = " << getRecording().getMean(LLStatViewer::AGENT_POSITION_SNAP).value() << "; StdDev = " << getRecording().getStandardDeviation(LLStatViewer::AGENT_POSITION_SNAP).value()
@@ -442,7 +439,6 @@ void update_statistics()
 
     record(LLStatViewer::TRIANGLES_DRAWN_PER_FRAME, last_frame_recording.getSum(LLStatViewer::TRIANGLES_DRAWN));
 
-    sample(LLStatViewer::ENABLE_VBO,      (F64)gSavedSettings.getBOOL("RenderVBOEnable"));
     sample(LLStatViewer::DRAW_DISTANCE,   (F64)gSavedSettings.getF32("RenderFarClip"));
     sample(LLStatViewer::CHAT_BUBBLES,    gSavedSettings.getBOOL("UseChatBubbles"));
 

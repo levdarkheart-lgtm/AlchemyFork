@@ -2456,6 +2456,45 @@ struct ALMetalWorldGBufferRenderer::Impl
 
     const ALMetalDevice* device = nullptr;
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
+    // Standalone owners use the same completion-aware pages as viewer frames.
+    // A command token, never a recycled native pointer, defines each epoch.
+    std::shared_ptr<ALMetalWorldFrameData> lighting_data;
+    std::weak_ptr<const ALMetalCommandCompletion> lighting_command;
+    std::uint64_t lighting_generation = 0;
+
+    bool publishLightingData(ALMetalCommandBuffer& command, const void* bytes,
+        std::size_t length, ALMetalWorldDataSlice& slice, std::string* error,
+        bool deduplicate = false)
+    {
+        if (frame_data)
+            return frame_data->publish(command, bytes, length, slice, error, deduplicate);
+        if (!lighting_data)
+        {
+            lighting_data = ALMetalWorldFrameData::create(*device, error);
+            if (!lighting_data) return false;
+        }
+        const auto completion = command.completionToken();
+        if (!completion)
+        {
+            setError(error, "Metal lighting data requires command completion ownership");
+            return false;
+        }
+        if (lighting_command.lock() != completion)
+        {
+            lighting_data->beginFrame(++lighting_generation);
+            lighting_command = completion;
+        }
+        return lighting_data->publish(command, bytes, length, slice, error, deduplicate);
+    }
+
+    bool setLightingData(ALMetalRenderEncoder& encoder,
+        ALMetalCommandBuffer& command, std::uint32_t index, const void* bytes,
+        std::size_t length, std::string* error)
+    {
+        ALMetalWorldDataSlice slice;
+        return publishLightingData(command, bytes, length, slice, error, true) &&
+            encoder.setFragmentBuffer(index, *slice.buffer, slice.offset, error);
+    }
 
     bool setVertexData(ALMetalRenderEncoder& encoder,
                        ALMetalCommandBuffer& command, std::uint32_t index,
@@ -6214,6 +6253,16 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+
+        auto main_local_descriptor = descriptor;
+        main_local_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        main_local_descriptor.label = hdr
+            ? "Alchemy HDR main-pass point-light pipeline"
+            : "Alchemy main-pass point-light pipeline";
+        impl->main_local_light_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, main_local_descriptor, error);
+        if (!impl->main_local_light_pipelines[hdr]) return nullptr;
 
         descriptor.fragment_function =
             "almetal_world_projector_light_fragment";
@@ -13407,10 +13456,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     return target;
 }
 
-bool ALMetalWorldGBufferRenderer::prepareLocalLighting(
+bool ALMetalWorldGBufferRenderer::validateLocalLighting(
     const ALMetalRenderTarget& target,
     const ALMetalWorldLocalLightingScene& scene,
-    std::unique_ptr<ALMetalBuffer>& light_buffer,
     std::string* error)
 {
     constexpr std::size_t max_light_count = 65535;
@@ -13487,32 +13535,12 @@ bool ALMetalWorldGBufferRenderer::prepareLocalLighting(
         return false;
     }
 
-    // PPD250: an empty accepted list leaves the already-authored accumulation
-    // untouched. Validate its inputs above, but acquire no resource or pass.
-    if (scene.light_count == 0) return true;
-
-    if (scene.light_count != 0)
-    {
-        ALMetalBufferDescriptor descriptor;
-        descriptor.length = scene.light_count * sizeof(ALMetalWorldLocalLight);
-        descriptor.storage = ALMetalStorageMode::shared;
-        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        descriptor.label = "Alchemy world local-point-light list";
-        light_buffer = ALMetalBuffer::create(
-            *mImpl->device, descriptor, error);
-        if (!light_buffer || !light_buffer->write(
-                0, scene.lights, descriptor.length, error))
-        {
-            return false;
-        }
-    }
-
     return true;
 }
 
 bool ALMetalWorldGBufferRenderer::encodeLocalLighting(
-    ALMetalRenderEncoder& encoder, const ALMetalWorldLocalLightingScene& scene,
-    const ALMetalBuffer* light_buffer, bool with_depth, std::string* error)
+    ALMetalRenderEncoder& encoder, ALMetalCommandBuffer& command,
+    const ALMetalWorldLocalLightingScene& scene, bool with_depth, std::string* error)
 {
     const auto& input = scene.gbuffer->descriptor();
     const auto* albedo = scene.gbuffer->colorTexture(0);
@@ -13534,6 +13562,10 @@ bool ALMetalWorldGBufferRenderer::encodeLocalLighting(
     bool encoded = true;
     if (scene.light_count != 0)
     {
+        ALMetalWorldDataSlice lights;
+        if (!mImpl->publishLightingData(command, scene.lights,
+                scene.light_count * sizeof(ALMetalWorldLocalLight), lights, error))
+            return false;
         WorldLocalLightingConstants constants;
         std::memcpy(constants.inverse_projection,
                     scene.inverse_projection,
@@ -13585,8 +13617,8 @@ bool ALMetalWorldGBufferRenderer::encodeLocalLighting(
                         *(with_depth ? mImpl->main_local_light_pipelines[scene.hdr ? 1 : 0] : mImpl->local_light_accumulation_pipelines[scene.hdr ? 1 : 0]),
                         error) &&
                     encoder.setFragmentBuffer(
-                        0, *light_buffer,
-                        first * sizeof(ALMetalWorldLocalLight), error) &&
+                        0, *lights.buffer,
+                        lights.offset + first * sizeof(ALMetalWorldLocalLight), error) &&
                     encoder.setFragmentBytes(
                         1, &constants, sizeof(constants), error) &&
                     encoder.draw(
@@ -13625,8 +13657,7 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
     ALMetalRenderTarget& target, const ALMetalWorldLocalLightingScene& scene,
     std::string* error)
 {
-    std::unique_ptr<ALMetalBuffer> light_buffer;
-    if (!prepareLocalLighting(target, scene, light_buffer, error)) return false;
+    if (!validateLocalLighting(target, scene, error)) return false;
     if (scene.light_count == 0) return true;
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
@@ -13671,7 +13702,7 @@ bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
         return false;
     }
 
-    const bool encoded = encodeLocalLighting(*encoder, scene, light_buffer.get(), false, error);
+    const bool encoded = encodeLocalLighting(*encoder, *command, scene, false, error);
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(
             owned_command, encoded && ended, error))
@@ -21205,52 +21236,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
-    std::unique_ptr<ALMetalBuffer> reflection_probe_volume_buffer;
-    if (scene.reflection_probe_volume_constants)
-    {
-        ALMetalBufferDescriptor descriptor;
-        descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
-        descriptor.storage = ALMetalStorageMode::shared;
-        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        descriptor.label =
-            "Alchemy reflection-probe volume overlay constants";
-        reflection_probe_volume_buffer = ALMetalBuffer::create(
-            *mImpl->device, descriptor, error);
-        if (!reflection_probe_volume_buffer ||
-            !reflection_probe_volume_buffer->write(
-                0, scene.reflection_probe_volume_constants,
-                descriptor.length, error))
-        {
-            return nullptr;
-        }
-    }
-
     // One immutable snapshot supplies BOTH current lighting publication and
     // derived bounds. Reused masks never rebind an older lighting pack.
     const ALMetalWorldReflectionProbeConstants forward_probe_constants=scene.reflection_probes
         ? scene.reflection_probes->constants : ALMetalWorldReflectionProbeConstants{};
     std::array<float,16> forward_probe_projection{};
     std::copy_n(scene.forward_probe_projection,16,forward_probe_projection.data());
-    std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
-    if (has_shiny || has_pre_water_simple || has_pre_water_material ||
-        has_pre_water_pbr || has_above_water_surface)
-    {
-        ALMetalBufferDescriptor descriptor;
-        descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
-        descriptor.storage = ALMetalStorageMode::shared;
-        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        descriptor.label =
-            "Alchemy world opaque post-deferred reflection constants";
-        probe_constants_buffer = ALMetalBuffer::create(
-            *mImpl->device, descriptor, error);
-        if (!probe_constants_buffer || !probe_constants_buffer->write(
-                0, &forward_probe_constants,
-                descriptor.length, error))
-        {
-            return nullptr;
-        }
-    }
-
     std::unique_ptr<ALMetalBuffer> water_factor_buffer;
     if (has_water_surface && scene.water_surface->waves)
     {
@@ -21763,8 +21754,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, mImpl->probe_sampler.get(), error) &&
             active.setFragmentTexture(
                 32, probe_radiance, error) &&
-            active.setFragmentBuffer(
-                1, *probe_constants_buffer, 0, error);
+            mImpl->setLightingData(active, *command, 1,
+                &forward_probe_constants, sizeof(forward_probe_constants), error);
         }
         if (bound && (has_pre_water_simple || has_pre_water_material ||
                       has_pre_water_pbr))
@@ -22566,8 +22557,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     mImpl->setFragmentData(*encoder, *command,
                         2, scene.alpha_environment,
                         sizeof(*scene.alpha_environment), error) &&
-                    encoder->setFragmentBuffer(
-                        3, *probe_constants_buffer, 0, error) &&
+                    mImpl->setLightingData(*encoder, *command, 3,
+                        &forward_probe_constants, sizeof(forward_probe_constants), error) &&
                     mImpl->setFragmentData(*encoder, *command,
                         4, scene.alpha_lighting,
                         sizeof(*scene.alpha_lighting), error) &&
@@ -24978,8 +24969,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 0, mImpl->point_clamp_sampler.get(), error) &&
             mImpl->setFragmentData(*encoder, *command,
                 0, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBuffer(
-                1, *reflection_probe_volume_buffer, 0, error) &&
+            mImpl->setLightingData(*encoder, *command, 1,
+                scene.reflection_probe_volume_constants,
+                sizeof(*scene.reflection_probe_volume_constants), error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
@@ -27190,48 +27182,14 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         return nullptr;
     }
 
-    std::unique_ptr<ALMetalBuffer> local_buffer;
     bool projector_needs_shadows = false;
-    if (local && (!prepareLocalLighting(*output, *local, local_buffer, error) ||
+    if (local && (!validateLocalLighting(*output, *local, error) ||
         !prepareProjectorLighting(*output, *projector, projector_needs_shadows, error))) return nullptr;
-    if (local)
-    {
-        const auto variant = scene.hdr ? 1u : 0u;
-        if (local->light_count && !mImpl->main_local_light_pipelines[variant])
-        {
-            auto point = mImpl->local_light_accumulation_pipelines[variant]->descriptor();
-            // Diagnostic descriptors deliberately omit borrowed libraries.
-            point.library = mImpl->library.get();
-            point.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
-            point.label = "Alchemy main-pass point-light pipeline";
-            auto pipeline = ALMetalRenderPipeline::create(*mImpl->device, point, error);
-            if (!pipeline) return nullptr;
-            mImpl->main_local_light_pipelines[variant] = std::move(pipeline);
-        }
-    }
-
-    ALMetalBufferDescriptor probe_buffer_descriptor;
-    probe_buffer_descriptor.length =
-        sizeof(ALMetalWorldReflectionProbeConstants);
-    probe_buffer_descriptor.storage = ALMetalStorageMode::shared;
-    probe_buffer_descriptor.cpu_cache =
-        ALMetalCpuCacheMode::write_combined;
-    probe_buffer_descriptor.label =
-        "Alchemy world base-light reflection-probe constants";
-    auto probe_constants_buffer = ALMetalBuffer::create(
-        *mImpl->device, probe_buffer_descriptor, error);
     const ALMetalWorldReflectionProbeConstants inactive_probe_constants{};
     const ALMetalWorldReflectionProbeConstants& probe_constants =
         scene.reflection_probes
             ? scene.reflection_probes->constants
             : inactive_probe_constants;
-    if (!probe_constants_buffer || !probe_constants_buffer->write(
-            0, &probe_constants,
-            probe_buffer_descriptor.length, error))
-    {
-        return nullptr;
-    }
-
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
         "Alchemy native world base lighting", owned_command, error);
@@ -27423,8 +27381,8 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
                                  mImpl->base_light_pipelines[pipeline_index].get())), error) &&
         encoder->setFragmentBytes(
             0, &scene.constants, sizeof(scene.constants), error) &&
-        encoder->setFragmentBuffer(
-            1, *probe_constants_buffer, 0, error) &&
+        mImpl->setLightingData(*encoder, *command, 1,
+            &probe_constants, sizeof(probe_constants), error) &&
         encoder->setFragmentBytes(
             2, &hero_constants, sizeof(hero_constants), error) &&
         encoder->setFragmentBytes(
@@ -27475,7 +27433,7 @@ ALMetalWorldGBufferRenderer::renderBaseLightingInternal(
         // Base/sky depth classification must not leak into fullscreen
         // additive lighting. Keep carried depth/stencil unchanged.
         encoded = encoder->setDepthStencilState(mImpl->overlay_composite_depth.get(), error) &&
-            encodeLocalLighting(*encoder, *local, local_buffer.get(), true, error) &&
+            encodeLocalLighting(*encoder, *command, *local, true, error) &&
             encodeProjectorLighting(*encoder, *projector, projector_needs_shadows, true, error);
     }
     const bool ended = encoder->end(error);
@@ -27843,24 +27801,6 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         ? &*impostor_probe_snapshot : nullptr;
     std::array<float,16> impostor_projection{};
     std::copy_n(scene.forward_probe_projection,16,impostor_projection.data());
-    std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
-    if (has_shiny || legacy_alpha_uses_probes)
-    {
-        ALMetalBufferDescriptor descriptor;
-        descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
-        descriptor.storage = ALMetalStorageMode::shared;
-        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        descriptor.label = "Alchemy world reflection-probe constants";
-        probe_constants_buffer = ALMetalBuffer::create(
-            *mImpl->device, descriptor, error);
-        if (!probe_constants_buffer || !probe_constants_buffer->write(
-                0, impostor_probe_constants,
-                descriptor.length, error))
-        {
-            return false;
-        }
-    }
-
     ALMetalRenderPassConfig pass_config;
     for (std::size_t attachment = 0; attachment < 4; ++attachment)
     {
@@ -27959,8 +27899,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                 1, mImpl->probe_sampler.get(), error) &&
             encoder->setFragmentTexture(
                 32, scene.reflection_probes->radiance_texture, error) &&
-            encoder->setFragmentBuffer(
-                1, *probe_constants_buffer, 0, error) &&
+            mImpl->setLightingData(*encoder, *command, 1,
+                impostor_probe_constants, sizeof(*impostor_probe_constants), error) &&
             encoder->setFragmentTexture(
                 34, hero_texture, error) &&
             encoder->setFragmentBytes(

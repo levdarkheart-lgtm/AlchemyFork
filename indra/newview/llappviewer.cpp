@@ -572,16 +572,6 @@ static void settings_to_globals()
 {
     LLSurface::setTextureSize(gSavedSettings.getU32("RegionTextureSize"));
 
-#if LL_DARWIN
-    LLRender::s10bitBackBuffer = false;
-#else
-    LLRender::s10bitBackBuffer = gSavedSettings.getBOOL("RenderGLContext10bitSDR");
-#endif
-#if LL_WINDOWS && !LL_SDL_WINDOW
-    // Only the native Win32 window can make a compatibility context; every other one is core.
-    LLRender::sGLCoreProfile = gSavedSettings.getBOOL("RenderGLContextCoreProfile");
-#endif
-    LLRender::sNsightDebugSupport = gSavedSettings.getBOOL("RenderNsightDebugSupport");
     LLRender::sAnisotropicFilteringLevel = static_cast<F32>(gSavedSettings.getU32("RenderAnisotropicLevel"));
     LLVOVolume::sLODFactor              = llclamp(gSavedSettings.getF32("RenderVolumeLODFactor"), 0.01f, MAX_LOD_FACTOR);
     LLVOVolume::sDistanceFactor         = 1.f-LLVOVolume::sLODFactor * 0.1f;
@@ -1832,10 +1822,9 @@ bool LLAppViewer::doFrame()
                     io_pending += LLLFSThread::updateClass(1);
                 }
 
-                if (io_pending > 1000)
-                {
-                    ms_sleep(llmin(io_pending/100,100)); // give the lfs some time to catch up
-                }
+                // Queue callbacks include housekeeping, not measured disk
+                // demand. Let the file worker progress without parking the UI;
+                // the worker queue owns admission and shutdown draining.
 
                 total_work_pending += work_pending ;
                 total_io_pending += io_pending ;
@@ -5708,24 +5697,21 @@ void LLAppViewer::idle()
 
     LLGLTFMaterialList::flushUpdates();
 
-    static LLCachedControl<U32> downscale_method(gSavedSettings, "RenderDownScaleMethod");
-    gGLManager.mDownScaleMethod = downscale_method;
     LLImageGL::updateClass();
     LLUIImage::updateClass();
 
     // Service the WorkQueue we use for replies from worker threads.
-    // Use function statics for the timeslice setting so we only have to fetch
-    // and convert MainWorkTime once.
-    static F32 MainWorkTimeRaw = gSavedSettings.getF32("MainWorkTime");
-    static F32Milliseconds MainWorkTimeMs(MainWorkTimeRaw);
-    // MainWorkTime is specified in fractional milliseconds, but std::chrono
-    // uses integer representations. What if we want less than a microsecond?
-    // Use nanoseconds. We're very sure we will never need to specify a
-    // MainWorkTime that would be larger than we could express in
-    // std::chrono::nanoseconds.
-    static std::chrono::nanoseconds MainWorkTimeNanoSec{
-        std::chrono::nanoseconds::rep(MainWorkTimeMs.value() * 1000000)};
-    gMainloopWork.runFor(MainWorkTimeNanoSec);
+    // Cached controls track changes without another settings-map lookup.
+    // Validate before converting to an integer duration: saved/debug settings
+    // can contain nonfinite or unreasonable values. Callbacks remain owned by
+    // main and each whole callback may exceed this soft allowance.
+    static LLCachedControl<F32> main_work_time(gSavedSettings, "MainWorkTime", 1.f);
+    const F32 configured_main_work_ms = main_work_time;
+    const F32 main_work_ms = std::isfinite(configured_main_work_ms)
+        ? llclamp(configured_main_work_ms, 0.f, 1000.f) : 1.f;
+    const auto main_work_duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double, std::milli>(main_work_ms));
+    gMainloopWork.runFor(main_work_duration);
 
     // Cap out-of-control frame times
     // Too low because in menus, swapping, debugger, etc.
