@@ -41,9 +41,6 @@
 	<combo_box label="Antialiasing" name="fsaa">
 		<combo_box.item label="Inhabilitado" name="FSAADisabled"/>
 	</combo_box>
-	<text name="antialiasing restart">
-		(requiere reiniciar)
-	</text>
 	<text name="MeshText">
 		Malla
 	</text>

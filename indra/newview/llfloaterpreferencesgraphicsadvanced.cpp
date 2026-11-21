@@ -38,7 +38,6 @@
 #include "lltextbox.h"
 #include "lltrans.h"
 #include "llviewercontrol.h"
-#include "llviewershadermgr.h"
 #include "llviewertexturelist.h"
 #include "llvoavatar.h"
 #include "pipeline.h"
@@ -62,38 +61,15 @@ LLFloaterPreferenceGraphicsAdvanced::LLFloaterPreferenceGraphicsAdvanced(const L
 
 LLFloaterPreferenceGraphicsAdvanced::~LLFloaterPreferenceGraphicsAdvanced()
 {
+    mImpostorsChangedSignal.disconnect();
     mComplexityChangedSignal.disconnect();
     mComplexityModeChangedSignal.disconnect();
     mLODFactorChangedSignal.disconnect();
+    mNumImpostorsChangedSignal.disconnect();
 }
 
 bool LLFloaterPreferenceGraphicsAdvanced::postBuild()
 {
-    // Darwin's FXAA/SMAA implementations are native Metal pipelines and do
-    // not depend on retained GLSL program objects. Other platforms still use
-    // shader completeness as their availability signal.
-#if !LL_DARWIN
-    {
-        LLComboBox* combo = getChild<LLComboBox>("fsaa");
-        if (!gFXAAProgram[0].isComplete())
-            combo->remove("FXAA");
-
-        if (!gSMAAEdgeDetectProgram[0].isComplete())
-            combo->remove("SMAA");
-
-        if (!gFXAAProgram[0].isComplete() && !gSMAAEdgeDetectProgram[0].isComplete())
-        {
-            combo->setEnabled(false);
-            getChild<LLComboBox>("fsaa quality")->setEnabled(false);
-        }
-    }
-#endif
-
-#if !LL_DARWIN && !LL_SDL_WINDOW
-    LLCheckBoxCtrl *use_HiDPI = getChild<LLCheckBoxCtrl>("use HiDPI");
-    use_HiDPI->setVisible(false);
-#endif
-
     mComplexityChangedSignal = gSavedSettings.getControl("RenderAvatarMaxComplexity")->getCommitSignal()->connect(
         [this](LLControlVariable* control, const LLSD& new_val, const LLSD& old_val)
         {
@@ -271,127 +247,38 @@ void LLFloaterPreferenceGraphicsAdvanced::setMaxNonImpostorsText(U32 value, LLTe
     }
 }
 
-void LLFloaterPreferenceGraphicsAdvanced::disableUnavailableSettings()
-{
-    LLComboBox* ctrl_shadows = getChild<LLComboBox>("ShadowDetail");
-    LLTextBox* shadows_text = getChild<LLTextBox>("RenderShadowDetailText");
-    LLCheckBoxCtrl* ctrl_ssao = getChild<LLCheckBoxCtrl>("UseSSAO");
-    LLCheckBoxCtrl* ctrl_dof = getChild<LLCheckBoxCtrl>("UseDoF");
-    LLSliderCtrl* cas_slider = getChild<LLSliderCtrl>("RenderSharpness");
-
-    // disabled windlight
-    if (!LLFeatureManager::getInstance()->isFeatureAvailable("WindLightUseAtmosShaders"))
-    {
-        //deferred needs windlight, disable deferred
-        ctrl_shadows->setEnabled(false);
-        ctrl_shadows->setValue(0);
-        shadows_text->setEnabled(false);
-
-        ctrl_ssao->setEnabled(false);
-        ctrl_ssao->setValue(false);
-
-        ctrl_dof->setEnabled(false);
-        ctrl_dof->setValue(false);
-    }
-
-    // disabled deferred
-    if (!LLFeatureManager::getInstance()->isFeatureAvailable("RenderDeferred"))
-    {
-        ctrl_shadows->setEnabled(false);
-        ctrl_shadows->setValue(0);
-        shadows_text->setEnabled(false);
-
-        ctrl_ssao->setEnabled(false);
-        ctrl_ssao->setValue(false);
-
-        ctrl_dof->setEnabled(false);
-        ctrl_dof->setValue(false);
-    }
-
-    // disabled deferred SSAO
-    if (!LLFeatureManager::getInstance()->isFeatureAvailable("RenderDeferredSSAO"))
-    {
-        ctrl_ssao->setEnabled(false);
-        ctrl_ssao->setValue(false);
-    }
-
-    // disabled deferred shadows
-    if (!LLFeatureManager::getInstance()->isFeatureAvailable("RenderShadowDetail"))
-    {
-        ctrl_shadows->setEnabled(false);
-        ctrl_shadows->setValue(0);
-        shadows_text->setEnabled(false);
-    }
-
-    // Vintage mode
-    static LLCachedControl<bool> is_not_vintage(gSavedSettings, "RenderDisableVintageMode");
-    LLSliderCtrl*         tonemapMix    = getChild<LLSliderCtrl>("TonemapMix");
-    LLComboBox*           tonemapSelect = getChild<LLComboBox>("TonemapType");
-    LLTextBox*            tonemapLabel  = getChild<LLTextBox>("TonemapTypeText");
-    LLSliderCtrl*         exposureSlider = getChild<LLSliderCtrl>("RenderExposure");
-
-    tonemapSelect->setEnabled(is_not_vintage);
-    tonemapLabel->setEnabled(is_not_vintage);
-    tonemapMix->setEnabled(is_not_vintage);
-    exposureSlider->setEnabled(is_not_vintage);
-    cas_slider->setEnabled(is_not_vintage);
-
-    LLComboBox* ctrl_anisotropic = getChild<LLComboBox>("anisotropic_filter");
-    if (!LLFeatureManager::instance().isFeatureAvailable("RenderAnisotropicLevel"))
-    {
-        ctrl_anisotropic->setEnabled(false);
-    }
-}
-
 void LLFloaterPreferenceGraphicsAdvanced::refreshEnabledState()
 {
-    bool enabled = true;
-
+    // Native SSAO, depth of field and shadows are independent quality
+    // features. None depends on an optional GL shader or VBO mode.
+    const bool ssao_available = LLFeatureManager::instance().isFeatureAvailable("RenderDeferredSSAO");
     LLCheckBoxCtrl* ctrl_ssao = getChild<LLCheckBoxCtrl>("UseSSAO");
-    LLCheckBoxCtrl* ctrl_dof = getChild<LLCheckBoxCtrl>("UseDoF");
+    ctrl_ssao->setEnabled(ssao_available);
+    if (!ssao_available) ctrl_ssao->setValue(false);
+
+    getChild<LLCheckBoxCtrl>("UseDoF")->setEnabled(true);
+
+    const bool shadows_available = LLFeatureManager::instance().isFeatureAvailable("RenderShadowDetail");
     LLComboBox* ctrl_shadow = getChild<LLComboBox>("ShadowDetail");
-    LLTextBox* shadow_text = getChild<LLTextBox>("RenderShadowDetailText");
+    ctrl_shadow->setEnabled(shadows_available);
+    getChild<LLTextBox>("RenderShadowDetailText")->setEnabled(shadows_available);
+    if (!shadows_available) ctrl_shadow->setValue(0);
 
-    // note, okay here to get from ctrl_deferred as it's twin, ctrl_deferred2 will alway match it
-    enabled = enabled && LLFeatureManager::getInstance()->isFeatureAvailable("RenderDeferredSSAO");// && ctrl_deferred->get();
-
-    //ctrl_deferred->set(gSavedSettings.getBOOL("RenderDeferred"));
-
-    ctrl_ssao->setEnabled(enabled);
-    ctrl_dof->setEnabled(enabled);
-
-    enabled = enabled && LLFeatureManager::getInstance()->isFeatureAvailable("RenderShadowDetail");
-
-    ctrl_shadow->setEnabled(enabled);
-    shadow_text->setEnabled(enabled);
-
-    // Hardware settings
-
-    if (!LLFeatureManager::getInstance()->isFeatureAvailable("RenderVBOEnable"))
-    {
-        getChildView("vbo")->setEnabled(false);
-    }
-
-    getChildView("antialiasing restart")->setVisible(!LLFeatureManager::getInstance()->isFeatureAvailable("RenderDeferred"));
+    static LLCachedControl<bool> is_not_vintage(gSavedSettings, "RenderDisableVintageMode");
+    getChild<LLComboBox>("TonemapType")->setEnabled(is_not_vintage);
+    getChild<LLTextBox>("TonemapTypeText")->setEnabled(is_not_vintage);
+    getChild<LLSliderCtrl>("TonemapMix")->setEnabled(is_not_vintage);
+    getChild<LLSliderCtrl>("RenderExposure")->setEnabled(is_not_vintage);
+    getChild<LLSliderCtrl>("RenderSharpness")->setEnabled(is_not_vintage);
 
     LLComboBox* af_combo = getChild<LLComboBox>("anisotropic_filter");
-    const F32 max_anisotropy = gRenderCapabilities.isInitialized()
-        ? gRenderCapabilities.maxAnisotropy() : gGLManager.mMaxAnisotropy;
-    if (2.f > max_anisotropy) {
-        af_combo->remove("2x");
-    }
-    if (4.f > max_anisotropy) {
-        af_combo->remove("4x");
-    }
-    if (8.f > max_anisotropy) {
-        af_combo->remove("8x");
-    }
-    if (16.f > max_anisotropy) {
-        af_combo->remove("16x");
-    }
-
-    // now turn off any features that are unavailable
-    disableUnavailableSettings();
+    const F32 max_anisotropy = gRenderCapabilities.maxAnisotropy();
+    af_combo->setEnabled(LLFeatureManager::instance().isFeatureAvailable("RenderAnisotropicLevel") &&
+        gRenderCapabilities.hasAnisotropicFiltering() && max_anisotropy >= 2.f);
+    if (2.f > max_anisotropy) af_combo->remove("2x");
+    if (4.f > max_anisotropy) af_combo->remove("4x");
+    if (8.f > max_anisotropy) af_combo->remove("8x");
+    if (16.f > max_anisotropy) af_combo->remove("16x");
 }
 
 void LLFloaterPreferenceGraphicsAdvanced::onBtnOK(const LLSD& userdata)

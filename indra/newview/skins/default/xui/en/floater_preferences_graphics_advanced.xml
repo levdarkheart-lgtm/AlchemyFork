@@ -369,7 +369,7 @@
     left="30"
     top_delta="16"
     name="use HiDPI"
-    tool_tip="Enable OpenGL for High-Resolution Drawing."
+    tool_tip="Draw at the display's native pixel resolution, including Retina displays."
     width="315" />
     <text
       type="string"
@@ -627,18 +627,6 @@
     left_delta="304"
     width="65">
     Low
-  </text>
-  <text
-    type="string"
-    length="1"
-    follows="left|top"
-    height="16"
-    layout="topleft"
-    left_pad="10"
-    name="antialiasing restart"
-    top_delta="0"
-    width="130">
-     (requires restart)
   </text>
    <view_border
       bevel_style="in"

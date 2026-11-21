@@ -70,7 +70,6 @@ private:
     void onClickHideAvatars();
     void onClickExceptions();
     void onClickShadows();
-    void onClickAdvancedLighting();
 
     void startAutotune();
     void stopAutotune();

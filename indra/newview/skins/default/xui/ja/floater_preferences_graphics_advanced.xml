@@ -90,9 +90,6 @@
 	<text name="FlexibleMeshDetailText">
 		低
 	</text>
-	<text name="antialiasing restart">
-		（再起動後に反映）
-	</text>
 	<text name="ShadersText">
 		シェーダー
 	</text>

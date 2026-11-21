@@ -42,7 +42,6 @@ public:
     /*virtual*/ bool postBuild() override;
     void onOpen(const LLSD& key) override;
     void onClickCloseBtn(bool app_quitting) override;
-    void disableUnavailableSettings();
     void refreshEnabledGraphics();
     void refreshEnabledState();
     void updateSliderText(LLSliderCtrl* ctrl, LLTextBox* text_box);

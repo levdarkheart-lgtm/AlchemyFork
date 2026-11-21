@@ -3125,7 +3125,7 @@
     <key>MainWorkTime</key>
     <map>
         <key>Comment</key>
-        <string>Max time per frame devoted to mainloop work queue (in milliseconds)</string>
+        <string>Time per frame for the mainloop work queue, applied live (0 to 1000 milliseconds; non-finite values use 1 millisecond). Individual callbacks run to completion; frame pacing may service additional work.</string>
         <key>Persist</key>
         <integer>1</integer>
         <key>Type</key>
@@ -7864,7 +7864,7 @@
    <key>RenderHiDPI</key>
   <map>
     <key>Comment</key>
-    <string>Enable support for HiDPI displays, like Retina (macOS and Linux ONLY, requires restart)</string>
+    <string>Draw at the native pixel resolution of the display, including Retina displays (requires restart)</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -7886,19 +7886,6 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
-  <key>RenderNsightDebugSupport</key>
-  <map>
-    <key>Comment</key>
-    <string>
-      Disable features which prevent nVidia nSight from being usable with SL. Requires restart.
-    </string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Boolean</string>
-    <key>Value</key>
-    <integer>0</integer>
-  </map>
   <key>RenderLocalLightCount</key>
   <map>
     <key>Comment</key>
@@ -8476,17 +8463,6 @@
     <key>Value</key>
     <integer>0</integer>
   </map>
-  <key>RenderMaxOpenGLVersion</key>
-  <map>
-    <key>Comment</key>
-    <string>Maximum OpenGL version to attempt use (minimum 4.1 maximum 4.6).  Requires restart. Windows only.</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>F32</string>
-    <key>Value</key>
-    <real>4.6</real>
-  </map>
   <key>RenderMaxVRAMBudget</key>
   <map>
     <key>Comment</key>
@@ -8564,17 +8540,6 @@
     <key>Value</key>
     <integer>2048</integer>
   </map>
-    <key>RenderDownScaleMethod</key>
-    <map>
-        <key>Comment</key>
-        <string>Method to use to downscale images.  0 - FBO, 1 - PBO</string>
-        <key>Persist</key>
-        <integer>1</integer>
-        <key>Type</key>
-        <string>U32</string>
-        <key>Value</key>
-        <integer>0</integer>
-    </map>
     <key>RenderDebugTextureBind</key>
     <map>
       <key>Comment</key>
@@ -9241,34 +9206,10 @@
     <key>Value</key>
     <real>2.2</real>
   </map>
-    <key>RenderGLContextCoreProfile</key>
-    <map>
-      <key>Comment</key>
-      <string>Don't use a compatibility profile OpenGL context.  Requires restart. Windows only.</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
-    <key>RenderGLMultiThreadedTextures</key>
-    <map>
-      <key>Comment</key>
-      <string>Legacy OpenGL preference retained for settings-file compatibility. Native texture uploads use RenderMetalMultiThreadedTextures.</string>
-      <key>HideFromEditor</key>
-      <integer>1</integer>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
     <key>RenderGLMultiThreadedMedia</key>
     <map>
       <key>Comment</key>
-      <string>Allow OpenGL to use multiple render contexts for playing media (may reduce frame stutters, doesn't play nice with Intel drivers)</string>
+      <string>Upload media frames on the native Metal image worker (requires restart).</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -10503,61 +10444,6 @@
     <real>10.0E6</real>
   </map>
 
-    <key>RenderVBOEnable</key>
-    <map>
-      <key>Comment</key>
-      <string>Use GL Vertex Buffer Objects</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>1</integer>
-    </map>
-    <key>RenderUseVAO</key>
-    <map>
-      <key>Comment</key>
-      <string>[EXPERIMENTAL] Use GL Vertex Array Objects.</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
-  <key>RenderVBOMappingDisable</key>
-    <map>
-      <key>Comment</key>
-      <string>Disable VBO glMapBufferARB</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>1</integer>
-    </map>
-  <key>RenderUseStreamVBO</key>
-  <map>
-    <key>Comment</key>
-    <string>Use VBO's for stream buffers</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Boolean</string>
-    <key>Value</key>
-    <integer>1</integer>
-  </map>
-	<key>RenderPreferStreamDraw</key>
-	<map>
-		<key>Comment</key>
-		<string>Use GL_STREAM_DRAW in place of GL_DYNAMIC_DRAW</string>
-		<key>Persist</key>
-		<integer>1</integer>
-		<key>Type</key>
-		<string>Boolean</string>
-		<key>Value</key>
-		<integer>0</integer>
-	</map>
 	<key>RenderVolumeLODFactor</key>
     <map>
       <key>Comment</key>

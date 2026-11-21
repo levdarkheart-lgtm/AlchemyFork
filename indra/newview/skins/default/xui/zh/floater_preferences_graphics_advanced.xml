@@ -34,16 +34,13 @@
 	<text name="HardwareText">
 		硬體
 	</text>
-	<check_box initial_value="true" label="啟用HiDPI顯示支援（須重新啟動）" name="use HiDPI" tool_tip="啓用OpenGL高解析度繪圖。"/>
+	<check_box initial_value="true" label="啟用HiDPI顯示支援（須重新啟動）" name="use HiDPI" tool_tip="以顯示器原生像素解析度繪圖，包括Retina顯示器。"/>
 	<text name="antialiasing label">
 		消除鋸齒：
 	</text>
 	<combo_box label="消除鋸齒" name="fsaa">
 		<combo_box.item label="已停用" name="FSAADisabled"/>
 	</combo_box>
-	<text name="antialiasing restart">
-		（須重新啟動）
-	</text>
 	<text name="MeshText">
 		網面
 	</text>

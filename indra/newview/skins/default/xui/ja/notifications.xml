@@ -731,10 +731,6 @@ Second Lifeに入るにはアカウントが必要です。今すぐアカウン
 続けてもよろしいですか？
 		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="続ける"/>
 	</notification>
-	<notification name="AdvancedLightingConfirm">
-		高度な光源をオンにするには、品質をレベルを４以上にする必要があります。
-		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="ＯＫ"/>
-	</notification>
 	<notification name="ShadowsConfirm">
 		影を有効にするには、品質をレベルを４以上にする必要があります。
 		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="ＯＫ"/>

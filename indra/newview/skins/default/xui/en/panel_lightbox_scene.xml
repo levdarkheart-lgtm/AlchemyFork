@@ -1444,7 +1444,7 @@ buffer reallocation, and a shader rebuild); it stays a prefs-level switch.
 				 top_pad="9"
 				 width="300"
 				 label="Water waves"
-				 tool_tip="Displace the water near the camera into waves, their heights integrated from the normal maps that shade it, so the crests lie where the shading's are. Needs OpenGL 4.0."
+				 tool_tip="Displace the water near the camera into 3D waves aligned with its shading. Waves can move the shoreline; turn this off for a flat water surface."
 				 name="perf_water_waves"
 				 control_name="AlchemyRenderWaterWaves" />
 				<setting_row

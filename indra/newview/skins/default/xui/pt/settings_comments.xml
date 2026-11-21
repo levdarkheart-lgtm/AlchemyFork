@@ -1799,8 +1799,6 @@
   <string>Configuração obsoleta não utilizada.</string>
   <key>RenderComplexityThreshold</key>
   <string>Configuração obsoleta não utilizada.</string>
-  <key>RenderCompressTextures</key>
-  <string>Ativar compressão de texturas em implementações OpenGL 3.0 e posteriores (EXPERIMENTAL, requer reinício).</string>
   <key>RenderDebugAlphaMask</key>
   <string>Testar os cortes de máscara alpha.</string>
   <key>RenderDebugGLSession</key>
@@ -1847,8 +1845,6 @@
   <string>Desativar mapeamento de tons e correção de exposição quando o floater de construção está aberto (para artistas desenvolvendo materiais).</string>
   <key>RenderDisableVintageMode</key>
   <string>Ativa recursos adicionais do pipeline de renderização em máquinas mais novas, como HDR e texturas emissivas em conteúdo PBR.</string>
-  <key>RenderDownScaleMethod</key>
-  <string>Método a usar para reduzir imagens. 0 - FBO, 1 - PBO.</string>
   <key>RenderDynamicLOD</key>
   <string>Ajustar dinamicamente o nível de detalhe.</string>
   <key>RenderEdgeDepthCutoff</key>
@@ -1869,12 +1865,8 @@
   <string>Controla o nível de detalhe de objetos flexíveis (multiplicador para o tempo gasto processando objetos flex).</string>
   <key>RenderFogRatio</key>
   <string>OBSOLETO - Distância da câmera onde a névoa atinge densidade máxima (fração ou múltiplo da distância de far clip).</string>
-  <key>RenderGLContextCoreProfile</key>
-  <string>Não usar um contexto OpenGL de perfil de compatibilidade. Requer reinício. Apenas Windows.</string>
   <key>RenderGLMultiThreadedMedia</key>
-  <string>Permitir que o OpenGL use múltiplos contextos de renderização para reproduzir mídia (pode reduzir engasgos de quadros, não funciona bem com drivers Intel).</string>
-  <key>RenderGLMultiThreadedTextures</key>
-  <string>Permitir que o OpenGL use múltiplos contextos de renderização para carregar texturas (pode reduzir engasgos de quadros, não funciona bem com drivers Intel).</string>
+  <string>Carregar quadros de mídia no worker de imagens Metal nativo (requer reinício).</string>
   <key>RenderGamma</key>
   <string>OBSOLETO - Define o expoente de gama para o renderizador.</string>
   <key>RenderGammaFull</key>
@@ -1965,8 +1957,6 @@
   <string>Incremento mínimo do viés de descarte se a memória de textura disponível ficar baixa.</string>
   <key>RenderMaxNodeSize</key>
   <string>Tamanho máximo dos dados de vértice de um único nó (em KB).</string>
-  <key>RenderMaxOpenGLVersion</key>
-  <string>Versão máxima do OpenGL a tentar usar (mínimo 4.1, máximo 4.6). Requer reinício. Apenas Windows.</string>
   <key>RenderMaxPartCount</key>
   <string>Número máximo de partículas a exibir na tela.</string>
   <key>RenderMaxTextureIndex</key>
@@ -1993,16 +1983,12 @@
   <string>Desativar a renderização de objetos alpha (renderizar todos os objetos alpha como máscaras alpha).</string>
   <key>RenderNormalMapScale</key>
   <string>Escalar aplicado ao mapa de altura ao gerar mapas de normais.</string>
-  <key>RenderNsightDebugSupport</key>
-  <string>Desativar recursos que impedem o uso do nVidia nSight com o SL. Requer reinício.</string>
   <key>RenderObjectBump</key>
   <string>OBSOLETO (apenas TRUE é suportado) Mostrar bumpmapping em primitivas.</string>
   <key>RenderParcelSelection</key>
   <string>Exibir o contorno da parcela selecionada.</string>
   <key>RenderPerformanceTest</key>
   <string>Desativar a renderização de tudo, exceto o conteúdo no mundo, para testes de desempenho.</string>
-  <key>RenderPreferStreamDraw</key>
-  <string>Usar GL_STREAM_DRAW no lugar de GL_DYNAMIC_DRAW.</string>
   <key>RenderQualityPerformance</key>
   <string>Quais configurações gráficas você escolheu. Não use esta configuração para alterar a qualidade diretamente pelas configurações de depuração.</string>
   <key>RenderReflectionDetail</key>
@@ -2173,16 +2159,8 @@
   <string>Mostrar avatares que ainda não terminaram de carregar.</string>
   <key>RenderUseFarClip</key>
   <string>Se falso, o culling de frustum ignorará o plano de far clip.</string>
-  <key>RenderUseStreamVBO</key>
-  <string>Usar VBOs para buffers de stream.</string>
   <key>RenderUseTriStrips</key>
   <string>OBSOLETO - agora sempre assumido como falso - Usar tiras de triângulos para renderizar prims.</string>
-  <key>RenderUseVAO</key>
-  <string>[EXPERIMENTAL] Usar GL Vertex Array Objects.</string>
-  <key>RenderVBOEnable</key>
-  <string>Usar GL Vertex Buffer Objects.</string>
-  <key>RenderVBOMappingDisable</key>
-  <string>Desativar VBO glMapBufferARB.</string>
   <key>RenderVSyncEnable</key>
   <string>Atualizar quadros entre as varreduras de exibição (FALSE = atualizar quadros o mais rápido possível).</string>
   <key>RenderVolumeLODFactor</key>

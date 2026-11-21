@@ -2545,7 +2545,7 @@
         <key>AlchemyRenderWaterWaves</key>
         <map>
             <key>Comment</key>
-            <string>Displace the water near the camera into waves, the heights integrated from the normal maps that shade it, so the surface's crests lie where its shading's are. Needs tessellation (OpenGL 4.0).</string>
+            <string>Displace the water near the camera into 3D waves aligned with its shading. Waves can move the shoreline; disable for a flat water surface.</string>
             <key>Persist</key>
             <integer>1</integer>
             <key>Type</key>
@@ -4248,17 +4248,6 @@
             <string>Allows the Depth of Field focus to actively follow the mouse point</string>
             <key>Persist</key>
             <integer>0</integer>
-            <key>Type</key>
-            <string>Boolean</string>
-            <key>Value</key>
-            <integer>0</integer>
-        </map>
-        <key>RenderGLContext10bitSDR</key>
-        <map>
-            <key>Comment</key>
-            <string>[EXPERIMENTAL] - Use 10-bit SDR framebuffer if supported.</string>
-            <key>Persist</key>
-            <integer>1</integer>
             <key>Type</key>
             <string>Boolean</string>
             <key>Value</key>

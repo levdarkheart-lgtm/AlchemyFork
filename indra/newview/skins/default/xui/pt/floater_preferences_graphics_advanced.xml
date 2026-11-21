@@ -34,16 +34,13 @@
 	<text name="HardwareText">
 		Hardware
 	</text>
-	<check_box initial_value="true" label="Habilitar suporte para exibição HiDPI (é necessário reiniciar)" name="use HiDPI" tool_tip="Habilitar o OpenGL para Desenho de alta-resolução."/>
+	<check_box initial_value="true" label="Habilitar suporte para exibição HiDPI (é necessário reiniciar)" name="use HiDPI" tool_tip="Desenhar na resolução nativa do ecrã, incluindo ecrãs Retina."/>
 	<text name="antialiasing label">
 		Antialiasing:
 	</text>
 	<combo_box label="Antialiasing" name="fsaa">
 		<combo_box.item label="Desativado" name="FSAADisabled"/>
 	</combo_box>
-	<text name="antialiasing restart">
-		(reinicie para ativar)
-	</text>
 	<text name="MeshText">
 		Mesh
 	</text>
