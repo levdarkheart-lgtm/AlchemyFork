@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-520 -->
+<!-- next-defect-id: PPD-524 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12146,3 +12146,82 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 registered before corrective workflow edit during the owner's explicit build/publish request. Keep viewer deployment minimum26.0 and application source unchanged. Publication authorization covers required release build infrastructure; it does not close overall product gates or authorize billing/security changes.
 
 - 2026-11-19 SDK>=26.4 and actual-source Swift typecheck preflight implemented; exact old/new gate controls cover8version strings, demonstrating old false acceptance of26.0/26.3 and new rejection while26.4/26.4.1/26.5/27.0 pass. Actual local SDK26.5 Swift source typecheck and doctor exit0; ordinary harness33files and183tools(1optional skip) pass, whitespace0. Application tree unchanged. Hosted execution and publication stillpending; no runtime failure attribution.
+
+
+- 2026-11-21 Hosted44626887693 passes SDK/source typecheck, complete build/package/publication on2026-11-19; independent downloaded-package static verification passes2026-11-21. Deployment minimum26.0 and indra source unchanged. Owner runtime acceptance remains separate.
+
+## PPD-520 — Downloaded release license verification depends on runner source
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex release integrator
+- Discovered: 2026-11-19
+- Original reference: build_openhtj2k.sh emits the dependency receipt without license_sha256. verify_release.py can establish the packaged notice digest from receipt.source_dir/LICENSE on the build host, but cannot repeat that step from the downloaded embedded receipt alone when that source directory is absent.
+- Evidence: [Alpha7 release ledger](work/active/release-alpha7-20261119.md).
+- Next action: Preserve hosted provenance and original receipt unchanged; independently retrieve the LICENSE at pinned72ea0450d2b522a88e7dbb9c1a9c164fb029c1f2, compare its digest with the packaged notice and hosted report, and use a separately labeled derived receipt for local static reverification. A future tool repair should include the source license digest in newly built receipts and cover offline verification.
+- Verification: Source inspection confirms the portability gap. Hosted package/license validation has its original source and is not bypassed. No incorrect packaged license or viewer runtime failure is established. Alpha7 build remains pinned bd9306126c with application tree6cfca54e03 unchanged; no workflow cancellation/rebuild is needed for this supplementary verification path.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-19 registered during independent release review, before any derived-receipt workaround. This is a tooling evidence portability limit, distinct from the source/ARM64/signature/package gates and the unavailable original static archive on another machine. Do not mutate or relabel original hosted evidence.
+
+
+- 2026-11-21 Independent verification completes using pinned LICENSE and a separately labeled derived receipt; verify_release.py exits0. Published provenance remains unchanged, original hosted archive unavailable locally. Future emitted-receipt portability repair stillopen.
+
+## PPD-521 — Supplementary release check assumes public Swift helper exports
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex release integrator
+- Discovered: 2026-11-19
+- Original reference: The private Alpha7 independent-download checker incorrectly requires all8 Swift C ABI wrappers in nm -gU. Actual compiled bridge functions are internal/private; optimized viewer links retain6 production-used definitions, while the two wrappers referenced only by standalone tests are dead-stripped.
+- Evidence: [Alpha7 release ledger](work/active/release-alpha7-20261119.md); private original failed independent-download-verification.log and exact downloaded main SHAa7d59a48d0032434dfd82528fdbd534f46c3971b733d9a1c1fdfefe8168ca580. Source C++ consumers are llfloaterimsession.cpp and llappviewer.cpp; optimized -dead_strip is set by00-Common.cmake.
+- Next action: Preserve failed checker evidence; correct the supplementary check to require the6 actual production-used definitions from nm -m, exclude undefined references and retain exact-name matching. Rerun downloaded-package/source/license/IM-resource checks without changing the published application.
+- Verification: Original check exits1 only at the over-specified public export assertion; GitHub digest/checksum/source identity,346ARM64 binaries and strict downloaded signature checks already passed. Source and actual nm -m agree on all6 production functions. No missing production entry point, runtime translation regression or application repair is established.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-19 registered before correcting the private checker. The eight C ABI functions exist in the Swift source, but public symbol visibility and retention of two test-only wrappers are not product requirements. Keep the original failure; do not relabel it as a package or owner/runtime failure.
+
+
+- 2026-11-21 Corrected private checker completes on2026-11-21: six exact defined private/internal production ABI symbols pass, along with independent package/source/license/IM-resource checks. Initial over-specified failure retained; application unchanged.
+
+## PPD-522 — BoM mesh overlay breaks into camera-dependent polygon patches
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Codex rendering investigation
+- Discovered: 2026-11-21
+- Original reference: Owner reports a BoM overlay on a mesh attachment breaks up when the camera turns; screenshot shows sharply bounded surface patches. Original-viewer depth/alpha/culling behavior and exact asset material/layer topology remain to be inspected. No cause is established from the screenshot.
+- Evidence: [Capture and investigation ledger](work/active/bom-overlay-rendering-20261121.md).
+- Next action: Validate PPD-523 cross-family precision repair with native regression controls, then deliver an exact local candidate for owner testing. Competing-surface identity and incident attribution remain unproved; no depth bias or alpha workaround selected.
+- Verification: Exact unchanged69404 source7d607/exe1a875/OpenHTJ2K verified. Failed bounded3sSystemTrace(-9/63.259s/712839904bytes/TOC10) retained unusable. Owner-authorized restart7831 produces error-free early162–163 and late1327–1328 GPUTraceDocuments. Late Xcode replay visibly reproduces the overlay, with12commandbuffers/36renderencoders/3239draws/5dispatches. Draw16866 diffuse/geometry/frame/palette exported. Neighbor16844 is a different origin/25joints and must not be assumed the same surface. Requested numeric depth export actually savedPNG, so it is not float-depth evidence. Owner remains logged in; replay stopped. No incident repair verified yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 report registered before any code repair. Camera-dependent patches could arise from several depth/material/layer mechanisms; source and captured producer/consumer data must distinguish them. The failed attach trace is not usable proof of a captured problematic draw. Current69404 has no supported runtime one-shot capture arming path; preserve ordinary scene/settings/cache and use its existing startup-armed diagnostic path with owner's restart approval.
+
+## PPD-523 — Rigged shader families disagree on rebased position precision
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex rendering integrator
+- Discovered: 2026-11-21
+- Original reference: At1eb44bbd1bdc76d0100c75699bad1fb337e8cb45, class1/avatar/objectSkinV.glsl29–57 and109–124 explicitly require keeping vertex-varying coordinates avatar-local and transforming the large origin separately. Diffuse/material/alpha/fullbrightShiny use skinTransformH(modelview) then projection. Current Metal simple/material/bump/PBR reconstruct region-space position before matrix multiply, while shiny/legacy alpha/glow split the origin and local transforms. Algebraic equality does not guarantee equal F32 depth across passes.
+- Evidence: [BoM investigation and precision mapping](work/active/bom-overlay-rendering-20261121.md).
+- Next action: Test the captured inputs and actual native shader families; restore a consistent original-equivalent precision contract with meaningful cross-pass GPU controls. Keep attribution to PPD-522 separate until the offending competing draws and owner retest establish it.
+- Verification: Source divergence confirmed. Captured draw16866 inputs are exported privately and use legacy-alpha-skinned vertex shader; no production repair or owner verification yet. CPU F32 diagnostic shows differing depth in both directions, but is not GPU rasterization proof. Existing fast-math compilation and absent position-invariance annotations require explicit validation rather than an assumed guarantee.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before code repair. Retain PPD-522 as the owner incident with unproved causality. Original-source inspection establishes a precision contract rather than a reason to add depth bias or suppress the overlay. Raw geometry, textures, captures and derived images remain private/ignored.
+
+- 2026-11-21 actual M1Max production-VS fixture765checks: old35fail, helper-only30fail, invariance-only80fail, full firstcandidate0fail. Exact32bitdepth/coplanar errors with all independent geometry/front-behind controls passing establish the source mechanism. Independent test/source review passes and finds2animated producer entries missing the helper; root corrects them before final build/retest. Firstcandidate is not yet a source-pinned complete viewer, and PPD-522 owner cause/closure remain pending.

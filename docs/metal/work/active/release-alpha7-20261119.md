@@ -46,3 +46,63 @@ Some tooling tests intentionally print negative fixture source-scan failures;
 the actual unittest runner reports OK, not a failed gate. PPD-519 remains
 ready_for_owner until hosted preflight evidence is added. Application tree6cf…
 is unchanged. Exact commands and logs stay in the private artifact directory.
+
+
+## Pinned hosted build
+
+Preparation commit bd9306126cea3156e7a4cf57947773185fdc0499 (revision69412)
+was pushed normally to codex/apple-silicon-metal; independent remote-ref read
+matches it. Application tree remains6cfca54e0398bb26d97ac33c39941a3ead123512.
+Explicit dispatch uses that branch's updated workflow plus source_ref equal to
+the full commit, alpha_number7 and release_tag26.4.0.69412-alpha7. Run
+[44626887693](https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/44626887693)
+is in progress and has passed source checkout/identity and Apple toolchain.
+No release is published yet. Raw status and request receipt remain private.
+
+Independent review discovers PPD-520: the emitted OpenHT receipt omits the source
+license digest, so downloaded-package reverification cannot find its original
+runner source directory. Hosted verification can and does require the source
+LICENSE; this is not evidence of a bad packaged notice. Preserve all original
+provenance/receipt bytes, retrieve the exact pinned source LICENSE independently,
+and compare packaged/hosted/pinned digests before creating a separately labeled
+derived receipt for local reverification. Do not cancel or repin a valid build
+for this supplemental verification path. Future tooling portability repair is
+recorded separately; no application change or automatic closure.
+
+
+## Published package and independent verification completed
+
+Hosted44626887693 completed successfully: compile2026-11-19T22:20:57–23:24:41Z,
+package23:24:41–23:29:46Z, publication23:29:46–23:30:01Z. Published prerelease
+[26.4.0.69412-alpha7](https://github.com/levdarkheart-lgtm/AlchemyFork/releases/tag/26.4.0.69412-alpha7)
+is release452061721, published23:30:00Z, tag exactlybd9306126cea3156e7a4cf57947773185fdc0499.
+Default main remains65c39b7bad928e165f1acdc0cbf39478e017ef1d. No tag rewrite.
+Hosted Xcode26.6/SDK26.5, sole OpenHTJ2K0.27.0 source72ea0450d2b522a88e7dbb9c1a9c164fb029c1f2,
+strict production GL audit, tests183(1optional skip), ARM64/package/signatures pass.
+Actual warnings are existing SKY_MAX_METEORS, duplicate archives and packaging
+strip invalidating the old signature before resealing; final app/ZIP signatures pass.
+
+All three assets were independently downloaded and matched fresh GitHub asset
+IDs, sizes and SHA256 digests, with a new completion receipt on2026-11-21:
+alpha7-static-completion-receipt-20261121.json SHA256
+8dc98b96893f06a6911854e6f49f2851959e6b523efbf0f9d7715453538a34ee.
+ZIP319491898bytes SHA256521467e5c207a790b18cb6a000940f92120a5b3b05676f4815cd122bcf2f761d.
+Main executable SHA256a7d59a48d0032434dfd82528fdbd534f46c3971b733d9a1c1fdfefe8168ca580.
+Published build-provenance.json remains byte-identical SHA256
+4dae26648f24336b51061a161b1a8955c831ec2ad94e8e05cc0026d9b5505855.
+Fresh static checks pass346ARM64 Mach-O files, strict signature, all6production
+Swift C ABI definitions (including private/internal), AppKit/SwiftUI/Translation/
+NaturalLanguage, Swift runtime RPATH, minimumOS26.0 and exact pinned IM XML.
+
+PPD-521 retains the initial checker failure: nm-gU incorrectly expected8public
+exports, including2test-only wrappers normally dead-stripped. Corrected checker
+uses defined exact production symbols from nm-m; no application repair needed.
+PPD-520 workaround retrieves LICENSE at immutable pinned source, compares it
+with hosted/packaged digest42d0a6780d64697987c5dfc4b1b0b42633c1bc1dbc2256be297107b33d000a57,
+and supplies a separately labeled derived receipt to verify_release.py (exit0).
+Original provenance/receipt is untouched; original hosted archive is unavailable
+on this Mac, so archive identity is not independently reconstructed. Future
+receipt portability repair remains open. Static verification does not establish
+normal Finder/clean-profile startup, runtime translation or decoder acceptance,
+or notarization. The ad-hoc signed Alpha7 release is built and published; this
+administrative completion does not close overall product gates.
