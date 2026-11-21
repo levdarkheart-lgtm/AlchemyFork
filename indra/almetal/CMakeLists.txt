@@ -414,7 +414,7 @@ if(AL_BUILD_TESTS)
       OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED YES)
     target_compile_options(almetal_rigged_depth_invariance_tests PRIVATE -fobjc-arc)
     target_link_libraries(almetal_rigged_depth_invariance_tests PRIVATE
-      ${AL_METAL_FRAMEWORK} "-framework Foundation")
+      al::flags ${AL_METAL_FRAMEWORK} "-framework Foundation")
     add_dependencies(almetal_rigged_depth_invariance_tests
       ${AL_METAL_BUILTIN_LIBRARY_TARGET})
     add_test(NAME almetal_rigged_depth_invariance

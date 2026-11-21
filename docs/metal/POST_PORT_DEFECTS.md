@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-525 -->
+<!-- next-defect-id: PPD-526 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12245,3 +12245,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 registered before correction. The failed docs check is distinct from the passing physical shader tests; no hidden bypass or release artifact change.
 
 - 2026-11-21 both relative links corrected; fresh ordinary harness passes33requiredfiles, whitespace0. No engine/owner closure inferred.
+
+
+## PPD-525 — New standalone depth fixture misses mandatory project flags target
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Codex rendering integrator
+- Discovered: 2026-11-21
+- Original reference: cmake/00-Common.cmake::al_check_flags_target requires every built target to link al::flags. New standalone almetal_rigged_depth_invariance_tests links only Metal/Foundation, causing configure to reject the target before compilation.
+- Evidence: [BoM investigation ledger](work/active/bom-overlay-rendering-20261121.md); private bom-overlay-depth-20261121/configure.log retains initial exit1 and exact missing target.
+- Next action: Link the mandatory al::flags target, rerun configure and compile the fixture with actual project flags, then execute exact-library GPU checks. Preserve initial failure.
+- Verification: Standalone manual -Wall/-Wextra/-Werror compile and GPU controls pass as previously recorded, but first full project configure exits1. No compiled candidate viewer or owner acceptance is inferred from those independent fixture results.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 registered before repairing the target integration. Sole OpenHTJ2K identity was checked successfully during configure; this failure is the new test target, not decoder or viewer runtime.
