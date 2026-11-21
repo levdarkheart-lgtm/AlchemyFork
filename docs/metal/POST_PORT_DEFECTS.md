@@ -12198,10 +12198,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Owner reports a BoM overlay on a mesh attachment breaks up when the camera turns; screenshot shows sharply bounded surface patches. Original-viewer depth/alpha/culling behavior and exact asset material/layer topology remain to be inspected. No cause is established from the screenshot.
 - Evidence: [Capture and investigation ledger](work/active/bom-overlay-rendering-20261121.md).
-- Next action: Retain owner-accepted69417 and discriminating GPU controls. Reopen on recurrence; keep other asset/rigging causes separate. Await explicit owner approval before pushing this repair.
+- Next action: Retain owner-accepted69417 and all discriminating controls; reopen on recurrence. Owner explicitly approves commit and normal push of this accepted correction and records on2026-11-21. Other asset/rigging causes and future fixes remain separate.
 - Verification: Original69404 late GPUTraceDocument1327–1328 visibly reproduces the patching; failed SystemTrace and numeric-depth export limitations retained. Native precision repair under PPD-523 passes final765exact-depth checks and13focusedCTests. Owner logs into exact69417/source8f2e56b5db/exe0b8bab95fd3d on2026-11-21 and explicitly reports the problem fixed, answers Stays intact while rotating the camera, then repeats its fixed. Runtime window/version/PID39451 and sole OpenHT0.27.0 independently verified; STATE_STARTED at07:34:02Z. Login log through07:36:34Z contains140WARNING/0ERROR/FATAL. Existing asset/transport warnings are separate from this accepted visual repair.
 - Owner verification: passed
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -12211,6 +12211,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner verifies exact69417 after login: problem is fixed, camera-rotation overlay Stays intact, and repeats its fixed. Corrective GPU/build/static evidence retained; mark this scoped repair verified. Acceptance does not grant push approval or close other asset/rigging/product gates.
 
+- 2026-11-21 after confirming the overlay fixed, owner explicitly requests commit and push. Approval covers the accepted shader/compiler correction, synthetic GPU regression, supporting integration repairs and evidence records. Publish normally to codex/apple-silicon-metal; no default-branch merge, force push, release/tag replacement or private capture upload. This authorization does not close unrelated records.
+
 ## PPD-523 — Rigged shader families disagree on rebased position precision
 
 - Status: verified
@@ -12219,10 +12221,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: At1eb44bbd1bdc76d0100c75699bad1fb337e8cb45, class1/avatar/objectSkinV.glsl29–57 and109–124 explicitly require keeping vertex-varying coordinates avatar-local and transforming the large origin separately. Diffuse/material/alpha/fullbrightShiny use skinTransformH(modelview) then projection. Pre-repair Metal simple/material/bump/PBR reconstructed region-space position before matrix multiply, while shiny/legacy alpha/glow split the origin and local transforms. Algebraic equality does not guarantee equal F32 depth across passes.
 - Evidence: [BoM investigation and precision mapping](work/active/bom-overlay-rendering-20261121.md).
-- Next action: Retain owner-accepted69417 and discriminating GPU controls. Reopen on recurrence; keep other asset/rigging causes separate. Await explicit owner approval before pushing this repair.
+- Next action: Retain owner-accepted69417 and all discriminating controls; reopen on recurrence. Owner explicitly approves commit and normal push of this accepted correction and records on2026-11-21. Other asset/rigging causes and future fixes remain separate.
 - Verification: Shared split transforms plus preserved position invariance correct the source-confirmed precision divergence. Same actual9-VS GPU fixture765checks: old35fail/helper-only30fail/invariance-only80fail/final0fail,162ordered coplanar pairs; full69417Release0 and13focusedCTests0, including retained animated parity, native world and runtime shader reload. Owner confirms the camera-dependent overlay remains intact in the exact new candidate on2026-11-21. No depth bias, material/alpha mode, sorting, decoder or capture flag was used as a workaround.
 - Owner verification: passed
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -12235,6 +12237,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 owner verifies exact69417 after login: problem is fixed, camera-rotation overlay Stays intact, and repeats its fixed. Corrective GPU/build/static evidence retained; mark this scoped repair verified. Acceptance does not grant push approval or close other asset/rigging/product gates.
 
+- 2026-11-21 after confirming the overlay fixed, owner explicitly requests commit and push. Approval covers the accepted shader/compiler correction, synthetic GPU regression, supporting integration repairs and evidence records. Publish normally to codex/apple-silicon-metal; no default-branch merge, force push, release/tag replacement or private capture upload. This authorization does not close unrelated records.
+
 ## PPD-524 — Investigation snapshot copies two links with the wrong relative base
 
 - Status: ready_for_owner
@@ -12246,7 +12250,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Correct those two active-ledger links to sibling file paths and rerun the ordinary harness; preserve the failed result. No engine change or owner runtime attribution.
 - Verification: First ordinary harness fails with exactly two stale Markdown links; the later commit command ran despite that failure and did not make it a passing result. Link correction and fresh validation required before delivery.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -12254,6 +12258,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 both relative links corrected; fresh ordinary harness passes33requiredfiles, whitespace0. No engine/owner closure inferred.
 
+
+- 2026-11-21 after confirming the overlay fixed, owner explicitly requests commit and push. Approval covers the accepted shader/compiler correction, synthetic GPU regression, supporting integration repairs and evidence records. Publish normally to codex/apple-silicon-metal; no default-branch merge, force push, release/tag replacement or private capture upload. This authorization does not close unrelated records.
 
 ## PPD-525 — New standalone depth fixture misses mandatory project flags target
 
@@ -12266,10 +12272,12 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain required al::flags linkage and the initial configure failure; source-pinned full build and CTest now pass. Owner candidate acceptance remains pending; no additional flags-target repair is needed.
 - Verification: Standalone manual -Wall/-Wextra/-Werror compile and GPU controls pass as previously recorded, but first full project configure exits1. No compiled candidate viewer or owner acceptance is inferred from those independent fixture results.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-21 registered before repairing the target integration. Sole OpenHTJ2K identity was checked successfully during configure; this failure is the new test target, not decoder or viewer runtime.
 
 - 2026-11-21 configure-03 uses existing isolated Python with yaml/llsd and exits0, restoring peer/compiler tests. Full repository Release build0 and actual CMake-built standalone fixture765checks0fail prove mandatory project flags compile/link/run correctly. New source8f2e56b5db/build69417; initial configure1 retained.
+
+- 2026-11-21 after confirming the overlay fixed, owner explicitly requests commit and push. Approval covers the accepted shader/compiler correction, synthetic GPU regression, supporting integration repairs and evidence records. Publish normally to codex/apple-silicon-metal; no default-branch merge, force push, release/tag replacement or private capture upload. This authorization does not close unrelated records.

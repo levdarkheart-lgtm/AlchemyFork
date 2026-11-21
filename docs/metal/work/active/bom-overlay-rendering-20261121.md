@@ -256,3 +256,25 @@ decode failure), legacy teleport path1, different selected-parcel reply3.
 Existing17HTTP403 texture chains/nine status-1materials/tenHTTPtimeouts remain
 separate;16textures/all9materials match prior session privately. No link to
 the overlay is established. This source review does not close transport causes.
+
+
+## Owner-authorized publication —2026-11-21
+
+After the owner confirms the overlay is fixed in exact69417 and answers that it
+stays intact during camera rotation, the owner explicitly requests “commit and
+push”. PPD-522/523 push approval is granted; supporting PPD-524/525 integration
+repair records are included without changing their separate closure status.
+The coherent outgoing checkpoint includes the synthetic GPU regression, shared
+rigged transforms, compiler invariance, CMake integration, retained failures,
+owner acceptance and already-authorized Alpha7 static-verification records.
+No additional application behavior is introduced after the owner-tested source.
+The application tree remains05091a15a707be1694ac37495414c42d90cbe951.
+
+Publish via normal git push origin HEAD:refs/heads/codex/apple-silicon-metal,
+after fresh remote fetch, scope/privacy review, unchanged application-tree
+check, ordinary harness and whitespace validation. Raw GPU captures, screenshots,
+logs, private receipts and the nested worktrees directory are not staged. Keep
+Alpha7 tag/source/publication and the default branch unchanged. Store exact
+command results and independent remote-ref equality receipt under ignored
+artifacts/metal/bom-overlay-depth-20261121/publication-20261121. This request
+covers this accepted checkpoint; future fixes still need owner approval.
