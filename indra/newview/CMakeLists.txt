@@ -2948,6 +2948,46 @@ if(AL_BUILD_TESTS)
   )
   if(DARWIN AND Python3_Interpreter_FOUND)
     find_package(Threads REQUIRED)
+    set(texture_scheduling_source "${CMAKE_CURRENT_BINARY_DIR}/texture_scheduling_generated.cpp")
+    add_custom_command(OUTPUT "${texture_scheduling_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/texture_scheduling_contract_test.py"
+        --emit-source "${texture_scheduling_source}"
+      DEPENDS lltexturecache.cpp lltexturefetch.cpp llviewertexturelist.cpp
+        tests/texture_scheduling_contract_test.py tests/texture_scheduling_fixture.cpp
+      VERBATIM)
+    add_executable(altexture_scheduling_tests "${texture_scheduling_source}")
+    target_link_libraries(altexture_scheduling_tests PRIVATE al::flags)
+    add_test(NAME newview/texture_scheduling COMMAND altexture_scheduling_tests)
+    set_tests_properties(newview/texture_scheduling PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+
+    file(GLOB native_graphics_localized_resources CONFIGURE_DEPENDS
+      "skins/default/xui/*/floater_preferences_graphics_advanced.xml"
+      "skins/default/xui/*/settings_comments.xml")
+    set(native_graphics_preferences_source "${CMAKE_CURRENT_BINARY_DIR}/native_graphics_preferences_generated.cpp")
+    add_custom_command(OUTPUT "${native_graphics_preferences_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_graphics_preferences_test.py"
+        --emit-source "${native_graphics_preferences_source}"
+      DEPENDS llfloaterpreferencesgraphicsadvanced.cpp llfloaterpreference.cpp
+        llfloaterperformance.cpp llpresetsmanager.cpp app_settings/settings.xml
+        app_settings/settings_alchemy.xml featuretable.txt featuretable_mac.txt
+        skins/default/xui/en/panel_preferences_graphics.xml
+        skins/default/xui/en/floater_preferences_graphics_advanced.xml
+        skins/default/xui/en/panel_lightbox_scene.xml
+        ${native_graphics_localized_resources}
+        tests/native_graphics_preferences_test.py tests/native_graphics_preferences_fixture.cpp
+      VERBATIM)
+    add_executable(alnative_graphics_preferences_tests "${native_graphics_preferences_source}")
+    target_link_libraries(alnative_graphics_preferences_tests PRIVATE al::flags llcommon)
+    add_test(NAME newview/native_graphics_preferences COMMAND alnative_graphics_preferences_tests)
+    set_tests_properties(newview/native_graphics_preferences PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+    foreach(contract_target altexture_scheduling_tests alnative_graphics_preferences_tests)
+      target_compile_options(${contract_target} PRIVATE
+        -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+      target_link_options(${contract_target} PRIVATE -fsanitize=address,undefined)
+    endforeach()
+
     # Exercise the real send body while capturing network and local-echo
     # boundaries, so the original wording can never leak into IM packets.
     set(native_im_echo_source "${CMAKE_CURRENT_BINARY_DIR}/native_im_echo_generated.cpp")
