@@ -92,6 +92,41 @@ namespace
     }
 
     //save settings to files
+    TEST_CASE_METHOD(control_group, "control_group: explicit retirement skips old keys and preserves unknown profile values",
+                     "[control_group]")
+    {
+        LLSD profile;
+        for (const char* name : {"RetiredBackend", "UnrecognizedFutureFeature", "LiveQuality"})
+        {
+            profile[name]["Comment"] = "Saved profile contract";
+            profile[name]["Type"] = "U32";
+            profile[name]["Value"] = 17;
+        }
+        writeSettingsFile(profile);
+        mCG->retireControl("RetiredBackend");
+        mCG->declareU32("LiveQuality", 3, "Existing quality setting");
+        CHECK(mCG->loadFromFile(mTestConfigFile) == 2);
+        CHECK_FALSE(mCG->controlExists("RetiredBackend"));
+        CHECK(mCG->getU32("LiveQuality") == 17);
+        CHECK(mCG->getU32("UnrecognizedFutureFeature") == 17);
+
+        const auto saved = mTestConfigDir + "retired-roundtrip.xml";
+        mCleanups.push_back(saved);
+        CHECK(mCG->saveToFile(saved, true) == 2);
+        LLControlGroup roundtrip("retirement-roundtrip");
+        CHECK(roundtrip.loadFromFile(saved) == 2);
+        CHECK_FALSE(roundtrip.controlExists("RetiredBackend"));
+        CHECK(roundtrip.getU32("LiveQuality") == 17);
+        CHECK(roundtrip.getU32("UnrecognizedFutureFeature") == 17);
+
+        // Policy is scoped to the intended group. Notification/other groups
+        // retain their ordinary unknown-setting preservation behavior.
+        LLControlGroup independent("retirement-independent");
+        CHECK(independent.loadFromFile(mTestConfigFile) == 3);
+        CHECK(independent.getU32("RetiredBackend") == 17);
+    }
+
+    //save settings to files
     TEST_CASE_METHOD(control_group, "control_group: saveToFile writes a changed setting another group loads", "[control_group]")
     {
         int results = mCG->loadFromFile(mTestConfigFile.c_str());

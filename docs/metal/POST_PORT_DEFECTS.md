@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-542 -->
+<!-- next-defect-id: PPD-543 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -12567,3 +12567,20 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-21 discovered during PPD536 maintenance and registered before correction. Two callbacks capture panel this while destructor already disconnects the adjacent controls; include lifecycle regression in the native graphics preference fixture.
+
+## PPD-542 — Deleted backend settings are resurrected from saved profiles
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Settings persistence integrator
+- Discovered: 2026-11-21
+- Original reference: LLControlGroup intentionally preserves unknown saved settings for newer-viewer interoperability. Explicitly retired native-inapplicable options need a narrow group-owned exception while unrelated unknown settings and notification choices retain their contract.
+- Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); llcontrol.cpp1181–1228 auto-declares unknown user keys PERSIST_ALWAYS and saveToFile1027–1045 re-emits them.
+- Next action: Register exact retired backend names on Global before settings load, skip only those names before unknown-value preservation, and test saved-profile roundtrip plus independent control groups/unknown values. Keep backend-specific names out of the shared LLControlGroup implementation.
+- Verification: Source confirms XML deletion alone resurrects dummy controls from old saved profiles. No actual owner settings file is edited or parsed for this repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-21 found during536 cleanup before persistence repair. A narrow retirement API owned by the settings group is required; preserve unknown foreign/newer settings and notifications instead of globally disabling unknown preservation.

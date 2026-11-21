@@ -442,6 +442,13 @@ LLControlGroup::~LLControlGroup()
     cleanup();
 }
 
+void LLControlGroup::retireControl(const std::string& name)
+{
+    // Retirement is startup policy, never removal of a live signal source.
+    llassert_always(!controlExists(name));
+    mRetiredControls.insert(name);
+}
+
 static bool compareRoutine(settings_pair_t lhs, settings_pair_t rhs)
 {
     return lhs.second > rhs.second;
@@ -863,6 +870,12 @@ U32 LLControlGroup::loadFromFileLegacy(const std::string& filename, bool require
     {
         name = child_nodep->getName();
 
+        if (mRetiredControls.contains(name))
+        {
+            child_nodep = rootp->getNextChild();
+            continue;
+        }
+
         bool declared = controlExists(name);
 
         if (require_declaration && !declared)
@@ -1115,6 +1128,8 @@ U32 LLControlGroup::loadFromFile(const std::string& filename, bool set_default_v
             }
             continue;
         }
+
+        if (mRetiredControls.contains(name)) continue;
 
         if(control_map.has("Persist"))
         {

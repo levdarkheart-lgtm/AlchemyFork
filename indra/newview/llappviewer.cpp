@@ -3039,6 +3039,17 @@ bool tempSetControl(const std::string& name, const std::string& value)
 
 bool LLAppViewer::initConfiguration()
 {
+    // Unknown newer-viewer settings remain preserved. These exact backend
+    // options were deliberately retired and must not return as editable dummy
+    // controls when an existing profile is loaded.
+    for (const char* name : {
+            "RenderVBOEnable", "RenderVBOMappingDisable", "RenderUseStreamVBO",
+            "RenderUseVAO", "RenderPreferStreamDraw", "RenderDownScaleMethod",
+            "RenderGLMultiThreadedTextures", "RenderGLContextCoreProfile",
+            "RenderMaxOpenGLVersion", "RenderGLContext10bitSDR",
+            "RenderNsightDebugSupport"})
+        gSavedSettings.retireControl(name);
+
     // Load settings files list
     std::string settings_file_list = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "settings_files.xml");
     LLXMLNodePtr root;

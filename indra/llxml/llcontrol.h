@@ -176,6 +176,7 @@ protected:
     static const std::string mTypeString[TYPE_COUNT];
 
     std::set<std::string> mIncludedFiles;
+    std::set<std::string, std::less<>> mRetiredControls;
 
 public:
     static eControlType typeStringToEnum(const std::string& typestr);
@@ -184,6 +185,11 @@ public:
     LLControlGroup(const std::string& name);
     ~LLControlGroup();
     void cleanup();
+
+    // Register names before loading this group's defaults/user profile.
+    // Unlike unknown newer-viewer settings, explicitly retired controls must
+    // not be recreated or persisted by loading an older saved profile.
+    void retireControl(const std::string& name);
 
     LLControlVariablePtr getControl(std::string_view name);
 
