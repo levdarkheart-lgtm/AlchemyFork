@@ -2972,7 +2972,7 @@ if(AL_BUILD_TESTS)
       DEPENDS llfloaterpreferencesgraphicsadvanced.cpp llfloaterpreference.cpp
         llfloaterperformance.cpp llpresetsmanager.cpp app_settings/settings.xml
         app_settings/settings_alchemy.xml featuretable.txt featuretable_mac.txt
-        skins/default/xui/en/panel_preferences_graphics.xml
+        skins/default/xui/en/panel_preferences_graphics1.xml
         skins/default/xui/en/floater_preferences_graphics_advanced.xml
         skins/default/xui/en/panel_lightbox_scene.xml
         ${native_graphics_localized_resources}
