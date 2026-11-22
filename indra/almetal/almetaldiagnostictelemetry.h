@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace ALMetalDiagnosticTelemetry
@@ -73,6 +74,7 @@ struct Statistics
 bool start(const Config& config, std::string* error = nullptr) noexcept;
 void stop() noexcept;
 bool enabled() noexcept;
+std::uint64_t activeSessionId() noexcept;
 Statistics statistics() noexcept;
 
 // Nanoseconds from system mach_absolute_time, also the documented GPUStartTime
@@ -90,6 +92,63 @@ void recordMetrics(FrameTag frame, const char* static_name,
                    const std::array<std::uint64_t, 8>& values) noexcept;
 void recordMarker(const char* static_name, FrameTag frame,
                   std::uint64_t reason = 0) noexcept;
+
+// Main-owner diagnostic observations only. No input text, key values or
+// coordinates enter the stream. SDL's event clock is calibrated with a
+// caller-supplied Mach bracket around SDL_GetTicksNS, never assumed identical.
+struct InputObservation
+{
+    std::uint64_t session_id = 0, sequence = 0;
+    std::uint64_t event_mach_lower_ns = 0, event_mach_upper_ns = 0;
+    std::uint64_t dispatch_end_ns = 0;
+    std::uint32_t kind = 0; // 1 motion, 2 button, 3 wheel, 4 keyboard.
+};
+InputObservation recordInputDispatch(std::uint64_t expected_session, std::uint32_t kind,
+    std::uint64_t event_sdl_ns, std::uint64_t sample_sdl_ns,
+    std::uint64_t mach_before_ns, std::uint64_t mach_after_ns,
+    std::uint64_t dispatch_begin_ns, std::uint64_t dispatch_end_ns) noexcept;
+InputObservation latestInputObservation() noexcept;
+
+struct ViewObservation
+{
+    std::uint64_t session_id = 0, sequence = 0;
+    FrameTag frame;
+    InputObservation input;
+    std::uint64_t modelview_identity = 0, projection_identity = 0;
+    bool camera_changed = false;
+};
+// Record the actual camera matrices paired with a main view, not an arbitrary
+// object's model transform. Raw component bits permit independent exact
+// identity checks; a changed camera is not itself proof of an input cause.
+ViewObservation recordViewCamera(FrameTag frame, std::uint64_t group,
+    std::span<const float,16> modelview, std::span<const float,16> projection) noexcept;
+ViewObservation latestViewObservation() noexcept;
+struct PresentationSourceObservation
+{
+    std::uint64_t session_id = 0;
+    FrameTag frame;
+    std::uint64_t source_frame = UINT64_MAX;
+    std::uint64_t color_identity = 0, color_generation = 0;
+    std::uint64_t depth_identity = 0, depth_generation = 0;
+    std::uint64_t surface_generation = 0;
+    bool selected = false;
+};
+// Actual immutable UI background selected by its existing owner, which can
+// be an older world or cleared loading backing. No attempted-camera fallback.
+void recordPresentationSource(PresentationSourceObservation source) noexcept;
+PresentationSourceObservation latestPresentationSource() noexcept;
+// Session-qualified asynchronous metric publication; late callbacks cannot
+// enter a subsequently started diagnostic session.
+void recordSessionMetrics(std::uint64_t session_id, FrameTag frame,
+    const char* static_name, const std::array<std::uint64_t,8>& values) noexcept;
+struct ProcessMemoryObservation
+{
+    std::uint64_t sampled_mach_ns = 0, physical_footprint_bytes = 0;
+    std::uint64_t sampling_ns = 0;
+    bool valid = false;
+};
+// Explicit sparse owner sampling; cached for100ms, and no syscall when OFF.
+ProcessMemoryObservation sampleProcessMemory() noexcept;
 
 // Device integration only. Tokens contain no native/asset pointers and do not
 // own a Metal object. Event timestamps are CPU observation boundaries; GPU

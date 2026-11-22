@@ -68,6 +68,7 @@ HttpRequest::HttpRequest()
 
 HttpRequest::~HttpRequest()
 {
+    setReplyNotification({});
     if (mRequestQueue)
     {
         mRequestQueue->release();
@@ -75,6 +76,36 @@ HttpRequest::~HttpRequest()
     }
 
     mReplyQueue.reset();
+}
+
+void HttpRequest::setReplyNotification(std::function<void()> notification)
+{
+    mReplyQueue->setReplyNotification(std::move(notification));
+}
+
+std::optional<std::chrono::nanoseconds> HttpRequest::currentReplyQueueAge() const
+{
+    if (!mCurrentReplyQueuedAt) return std::nullopt;
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - *mCurrentReplyQueuedAt);
+}
+
+void HttpRequest::dispatchReply(const std::shared_ptr<HttpOperation>& op)
+{
+    // Restore even if a handler throws (or performs a nested update), so a later
+    // call cannot accidentally measure the previous reply.
+    const auto previous = mCurrentReplyQueuedAt;
+    mCurrentReplyQueuedAt = op->mReplyQueuedAt;
+    try
+    {
+        op->visitNotifier(this);
+    }
+    catch (...)
+    {
+        mCurrentReplyQueuedAt = previous;
+        throw;
+    }
+    mCurrentReplyQueuedAt = previous;
 }
 
 
@@ -420,7 +451,7 @@ HttpStatus HttpRequest::update(long usecs)
         while (limit >= totalTime() && (op = mReplyQueue->fetchOp()))
         {
             // Process operation
-            op->visitNotifier(this);
+            dispatchReply(op);
 
             // We're done with the operation
             op.reset();
@@ -442,13 +473,38 @@ HttpStatus HttpRequest::update(long usecs)
                 op.swap(*iter);
 
                 // Process operation
-                op->visitNotifier(this);
+                dispatchReply(op);
 
                 // We're done with the operation
             }
         }
     }
 
+    return HttpStatus();
+}
+
+HttpStatus HttpRequest::update(long usecs, size_t max_replies)
+{
+    if (!max_replies) return update(usecs);
+    using Clock = std::chrono::steady_clock;
+    const auto deadline = usecs > 0 ? Clock::now() + std::chrono::microseconds(usecs) : Clock::time_point::max();
+    size_t dispatched = 0;
+    try
+    {
+        while (dispatched < max_replies && (dispatched == 0 || Clock::now() < deadline))
+        {
+            auto op = mReplyQueue->fetchOp();
+            if (!op) break;
+            ++dispatched;
+            dispatchReply(op);
+        }
+    }
+    catch (...)
+    {
+        mReplyQueue->notifyIfPending();
+        throw;
+    }
+    mReplyQueue->notifyIfPending();
     return HttpStatus();
 }
 

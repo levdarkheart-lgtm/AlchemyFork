@@ -959,8 +959,8 @@ TEST_CASE("Forward lighting isolates reused probe packs across pending views and
     {
         Fixture f;
         Inputs input(f, {false, false, false, false, true, 97, 65});
-        // The left quad consumes the common forward pack at fragment slot 1;
-        // the right quad consumes simple-alpha lighting at fragment slot 3.
+        // Both shiny and simple-alpha consume the forward pack at fragment
+        // slot 1. The above-water slot-3 consumer has a separate test below.
         // Their outer quarters do not overlap, so both bindings have an
         // independent visible response to the two authored packs below.
         auto& shiny = input.batches[0];
@@ -1077,6 +1077,202 @@ TEST_CASE("Forward lighting isolates reused probe packs across pending views and
                     REQUIRE(f.device->waitUntilIdle(&f.error));
                     CHECK(first_completion->isComplete());
                     CHECK(second_completion->isComplete());
+                    for (unsigned view = 0; view < pending.size(); ++view)
+                        CHECK(f.read(*pending[view].output) == expected[view]);
+                }
+    }
+}
+
+TEST_CASE("Above-water probe binding restores alpha and isolates pending view packs",
+          "[almetal][probe-candidate-transparency][lighting-data][PPD-567][PPD-582]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        Inputs input(f, {false, false, false, false, true, 97, 65});
+        auto& shiny = input.batches[0];
+        shiny.pre_water_alpha = shiny.pre_water_simple = false;
+        shiny.pre_water_shadows = false;
+        shiny.impostor_shiny = true;
+        auto& alpha = input.batches[1];
+        alpha.pre_water_alpha = false;
+        alpha.post_water_alpha = true;
+        // Replace destination color so a visible right-hand alpha receiver
+        // must match its independent no-water reference exactly. Water and
+        // shiny cannot hide a failure to restore alpha's probe buffer 1.
+        alpha.pre_water_source_rgb = ALMetalBlendFactor::one;
+        alpha.pre_water_destination_rgb = ALMetalBlendFactor::zero;
+        input.environment.water_fog[2] = 1.f;
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rg32_float;
+        auto cells = ALMetalTexture::create(*f.device, descriptor, &f.error);
+        REQUIRE(cells);
+        descriptor.format = ALMetalPixelFormat::rgba16_float;
+        auto normal = ALMetalTexture::create(*f.device, descriptor, &f.error);
+        REQUIRE(normal);
+        auto upload = f.device->makeCommandBuffer("Pending-view water inputs", &f.error);
+        REQUIRE(upload);
+        const std::array<float, 2> height{0.f, 1.f};
+        const Pixel flat_normal{0x3800, 0x3800, 0x3c00, 0x3c00};
+        REQUIRE(cells->upload(*upload, 0, 0, {}, height.data(), sizeof(height), &f.error));
+        REQUIRE(normal->upload(*upload, 0, 0, {}, flat_normal.data(), sizeof(flat_normal), &f.error));
+        REQUIRE(upload->commitAndWait(&f.error));
+
+        ALMetalWorldWaterSurface water;
+        auto& field = water.field;
+        field.cell_map = cells.get();
+        field.above_water = true;
+        identity(field.modelview_projection);
+        field.modelview_projection[0] = field.modelview_projection[5] = .25f;
+        field.modelview_projection[14] = .9f; // Behind the authored alpha receivers.
+        field.cell_square[0] = field.cell_square[1] = -4.f;
+        field.cell_square[2] = 8.f;
+        field.cell_square[3] = 1.f;
+        field.rings[0] = 4.f;
+        field.rings[1] = 1.f;
+        field.rings[2] = 4.f;
+        field.water_plane[2] = field.fog[0] = 1.f;
+        field.draws[0] = {0u, 4u, 1u, true};
+        field.draws[1] = {1u, 9u, 12u, false};
+        field.draws[2] = {2u, 9u, 4u, false};
+        field.draw_count = 3;
+        identity(water.modelview);
+        water.modelview[14] = -5.f;
+        water.eye_position[2] = 5.f;
+        for (unsigned axis = 0; axis < 3; ++axis)
+        {
+            water.normal_matrix[axis][axis] = 1.f;
+            water.normal_scale_glint[axis] = 2.f;
+        }
+        water.normal_scale_glint[3] = 1.f;
+        water.optics[1] = 1.f;
+        water.optics[2] = .7f;
+        water.light_direction[2] = 1.f;
+        water.normal_maps = {normal.get(), normal.get()};
+        water.water_far[0] = 10000.f;
+        water.parameters[2] = 1.f;
+        water.underwater = false;
+
+        ALMetalWorldSimpleBatch water_marker;
+        water_marker.water_surface = true;
+        const std::array<ALMetalWorldSimpleBatch, 3> batches{
+            shiny, water_marker, alpha};
+        input.scene.water_surface = &water;
+        std::array<ALMetalWorldReflectionProbeConstants, 2> packs{
+            input.probes.constants, input.probes.constants};
+        for (auto& parameters : packs[1].ref_params)
+        {
+            parameters[0] *= .125f;
+            parameters[1] *= .25f;
+        }
+        std::array<Planes, 2> expected, water_only, alpha_only;
+        for (unsigned view = 0; view < expected.size(); ++view)
+        {
+            input.probes.constants = packs[view];
+            input.scene.batches = &water_marker;
+            input.scene.batch_count = 1;
+            water_only[view] = input.render(false).planes;
+            input.scene.batches = &alpha;
+            input.scene.water_surface = nullptr;
+            alpha_only[view] = input.render(false).planes;
+            input.scene.batches = batches.data();
+            input.scene.batch_count = batches.size();
+            input.scene.water_surface = &water;
+            expected[view] = input.render(false).planes;
+        }
+        const Pixel seed{0x2800, 0x2c00, 0x3000, 0x3800};
+        unsigned changed_water = 0, changed_alpha = 0;
+        for (unsigned y = 0; y < input.cell.height; ++y)
+            for (unsigned x = 0; x < input.cell.width; ++x)
+            {
+                const auto pixel = std::size_t(y) * input.cell.width + x;
+                if (y < input.cell.height / 8)
+                {
+                    for (unsigned view = 0; view < expected.size(); ++view)
+                        CHECK(expected[view].color[pixel] == water_only[view].color[pixel]);
+                    changed_water += water_only[0].color[pixel] != water_only[1].color[pixel];
+                }
+                if (x >= 3 * input.cell.width / 4 &&
+                    y >= input.cell.height / 4 && y < 3 * input.cell.height / 4 &&
+                    alpha_only[0].color[pixel] != seed)
+                {
+                    for (unsigned view = 0; view < expected.size(); ++view)
+                        CHECK(expected[view].color[pixel] == alpha_only[view].color[pixel]);
+                    changed_alpha += alpha_only[0].color[pixel] != alpha_only[1].color[pixel];
+                }
+            }
+        REQUIRE(changed_water > 0);
+        REQUIRE(changed_alpha > 0);
+
+        struct PendingView
+        {
+            std::unique_ptr<ALMetalRenderTarget> gbuffer, composed, output;
+        };
+        std::uint64_t generation = 1000;
+        for (bool external_pages : {true, false})
+            for (bool separate_commands : {false, true})
+                for (bool prepared : {false, true})
+                {
+                    CAPTURE(external_pages, separate_commands, prepared);
+                    auto other = ALMetalWorldGBufferRenderer::create(
+                        *f.device, 1, f.renderer->shaderLibrary(), &f.error);
+                    INFO(f.error); REQUIRE(other);
+                    const auto pages = external_pages
+                        ? f.data : std::shared_ptr<ALMetalWorldFrameData>{};
+                    f.renderer->setFrameData(pages);
+                    other->setFrameData(pages);
+                    f.data->beginFrame(generation++);
+                    std::array<PendingView, 2> pending;
+                    for (auto& view : pending)
+                    {
+                        view.gbuffer = input.seeded(true);
+                        view.composed = input.seeded(false);
+                    }
+                    REQUIRE(f.renderer->beginCommandBatch("Pending water-probe view A", &f.error));
+                    if (separate_commands)
+                        REQUIRE(other->beginCommandBatch("Pending water-probe view B", &f.error));
+                    const auto first = f.renderer->commandBatchCompletion();
+                    const auto second = separate_commands ? other->commandBatchCompletion() : first;
+                    REQUIRE(first); REQUIRE(second);
+                    for (unsigned view = 0; view < pending.size(); ++view)
+                    {
+                        CHECK_FALSE(first->isComplete());
+                        CHECK_FALSE(second->isComplete());
+                        input.probes.constants = packs[view];
+                        auto scene = input.scene;
+                        scene.gbuffer = pending[view].gbuffer.get();
+                        scene.composed_lighting = pending[view].composed.get();
+                        scene.forward_probe_projection_valid = prepared;
+                        auto& owner = separate_commands && view ? *other : *f.renderer;
+                        const auto before = f.data->stats();
+                        std::uint32_t water_draws = 0;
+                        pending[view].output = owner.renderOpaquePostDeferred(scene, &f.error, &water_draws);
+                        INFO(f.error); REQUIRE(pending[view].output);
+                        CHECK(water_draws == field.draw_count);
+                        const auto diagnostics = owner.opaquePostDiagnostics();
+                        CHECK(diagnostics.probe_candidate_simple_batches ==
+                              (external_pages && prepared ? 1u : 0u));
+                        if (external_pages)
+                        {
+                            // Shiny, water and alpha must rebind one immutable
+                            // full pack, not repeat its content-dedup request.
+                            const auto after = f.data->stats();
+                            CHECK(after.reused_bytes - before.reused_bytes < sizeof(packs[0]));
+                            f.data->beginFrame(generation++);
+                        }
+                    }
+                    input.probes.constants = {};
+                    if (external_pages)
+                        CHECK(f.data->stats().retired_pages >= 2);
+                    CHECK_FALSE(first->isComplete());
+                    CHECK_FALSE(second->isComplete());
+                    if (separate_commands)
+                        REQUIRE(other->commitCommandBatch(&f.error));
+                    REQUIRE(f.renderer->commitCommandBatch(&f.error));
+                    REQUIRE(f.device->waitUntilIdle(&f.error));
+                    CHECK(first->isComplete());
+                    CHECK(second->isComplete());
                     for (unsigned view = 0; view < pending.size(); ++view)
                         CHECK(f.read(*pending[view].output) == expected[view]);
                 }

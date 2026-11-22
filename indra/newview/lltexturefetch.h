@@ -45,6 +45,7 @@
 #include "lltrace.h"
 #include "llviewertexture.h"
 #include <deque>
+#include <array>
 
 class LLViewerTexture;
 class LLTextureFetchWorker;
@@ -196,6 +197,18 @@ public:
     // Threads:  T*
     LLCore::HttpRequest & getHttpRequest()  { return *mHttpRequest; }
 
+    struct HttpReplyQueueStats
+    {
+        U64 samples = 0;
+        U64 min_ns = 0;
+        U64 max_ns = 0;
+        // bin0: <1us; bin n (1..30): [2^(n-1),2^n)us;
+        // bin31: >=2^30us. Observations, not a time-weighted work total.
+        std::array<U64, 32> age_histogram{};
+    };
+    // Aggregate only: no asset/request/account identity or payload. Any thread.
+    HttpReplyQueueStats getHttpReplyQueueStats();
+
     // Threads:  T*
     LLCore::HttpRequest::policy_t getPolicyClass() const { return mHttpPolicyClass; }
 
@@ -283,6 +296,8 @@ private:
 
     // Threads:  Ttf
     void commonUpdate();
+    void wakeHttpService() noexcept { requestThreadedUpdate(); }
+    void recordHttpReplyQueueAge(); // fetch callback entry, before its work mutex
 
     // Metrics command helpers
     /**
@@ -384,6 +399,8 @@ private:
     // to make our HTTP requests.  These replace the various
     // LLCurl interfaces used in the past.
     LLCore::HttpRequest *               mHttpRequest;                   // Ttf
+    LLMutex                             mHttpReplyStatsMutex;
+    HttpReplyQueueStats                  mHttpReplyStats;
     LLCore::HttpOptions::ptr_t          mHttpOptions;                   // Ttf
     LLCore::HttpOptions::ptr_t          mHttpOptionsWithHeaders;        // Ttf
     LLCore::HttpHeaders::ptr_t          mHttpHeaders;                   // Ttf

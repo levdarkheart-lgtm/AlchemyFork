@@ -1,0 +1,159 @@
+{
+  "contract": "alchemy-metal-diagnostic-admission-metrics",
+  "version": 1,
+  "wire_schema": 1,
+  "scope": "Production admission, gathered/adopted view, coarse input and actual selected-world presentation metrics. This field map does not redefine other quiet-telemetry metrics or private experiment additions.",
+  "envelope": {
+    "event": "metrics",
+    "name": "metric key below",
+    "values": "exactly eight unsigned 64-bit integers; index order below",
+    "identity": [
+      "session_id",
+      "sequence",
+      "mach_ns",
+      "frame_id",
+      "view_kind",
+      "view_index"
+    ],
+    "timestamp": "mach_ns is CPU enqueue observation time, not GPU execution or presentation time. Embedded interval endpoints have their own meaning.",
+    "sequence": "Producer attempt index; gaps can reflect loss and concurrent producers can enqueue out of sequence. Do not assume file order is global timestamp or operation order.",
+    "unknown": "Zero frame/command identity can mean unscoped; UINT64_MAX (18446744073709551615) is the cleared-world source sentinel. A failed validity flag is unknown, never a measured zero."
+  },
+  "unit_notes": {
+    "mach_ns": "mach_absolute_time converted to integer nanoseconds",
+    "sdl_ns": "SDL_GetTicksNS domain; requires bracketed conversion",
+    "host_ns": "CACurrentMediaTime/MTLDrawable.presentedTime domain; requires bracketed conversion",
+    "duration_ns": "elapsed wall nanoseconds, except explicitly named thread CPU",
+    "bool": "0 or 1",
+    "cumulative_count": "monotonic owner-lifetime counter; use valid ordered deltas, not totals as per-frame work",
+    "identifiers": "Opaque numeric identities, not pointers or globally unique IDs. Scope as specified below."
+  },
+  "enums": {
+    "input_kind": {
+      "1": "motion",
+      "2": "button",
+      "3": "wheel",
+      "4": "keyboard"
+    },
+    "phase": {
+      "0": "other",
+      "1": "G-buffer",
+      "2": "lighting",
+      "3": "post"
+    },
+    "command_status": {
+      "0": "not_enqueued",
+      "1": "enqueued",
+      "2": "committed",
+      "3": "scheduled",
+      "4": "completed",
+      "5": "error",
+      "6": "unknown"
+    },
+    "memory_boundary": {
+      "0": "before required-main wait",
+      "1": "after required-main wait",
+      "2": "ordinary main admission attempt"
+    },
+    "page_scope": {
+      "1": "shared FrameData",
+      "2": "distinct lighting FrameData"
+    },
+    "destination_slot": {
+      "0": "color0",
+      "1": "color1",
+      "2": "color2",
+      "3": "color3",
+      "4": "depth/stencil"
+    },
+    "ui_end_state": {
+      "0": "INACTIVE",
+      "1": "SOURCE_INCOMPLETE",
+      "2": "CAPTURE_INCOMPLETE",
+      "3": "EMPTY",
+      "4": "COMMAND_SUBMISSION_FAILED",
+      "5": "SURFACE_SUBMISSION_FAILED",
+      "6": "COMPLETE"
+    }
+  },
+  "metrics": {
+    "input_dispatch": ["input_sequence", "coarse_kind_1_motion_2_button_3_wheel_4_keyboard", "SDL_event_ns", "SDL_sample_ns", "Mach_before_ns", "Mach_after_ns", "dispatch_begin_Mach_ns", "dispatch_end_Mach_ns"],
+    "view_input": ["view_sequence", "logical_group", "previous_view_latest_input_sequence", "current_latest_input_sequence", "latest_event_Mach_lower_ns", "latest_event_Mach_upper_ns", "latest_dispatch_end_Mach_ns", "latest_input_session_matches"],
+    "view_camera": ["view_sequence", "logical_group", "modelview_identity_fnv_u32", "projection_identity_fnv_u32", "previous_camera_known", "exact_32_component_bits_changed", "all_32_components_finite", "reserved"],
+    "view_camera_bits": ["view_sequence", "first_component_index", "component_u32_0", "component_u32_1", "component_u32_2", "component_u32_3", "component_u32_4", "component_u32_5"],
+    "main_admission_block": ["block_sequence", "requested_group", "blocking_group", "phase_1_gbuffer_2_lighting_3_post_0_other", "pending_groups", "pending_submissions", "reservations", "configured_group_cap"],
+    "main_admission_target": ["block_sequence", "admission_ticket", "command_creation_session", "command_id", "command_status_enum", "command_is_committed", "ticket_blocks_this_group", "command_token_active"],
+    "main_admission_target_truncated": ["block_sequence", "actual_pending_count", "recorded_limit_16", "reserved", "reserved", "reserved", "reserved", "reserved"],
+    "main_admission_unblock": ["block_sequence", "requested_group", "blocking_group", "observer_entry_Mach_ns", "post_wait_observed_Mach_ns", "wrapper_wait_wall_ns", "wrapper_wait_thread_CPU_ns", "thread_CPU_valid"],
+    "main_admission_observer": ["block_sequence", "pre_observer_start_Mach_ns", "pre_observer_end_Mach_ns", "post_observer_start_Mach_ns", "post_observer_end_Mach_ns", "reserved", "reserved", "reserved"],
+    "main_group_command": ["logical_group", "admission_ticket", "command_id", "phase_1_gbuffer_2_lighting_3_post_0_other", "pending_groups", "pending_submissions", "reservations", "configured_group_cap"],
+    "view_scene_gathered": ["requested_group", "batch_count", "reference_count", "cohort_count", "draw_order_count", "source_owner_exists", "CPU_owner_exists", "destination_exists"],
+    "view_destination_generation": ["requested_group", "slot_0_to_3_color_4_depth", "backing_ID", "generation", "view_valid", "canIssueGeneration_at_observation", "reserved", "reserved"],
+    "view_inputs_adopted": ["view_sequence", "logical_group", "view_epoch", "adopt_start_Mach_ns", "adopt_end_Mach_ns", "adopt_succeeded", "resource_lease_exists", "draw_count"],
+    "view_inputs_encoded": ["view_sequence", "logical_group", "view_epoch", "encode_start_Mach_ns", "encode_end_Mach_ns", "target_succeeded", "owned_inputs_present", "reserved"],
+    "admission_memory": ["block_sequence_0_for_nonblocked_boundary", "boundary_0_before_wait_1_after_wait_2_ordinary_admission", "task_sample_Mach_ns", "physical_footprint_bytes", "task_info_valid", "MTLDevice_currentAllocatedSize_bytes", "unique_owned_metal_reported_bytes", "task_info_sampling_ns"],
+    "admission_target_pool": ["block_sequence", "boundary", "cached_targets", "cached_bytes", "dependency_deferrals_cumulative", "acquisitions_cumulative", "reuses_cumulative", "evictions_cumulative"],
+    "admission_frame_pages": ["block_sequence", "scope_1_shared_frame_data_2_distinct_lighting_data", "active_bytes", "retired_bytes", "available_bytes", "active_page_count", "retired_page_count", "any_storage_truncated_above_1024"],
+    "admission_memory_observer": ["block_sequence", "boundary", "full_observer_start_Mach_ns", "full_observer_end_Mach_ns", "reserved", "reserved", "reserved", "reserved"],
+    "ui_background_source": ["actual_source_frame_or_UINT64_MAX_cleared", "context_surface_generation", "color_backing_ID", "color_generation", "depth_backing_ID", "depth_generation", "selected", "cleared_sentinel"],
+    "ui_background_submission": ["actual_source_frame_or_UINT64_MAX", "presentation_requested", "surface_ready", "surface_submitted", "end_state_enum", "target_exists", "real_world_background", "context_surface_generation"],
+    "drawable_present_submit": ["command_id", "drawable_ID", "actual_surface_generation", "actual_source_frame", "source_not_cleared", "source_observation_frame", "current_frame", "source_matches_session_frame_surface"],
+    "drawable_source_identity": ["command_id", "drawable_ID", "color_backing_ID", "color_generation", "depth_backing_ID", "depth_generation", "selected_context_surface_generation", "cleared_sentinel"],
+    "drawable_host_clock": ["command_id", "drawable_ID", "Mach_before_ns", "CACurrentMediaTime_ns", "Mach_after_ns", "host_clock_valid", "drawable_width", "drawable_height"],
+    "drawable_presented": ["command_id", "drawable_ID", "actual_source_frame", "MTLDrawable_presentedTime_host_ns", "callback_observed_Mach_ns", "presented_time_valid", "current_frame", "source_matches_session_frame_surface"],
+    "view_gather_begin": ["reserved", "reserved", "reserved", "reserved", "reserved", "reserved", "reserved", "reserved"]
+  },
+  "units": {
+    "input_dispatch": ["serial", "input_kind", "sdl_ns", "sdl_ns", "mach_ns", "mach_ns", "mach_ns", "mach_ns"],
+    "view_input": ["serial", "group_id", "serial", "serial", "mach_ns", "mach_ns", "mach_ns", "bool"],
+    "view_camera": ["serial", "group_id", "fnv1a_u32_hash", "fnv1a_u32_hash", "bool", "bool", "bool", "reserved_zero"],
+    "view_camera_bits": ["serial", "component_index", "u32_bits", "u32_bits", "u32_bits", "u32_bits", "u32_bits", "u32_bits"],
+    "main_admission_block": ["serial", "group_id", "group_id", "phase", "count", "count", "count", "count"],
+    "main_admission_target": ["serial", "ticket_id", "session_id", "command_id", "command_status", "bool", "bool", "bool"],
+    "main_admission_target_truncated": ["serial", "count", "count", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero"],
+    "main_admission_unblock": ["serial", "group_id", "group_id", "mach_ns", "mach_ns", "duration_ns", "thread_cpu_ns", "bool"],
+    "main_admission_observer": ["serial", "mach_ns", "mach_ns", "mach_ns", "mach_ns", "reserved_zero", "reserved_zero", "reserved_zero"],
+    "main_group_command": ["group_id", "ticket_id", "command_id", "phase", "count", "count", "count", "count"],
+    "view_scene_gathered": ["group_id", "count", "count", "count", "count", "bool", "bool", "bool"],
+    "view_destination_generation": ["group_id", "destination_slot", "backing_id", "generation", "bool", "bool", "reserved_zero", "reserved_zero"],
+    "view_inputs_adopted": ["serial", "group_id", "view_epoch", "mach_ns", "mach_ns", "bool", "bool", "count"],
+    "view_inputs_encoded": ["serial", "group_id", "view_epoch", "mach_ns", "mach_ns", "bool", "bool", "reserved_zero"],
+    "admission_memory": ["serial", "memory_boundary", "mach_ns", "bytes", "bool", "bytes", "bytes", "duration_ns"],
+    "admission_target_pool": ["serial", "memory_boundary", "count", "bytes", "cumulative_count", "cumulative_count", "cumulative_count", "cumulative_count"],
+    "admission_frame_pages": ["serial", "page_scope", "bytes", "bytes", "bytes", "count", "count", "bool"],
+    "admission_memory_observer": ["serial", "memory_boundary", "mach_ns", "mach_ns", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero"],
+    "ui_background_source": ["frame_id_or_cleared", "generation", "backing_id", "generation", "backing_id", "generation", "bool", "bool"],
+    "ui_background_submission": ["frame_id_or_cleared", "bool", "bool", "bool", "ui_end_state", "bool", "bool", "generation"],
+    "drawable_present_submit": ["command_id", "drawable_id", "generation", "frame_id_or_cleared", "bool", "frame_id", "frame_id", "bool"],
+    "drawable_source_identity": ["command_id", "drawable_id", "backing_id", "generation", "backing_id", "generation", "generation", "bool"],
+    "drawable_host_clock": ["command_id", "drawable_id", "mach_ns", "host_ns", "mach_ns", "bool", "pixels", "pixels"],
+    "drawable_presented": ["command_id", "drawable_id", "frame_id_or_cleared", "host_ns", "mach_ns", "bool", "frame_id", "bool"],
+    "view_gather_begin": ["reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero", "reserved_zero"]
+  },
+  "sources": {
+    "wire_and_observations": "indra/almetal/almetaldiagnostictelemetry.mm: serialize, recordInputDispatch, recordViewCamera, recordPresentationSource, sampleProcessMemory",
+    "admission": "indra/almetal/almetalworld.cpp: observeMainAdmissionMemory, reserveMainFrame, beginMainFrameBatch",
+    "view_and_selected_world": "indra/newview/pipeline.cpp: MetalWorldSimpleCapture::beginMainViewBatch, beginMetalWorldGBufferCapture, endMetalWorldGBufferCapture, endMetalWorldUICompositionCapture",
+    "presentation": "indra/almetal/almetalsurface.mm: ALMetalSurface::present",
+    "input": "indra/llwindow/llwindowsdl.cpp: DiagnosticInputDispatch",
+    "command_lifecycle": "indra/almetal/almetaldevice.mm: diagnostic command creation/commit/completion/wait hooks",
+    "enums": "indra/almetal/almetaldevice.h: ALMetalCommandStatus; indra/llrender/llrender.h: EMetalUICaptureEndState"
+  },
+  "qualification": {
+    "identity": "Use enclosing session_id/frame_id/view tags and exact ordered timestamps. Command identity is (creation session, command_id), never command_id alone. main_group_command is published in the command creation session. A target with another creation session, inactive token or zero identity cannot join a current-session command. Logical groups, admission tickets, display frames, view sequences and drawable IDs are different units. Block serial is renderer-lifetime local: require a single identified main renderer within each compared session; it survives shader reload, not renderer replacement.",
+    "admission": "Match each main_admission_block to one ordered unblock and observer by session/frame/block. Join its target tickets to main_group_command and actual command lifecycle/waits; ticket_blocks_this_group selects the blocking group. A truncated target list forbids complete blocker attribution. Phase is label-derived, not a shader/resource bottleneck. A group-command row means command allocation/reservation, not successful commit or completion. Required-main waits omit other utility/renderer waits; absence of a block row is not proof of no blocking.",
+    "preparation": "Canonical ordinary-main policy allows two pending logical groups, each with up to three transactions; observation does not change those limits. Canonical immutable adoption follows admission. view_scene_gathered proves only reported container counts and owner existence. view_destination_generation is the sampled canIssueGeneration predicate for those exact backing generations. Neither establishes full pre-gate readiness or independent work. Join successful adopt/encode rows by session/frame/view sequence/group/epoch; they describe CPU wall spans, not exclusive CPU or GPU execution.",
+    "gather": "Pair exactly one view_gather_begin with exactly one later view_scene_gathered in the same session/frame. Missing, duplicate or reversed endpoints invalidate that duration. The span includes capture housekeeping, shadow finishing/cache work, gathering and other pre-admission owner work; it is not exclusive culling CPU or immutable-ready time.",
+    "camera": "Use the actual captured modelview components0..15 and projection16..31. Six view_camera_bits rows start at0,6,12,18,24,30; the final four slots are padded zero. Each 16-word identity starts14695981039346656037, XORs each u32 word in order then multiplies1099511628211 modulo2^64; it is word-wise, not byte-wise FNV. First/change observations require all six chunks, u32 range, finite-component flag and exact raw-bit reconstruction. FNV identities are secondary. First camera observation has previous_known0 and changed0. A hash alone cannot establish exact identity; missing chunks do not imply an unchanged camera.",
+    "input": "input_dispatch records only coarse kind/times, no text, key codes or coordinates. SDL dispatch captures expected session; stale-session events are discarded. Input interval between consecutive views is (previous_view_latest_input_sequence,current_latest_input_sequence]. Complete every serial in that range. Latest event alone is not a causal certificate. Require an isolated controlled burst, stable exact preceding camera views and first changed view to attribute first camera response; otherwise report only processing-to-presentation association.",
+    "SDL_clock": "For event_ns>0, sample>=event, after>=before and nonnegative subtraction: event Mach interval=[before-(sample-event),after-(sample-event)]. Otherwise event time is unknown. Add integer-nanosecond conversion/rounding allowance. The bracket bounds the sampled clock conversion, not hardware/OS event-generation uncertainty; SDL timestamp is not proven physical input time. Dispatch begin/end are separate Mach observations.",
+    "presentation_clock": "For positive finite in-range host values and ordered Mach bracket, convert presentedTime P to Mach interval [P+before-CA,P+after-CA], allowing integer-nanosecond rounding and rejecting overflow/invalid ranges. Require drawable_host_clock host_clock_valid1 and drawable_presented presented_time_valid1. presentedTime comes from the actual addPresentedHandler drawable; callback_observed_Mach_ns is not presentation time. This is no physical panel scanout or hardware input-latency measurement.",
+    "actual_world": "Join ui_background_source and ui_background_submission in the actual presentation observation frame, requiring selected1, noncleared source, consistent context/color/depth identities and generations, real_world_background1, surface_submitted1 and COMPLETE end state. Join drawable submit/source/clock/presented records by session/command/drawable/current frame, with source_matches1 and the same actual source identity. Map source_frame to the successfully adopted/encoded view and reconstructed camera. A retained world can intentionally have an older source_frame than the attempted/current frame; never substitute the newest camera for a missing, cleared or mismatched source.",
+    "memory": "Memory is sparse at ordinary admission2 and blocked0/1 boundaries, throttled100ms per renderer; process task sample separately caches100ms. task_info_valid0 is unknown. Physical footprint, MTL currentAllocatedSize and unique registry-reported bytes have overlapping scopes: never add them. Frame pages are shared owner storage, not exclusive to a logical group; retired may be GPU-complete awaiting pruning. Each active/retired/available traversal caps1024 entries; truncation means incomplete byte sums. Counts remain total collection sizes. Frame-page rows have no boundary field: join by session/frame/block and the enclosing memory-observer interval, never block0 alone. Missing ordinary/blocked samples are unknown, not zero marginal memory.",
+    "observer_cost": "Memory observer interval includes preceding task/stats/page reads and row publications, ending before its own final enqueue. task_info_sampling_ns is narrower and can be cached. Admission pre/post observer intervals include nested memory observation; use interval unions, never double-count nested spans. wrapper_wait_wall_ns measures the original wait loop; thread CPU is valid only with thread_CPU_valid1. Full app/frame comparisons include all observer execution, including final enqueue costs.",
+    "GPU_limits": "Actual command GPU start/end are asynchronous completion envelopes, can overlap and contain stalls. Do not sum overlapping envelopes or call their union hardware busy time, occupancy, utilization, headroom or pass cost. Exact pass/resource limiting work needs independent supported native trace/counter/capture evidence. No counter or readiness fact can be inferred from a missing row.",
+    "loss_and_gates": "The producer is bounded and lossy. Qualify cadence, admission, preparation, memory and input/presentation independently using complete rows for that measure, expected source/process/session, calibrated coverage, consistent display/quality/camera and actual workload. Consecutive eligible FRAME coverage does not prove complete metrics/commands/callbacks. Footer loss remains explicit; command cutoffs/pending callbacks cannot be manufactured as complete. Unknown/ineligible measures must not inherit another measure’s success.",
+    "OFF": "Disabled entry paths start no diagnostic clock reads, task_info/stat/page traversals, camera bit capture, input timing or presentation handler allocation. Previously installed callbacks may still execute after stop, but session-qualified publication discards them. Existing rendering, admission limits, submission order and work remain. This source contract is not a claim that observer overhead is zero when enabled.",
+    "privacy": "Version only authored labels/field metadata. Raw camera bits, private scene/resource identities, traces and input records stay local; no accounts, credentials, URLs, coordinates or user strings belong in a versioned example. Private experimental metrics require a separate pinned manifest; they are outside this production map."
+  }
+}

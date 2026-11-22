@@ -832,6 +832,15 @@ struct LLPipeline::MetalWorldSimpleCapture
             }
             ++main_group_serial;
             main_group_frame = gFrameCount;
+            if (ALMetalDiagnosticTelemetry::enabled())
+            {
+                const auto& camera = LLViewerCamera::getCurrent();
+                ALMetalDiagnosticTelemetry::recordViewCamera(
+                    {gFrameCount, ALMetalDiagnosticTelemetry::ViewKind::main, -1},
+                    main_group_serial,
+                    std::span<const float,16>(camera.getModelview().getF32ptr(), 16),
+                    std::span<const float,16>(camera.getProjection().getF32ptr(), 16));
+            }
         }
         const bool admitted = renderer->beginMainFrameBatch(main_group_serial, label, error);
         if (main_admission_report_frame == std::numeric_limits<U32>::max() ||
@@ -3032,6 +3041,16 @@ ALMetalTexture* LLPipeline::metalSkyEnvironment()
 
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
+    if (ALMetalDiagnosticTelemetry::enabled() && isMetalWorldCapturePass() &&
+        isMainWorldPass() && mRT == &mMainRT && !gSnapshot && !sCutoutRender &&
+        !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive)
+    {
+        // This boundary includes capture housekeeping and gathering before
+        // admission. It is not exclusive draw collection or culling CPU time.
+        ALMetalDiagnosticTelemetry::recordMetrics(
+            {gFrameCount, ALMetalDiagnosticTelemetry::ViewKind::main, -1},
+            "view_gather_begin", {});
+    }
     finishMetalShadowEncoding();
     // Bound cached generations by the actual Apple GPU working-set advice.
     // Count shared native resources once; active command leases are separate.
@@ -11050,6 +11069,35 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     std::string capture_failure;
     LLRender::EMetalUICaptureEndState capture_end_state =
         LLRender::EMetalUICaptureEndState::INACTIVE;
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        D::PresentationSourceObservation source;
+        source.frame = {gFrameCount, D::ViewKind::main, -1};
+        const auto selected = capture.ui_frame_background;
+        if (selected)
+        {
+            source.source_frame = selected->source_frame;
+            source.surface_generation = selected->context.surface_generation;
+            const auto* color = selected->colorTexture();
+            const auto* depth = selected->depthTexture();
+            source.selected = color && depth;
+            if (color)
+            {
+                source.color_identity = color->resourceView().identity();
+                source.color_generation = color->resourceView().generation();
+            }
+            if (depth)
+            {
+                source.depth_identity = depth->resourceView().identity();
+                source.depth_generation = depth->resourceView().generation();
+            }
+        }
+        // endMetalUITextureCapture invokes Surface::present below. Bind its
+        // actual selected world/clear source before that call, not the latest
+        // attempted camera frame. The same lease remains the UI input owner.
+        D::recordPresentationSource(source);
+    }
     capture.world_ui_target = gGL.endMetalUITextureCapture(
         true, surface_ready, &surface_submitted, &capture_failure,
         &capture_end_state);
@@ -11057,6 +11105,15 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     const auto submitted_background = capture.ui_frame_background;
     const bool real_world_background = submitted_background &&
         submitted_background->source_frame != std::numeric_limits<U64>::max();
+    if (ALMetalDiagnosticTelemetry::enabled())
+        ALMetalDiagnosticTelemetry::recordMetrics(
+            {gFrameCount, ALMetalDiagnosticTelemetry::ViewKind::main, -1},
+            "ui_background_submission",
+            {submitted_background ? submitted_background->source_frame : std::numeric_limits<U64>::max(),
+             presentation_requested, surface_ready, surface_submitted,
+             static_cast<std::uint64_t>(capture_end_state),
+             capture.world_ui_target != nullptr, real_world_background,
+             submitted_background ? submitted_background->context.surface_generation : 0});
     // Snapshot depth is read after this submission. Retain its exact normalized
     // pre-UI depth until cancel, rather than reading reduced world coordinates.
     if (!capture.world_ui_chain_snapshot) capture.ui_frame_background.reset();
@@ -16967,6 +17024,33 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         const bool normal_main = !gSnapshot && !sCutoutRender &&
             !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive;
+        if (normal_main && ALMetalDiagnosticTelemetry::enabled())
+        {
+            // These are actually gathered source fields, not a claim that an
+            // immutable/validated packet or GPU destination is ready. Adoption
+            // and its generation/pose validation occur below, after admission.
+            namespace D = ALMetalDiagnosticTelemetry;
+            const D::FrameTag tag{gFrameCount, D::ViewKind::main, -1};
+            const auto requested_group = capture.main_group_serial == std::numeric_limits<U64>::max()
+                ? 0 : capture.main_group_serial + 1;
+            D::recordMetrics(tag, "view_scene_gathered",
+                {requested_group, scene.batch_count, scene.reference_count,
+                 scene.cohort_count, scene.draw_order_count,
+                 static_cast<bool>(scene.source_owner), static_cast<bool>(scene.cpu_source_owner),
+                 scene.destination != nullptr});
+            if (scene.destination)
+                for (std::uint32_t slot = 0; slot < 5; ++slot)
+                {
+                    const auto* texture = slot < 4
+                        ? scene.destination->colorTexture(slot)
+                        : scene.destination->depthStencilTexture();
+                    if (!texture) continue;
+                    const auto& view = texture->resourceView();
+                    D::recordMetrics(tag, "view_destination_generation",
+                        {requested_group, slot, view.identity(), view.generation(),
+                         static_cast<bool>(view), view.canIssueGeneration(), 0, 0});
+                }
+        }
         command_batch_active = normal_main
             ? capture.beginMainViewBatch(
                 "Alchemy native world G-buffer and ordered sky", &error, true)
@@ -16982,10 +17066,23 @@ void LLPipeline::endMetalWorldGBufferCapture()
         }
     }
     const auto epoch = ++capture.world_input_epoch;
+    const bool observe_adoption = batch_main_world && !gSnapshot && !sCutoutRender &&
+        !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
+        ALMetalDiagnosticTelemetry::enabled();
+    const auto adopt_start = observe_adoption ? ALMetalDiagnosticTelemetry::machTimeNs() : 0;
     auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
         std::move(capture.source_references), std::move(capture.draw_order),
         std::move(capture.source_cohorts),
         std::move(capture.visibility_queries), capture.cpu_sources, capture.world_resources, epoch, &error);
+    if (observe_adoption)
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        const auto view = D::latestViewObservation();
+        D::recordMetrics({gFrameCount, D::ViewKind::main, -1}, "view_inputs_adopted",
+            {view.sequence, capture.main_group_serial, epoch, adopt_start, D::machTimeNs(),
+             inputs != nullptr, inputs && static_cast<bool>(inputs->resourceLease()),
+             inputs ? inputs->scene().drawCount() : 0});
+    }
     // Immutable inputs live through synchronous encoding and owner settlement.
     struct CpuCaptureRetirement
     {
@@ -17032,7 +17129,16 @@ void LLPipeline::endMetalWorldGBufferCapture()
     const U64 native_draws_before = count_native_draws
         ? ALMetalDevice::encodedDrawCallCount() : 0;
     std::unique_ptr<ALMetalRenderTarget> target;
+    const auto encode_start = observe_adoption ? ALMetalDiagnosticTelemetry::machTimeNs() : 0;
     target = inputs ? capture.renderer->renderOwnedInputs(*inputs, &error, &visibility_results) : nullptr;
+    if (observe_adoption)
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        const auto view = D::latestViewObservation();
+        D::recordMetrics({gFrameCount, D::ViewKind::main, -1}, "view_inputs_encoded",
+            {view.sequence, capture.main_group_serial, epoch, encode_start, D::machTimeNs(),
+             target != nullptr, inputs != nullptr, 0});
+    }
     if (target) ++capture.scalar_world_views;
     if (target && !impostor_bake)
     {

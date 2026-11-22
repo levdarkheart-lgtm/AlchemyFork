@@ -9,14 +9,18 @@
  */
 
 #include "almetalsurface.h"
+#include "almetaldiagnostictelemetry.h"
 
 #import <AppKit/AppKit.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <QuartzCore/CABase.h>
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <utility>
 
 // The product keeps SDL responsible for window/input lifecycle while this
@@ -488,6 +492,50 @@ bool ALMetalSurface::present(
         command_buffer.endResourcePass(resource_pass, nullptr);
         setError(error, "Metal command buffer has no native handle");
         return false;
+    }
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        const auto token = command_buffer.diagnosticToken();
+        const auto frame = D::currentFrameTag();
+        const auto source = D::latestPresentationSource();
+        const bool source_matches = source.selected && source.session_id == token.session_id &&
+            source.frame.frame_id == frame.frame_id &&
+            source.surface_generation == mInfo.generation;
+        const auto native_drawable = drawable.mImpl->drawable;
+        const auto drawable_id = static_cast<std::uint64_t>(native_drawable.drawableID);
+        const auto before = D::machTimeNs();
+        const double host_seconds = CACurrentMediaTime();
+        const auto after = D::machTimeNs();
+        const bool host_valid = std::isfinite(host_seconds) && host_seconds > 0.0 &&
+            host_seconds < static_cast<double>(std::numeric_limits<std::uint64_t>::max()) / 1.e9;
+        const auto host_ns = host_valid
+            ? static_cast<std::uint64_t>(host_seconds * 1.e9) : 0;
+        D::recordSessionMetrics(token.session_id, frame, "drawable_present_submit",
+            {token.command_id, drawable_id, mInfo.generation, source.source_frame,
+             source.source_frame != UINT64_MAX, source.frame.frame_id,
+             frame.frame_id, source_matches});
+        D::recordSessionMetrics(token.session_id, frame, "drawable_source_identity",
+            {token.command_id, drawable_id, source.color_identity, source.color_generation,
+             source.depth_identity, source.depth_generation, source.surface_generation,
+             source.source_frame == UINT64_MAX});
+        D::recordSessionMetrics(token.session_id, frame, "drawable_host_clock",
+            {token.command_id, drawable_id, before, host_ns, after, host_valid,
+             drawable.mImpl->width, drawable.mImpl->height});
+        // Value snapshots only. A callback cannot read a new camera/input
+        // state or publish into a replacement session. presentedTime is the
+        // API's actual host presentation timestamp, not GPU completion, the
+        // callback observation time, or a physical panel scanout measurement.
+        [native_drawable addPresentedHandler:^(id<MTLDrawable> presented) {
+            const auto observed = D::machTimeNs();
+            const double seconds = presented.presentedTime;
+            const bool valid = std::isfinite(seconds) && seconds > 0.0 &&
+                seconds < static_cast<double>(std::numeric_limits<std::uint64_t>::max()) / 1.e9;
+            D::recordSessionMetrics(token.session_id, frame, "drawable_presented",
+                {token.command_id, drawable_id, source.source_frame,
+                 valid ? static_cast<std::uint64_t>(seconds * 1.e9) : 0,
+                 observed, valid, frame.frame_id, source_matches});
+        }];
     }
     [native_command presentDrawable:drawable.mImpl->drawable];
     if (!command_buffer.endResourcePass(resource_pass, error)) return false;

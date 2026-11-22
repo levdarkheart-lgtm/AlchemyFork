@@ -30,6 +30,8 @@
 #include <map>
 #include <algorithm>
 #include <atomic>
+#include <limits>
+#include <sstream>
 
 #include "lltexturefetch.h"
 #include "alwarningdiagnostics.h"
@@ -571,6 +573,9 @@ private:
             mHttpHasResource = false;
             mFetcher->mHttpSemaphore--;
             llassert_always(mFetcher->mHttpSemaphore >= 0);
+            // The slot is freed after reply dispatch. Revisit waiters on this
+            // owner without requiring the next viewer frame/HTTP completion.
+            if (mFetcher->mHttpSemaphore < mFetcher->mHttpLowWater) mFetcher->wakeHttpService();
         }
 
 private:
@@ -2191,6 +2196,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
 void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpResponse * response)
 {
     LL_PROFILE_ZONE_SCOPED;
+    mFetcher->recordHttpReplyQueueAge();
     static LLCachedControl<bool> log_to_viewer_log(gSavedSettings, "LogTextureDownloadsToViewerLog", false);
     static LLCachedControl<bool> log_to_sim(gSavedSettings, "LogTextureDownloadsToSimulator", false);
     static LLCachedControl<bool> log_texture_traffic(gSavedSettings, "LogTextureNetworkTraffic", false) ;
@@ -2807,6 +2813,12 @@ LLTextureFetch::LLTextureFetch(LLTextureCache* cache, bool threaded, bool qa_mod
 
     LLAppCoreHttp & app_core_http(LLAppViewer::instance()->getAppCoreHttp());
     mHttpRequest = new LLCore::HttpRequest;
+    if (mThreaded)
+    {
+        // Transport only signals our reusable owner event. The completion and
+        // all texture/request mutations remain on this fetch service thread.
+        mHttpRequest->setReplyNotification([this]() noexcept { wakeHttpService(); });
+    }
     mHttpOptions  = std::make_shared<LLCore::HttpOptions>();
     mHttpOptionsWithHeaders = std::make_shared<LLCore::HttpOptions>();
     mHttpOptionsWithHeaders->setWantHeaders(true);
@@ -2823,6 +2835,9 @@ LLTextureFetch::LLTextureFetch(LLTextureCache* cache, bool threaded, bool qa_mod
 
 LLTextureFetch::~LLTextureFetch()
 {
+    // Synchronize transport notifications before any target/member teardown.
+    // Queued replies still own their operations and retain the normal lifecycle.
+    mHttpRequest->setReplyNotification({});
     // A texture that outlives the fetcher, as one LLWearableList holds does (see
     // ~LLViewerFetchedTexture), never asks for its worker to be deleted, and with the
     // thread stopped nothing else will.
@@ -3337,7 +3352,9 @@ void LLTextureFetch::commonUpdate()
     cmdDoWork();
 
     // Deliver all completion notifications
-    LLCore::HttpStatus status = mHttpRequest->update(0);
+    // Bound only reply dispatch, not waiter selection/command work above.
+    // A handler runs to completion; remaining replies re-arm our native wake.
+    LLCore::HttpStatus status = mHttpRequest->update(1000, 16);
     if (! status)
     {
         LL_INFOS_ONCE(LOG_TXT) << "Problem during HTTP servicing.  Reason:  "
@@ -3366,11 +3383,6 @@ size_t LLTextureFetch::update(F32 max_time_ms)
 
     size_t res = LLWorkerThread::update(max_time_ms);
 
-    if (!mThreaded)
-    {
-        commonUpdate();
-    }
-
     return res;
 }
 
@@ -3395,13 +3407,47 @@ void LLTextureFetch::startThread()
 // Threads:  Ttf
 void LLTextureFetch::endThread()
 {
+    const auto replies = getHttpReplyQueueStats();
+    std::ostringstream reply_bins;
+    for (size_t i = 0; i < replies.age_histogram.size(); ++i)
+    {
+        if (i) reply_bins << ',';
+        reply_bins << replies.age_histogram[i];
+    }
     LL_INFOS(LOG_TXT) << "CacheReads:  " << mTotalCacheReadCount
                       << ", CacheWrites:  " << mTotalCacheWriteCount
                       << ", ResWaits:  " << mTotalResourceWaitCount
                       << ", TotalHTTPReq:  " << getTotalNumHTTPRequests()
+                      << ", HTTPReplyQueueSamples: " << replies.samples
+                      << ", HTTPReplyQueueMinNs: " << replies.min_ns
+                      << ", HTTPReplyQueueMaxNs: " << replies.max_ns
+                      << ", HTTPReplyQueueAgeLog2UsBins: " << reply_bins.str()
                       << LL_ENDL;
 
     mTextureInfo.stopRecording();
+}
+
+LLTextureFetch::HttpReplyQueueStats LLTextureFetch::getHttpReplyQueueStats()
+{
+    LLMutexLock lock(&mHttpReplyStatsMutex);
+    return mHttpReplyStats;
+}
+
+void LLTextureFetch::recordHttpReplyQueueAge()
+{
+    const auto age = mHttpRequest->currentReplyQueueAge();
+    if (!age) return;
+    const U64 ns = static_cast<U64>(llmax<S64>(0, age->count()));
+    U64 us = ns / 1000;
+    size_t bin = 0;
+    while (us && bin < 31) { us >>= 1; ++bin; }
+    LLMutexLock lock(&mHttpReplyStatsMutex);
+    if (mHttpReplyStats.samples == 0) mHttpReplyStats.min_ns = ns;
+    else mHttpReplyStats.min_ns = llmin(mHttpReplyStats.min_ns, ns);
+    mHttpReplyStats.max_ns = llmax(mHttpReplyStats.max_ns, ns);
+    if (mHttpReplyStats.samples != std::numeric_limits<U64>::max()) ++mHttpReplyStats.samples;
+    auto& count = mHttpReplyStats.age_histogram[bin];
+    if (count != std::numeric_limits<U64>::max()) ++count;
 }
 
 // Threads:  Ttf
@@ -3800,6 +3846,7 @@ void LLTextureFetch::cmdEnqueue(TFRequest * req)
     unlockQueue();                                                      // -Mfq
 
     unpause();
+    wakeHttpService();
 }
 
 // Threads:  T*

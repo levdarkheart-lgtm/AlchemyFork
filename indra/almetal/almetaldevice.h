@@ -28,6 +28,7 @@ class ALMetalBuffer;
 class ALMetalTexture;
 class ALMetalTextureReadbackRing;
 class ALMetalVisibilityResultBatch;
+namespace ALMetalDiagnosticTelemetry { struct CommandToken; }
 
 // Temporary private qualification controls. The complete operational mode
 // must pass correctness and whole-owner cost before it becomes the default.
@@ -177,6 +178,9 @@ public:
     ALMetalCommandStatus status() const noexcept;
     bool isCommitted() const noexcept;
     std::shared_ptr<const ALMetalCommandCompletion> completionToken() const;
+    // Read-only, non-owning telemetry identity. Zero when no diagnostic
+    // session owned creation; this never creates a token or retains a command.
+    ALMetalDiagnosticTelemetry::CommandToken diagnosticToken() const noexcept;
     std::string errorDescription() const;
 
     // Retain indirect/argument-buffer resource owners through actual GPU

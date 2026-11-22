@@ -1,5 +1,8 @@
 # Current viewer performance investigation —2026-11-22
 
+> Current disposition — 2026-11-22: Completed evidence-only investigation. Initial launch/controller plans below are historical; the final report retains qualified results and unresolved limits. Later implementation and timing work are governed by the current canonical work ledger and register.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 Status: investigation complete; implementation proposals only. Explicit overnight goal: diagnose current Home/club frame time and
 produce ranked engineering proposals. Owner authorizes autonomous launch/login,
 teleport, camera, Xcode/Instruments/recordings/logs. No broad implementation,

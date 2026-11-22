@@ -33,6 +33,9 @@
 
 #include "httpheaders.h"
 #include "httpoptions.h"
+#include <chrono>
+#include <functional>
+#include <optional>
 
 namespace LLCore
 {
@@ -88,6 +91,25 @@ class HttpRequest
 public:
     HttpRequest();
     virtual ~HttpRequest();
+
+    // Consumer-owner setup/teardown only. This optional transport-side signal
+    // must only wake the consumer: nonblocking, noexcept, no queue reentry or
+    // cross-owner data locks. Clearing it waits for any notification in flight;
+    // clear before destroying the target. HttpHandlers still run only in update().
+    void setReplyNotification(std::function<void()> notification);
+
+    // Consumer thread only, inside a handler invoked by this instance's update().
+    // Age from opt-in reply-queue publication to this call (including dispatch
+    // preparation), not network time. Empty outside that scope or when the queue
+    // did not have timing enabled when the reply was published.
+    std::optional<std::chrono::nanoseconds> currentReplyQueueAge() const;
+
+    // Bounded reply-dispatch turn. At most max_replies handlers; usecs>0 also
+    // checks a wall deadline between callbacks. A callback runs to completion,
+    // and one is allowed for progress even if the deadline already elapsed.
+    // Ready replies re-arm the wake on normal/exceptional exit, without polling.
+    // max_replies==0 delegates to the unchanged one-argument update semantics.
+    HttpStatus update(long usecs, size_t max_replies);
 
 private:
     HttpRequest(const HttpRequest &);           // Disallowed
@@ -627,6 +649,7 @@ public:
 protected:
 
 private:
+    void dispatchReply(const std::shared_ptr<HttpOperation>& op);
     typedef std::shared_ptr<HttpReplyQueue> HttpReplyQueuePtr_t;
 
     /// @name InstanceData
@@ -635,6 +658,7 @@ private:
     HttpStatus          mLastReqStatus;
     HttpReplyQueuePtr_t mReplyQueue;
     HttpRequestQueue *  mRequestQueue;
+    std::optional<std::chrono::steady_clock::time_point> mCurrentReplyQueuedAt;
 
     /// @}
 

@@ -1,122 +1,81 @@
-# Active Metal work — PPD-567 measured publication
+# Active Metal work — completed review and measured Home handoff
 
-Current local scope is [PPD567 and measured follow-through](ppd567-performance-20261122.md).
-Candidate69452 is built and tested. Owner explicitly requested "Commit and push
-all the changes"; source/tests/reports are pushed at `ec696aa615`. Owner visual/runtime
-verification remains pending; publication permission is not an FPS acceptance claim.
-The [results report](../../research/ppd567-performance-20261122.md) establishes lower
-hash CPU cost, mixed whole-frame results and the completed census stop decision.
-
-**Accepted baseline source:** Commit `960bd3644a`, codex/apple-silicon-metal.
-Owner authorizes maintainable Apple-first repairs, dead graphics preferences and
-abandoned-experiment removal, followed by a separate manual-test candidate.
-Owner verified/pushed Maintenance 69445; that approval covers only the prior scope.
-Scheduling69450 implements556 and graphics cleanup; full build, qualification and
-staging pass. Owner requested launch (exact PID31214 observed), then on2026-11-22
-reports "looks good..commit and push", accepting the candidate and authorizing
-normal branch publication. That earlier owner-requested launch did not log in or
-release. Its implementation and review are complete. The later autonomous scope
-explicitly authorizes Home/Club login and full-screen testing.
-[CURRENT](../../state/CURRENT.md) is the observed recovery snapshot.
-
-## Complete-product checkpoint gate
-
-| ID | State | Evidence / next boundary |
-| --- | --- | --- |
-| M-008 | doing | Required ownership/maintenance preserved; broad runtime parity remains. |
-| M-011 | doing | 69450 final static gates pass; runtime and foreign subprocess qualification remain. |
-| M-012 | complete | Build/verification/harness tools maintained and used. |
-| M-013 | doing | Retained Alchemy/RLVa/media functionality requires runtime verification. |
-
-[Current execution ledger](ppd556-bounded-scheduling-20261121.md) owns PPD-556/560–565,
-commands, failures and source identities. [Previous execution ledger](production-convergence-20261121.md)
-retains accepted 527–555/557–559 scope and explicit residual actions.
-[Initial source assessment](../../research/scheduling-source-assessment-20261121.md)
-distinguishes defects, policies, ownership constraints and unmeasured cost.
-[Defect register](../../POST_PORT_DEFECTS.md) retains every discovered issue;
-automated success alone never closes an owner incident or authorizes pushing.
-
-| Work | State | Boundary |
-| --- | --- | --- |
-| Worker scheduling (529/531/540/558) | integrated | Retry, identity, fairness, shutdown and deadline tests pass. |
-| Assets (528/532/533) | integrated | Bounded async handoffs, ready results and cancellation; service limits explicit. |
-| Native owner/resources (530/534/535/537/538/539) | integrated | Prior accepted 69445 correctness/lifetime selection: 56/56 pass. |
-| Preferences (527/536/541/542) | integrated | 24 retired settings; live controls preserved; actual ASan and profile tests. |
-| Abandoned paths (543–546/548/550) | integrated | Active CPU, probe, shadow, terrain and rigged contracts retained. |
-| Integration/tests (549/551–555/557) | integrated | Prior accepted 69445 normal build, reload counters, complete registration and actual fixture state. |
-| Sole decoder (559) | integrated | Required OpenHT; header/encode behavior and notices retained. |
-| Full request capacity (556) | verified | Reusable request nodes, bounded independent callbacks, native wake and nonfatal caller admission. |
-| Graphics follow-through (560/561/563/565) | verified | Seven orphan settings and dead automatic classification retire; live controls/manual native benchmark remain. |
-| Priority identity/test setup (562/564) | verified | Exact lifecycle service pins and real positive-capacity admission tests. |
-| Accepted prior candidate | verified | Maintenance 69445 remains preserved/pushed. |
-| New separate candidate | verified | Scheduling69450 /960bd3644a; build0,58CPU+56native scopes pass, static/stage checks pass; exact app launched on owner request. |
+Commit `ec696aa615` is the published renderer checkpoint; local review changes add
+bounded diagnostics and repair HTTP/test/tooling contracts. The [final report](../../research/review-home-admission-20261122.md)
+is authoritative for current performance measurements. [CURRENT](../../state/CURRENT.md)
+records the actual source/app/runtime boundary. **Home FPS remains unresolved.**
+New scope stays local; no push approval exists. Accepted Maintenance69445 and
+Scheduling69450/source960bd3644a remain preserved and are not reopened by this list.
 
 ## Immediate executable action
 
-The active owner goal is [PPD567 implementation and measured follow-through](ppd567-performance-20261122.md):
-local patch and real ownership/output checks, repeated controlled Club comparisons,
-Home regression, bounded probe census with stop decision, exclusive CPU budget and
-queue table. All five local requirements are complete, including ten explicitly
-qualified final arms. Common read-only camera observation is in both new builds.
-Broad Club hash CPU cost falls about99%; sustained FPS gain is not established,
-and the slower replacement p95 is retained. Owner now approves commit/push of this
-scope's source/docs; keep owner QA and performance acceptance separate. As before,
-pool widths, budgets, shader quality and encoding ownership remain unchanged.
-
-[Overnight performance investigation](performance-investigation-20261122.md) is
-complete; the [readable report](../../research/performance-investigation-20261122.md)
-contains current69450 Home/Club baselines, GPU/source/MST attribution and ranked
-engineering decisions. Native full screen3456×2168 throughout measured runs; safe
-preferences and acceptedapp unchanged. That earlier evidence-only request made no
-production patch or push. Approved Scheduling69450 remains atd219d538ab. Current
-69452 comparison recordings and Xcode are closed. Normal candidate is logged in
-at verified Club in native full screen for owner busy-scene testing; Home regression
-checks are complete. Source is unchanged.
-Product qualification is not complete; no private evidence upload is authorized.
-
-PPD567 now lazily publishes once per consuming invocation. Actual byte/output and
-pending-view lifetime checks pass; final fixed-view Club broad hashing is about
-2.2–2.9ms/period in controls versus0.019–0.024ms in candidates. Live total-frame
-changes are mixed. The1024-record Home census selects STOP for GPU kernel variants;
-PPD353's failed predecode/scalar/tileSH evidence is retained. PPD568 allocation
-under capture and569 exact warned draw remain separate qualification items.
-
-## Outstanding work in priority order
-
-| Priority | Item / references | Concrete next action |
+| Priority | Remaining work | Required result |
 | --- | --- | --- |
-| Owner test | PPD-567 / [measured result](../../research/ppd567-performance-20261122.md) | Candidate69452 is built/tested and left native full screen at verified Club for owner rendering/stability review. Current-scope commit/push is explicitly approved; mixed cadence/adverse p95 remain and no isolated FPS improvement or visual acceptance is claimed. |
-| Next bounded CPU work | Exclusive Club budget / PPD-534 already repaired | Select one remaining registry/encoder/publication suboperation with immutable inputs and account for its complete cost. Do not repeat the already-fixed eager owning Use construction or add workers from core availability alone. |
-| Home GPU follow-up | PPD-319 / completed census / PPD-353 contrary evidence | Census completes1024records/966receivers with zero ambient bit mismatches, mean7.74SH taps and substantial containment rejects. STOP kernel variants: no new redundant operation with demonstrated beneficial transformation selected. Require new evidence before another representation change. |
-| Measurement/correctness residuals | PPD-568/569/408 | Driver allocation blocks are capture-enabled observations, baselineimpactunknown; one58msHomeblock unknown. Inspect exactearlywarningdraw/count/slot3; source32-slotguards alone do not dismiss APIwarning. Exclude789msClubMSThole, preserve failures/loss limits. |
-| 1 | Asset service and cancellation — follow-through to PPD-532/533; retained reports 463/466 | Trace completion→fetch→collect→upload→publish age, remove unnecessary frame-triggered HTTP progress, and make permit wait cancellation responsive. Preserve bounded publication and running OpenHT ownership. |
-| 2 | General background jobs — follow-through to PPD-529 | Measure queue age by category, then separate blocking file/audio work from CPU preparation where ownership permits. Default width remains one; invalid widths are already repaired. |
-| 3 | Geometry scheduling and serial scene preparation — follow-through to PPD-530 | Required/deferrable separation and combined scheduling are not implemented. Attribute rebuild/cull/sort/encode costs; extract substantial immutable preparation/private outputs while preserving required owner mutation. The accepted API rename did not enforce a geometry deadline. |
-| 4 | Main replies around GPU waits — follow-through to PPD-537 | Earlier-wait/slack accounting is unchanged and practical lost slack unmeasured. Correlate reply age with required-main admission and end-pacing waits; add service only outside active render transactions. The accepted fix made only the regular setting live. |
-| 5 | Upload preparation and streaming policies | Separate immutable pixel conversion/alpha/mask CPU work from the single upload owner. Measure credit denials, backlog age and capacity before changing count/byte/time policies; retain memory and progress guarantees. |
-| 6 | Pipeline compilation/archive ownership — follow-through to PPD-539 | Measure remaining startup/reload/first-use stalls, then separate archive mutation from safe compilation if justified. Required point variants are already eager. |
-| 7 | Retained viewer investigations — PPD-319/002/311/015 | Reassess quiet-scene completion/cadence, retained-world freezes, nonfinite skin operands and the separate water grazing-angle concern on a source-pinned current candidate. Do not infer recurrence or resolution from general acceptance. |
-| 8 | Product qualification and register reconciliation — M-008/011/013 | Complete reference-backed feature parity, prolonged stability, runtime no-GL/foreign-process checks and independent reproducible builds. Reconcile older records against current source and owner evidence without discarding history. |
+|1 | Normal candidate owner handoff | Exact Review Candidate69454 is running at Club, PID98258, in native fullscreen with diagnostics off; owner visual/loading acceptance and new-scope push decision remain. |
+|2 | PPD319 main GPU work | Use exact required lighting/forward-alpha pass/resource evidence to select an output-preserving optimization; include all preparation/uploads and complete affected-pass/frame costs. No repeat cap3 or tiny adoption experiment. |
+|3 | Specific source/owner proof gaps | Follow the register truth audit's per-ID actions. Resolve only from current source plus actual accepted evidence; report genuinely missing owner/private evidence. |
 
-PPD-556 is reproduced at tiny capacity and repaired locally, without observed
-saturation in the owner session. Full build/component/static qualification passes; owner accepts the implemented
-candidate and authorizes publication on2026-11-22.
-Other rows retain architecture, policies, investigations and release qualification.
-The [execution ledger](production-convergence-20261121.md#explicit-remaining-engineering-actions)
-retains detailed boundaries. Current whole-viewer baseline statistics are in the
-investigation report; no implementation speedup is claimed.
+Completed review engineering582–589 includes real water slot3 coverage, public
+qualification tools, source/history reconciliation, camera documentation, diagnostic
+octree bounds and independent bounded texture HTTP completion service. Builds, native
+GPU/core fixtures,259tool tests and four live HTTP checks are complete. See the report
+and register for exact results, exclusions, failed attempts and owner boundaries.
+
+The five Home questions now have measured scoped answers: exact older GPU pass and
+resources; concrete immutable CPU adoption readiness; main versus separate shadow
+policy and lease conditions; complete policy/early-adoption comparisons; and real
+presentation plus sampled-memory observations. Cap3 and early-adoption are rejected
+for production. The investigator-imposed12input target is unmet in two arms and is
+not reclassified as passed. No further policy/input-target or shader collection is
+planned for this handoff. Raw captures, coordinates and account data remain private.
+
+## Surviving engineering requirements
+
+| Priority | Requirement | Concrete next evidence/change boundary |
+| --- | --- | --- |
+|4 | General category service | Queue age by file/audio/CPU category and ownership before separation. Invalid widths are already repaired; default General width remains one. |
+|5 | Geometry/serial scene preparation | Attribute required rebuild/cull/sort/encode cost; design immutable preparation/private outputs and required lifecycle completion before applying a deadline. API renaming did not enforce one. |
+|6 | Safe replies around GPU waits | Join queue age with earlier required-main and end-pacing waits; service at a safe owner boundary. A live setting alone did not unify wait accounting. |
+|7 | Upload CPU preparation/streaming | Measure conversion/alpha/mask cost, credit denial and backlog age while preserving the single upload owner, memory bounds and progress. |
+|8 | Pipeline/archive startup/reload | Remaining serialized compilation/archive cost; required point pipelines are already eager. Separate mutation from compilation only under safe ownership. |
+|9 | Retained owner incidents | Exact current recurrence for002/015/311/319 and loading/appearance reports. Accepted maintenance or a new app does not prove every incident's cause resolved. |
+|10 | Product qualification | Reference-backed feature/visual parity, prolonged stability, representative performance, owned-runtime no-GL, foreign subprocess and reproducible release proof. |
+
+The exceptional post-GPU callback-delay observation remains specifically scoped; no
+responsible handler/lock was identified in its sample gap. Do not remove native waits
+or run arbitrary reentrant scene callbacks from an active renderer transaction.
+
+## Completed boundaries and authoritative history
+
+- [Review/Home report](../../research/review-home-admission-20261122.md): current
+  code/test/runtime disposition and all five answers; no Home FPS repair claimed.
+- [Register audit](../../research/register-truth-audit-20261122.md):211field updates,
+  44scoped accepted/removal closures, retained histories and74specific proof actions.
+- [Review ledger](ppd567-review-followup-20261122.md): implementation history and local
+  handoff. Its dated plans/failures do not reopen completed engineering.
+- [Published PPD567 report](../../research/ppd567-performance-20261122.md): redundant
+  hashing removed with mixed total cadence/adverse Club p95 retained; no proved FPS fix.
+- [Accepted scheduling](ppd556-bounded-scheduling-20261121.md) and
+  [accepted maintenance](production-convergence-20261121.md): completed asset, worker,
+  resource, preference and abandoned-path repairs. Do not reimplement their retired work.
+- [Defect register](../../POST_PORT_DEFECTS.md) owns status/owner/push decisions and
+  failures. [Pre-convergence history](../archive/metal-port-pre-production-convergence-20261121.md)
+  remains indexed; superseded ledgers retain their original bodies.
+
+## Complete-product checkpoint gate
+
+| Product ID | State | Remaining boundary |
+| --- | --- | --- |
+| M-008 | doing | Broad feature/visual acceptance beyond component proofs. |
+| M-011 | doing | Runtime/foreign-process and reproducible release qualification. |
+| M-012 | complete | Harness/build/verification tooling maintained and exercised. |
+| M-013 | doing | Retained Alchemy/RLVa/media functionality and prolonged runtime proof. |
 
 ## Non-negotiable open gates
 
-Feature/visual parity, prolonged stability, representative whole-viewer performance,
-owned-runtime no-GL, foreign subprocess and reproducible release qualification
-remain open. Memory bounds, request identity/cancellation, single upload owner,
-completion retirement and retained quality/features survive maintenance. Default-off
-alone does not identify abandoned code: supported options and selected producers,
-probe/shadow paths and measured bounded overlaps remain. Prior adverse/positive
-evidence remains in Git/docs after rejected implementations retire.
-
-[Pre-convergence work history](../archive/metal-port-pre-production-convergence-20261121.md)
-retains prior accepted releases and failures without mixing them into current work.
-A bounded candidate never implies product completion.
+Memory bounds, cancellation/request identity, exact generations, native completion
+retirement and retained quality/features remain invariants. DefaultOFF alone does
+not prove a supported mechanism abandoned. No product/release completion, new-scope
+push or private evidence upload follows from component success. Required independent
+build/review evidence remains. A bounded candidate never implies product completion.
 Do not mark feature parity from build/test success alone.

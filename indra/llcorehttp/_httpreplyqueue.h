@@ -30,6 +30,7 @@
 
 #include "_refcounted.h"
 #include "_mutex.h"
+#include <functional>
 
 namespace LLCore
 {
@@ -95,10 +96,23 @@ public:
     /// Threading:  callable by any thread.
     void fetchAll(OpContainer & ops);
 
+    // Wake-only notification, not a completion handler. Called under the queue
+    // mutex after publication: must not block, throw, reenter this queue or take
+    // another owner's data lock. Replacing/clearing synchronizes any in-flight
+    // notification. The consumer must clear it before destroying its wake target.
+    // Installing on a nonempty queue also signals existing replies. Timing is
+    // opt-in with this notification; ordinary queues do not read the clock.
+    void setReplyNotification(std::function<void()> notification);
+
+    // Re-arm a limited consumer turn if replies remain. Same wake-only and
+    // lifetime contract as above; check and signal are linearized with addOp.
+    void notifyIfPending();
+
 protected:
 
     OpContainer                         mQueue;
     LLCoreInt::HttpMutex                mQueueMutex;
+    std::function<void()>               mReplyNotification;
 
 }; // end class HttpReplyQueue
 

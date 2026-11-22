@@ -90,12 +90,26 @@ void alQuietDiagnosticsInitialize() noexcept
             std::uint32_t mib = 0;
             const auto parsed = std::from_chars(budget.data(), budget.data() + budget.size(), mib);
             if (parsed.ec != std::errc{} || parsed.ptr != budget.data() + budget.size() ||
-                mib < 64 || mib > 256)
+                mib < 64 || mib > 512)
             {
-                warning("Diagnostic byte budget must be an integer from 64 through 256 MiB; collection disabled");
+                warning("Diagnostic byte budget must be an integer from 64 through 512 MiB; collection disabled");
                 return;
             }
             config.max_bytes = std::uint64_t(mib) * 1024u * 1024u;
+        }
+        if (const char* requested = std::getenv("ALCHEMY_METAL_DIAGNOSTIC_MAX_SECONDS");
+            requested && *requested)
+        {
+            const std::string_view budget(requested);
+            std::uint32_t seconds = 0;
+            const auto parsed = std::from_chars(budget.data(), budget.data() + budget.size(), seconds);
+            if (parsed.ec != std::errc{} || parsed.ptr != budget.data() + budget.size() ||
+                seconds < 1 || seconds > 3600)
+            {
+                warning("Diagnostic time budget must be an integer from 1 through 3600 seconds; collection disabled");
+                return;
+            }
+            config.max_duration_seconds = seconds;
         }
         std::string error;
         if (!D::start(config, &error))

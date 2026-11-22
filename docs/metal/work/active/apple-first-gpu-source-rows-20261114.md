@@ -1,5 +1,8 @@
 # Native GPU source rows and whole-engine continuation
 
+> Current disposition — 2026-11-22: Historical GPU source-row experiment. Rows/pages/banks and exclusive consumers/tests were removed in the owner-accepted Maintenance 69445 scope (PPD-545/550). Ordinary immutable CPU/native source ownership remains; broader runtime/performance goals are partial and governed by current canonical gates.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 Status: doing. Original Apple-first whole-engine architecture goal remains
 ACTIVE and partial. No viewer launch, login, new live profile or push is authorized
 in this implementation phase. Local source/build/native test evidence is distinct

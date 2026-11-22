@@ -116,6 +116,169 @@ TEST_CASE("almetal: diagnostic disabled path leaves scopes and sinks untouched",
     CHECK(DT::statistics().commands_created == before.commands_created);
 }
 
+TEST_CASE("almetal: input camera and memory observers remain inert without a session",
+          "[almetal][diagnostic-telemetry][admission-observations]")
+{
+    DT::stop();
+    const auto before = DT::statistics();
+    std::array<float,16> matrix{};
+    CHECK(DT::recordInputDispatch(DT::activeSessionId(), 1, 100, 150, 1000, 1010, 990, 1030).sequence == 0);
+    CHECK(DT::latestInputObservation().sequence == 0);
+    CHECK(DT::recordViewCamera({7, DT::ViewKind::main, -1}, 3, matrix, matrix).sequence == 0);
+    CHECK(DT::latestViewObservation().sequence == 0);
+    CHECK(DT::sampleProcessMemory().sampled_mach_ns == 0);
+    DT::recordSessionMetrics(before.session_id, {}, "disabled_async", {});
+    CHECK(DT::statistics().attempted == before.attempted);
+}
+
+TEST_CASE("almetal: input clock bounds exact camera identity and stale sessions stay explicit",
+          "[almetal][diagnostic-telemetry][admission-observations]")
+{
+    @autoreleasepool
+    {
+        Session first;
+        first.start();
+        const auto input = DT::recordInputDispatch(DT::activeSessionId(), 1, 100, 150, 1000, 1010, 990, 1030);
+        REQUIRE(input.sequence == 1);
+        CHECK(input.event_mach_lower_ns == 950);
+        CHECK(input.event_mach_upper_ns == 960);
+        CHECK(input.dispatch_end_ns == 1030);
+        std::array<float,16> modelview{}, projection{};
+        modelview[0] = modelview[5] = modelview[10] = modelview[15] = 1.f;
+        projection = modelview;
+        const auto original = DT::recordViewCamera({7, DT::ViewKind::main, -1}, 3, modelview, projection);
+        CHECK(original.input.sequence == input.sequence);
+        CHECK_FALSE(original.camera_changed); // No previous observation exists.
+        const auto equal = DT::recordViewCamera({8, DT::ViewKind::main, -1}, 4, modelview, projection);
+        CHECK_FALSE(equal.camera_changed);
+        CHECK(equal.modelview_identity == original.modelview_identity);
+        modelview[12] = 1.f;
+        const auto changed = DT::recordViewCamera({9, DT::ViewKind::main, -1}, 5, modelview, projection);
+        CHECK(changed.camera_changed);
+        CHECK(changed.modelview_identity != original.modelview_identity);
+        CHECK(changed.projection_identity == original.projection_identity);
+        DT::PresentationSourceObservation retained;
+        retained.frame = {9, DT::ViewKind::main, -1};
+        retained.source_frame = 7;
+        retained.color_identity = 10; retained.color_generation = 2;
+        retained.depth_identity = 11; retained.depth_generation = 3;
+        retained.surface_generation = 4; retained.selected = true;
+        DT::recordPresentationSource(retained);
+        CHECK(DT::latestViewObservation().frame.frame_id == 9);
+        CHECK(DT::latestPresentationSource().source_frame == 7); // Actual older world, not attempted9.
+        retained.source_frame = UINT64_MAX;
+        DT::recordPresentationSource(retained);
+        CHECK(DT::latestPresentationSource().source_frame == UINT64_MAX); // Cleared loading backing.
+        // Zero/future SDL timestamps are unknown event times, never silently
+        // replaced with dispatch time. Processing is still observed.
+        CHECK(DT::recordInputDispatch(DT::activeSessionId(), 4, 0, 150, 1000, 1010, 990, 1030).event_mach_lower_ns == 0);
+        CHECK(DT::recordInputDispatch(DT::activeSessionId(), 4, 151, 150, 1000, 1010, 990, 1030).event_mach_upper_ns == 0);
+        const auto memory = DT::sampleProcessMemory();
+        REQUIRE(memory.sampled_mach_ns != 0);
+        if (memory.valid) CHECK(memory.physical_footprint_bytes > 0);
+        const auto cached = DT::sampleProcessMemory();
+        CHECK(cached.sampled_mach_ns == memory.sampled_mach_ns);
+        CHECK(cached.valid == memory.valid);
+        const auto rows = first.rows();
+        unsigned dispatches = 0, camera_rows = 0, component_rows = 0;
+        for (auto row : events(rows, @"metrics"))
+        {
+            dispatches += [row[@"name"] isEqual:@"input_dispatch"];
+            camera_rows += [row[@"name"] isEqual:@"view_camera"];
+            component_rows += [row[@"name"] isEqual:@"view_camera_bits"];
+        }
+        CHECK(dispatches == 3);
+        CHECK(camera_rows == 3);
+        CHECK(component_rows == 12); // First and changed exact32-component snapshots.
+        CHECK(DT::latestViewObservation().sequence == 0);
+
+        Session second;
+        second.start();
+        const auto before = DT::statistics().attempted;
+        DT::recordSessionMetrics(input.session_id, {}, "stale_present_callback", {});
+        CHECK(DT::statistics().attempted == before);
+        CHECK(DT::recordInputDispatch(input.session_id, 2, 100, 150, 1000, 1010, 990, 1030).sequence == 0);
+        CHECK(DT::statistics().attempted == before); // Dispatch started in the previous session.
+        CHECK(DT::latestInputObservation().sequence == 0);
+        CHECK_FALSE(DT::latestPresentationSource().selected);
+        CHECK(DT::recordInputDispatch(DT::activeSessionId(), 2, 100, 150, 1000, 1010, 990, 1030).sequence == 1);
+        const auto second_rows = second.rows();
+        for (auto row : events(second_rows, @"metrics"))
+            CHECK_FALSE([row[@"name"] isEqual:@"stale_present_callback"]);
+    }
+}
+
+TEST_CASE("almetal: command telemetry accessor preserves exact nonowning creation identity",
+          "[almetal][diagnostic-telemetry][diagnostic-token]")
+{
+    @autoreleasepool
+    {
+        Session session;
+        session.start();
+        std::string error;
+        auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+        const auto commits = ALMetalDevice::committedCommandBufferCount();
+        auto command = device->makeCommandBuffer("Alchemy idle barrier", &error);
+        REQUIRE(command);
+        const auto first = command->diagnosticToken();
+        REQUIRE(first.command_id != 0);
+        CHECK(DT::commandTokenActive(first));
+        const auto created = DT::statistics().commands_created;
+        for (unsigned index = 0; index < 32; ++index)
+        {
+            const auto repeated = command->diagnosticToken();
+            CHECK(repeated.session_id == first.session_id);
+            CHECK(repeated.command_id == first.command_id);
+        }
+        CHECK(DT::statistics().commands_created == created);
+        CHECK(ALMetalDevice::committedCommandBufferCount() == commits);
+        command.reset();
+        CHECK(DT::statistics().commands_abandoned == 1);
+        CHECK(first.command_id != 0); // Value token survives; wrapper ownership does not.
+        const auto rows = session.rows();
+        CHECK(events(rows, @"command_create_begin").size() == 1);
+        CHECK(events(rows, @"command_abandon").size() == 1);
+        CHECK(events(rows, @"command_commit_begin").empty());
+        CHECK_FALSE(DT::commandTokenActive(first));
+    }
+}
+
+TEST_CASE("almetal: pending command diagnostic IDs keep their creation session across restart",
+          "[almetal][diagnostic-telemetry][diagnostic-token]")
+{
+    @autoreleasepool
+    {
+        Session first;
+        first.start();
+        std::string error;
+        auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+        auto old = device->makeCommandBuffer("Alchemy idle barrier", &error); REQUIRE(old);
+        const auto old_token = old->diagnosticToken();
+        REQUIRE(old_token.command_id == 1);
+        const auto first_rows = first.rows(); // Deliberately keep the command unsubmitted/alive.
+        CHECK(events(first_rows, @"command_abandon").empty());
+        Session second;
+        second.start();
+        auto current = device->makeCommandBuffer("Alchemy idle barrier", &error); REQUIRE(current);
+        const auto current_token = current->diagnosticToken();
+        CHECK(current_token.command_id == old_token.command_id); // Numeric IDs can collide.
+        CHECK(current_token.session_id != old_token.session_id);
+        CHECK(old->diagnosticToken().session_id == old_token.session_id);
+        CHECK_FALSE(DT::commandTokenActive(old->diagnosticToken()));
+        CHECK(DT::commandTokenActive(current_token));
+        const auto before = DT::statistics().attempted;
+        DT::recordSessionMetrics(old_token.session_id, {}, "old_group_command", {});
+        CHECK(DT::statistics().attempted == before);
+        old.reset(); // Its old-session abandonment cannot modify the new counters.
+        CHECK(DT::statistics().commands_abandoned == 0);
+        current.reset();
+        CHECK(DT::statistics().commands_abandoned == 1);
+        const auto second_rows = second.rows();
+        CHECK(events(second_rows, @"command_create_begin").size() == 1);
+        CHECK(events(second_rows, @"command_abandon").size() == 1);
+    }
+}
+
 TEST_CASE("almetal: diagnostic provenance numeric records and explicit nested worker scopes",
           "[almetal][diagnostic-telemetry]")
 {

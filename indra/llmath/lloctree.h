@@ -563,6 +563,13 @@ public:
     void addChild(oct_node* child, bool silent = false)
     {
 #if LL_OCTREE_PARANOIA_CHECK
+        // mChild is fixed storage; mChildCount is its occupied prefix.
+        // Reject overflow before inspecting or changing the child/map state.
+        if (getChildCount() >= 8)
+        {
+            OCT_ERRS <<"Octree node has too many children... why?" << LL_ENDL;
+            return;
+        }
 
         if (child->getSize().equals3(getSize()))
         {
@@ -581,10 +588,6 @@ public:
             }
         }
 
-        if (mChild.size() >= 8)
-        {
-            OCT_ERRS <<"Octree node has too many children... why?" << LL_ENDL;
-        }
 #endif
 
         mChildMap[child->getOctant()] = mChildCount;

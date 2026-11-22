@@ -43,6 +43,11 @@
 #include <curl/curl.h>
 #include "alregex.h"
 #include <chrono>
+#include <atomic>
+#include <functional>
+#include <thread>
+#include <stdexcept>
+#include "llqueuedthread.h"
 #include <map>
 #include <sstream>
 #include <vector>
@@ -3360,4 +3365,321 @@ void usleep(unsigned long usec)
 
 #endif
 
+}
+
+namespace
+{
+using namespace std::chrono_literals;
+struct ReplyServiceGuard
+{
+    ReplyServiceGuard() { HttpRequest::createService(); }
+    ~ReplyServiceGuard() { HttpRequest::destroyService(); }
+};
+class ReplyAgeHandler final : public HttpHandler
+{
+public:
+    explicit ReplyAgeHandler(HttpRequest& request) : mRequest(request) {}
+    void onCompleted(HttpHandle, HttpResponse*) override
+    {
+        age = mRequest.currentReplyQueueAge();
+        thread = std::this_thread::get_id();
+        calls.fetch_add(1, std::memory_order_release);
+    }
+    std::optional<std::chrono::nanoseconds> age;
+    std::thread::id thread;
+    std::atomic<int> calls{0};
+private:
+    HttpRequest& mRequest;
+};
+class ReplyWakeOwner final : public LLQueuedThread
+{
+public:
+    explicit ReplyWakeOwner(HttpRequest& request)
+        : LLQueuedThread("HTTP reply fixture", true, false, 1, 1), mRequest(request)
+    {
+        mRequest.setReplyNotification([this]() noexcept { requestThreadedUpdate(); });
+    }
+    ~ReplyWakeOwner() override
+    {
+        mRequest.setReplyNotification({});
+        shutdown();
+    }
+    size_t turns = 0; // read only after owner shutdown
+private:
+    void threadedUpdate() override { ++turns; mRequest.update(1000, 16); }
+    HttpRequest& mRequest;
+};
+class FunctionReplyHandler final : public HttpHandler
+{
+public:
+    explicit FunctionReplyHandler(std::function<void(HttpResponse*)> body) : mBody(std::move(body)) {}
+    void onCompleted(HttpHandle, HttpResponse* response) override { mBody(response); }
+private:
+    std::function<void(HttpResponse*)> mBody;
+};
+}
+
+TEST_CASE("HTTP reply wake: callback age exposes frame-poll delay and independent owner progress", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    std::chrono::nanoseconds frame_wait{0};
+    {
+        HttpRequest request;
+        // Timing without a wake models the original frame-triggered consumer.
+        request.setReplyNotification([]() noexcept {});
+        auto handler = std::make_shared<ReplyAgeHandler>(request);
+        REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+        auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+        REQUIRE(op);
+        CHECK_FALSE(request.currentReplyQueueAge());
+        op->stageFromRequest(nullptr); // actual completed operation, no network
+        std::this_thread::sleep_for(20ms); // deliberately withhold the main poll
+        CHECK(handler->calls.load(std::memory_order_acquire) == 0);
+        request.update(0);
+        CHECK(handler->calls.load(std::memory_order_acquire) == 1);
+        REQUIRE(handler->age);
+        frame_wait = *handler->age;
+        CHECK(frame_wait >= 20ms);
+        CHECK(handler->thread == std::this_thread::get_id());
+        CHECK_FALSE(request.currentReplyQueueAge());
+    }
+    {
+        HttpRequest request;
+        ReplyWakeOwner owner(request);
+        auto handler = std::make_shared<ReplyAgeHandler>(request);
+        REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+        auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+        REQUIRE(op);
+        owner.start();
+        op->stageFromRequest(nullptr);
+        // No main update of request/owner is permitted in this interval.
+        const auto until = std::chrono::steady_clock::now() + 2s;
+        while (!handler->calls.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < until)
+            std::this_thread::yield();
+        owner.shutdown();
+        CHECK(handler->calls.load(std::memory_order_acquire) == 1);
+        CHECK(handler->thread != std::this_thread::get_id());
+        REQUIRE(handler->age);
+        CHECK_FALSE(request.currentReplyQueueAge());
+        std::cout << "reply_handoff_fixture frame_poll_age_ns=" << frame_wait.count()
+                  << " independent_owner_age_ns=" << handler->age->count() << '\n';
+    }
+}
+
+TEST_CASE("HTTP reply wake: ordinary untimed queue returns no callback age", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    auto handler = std::make_shared<ReplyAgeHandler>(request);
+    REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+    auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+    REQUIRE(op);
+    op->stageFromRequest(nullptr);
+    request.update(0);
+    CHECK(handler->calls.load(std::memory_order_acquire) == 1);
+    CHECK_FALSE(handler->age);
+    CHECK_FALSE(request.currentReplyQueueAge());
+}
+
+TEST_CASE("HTTP reply wake: limited dispatch preserves FIFO and re-arms retained replies", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    int signals = 0;
+    request.setReplyNotification([&]() noexcept { ++signals; });
+    std::vector<int> delivered;
+    for (int i = 0; i < 17; ++i)
+    {
+        auto handler = std::make_shared<FunctionReplyHandler>([&, i](HttpResponse*) { delivered.push_back(i); });
+        REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+        auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+        REQUIRE(op);
+        op->stageFromRequest(nullptr);
+    }
+    signals = 0;
+    request.update(0, 16); // count-only deterministic gate, no timing assumption
+    REQUIRE(delivered.size() == 16);
+    for (int i = 0; i < 16; ++i) CHECK(delivered[i] == i);
+    CHECK(signals == 1);
+    request.update(0, 16);
+    REQUIRE(delivered.size() == 17);
+    CHECK(delivered.back() == 16);
+    CHECK(signals == 1); // no re-arm when empty
+    CHECK_FALSE(request.currentReplyQueueAge());
+}
+
+TEST_CASE("HTTP reply wake: one producer batch drains through bounded native turns without frame polls", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    ReplyWakeOwner owner(request);
+    std::atomic<int> calls{0};
+    std::vector<int> delivered;
+    for (int i = 0; i < 17; ++i)
+    {
+        auto handler = std::make_shared<FunctionReplyHandler>([&, i](HttpResponse*)
+        {
+            delivered.push_back(i);
+            calls.fetch_add(1, std::memory_order_release);
+        });
+        REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+        auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+        REQUIRE(op);
+        op->stageFromRequest(nullptr);
+    }
+    owner.start(); // no more producer activity and no main updates after this
+    const auto until = std::chrono::steady_clock::now() + 2s;
+    while (calls.load(std::memory_order_acquire) != 17 && std::chrono::steady_clock::now() < until)
+        std::this_thread::yield();
+    owner.shutdown();
+    REQUIRE(delivered.size() == 17);
+    for (int i = 0; i < 17; ++i) CHECK(delivered[i] == i);
+    CHECK(owner.turns >= 2);
+}
+
+TEST_CASE("HTTP reply wake: deadline is checked between complete callbacks", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    int signals = 0, first_calls = 0, later_calls = 0;
+    request.setReplyNotification([&]() noexcept { ++signals; });
+    auto first = std::make_shared<FunctionReplyHandler>([&](HttpResponse*)
+    {
+        ++first_calls;
+        std::this_thread::sleep_for(2ms);
+    });
+    auto later = std::make_shared<FunctionReplyHandler>([&](HttpResponse*) { ++later_calls; });
+    for (const auto& handler : {first, later})
+    {
+        REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+        auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+        REQUIRE(op);
+        op->stageFromRequest(nullptr);
+    }
+    signals = 0;
+    request.update(1000, 16);
+    CHECK(first_calls == 1);
+    CHECK(later_calls == 0);
+    CHECK(signals == 1);
+    request.update(0, 16);
+    CHECK(later_calls == 1);
+}
+
+TEST_CASE("HTTP reply wake: one-argument unlimited update preserves its copied-batch semantics", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    int first_calls = 0, late_calls = 0;
+    HttpOperation::ptr_t late;
+    auto first = std::make_shared<FunctionReplyHandler>([&](HttpResponse*)
+    {
+        ++first_calls;
+        late->stageFromRequest(nullptr);
+    });
+    auto second = std::make_shared<FunctionReplyHandler>([&](HttpResponse*) { ++late_calls; });
+    REQUIRE(request.requestNoOp(first) != LLCORE_HTTP_HANDLE_INVALID);
+    auto initial = HttpRequestQueue::instanceOf()->fetchOp(false);
+    REQUIRE(request.requestNoOp(second) != LLCORE_HTTP_HANDLE_INVALID);
+    late = HttpRequestQueue::instanceOf()->fetchOp(false);
+    REQUIRE(initial);
+    REQUIRE(late);
+    initial->stageFromRequest(nullptr);
+    request.update(0);
+    CHECK(first_calls == 1);
+    CHECK(late_calls == 0);
+    request.update(0, 0); // the new overload's zero limit delegates unchanged
+    CHECK(late_calls == 1);
+}
+
+TEST_CASE("HTTP reply wake: arrival during the last callback is retained and re-armed", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    std::atomic<int> signals{0};
+    request.setReplyNotification([&]() noexcept { ++signals; });
+    int first_calls = 0, late_calls = 0;
+    HttpOperation::ptr_t late;
+    auto first = std::make_shared<FunctionReplyHandler>([&](HttpResponse*)
+    {
+        ++first_calls;
+        std::jthread producer([&] { late->stageFromRequest(nullptr); });
+        producer.join();
+    });
+    auto second = std::make_shared<FunctionReplyHandler>([&](HttpResponse*) { ++late_calls; });
+    REQUIRE(request.requestNoOp(first) != LLCORE_HTTP_HANDLE_INVALID);
+    auto initial = HttpRequestQueue::instanceOf()->fetchOp(false);
+    REQUIRE(request.requestNoOp(second) != LLCORE_HTTP_HANDLE_INVALID);
+    late = HttpRequestQueue::instanceOf()->fetchOp(false);
+    REQUIRE(initial);
+    REQUIRE(late);
+    initial->stageFromRequest(nullptr);
+    signals = 0;
+    request.update(0, 1);
+    CHECK(first_calls == 1);
+    CHECK(late_calls == 0);
+    CHECK(signals == 2); // arrival signal plus retained-reply re-arm; owner coalesces them
+    request.update(0, 1);
+    CHECK(late_calls == 1);
+    CHECK_FALSE(request.currentReplyQueueAge());
+}
+
+TEST_CASE("HTTP reply wake: throwing handler releases response, restores age scope and re-arms remainder", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    ReplyServiceGuard service;
+    HttpRequest request;
+    int signals = 0, later_calls = 0;
+    request.setReplyNotification([&]() noexcept { ++signals; });
+    std::shared_ptr<HttpResponse> retained;
+    auto throwing = std::make_shared<FunctionReplyHandler>([&](HttpResponse* response)
+    {
+        CHECK(request.currentReplyQueueAge().has_value());
+        response->addRef(); // the caller's explicit reference must be the sole survivor
+        retained = std::shared_ptr<HttpResponse>(response, [](HttpResponse* value) { value->release(); });
+        throw std::runtime_error("synthetic handler failure");
+    });
+    auto later = std::make_shared<FunctionReplyHandler>([&](HttpResponse*) { ++later_calls; });
+    for (const auto& handler : {throwing, later})
+    {
+        REQUIRE(request.requestNoOp(handler) != LLCORE_HTTP_HANDLE_INVALID);
+        auto op = HttpRequestQueue::instanceOf()->fetchOp(false);
+        REQUIRE(op);
+        op->stageFromRequest(nullptr);
+    }
+    signals = 0;
+    CHECK_THROWS_AS(request.update(0, 16), std::runtime_error);
+    CHECK(signals == 1);
+    CHECK(later_calls == 0);
+    CHECK_FALSE(request.currentReplyQueueAge());
+    REQUIRE(retained);
+    CHECK(retained->getRefCount() == 1);
+    request.update(0, 16);
+    CHECK(later_calls == 1);
+    CHECK_FALSE(request.currentReplyQueueAge());
+}
+
+TEST_CASE("HTTP reply wake: request notifier releases its borrowed response when handler throws", "[HttpReplyWake]")
+{
+    ScopedCurlInit ready;
+    std::shared_ptr<HttpResponse> retained;
+    auto handler = std::make_shared<FunctionReplyHandler>([&](HttpResponse* response)
+    {
+        response->addRef();
+        retained = std::shared_ptr<HttpResponse>(response, [](HttpResponse* value) { value->release(); });
+        throw std::runtime_error("synthetic request handler failure");
+    });
+    auto op = std::make_shared<HttpOpRequest>();
+    op->mCurlHandle = curl_easy_init();
+    REQUIRE(op->mCurlHandle != nullptr);
+    op->setReplyPath({}, handler);
+    CHECK_THROWS_AS(op->visitNotifier(nullptr), std::runtime_error);
+    REQUIRE(retained);
+    CHECK(retained->getRefCount() == 1);
 }

@@ -191,6 +191,12 @@ public:
     int                         mTracing;
 
 private:
+    friend class HttpReplyQueue;
+    friend class HttpRequest;
+    // Written only for an opt-in reply queue, before its mutex publishes this
+    // operation. Transport no longer accesses an operation after addAsReply().
+    std::optional<std::chrono::steady_clock::time_point> mReplyQueuedAt;
+
     typedef std::map<HttpHandle, wptr_t>    handleMap_t;
 
     HttpHandle                  createHandle();

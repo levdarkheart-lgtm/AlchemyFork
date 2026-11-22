@@ -398,6 +398,11 @@ std::string ALMetalCommandBuffer::errorDescription() const
     return mImpl ? describeNSError(mImpl->command_buffer.error) : "No Metal command buffer";
 }
 
+ALMetalDiagnosticTelemetry::CommandToken ALMetalCommandBuffer::diagnosticToken() const noexcept
+{
+    return mImpl ? mImpl->diagnostic : ALMetalDiagnosticTelemetry::CommandToken{};
+}
+
 bool ALMetalCommandBuffer::retainUntilCompletion(
     std::shared_ptr<const void> owner, std::string* error)
 {

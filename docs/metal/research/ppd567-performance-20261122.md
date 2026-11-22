@@ -48,13 +48,23 @@ and matching dSYMs pass for both arms. Both use the same native metallib hash
 `6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793`.
 Actual startup logs identify OpenHTJ2K0.27.0 as the pixel decoder.
 
-The new GPU case tests differing pending packs, both binding slots, caller-storage
-reuse, same/separate commands, reverse commit order, external/standalone pages
-and candidate/fallback paths against rendered controls. The old renderer fails
+The original GPU case tests differing pending packs, caller-storage reuse,
+same/separate commands, reverse commit order, external/standalone pages and
+candidate/fallback paths against rendered controls. Both of its consumers use
+fragment slot1. The original claim that it covered slot3 was incorrect: simple
+alpha uses slot1, while above-water is the changed slot3 consumer (PPD582). The old renderer fails
 exactly eight repeated-full-pack reuse checks; the fixed renderer passes 51,279
 assertions in that case. With API/Shader Validation, the transparency invocation
 passes 1,825,343 assertions / 12 cases and related checks 581,147 assertions / 40 cases.
 These are separate test invocations, not an assertion that every case is unique.
+
+Review follow-through adds a separate actual above-water slot3 case followed by
+alpha slot1 restoration, with water-only differing-pack controls and the pending
+view/page matrix. Its API/Shader Validation run passes3,805assertions/1case on
+2026-11-22. The first attempt failed the fixture's water-haze ordering contract;
+clearing the water marker only for its alpha-only reference corrects that setup.
+These new results do not retroactively expand the original12-case run's coverage.
+See the [follow-through ledger](../work/active/ppd567-review-followup-20261122.md).
 
 The tool suite passes 185 tests with one optional retained-fixture integration
 skipped. Initial Python environments lacked PyYAML or NumPy; both failed runs are

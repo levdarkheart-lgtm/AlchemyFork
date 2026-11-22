@@ -90,10 +90,12 @@ LLAgentListener::LLAgentListener(LLAgent &agent)
         &LLAgentListener::getPosition,
         LLSDMap("reply", LLSD()));
     add("getCamera",
-        "Read the current viewer camera on [\"reply\"] without changing it:\n"
+        "Read viewer-camera values at request time on [\"reply\"] without changing them:\n"
         "global position/focus, agent-space position and axes, modelview/projection,\n"
-        "vertical_fov, aspect, near_clip, far_clip, projection_far_clip and camera_mode.\n"
-        "This is the rendered camera, not the avatar position from getPosition.",
+        "vertical_fov (radians), aspect, near_clip, far_clip, projection_far_clip and camera_mode.\n"
+        "projection_far_clip may be +infinity with a reverse-Z infinite projection.\n"
+        "These values are not an atomic snapshot tied to one rendered/captured frame.\n"
+        "They describe the viewer camera, not the avatar position from getPosition.",
         &LLAgentListener::getCamera,
         LLSDMap("reply", LLSD()));
     add("startAutoPilot",

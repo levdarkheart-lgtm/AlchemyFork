@@ -119,12 +119,11 @@ void HttpOperation::visitNotifier(HttpRequest *)
 {
     if (mUserHandler)
     {
-        HttpResponse * response = new HttpResponse();
+        const auto release_response = [](HttpResponse* response) { response->release(); };
+        std::unique_ptr<HttpResponse, decltype(release_response)> response(new HttpResponse(), release_response);
 
         response->setStatus(mStatus);
-        mUserHandler->onCompleted(getHandle(), response);
-
-        response->release();
+        mUserHandler->onCompleted(getHandle(), response.get());
     }
 }
 

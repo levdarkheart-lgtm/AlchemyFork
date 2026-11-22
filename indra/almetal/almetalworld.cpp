@@ -2528,9 +2528,11 @@ struct ALMetalWorldGBufferRenderer::Impl
         ALMetalCommandBuffer& operator*() const noexcept { return *command; }
     };
     std::deque<PendingWorldBatch> pending_command_batches;
-    ALMetalFrameAdmission main_admission{2, 3};
+    static constexpr std::size_t main_pending_group_limit = 2;
+    ALMetalFrameAdmission main_admission{main_pending_group_limit, 3};
     ALMetalFrameAdmission::Ticket main_reservation = 0;
     ALMetalWorldMainFrameStats main_stats;
+    std::uint64_t diagnostic_block_serial = 0, diagnostic_memory_sample_ns = 0;
     struct PendingShadowBatch
     {
         ALMetalFrameAdmission::Ticket ticket;
@@ -2809,7 +2811,53 @@ struct ALMetalWorldGBufferRenderer::Impl
         return true;
     }
 
-    ALMetalFrameAdmission::Ticket reserveMainFrame(std::uint64_t group, std::string* error)
+    void observeMainAdmissionMemory(std::uint64_t block, std::uint64_t boundary) noexcept
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        if (!D::enabled()) return;
+        const auto now = D::machTimeNs();
+        if (diagnostic_memory_sample_ns && now >= diagnostic_memory_sample_ns &&
+            now - diagnostic_memory_sample_ns < 100'000'000ull) return;
+        diagnostic_memory_sample_ns = now;
+        const auto memory = D::sampleProcessMemory();
+        const auto resources = device->uniqueResourceStats();
+        D::recordMetrics(D::currentFrameTag(), "admission_memory",
+            {block, boundary, memory.sampled_mach_ns, memory.physical_footprint_bytes,
+             memory.valid, device->currentAllocatedSize(), resources.owned_metal_reported_bytes,
+             memory.sampling_ns});
+        if (render_target_pool)
+        {
+            const auto pool = render_target_pool->stats();
+            D::recordMetrics(D::currentFrameTag(), "admission_target_pool",
+                {block, boundary, pool.cached_targets, pool.cached_bytes,
+                 pool.dependency_deferrals, pool.acquisitions, pool.reuses, pool.evictions});
+        }
+        const auto pages = [&](const ALMetalWorldFrameData* data, std::uint64_t scope)
+        {
+            if (!data || !data->mImpl) return;
+            const auto& owner = *data->mImpl;
+            const auto bytes = [](const auto& storage)
+            {
+                std::uint64_t total = 0;
+                // Bound diagnostic iteration even on an unusually large view.
+                const auto count = std::min<std::size_t>(storage.size(), 1024);
+                for (std::size_t index = 0; index < count; ++index)
+                    if (storage[index]->buffer) total += storage[index]->buffer->length();
+                return total;
+            };
+            D::recordMetrics(D::currentFrameTag(), "admission_frame_pages",
+                {block, scope, bytes(owner.active), bytes(owner.retired), bytes(owner.available),
+                 owner.active.size(), owner.retired.size(),
+                 owner.active.size() > 1024 || owner.retired.size() > 1024 || owner.available.size() > 1024});
+        };
+        pages(frame_data.get(), 1);
+        if (lighting_data != frame_data) pages(lighting_data.get(), 2);
+        D::recordMetrics(D::currentFrameTag(), "admission_memory_observer",
+            {block, boundary, now, D::machTimeNs(), 0, 0, 0, 0});
+    }
+
+    ALMetalFrameAdmission::Ticket reserveMainFrame(std::uint64_t group, std::string* error,
+                                                  std::uint32_t diagnostic_phase = 0)
     {
         // A utility or special-view batch on this same renderer must settle
         // before entering the explicit main authority. Do not bypass its cap
@@ -2836,6 +2884,34 @@ struct ALMetalWorldGBufferRenderer::Impl
             }
             const auto tickets = main_admission.submittedTickets(decision.blocking_frame);
             ++main_stats.older_group_waits;
+            namespace D = ALMetalDiagnosticTelemetry;
+            const bool observe = D::enabled();
+            const auto block = observe ? ++diagnostic_block_serial : 0;
+            const auto diagnostic_start = observe ? D::machTimeNs() : 0;
+            if (observe)
+            {
+                D::recordMetrics(D::currentFrameTag(), "main_admission_block",
+                    {block, group, decision.blocking_frame, diagnostic_phase,
+                     main_admission.pendingFrameCount(), main_admission.pendingSubmissionCount(),
+                     main_admission.reservationCount(), main_pending_group_limit});
+                std::size_t count = 0;
+                for (const auto& pending : pending_command_batches)
+                {
+                    if (count++ == 16) break;
+                    const auto token = pending.command->diagnosticToken();
+                    const bool blocks = pending.main_ticket &&
+                        std::find(tickets.begin(), tickets.end(), pending.main_ticket) != tickets.end();
+                    D::recordMetrics(D::currentFrameTag(), "main_admission_target",
+                        {block, pending.main_ticket, token.session_id, token.command_id,
+                         static_cast<std::uint64_t>(pending.command->status()),
+                         pending.command->isCommitted(), blocks, D::commandTokenActive(token)});
+                }
+                if (pending_command_batches.size() > 16)
+                    D::recordMetrics(D::currentFrameTag(), "main_admission_target_truncated",
+                        {block, pending_command_batches.size(), 16, 0, 0, 0, 0, 0});
+                observeMainAdmissionMemory(block, 0);
+            }
+            const auto diagnostic_pre_end = observe ? D::machTimeNs() : 0;
             auto& frame_budget = ALNativeFrameBudget::instance();
             const auto observation_frame = frame_budget.snapshot().frame;
             const auto cpu_start = currentThreadCpuNanoseconds();
@@ -2856,6 +2932,20 @@ struct ALMetalWorldGBufferRenderer::Impl
             const auto cpu_end = currentThreadCpuNanoseconds();
             const auto wall_nanoseconds = elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0;
             main_stats.wait_nanoseconds += wall_nanoseconds;
+            if (observe)
+            {
+                const auto diagnostic_post_start = D::machTimeNs();
+                const auto cpu = cpu_start && cpu_end && *cpu_end >= *cpu_start
+                    ? *cpu_end - *cpu_start : 0;
+                D::recordMetrics(D::currentFrameTag(), "main_admission_unblock",
+                    {block, group, decision.blocking_frame, diagnostic_start, D::machTimeNs(),
+                     wall_nanoseconds, cpu,
+                     cpu_start && cpu_end && *cpu_end >= *cpu_start});
+                observeMainAdmissionMemory(block, 1);
+                D::recordMetrics(D::currentFrameTag(), "main_admission_observer",
+                    {block, diagnostic_start, diagnostic_pre_end, diagnostic_post_start,
+                     D::machTimeNs(), 0, 0, 0});
+            }
             if (waited)
             {
                 std::optional<std::uint64_t> cpu_nanoseconds;
@@ -3968,6 +4058,8 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     next.pending_command_batches.swap(mImpl->pending_command_batches);
     next.main_admission = std::move(mImpl->main_admission);
     next.main_stats = mImpl->main_stats;
+    next.diagnostic_block_serial = mImpl->diagnostic_block_serial;
+    next.diagnostic_memory_sample_ns = mImpl->diagnostic_memory_sample_ns;
     next.shadow_submissions = mImpl->shadow_submissions;
     next.shadow_data_slabs.swap(mImpl->shadow_data_slabs);
     next.shadow_data_statistics = mImpl->shadow_data_statistics;
@@ -4239,7 +4331,15 @@ bool ALMetalWorldGBufferRenderer::beginMainFrameBatch(
     ALMetalFrameAdmission::Ticket ticket = 0;
     try
     {
-        ticket = mImpl->reserveMainFrame(group, error);
+        const auto phase = !ALMetalDiagnosticTelemetry::enabled() ? 0u
+            : label == "Alchemy native world G-buffer and ordered sky" ? 1u
+            : label == "Alchemy native world light-map and deferred-light chain" ? 2u
+            : label == "Alchemy native world opaque and optical post" ? 3u : 0u;
+        // The same sparse memory series exists even if a private comparison
+        // arm admits every group without blocking. Missing waits are not zero
+        // marginal memory. Boundary2 denotes this ordinary admission attempt.
+        if (ALMetalDiagnosticTelemetry::enabled()) mImpl->observeMainAdmissionMemory(0, 2);
+        ticket = mImpl->reserveMainFrame(group, error, phase);
         if (!ticket) return false;
         auto command = mImpl->device->makeCommandBuffer(label, error);
         if (!command)
@@ -4248,6 +4348,16 @@ bool ALMetalWorldGBufferRenderer::beginMainFrameBatch(
             return false;
         }
         mImpl->command_batch = std::move(command);
+        if (ALMetalDiagnosticTelemetry::enabled())
+        {
+            const auto token = mImpl->command_batch->diagnosticToken();
+            ALMetalDiagnosticTelemetry::recordSessionMetrics(token.session_id,
+                ALMetalDiagnosticTelemetry::currentFrameTag(),
+                "main_group_command", {group, ticket, token.command_id, phase,
+                    mImpl->main_admission.pendingFrameCount(),
+                    mImpl->main_admission.pendingSubmissionCount(),
+                    mImpl->main_admission.reservationCount(), mImpl->main_pending_group_limit});
+        }
     }
     catch (const std::bad_alloc&)
     {

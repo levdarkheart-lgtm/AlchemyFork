@@ -50,10 +50,14 @@ remain separate from this scoped task.
 ## Implementation and component checkpoint
 
 Root's invocation-local slice patch changes only the two existing forward-pack
-binding sites. The integrated independent fixture covers both slots with separate
-visible responses, reused caller storage, two differing packs in one or two pending
-commands, reverse submission order, external/standalone pages and candidate/fallback
-paths. Empty-view checks bound publication bytes below a full pack.
+binding sites. The original integrated fixture covers two slot1 consumers with
+separate visible responses, reused caller storage, two differing packs in one or
+two pending commands, reverse submission order, external/standalone pages and
+candidate/fallback paths. Empty-view checks bound publication bytes below a full
+pack. Correction2026-11-22/PPD582: the original “both slots” claim was false;
+simple alpha uses slot1. The new review-follow-through case uses actual above-water
+slot3 and restores alpha slot1. Its separate API/Shader Validation run passes
+3,805assertions/1case; this is additional evidence, not part of the old12-case run.
 
 Actual old renderer plus the new test fails exactly eight repeated 49,216-byte
 dedup checks; the fixed renderer passes 51,279 assertions in that case. Full

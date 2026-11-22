@@ -1,159 +1,86 @@
-# Current engineering state — PPD-567 measured follow-through
+# Current engineering state — review and Home handoff
 
-Build observed2026-11-21; owner acceptance2026-11-22.
-Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
-Branch: codex/apple-silicon-metal, canonical checkout.
-Current implementation/report checkpoint: `ec696aa615` (pushed2026-11-22).
-**Renderer code checkpoint:** `960bd3644a` (accepted baseline).
-Ancestor indra tree: `7d8c095d360bd3f77ac64d1b69e23c21840e0011`;
-new local PPD567/common-observer source is explicitly hashed in both arm manifests.
-Scheduling **26.4.0.69450 is owner accepted; commit/push approved**.
-PPD-556/560–565 are verified, owner verification passed and push approval granted.
-Accepted Maintenance 69445 remains preserved and previously pushed at629984ee37;
-the new explicit2026-11-22 approval now covers Scheduling69450 as well.
+Observed 2026-11-22, Apple M1 Max /64 GiB /macOS 26.5.2 /Xcode 26.6.
+Branch `codex/apple-silicon-metal`; source base `d191bb062f` plus local review changes.
+**Renderer code checkpoint:** `ec696aa615` (published renderer, before local diagnostics).
+[Final review/Home report](../research/review-home-admission-20261122.md) is the
+current numerical disposition; [canonical work](../work/active/metal-port.md) owns
+remaining engineering. The register retains defect history and owner decisions.
+**New scope has no push approval. Home FPS is not fixed.**
 
-## Local implementation and completed comparisons —2026-11-22
+## Source and candidate
 
-Owner now authorizes PPD567 implementation, repeated controlled Club comparisons,
-Home regression checks, bounded Home census, exclusive Club CPU budget and worker/
-queue table. [Current execution ledger](../work/active/ppd567-performance-20261122.md)
-owns the complete five-part goal. Owner now says "Commit and push all the changes."
-Current-scope implementation/report publication is complete; owner visual/performance verification is pending.
+- Accepted Scheduling69450/source960bd3644a and Maintenance69445 remain preserved.
+  Published PPD567/ec696aa615 and handoff d191bb062f are separate from this scope.
+- Canonical source retains two main groups, original adoption and one-display capture
+  controller. All 28 pinned source hashes match; private cap3/early/capture4 paths are
+  absent from canonical code/tests. No new graphics preference or policy switch.
+- Normal candidate: `~/Alchemy-candidates/Alchemy Metal Review Candidate 26.4.0d69454.app`.
+  Executable SHA256 `7c4e45dce8e7066e7911d42dbee04291ad8cbccf29b09d5be6111ab965248dcd`;
+  UUID `C1C910DE-5E27-3C74-93D6-0FD739075A62`, matching dSYM. Private identity
+  `ppd567-review-20261122/identities/group2-final.json` records the exact dirty build.
+- Native library SHA256 `6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793`.
+  Actual OpenHTJ2K0.27 sole pixel decoding verified; OpenJPEG header/encoding separate.
 
-Local invocation-owned lazy forward-pack slice and independent pending-view tests
-are integrated. Actual baseline fails eight duplicate-pack byte checks; fixed test
-passes. Full transparency1825343 assertions/12cases and related GPU checks581147/
-40cases pass with API/Shader Validation. A read-only getCamera query is common to
-both new A/B builds; no frame hook, shader or quality change. Accepted69450 untouched.
-Both full builds/app checks pass. Tool suite passes185tests with1optional skip;
-initial dependency failures and the isolated PyYAML repair remain retained.
+## Last observed runtime and disposition
 
-Home census actually executes1024 records/966 covered receivers on M1 Max: zero
-ambient bit mismatches, mean7.74SH taps including default, substantial containment
-rejection. Explicit decision is STOP GPU kernel variants; no new redundant kernel
-operation selected, PPD353 regressions retained. Exclusive Club budget and worker
-progress table complete; loading decode backlog clears before late observations.
-PPD572–574 retain private reducer/generator/format failures and corrected evidence.
+All measurement viewers quit normally. Final Club control PID88938 closed after its
+100-second fixed view plus10-second drain. Four HTTP checks are complete; no further
+policy, input-target or shader experiments are planned. The exact normal candidate
+is now running as PID98258 at Club in native fullscreen. Login and rendered world
+were observed through the UI; runtime OpenHTJ2K and executable identity match.
+Diagnostics are off, with no LEAP helper or fixed-camera controller. It is ready for
+owner testing; this runtime observation is not owner visual acceptance.
 
-Both A/B full builds, signatures, app verification and matching dSYMs are complete;
-exact identities below are unchanged. Final10selected runs explicitly qualify true,
-reasons[]: Club A01b,B01,B02,A02,A04,B04 and4Home runs. A04/B04 have815/803periods,
-zero FRAME gaps. The initial pilot and whole A03/B03 pair remain retained/excluded;
-B03's6258gap and premature all10 claim/review error stay in PPD581.
-Normal Publication69452 is logged in at verified Club in native full screen.
-Leave it there for owner busy-scene testing; Home regression checks are complete.
-**Owner visual/performance verification is pending; no isolated FPS win is claimed.**
+Cap3 removes main-policy waits but moves blocking to shadow admission and produces
+worse frame-period tails. Earlier adoption moves a roughly11µs operation before the
+gate without a material repeated frame gain. Both experiments stay out of production.
+Exact captured dependency/resources, live limiter scope, input and sampled-memory
+results are in the report, including incomplete gates and the separate un-attributed
+completion tail. Qualified input counts are normal6, early10, cap3=12; the imposed
+12 target was not met in two arms. Investigator ended repetition after owner feedback.
 
-- Control: `~/Alchemy-candidates/Alchemy Metal Probe Control 26.4.0d69452.app`;
-  executable SHA256 `381c23ff409992515792c447960fd2dedb635fa22a85839786d663882b680fe2`,
-  UUID `67A89320-97EB-3D74-B6E3-EE2312C53555`.
-- Candidate: `~/Alchemy-candidates/Alchemy Metal Probe Publication 26.4.0d69452.app`;
-  executable SHA256 `1ded8f254087832c2d28d71084854eb1ff07474e545deaf211c8d890fffe099e`,
-  UUID `6A967A9B-4925-321E-865A-FF3A1446BED8`.
+HTTP independent owner wake is implemented and measured. Club callback p95 bounds
+improve from32.768–65.536ms(control1846) to2.048–4.096ms(candidate4621); sparse Home
+samples and unequal populations stay explicit. This is a handoff-stage result, not
+whole loading or FPS. Callback count/time bounds, cancellation and teardown remain.
 
-Exact source/working-patch hashes and symbols are in private
-`artifacts/metal/ppd567-20261122/identities/{control,candidate}.json` and `symbols/`.
-These new binaries share the observer; they are not the accepted69450 executable.
-The [final report](../research/ppd567-performance-20261122.md) retains full results.
-Final gate0: private analysis-comparison/final-comparison-02/comparison.json;
-actual B03 negative rejection proof remains. No qualification rule was weakened.
-Club broad opaque-post hash CPU2.193–2.940→0.0186–0.0237ms/period (~99%lower),
-including other constants/palettes; this is not exact probe-pack self-time.
-Mean-period pair changes are−6.35%,+1.30%,+1.62%; third p95+11.76%is retained.
-That pair has~30%more logical vertex-byte counter span and point lights88.38→90.88;
-unequal activity is not causal normalization or proof against regression. Home mean
-changes stay within0.5%. No isolated sustained FPS benefit is established.
+## Completed engineering and actual qualification
 
-Final preservation audit02 actual root0 covers20selected pre/post snapshots:
-66controls and per-scene camera matrices/pose match exactly; saved18present/
-48absent controls have0diffs, all3app hashes unchanged. FullScreen is absent in
-saved XML and0live; actual native full screen was independently verified.
-Whole XML byte equality is not claimed. PPD575–581 retain failures and corrected
-checks, B01 offline recovery and lossy command-footer limits; no false owner closure.
+| Scope | Executed proof / remaining owner boundary |
+| --- | --- |
+|582 water consumer | Real slot3/alpha1→3→1; focused3805/1 and integrated transparency1,829,148/13 pass API+Shader. Owner visual acceptance remains. |
+|583 public tools |74new sanitized cases across qualification, closed Home and numeric memory helpers; final259tests/1optional skip0. Negative gates and original failures retained. |
+|584 truth audit |211current-field corrections/44scoped accepted-removal closures; original histories retained.74per-ID missing-proof actions remain explicit, not74current bugs. |
+|585 camera description | Request-time/non-atomic/radian/infinite-far description; behavior unchanged and integrated build0. |
+|586 octree | Original diagnostic compile failure retained; fixed normal/diagnostic0, normal8264/7 and ASan/UBSan8331/8 pass. |
+|587/588/589 HTTP | Independent bounded wake, exact-once nonthreaded service and response RAII; queued4783/21 and HTTP180/11 pass. Four live age checks complete. Owner testing remains. |
+| Native diagnostics |572/12 API+Shader, CPU observers107/2 and native token140/2 pass. Diagnostic OFF avoids new clock/syscall/hash/allocation/callback work. |
+| Build/app | Doctor, consistent integrated/restored full builds0; candidate346ARM64 components/signatures verified. Source hashes and exact symbols pinned. |
 
-## Completed overnight investigation —2026-11-22
-
-The [readable report](../research/performance-investigation-20261122.md) and
-[ledger](../work/active/performance-investigation-20261122.md) retain the completed
-evidence-only investigation under private artifacts/metal/performance-investigation-20261122.
-Accepted69450 stayed unchanged. Its late native periods were Home60.587msmean/
-73.151p95 and Club51.869/58.044; these are not scanout. Home was GPU-dependent;
-Club main CPU was98.7%of one core. These older baselines are separate from new A/B.
-Source-enabled Home probe work was66.40%of BASE and57.51%of simple-shadow roots;
-pack55 differed from normal late39, not a timing A/B. Dominant shaders already use
-masks. Old coefficient/scalar/tile-SH regressions remain; the census STOP supersedes
-the earlier proposal to investigate another GPU representation.
-
-PPD568's157msHome/212msClub captured blocks are Apple driver allocation locks,
-not ResourcePlan mutexes; no-capture impact unknown. One58msHomeblock remains
-unclassified. PPD569 slot3 warning has a32-slot guarded active-prefix contract;
-exact warning draw/count remains unqualified. Club detailed-MST789msobserverhole
-is excluded; native frames/commits continue. GPU frequency/bandwidth/spilling and
-scanout latency are not established. PPD319 and product release gates stay open.
-
-Private helper defects566/570/571 have actual corrected live/native staging
-evidence, originals retained and owner acceptance pending. Prior doctor/Release/app
-checks pass. The66checked controls and8273-entry accepted-app inventory were unchanged;
-canonical metadata remainsOFF. Investigation collection/exports are complete; raw
-evidence and authorized configuration backup stay private, without report credentials.
-
-## Current implementation and evidence
-
-[Candidate report](../research/scheduling-candidate-69450-20261121.md) records exact
-source/app hashes, executed validation and retained limitations.
-[Current execution ledger](../work/active/ppd556-bounded-scheduling-20261121.md)
-retains commands, original failures, independent reviews and residual actions.
-[Previous accepted maintenance](../research/maintenance-candidate-69445-20261121.md)
-retains PPD527–555/557–559 owner acceptance. All records survive in the
-[defect register](../POST_PORT_DEFECTS.md).
-
-- Reusable scheduling, bounded callback admission, native wake/fairness and
-  busy/closed caller handling are integrated. ASan/UBSan793assertions/18cases,
-  integrated CPU/asset/settings/OpenHT58/58 and native56/56 pass; failures remain.
-- Invalid pool widths, texture handoffs/cancellation, main-setting liveness and
-  accepted ownership/resource fixes are present. Do not diagnose them as absent.
-- Accepted checkpoint passes Release build, deep/strict signing,346ARM64 Mach-O,
-  strict GL source audit and required OpenHT decoder/licence checks. OpenHTJ2K is
-  the sole pixel decoder; separate OpenJPEG metadata/encoding support remains.
-- Seven orphan settings and the automatic GL GPU classifier were retired; all66
-  ordinary graphics controls, quality presets, manual benchmark and viewer features
-  remain. Detailed source/stage inventories, warning and failed-fixture history
-  are preserved in the linked accepted report/ledger.
-
-## Ownership and recovery
-
-Root owns active PPD567 integration/runtime. Accepted scheduling evidence remains
-under artifacts/metal/ppd556-20261121; unrelated worktrees stay untouched. Source
-and A/B identities above supersede historical process/build status below.
-
-Owner-tested candidate: /Users/dekstroza/Alchemy-candidates/Alchemy Metal Scheduling 69450.app
-(executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335).
-Prior launch history and full69445/69417 identities remain in the accepted reports;
-those apps are untouched. Active comparison authorization is in its ledger.
-
-Normal candidate is ready at Club for owner rendering/stability checks. Preserve
-graphics preferences and keep exact locations/authentication data private.
+The final259-test run uses the existing requirements containing NumPy and PyYAML.
+Two incomplete interpreter-environment attempts are retained; source was not changed
+to hide them. Public memory reduction retains a global missed interval and actual
+sample gaps; reference quantiles differ by at most1ULP of interpolation rounding.
+Build/tests do not confer owner acceptance or resolve the Home performance incident.
 
 ## Complete-product advancement assessment
 
-| ID | State | Evidence / remaining boundary |
+| ID | State | Remaining boundary |
 | --- | --- | --- |
-| M-008 | doing | Bounded scheduler/caller repair owner accepted; broad feature acceptance remains. |
-| M-011 | doing | Final static app/source gates pass; runtime/foreign subprocess qualification remains. |
-| M-012 | complete | Existing harness/build tools retained, maintained and exercised. |
-| M-013 | doing | Alchemy/RLVa/media features retained; broader runtime qualification remains. |
+| M-008 | doing | Broad feature/visual parity and representative performance. |
+| M-011 | doing | Runtime/foreign-process, reproducible release and strict no-GL qualification. |
+| M-012 | complete | Harness/build/verification tooling maintained and exercised. |
+| M-013 | doing | Retained Alchemy/RLVa/media behavior and prolonged stability. |
 
-No product/release completion or FPS improvement is claimed. PPD319 completion/
-performance, broad parity, loading, prolonged stability and foreign subprocess
-qualification remain open. Reproducible distinct open-source release, strict no-GL
-and independent build/review evidence remain required. Component checks and process
-launch do not establish whole-viewer runtime/performance or visual acceptance.
+Required independent build/review evidence and release gates remain open; component
+or local build success does not establish product completion.
 
 ## Exact next actions
 
-Owner reviews Publication69452 for visual/loading/behavior and retained mixed cadence/
-adverse p95. Five goal parts/audit02/Home checks are complete; Club handoff is ready.
-Owner-authorized source/tests/reports reached origin at ec696aa615; publication is
-not visual acceptance, an FPS claim or permission to upload private evidence.
-Existing asset/geometry/slack/General/streaming/
-compiler/product work remains in the canonical active priorities.
+Report/register history checks and harness are complete. Preserve the coherent local
+changes and hand off the running NORMAL fullscreen candidate for owner testing.
+Do not push without new owner approval.
+Next engineering is the measured main lighting/forward-alpha GPU cost (PPD319), not
+more queue-depth trials. Other surviving requirements and the audit's missing-proof
+records are linked from the canonical work list; accepted removals remain closed.

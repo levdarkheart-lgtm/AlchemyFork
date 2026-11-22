@@ -42,8 +42,8 @@ class Queue final : public LLQueuedThread
 {
 public:
     explicit Queue(bool housekeeping = false, size_t requests = 1024 * 1024,
-                   size_t callbacks = 1024 * 1024, bool paused = false)
-        : LLQueuedThread("queued lifecycle", true, paused, requests, callbacks),
+                   size_t callbacks = 1024 * 1024, bool paused = false, bool threaded = true)
+        : LLQueuedThread("queued lifecycle", threaded, paused, requests, callbacks),
           mHousekeeping(housekeeping) {}
     ~Queue() override { shutdown(); }
     bool submit(U32 handle, Counts& counts, std::function<bool()> body, bool event = false, U32 flags = 0)
@@ -57,6 +57,7 @@ public:
     void ready() { processPending(); }
     bool callback(std::function<void()> body) { return mRequestQueue.tryPost(std::move(body)); }
     bool postCallback(std::function<void()> body) { return mRequestQueue.post(std::move(body)); }
+    bool signalUpdate() noexcept { return requestThreadedUpdate(); }
     void closeQueue() { mRequestQueue.close(); }
     size_t scheduled()
     {
@@ -66,9 +67,10 @@ public:
         return size;
     }
     int updates = 0;
+    std::function<void()> updateBody;
 private:
     bool hasThreadedUpdate() const override { return mHousekeeping; }
-    void threadedUpdate() override { ++updates; }
+    void threadedUpdate() override { ++updates; if (updateBody) updateBody(); }
     bool mHousekeeping;
 };
 template<class PRED> bool eventually(PRED pred)
@@ -440,6 +442,92 @@ TEST_CASE("queued thread: coalesced housekeeping progresses outside full callbac
     queue.closeQueue();
     CHECK(queue.isAdmissionClosed());
     queue.update(0);
+    CHECK(queue.getPending() == 0);
+}
+
+TEST_CASE("queued thread: external housekeeping wake is independent of frame polls and callback capacity", "[queuedthread]")
+{
+    Queue queue(true, 1, 1);
+    int callbacks = 0;
+    REQUIRE(queue.callback([&] { ++callbacks; }));
+    CHECK_FALSE(queue.callback([] {}));
+    for (int i = 0; i < 2000; ++i) CHECK(queue.signalUpdate());
+    CHECK(queue.getPending() == 2);
+    queue.ready();
+    CHECK(queue.updates == 1);
+    CHECK(callbacks == 1);
+    queue.closeQueue();
+    CHECK_FALSE(queue.signalUpdate());
+    CHECK(queue.getPending() == 0);
+}
+
+TEST_CASE("queued thread: a wake during housekeeping requests the next owner pass", "[queuedthread]")
+{
+    Queue queue(true, 1, 1);
+    queue.updateBody = [&] { if (queue.updates == 1) CHECK(queue.signalUpdate()); };
+    REQUIRE(queue.signalUpdate());
+    queue.ready();
+    CHECK(queue.updates == 2);
+    CHECK(queue.getPending() == 0);
+}
+
+TEST_CASE("queued thread: each nonthreaded frame update invokes virtual housekeeping once", "[queuedthread]")
+{
+    Queue queue(true, 1, 1, false, false);
+    CHECK_FALSE(queue.getThreaded());
+    for (int frame = 1; frame <= 4; ++frame)
+    {
+        queue.update(0);
+        CHECK(queue.updates == frame);
+        CHECK_FALSE(queue.signalUpdate()); // no independent native owner in this mode
+        CHECK(queue.getPending() == 0);
+    }
+}
+
+TEST_CASE("queued thread: native external wake services without a main update and closes permanently", "[queuedthread]")
+{
+    Queue queue(true, 1, 1);
+    std::atomic<int> serviced{0};
+    std::thread::id consumer;
+    queue.updateBody = [&] { consumer = std::this_thread::get_id(); serviced.fetch_add(1, std::memory_order_release); };
+    queue.start();
+    REQUIRE(queue.signalUpdate());
+    CHECK(eventually([&] { return serviced.load(std::memory_order_acquire) > 0; }));
+    queue.shutdown();
+    CHECK(consumer != std::this_thread::get_id());
+    CHECK(queue.updates == 1);
+    for (int i = 0; i < 2000; ++i) CHECK_FALSE(queue.signalUpdate());
+    CHECK(queue.getPending() == 0);
+}
+
+TEST_CASE("queued thread: external housekeeping preserves explicit pause", "[queuedthread]")
+{
+    Queue queue(true, 1, 1, true);
+    std::atomic<int> serviced{0};
+    queue.updateBody = [&] { serviced.fetch_add(1, std::memory_order_release); };
+    queue.start();
+    REQUIRE(queue.signalUpdate());
+    std::this_thread::sleep_for(20ms);
+    CHECK(serviced.load(std::memory_order_acquire) == 0);
+    queue.unpause();
+    CHECK(eventually([&] { return serviced.load(std::memory_order_acquire) == 1; }));
+    queue.shutdown();
+}
+
+TEST_CASE("queued thread: racing external signals cannot resurrect closed housekeeping", "[queuedthread]")
+{
+    Queue queue(true, 1, 1);
+    queue.start();
+    std::latch start(1);
+    std::jthread producer([&]
+    {
+        start.wait();
+        for (int i = 0; i < 10000; ++i) queue.signalUpdate();
+    });
+    start.count_down();
+    queue.shutdown();
+    producer.join();
+    CHECK_FALSE(queue.signalUpdate());
     CHECK(queue.getPending() == 0);
 }
 

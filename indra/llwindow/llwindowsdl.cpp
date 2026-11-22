@@ -33,6 +33,7 @@
 #include "almetaldevice.h"
 #include "almetalframe.h"
 #include "almetalsurface.h"
+#include "almetaldiagnostictelemetry.h"
 #endif
 
 #include "llwindowcallbacks.h"
@@ -1633,8 +1634,60 @@ void LLWindowSDL::gatherInput()
     maybeStopFlashIcon();
 }
 
+#if LL_DARWIN
+namespace
+{
+// The original event dispatch remains the owner of all side effects. This
+// observer only brackets dispatch, including early returns, and stores no
+// character, key code, button value, position or movement coordinates.
+class DiagnosticInputDispatch
+{
+public:
+    explicit DiagnosticInputDispatch(const SDL_Event& event) noexcept
+    {
+        namespace D = ALMetalDiagnosticTelemetry;
+        mSession = D::activeSessionId();
+        if (!mSession) return;
+        switch (event.type)
+        {
+            case SDL_EVENT_MOUSE_MOTION: mKind = 1; break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP: mKind = 2; break;
+            case SDL_EVENT_MOUSE_WHEEL: mKind = 3; break;
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_KEY_UP: mKind = 4; break;
+            default: return;
+        }
+        if (!SDL_IsMainThread())
+        {
+            D::recordMarker("input_dispatch_nonmain", {}, mKind);
+            mKind = 0;
+            return;
+        }
+        mBegin = mBefore = D::machTimeNs();
+        mSDLNow = SDL_GetTicksNS();
+        mAfter = D::machTimeNs();
+        mEvent = event.common.timestamp;
+    }
+    ~DiagnosticInputDispatch()
+    {
+        if (mKind)
+            ALMetalDiagnosticTelemetry::recordInputDispatch(mSession, mKind, mEvent,
+                mSDLNow, mBefore, mAfter, mBegin,
+                ALMetalDiagnosticTelemetry::machTimeNs());
+    }
+private:
+    std::uint32_t mKind = 0;
+    std::uint64_t mSession = 0, mBegin = 0, mBefore = 0, mAfter = 0, mSDLNow = 0, mEvent = 0;
+};
+}
+#endif
+
 SDL_AppResult LLWindowSDL::handleEvent(const SDL_Event& event)
 {
+#if LL_DARWIN
+    DiagnosticInputDispatch diagnostic_input(event);
+#endif
     switch(event.type)
     {
         case SDL_EVENT_MOUSE_MOTION:

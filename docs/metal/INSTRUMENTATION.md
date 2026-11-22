@@ -107,6 +107,42 @@ env \
 - During an armed run only, each newly committed native-wrapper command installs a completion handler. Monotonic `metal_completed` and `metal_timed` deltas distinguish completed commands from commands with valid `GPUStartTime`/`GPUEndTime`; `metal_gpu_ms` is the sum of those completed app-owned Metal command durations observed between two CPU sampling points. A mutex makes each cumulative timing snapshot internally coherent. The M1 Max physical regression proves one real blit produces one submitted, completed and timed command plus a positive duration, normally and with Metal API validation.
 - Completion is asynchronous, so `metal_completed`, `metal_timed` and `metal_gpu_ms` can lag the frame that submitted the work. `metal_gpu_ms` excludes legacy-driver work and is neither whole-frame GPU duration nor pass attribution. Treat all four Metal columns as secondary diagnostics and average them only across a steady consecutive sequence. Use Instruments/Metal capture for per-label attribution and independent GPU evidence.
 
+## Admission, view and presentation field contract
+
+[diagnostic-admission-metrics.json](diagnostic-admission-metrics.json) is the
+versioned production field map for the quiet telemetry admission/view/input/
+presentation additions. It defines each eight-value `metrics` row, units, enums,
+source owners and qualified joins. Readers should load this map, pin its version
+and hash, and reject a required field layout they do not recognize. Private
+experimental fields require their own pinned manifest. This metadata contains
+no recorded scene or account data.
+
+Use `(command creation session, command_id)` for commands; logical group,
+ticket, frame, view sequence and drawable identities have distinct meanings.
+Join the actual selected world backing and source frame through successful UI
+submission to the drawable's `presentedTime`. A retained world can be older than
+the attempted camera view. Coarse input serial ranges plus reconstructed raw
+camera bits permit controlled first-response association; a latest-input value
+alone does not establish causality. SDL and host presentation clocks require
+the documented Mach brackets. Callback observation is separate from API
+presentation time; neither establishes physical input-to-scanout latency.
+
+Gather/adopt/encode intervals are owner wall spans. Container/owner existence
+is not complete pre-gate readiness. Command GPU envelopes can overlap and
+contain stalls; they do not measure occupancy or hardware busy time. Sparse
+memory observations have overlapping accounting scopes and bounded traversal;
+missing samples are unknown, and observer intervals belong in the full cost.
+Qualify cadence, admission, preparation, memory and input/presentation
+independently: consecutive FRAME coverage cannot repair dropped source,
+command, matrix or callback rows. The map specifies the required validity and
+loss checks, source identity and clock conversion rules.
+
+These additions are default off. Disabled entry paths start no diagnostic clock,
+process-memory/stat/page, matrix/input or presentation-handler observations;
+late callbacks installed while enabled are rejected by their session identity.
+Enabled observer overhead and actual run coverage require measurement; this
+field contract does not claim a performance result or change admission policy.
+
 ## External trace retention
 
 Before a long Instruments recording, verify the installed template's retention
@@ -327,3 +363,63 @@ counters, then the original divisor/headroom is applied once; it is an eviction
 threshold rather than an upfront reservation. Keep logs private.
 
 See the [verified budget repair and controlled68572 run](state/archive/CURRENT-resource-aware-texture-budget-2026-11-09.md).
+
+### Explicit diagnostic collection limits
+
+`ALCHEMY_METAL_DIAGNOSTIC_MAX_SECONDS` accepts an integer from 1 through 3600; absent
+or empty retains 600 seconds. `ALCHEMY_METAL_DIAGNOSTIC_MAX_MIB` accepts 64 through 512 MiB;
+absent or empty retains 64 MiB. Both are parsed once after an explicit owned mode 0700
+diagnostic directory is supplied. Invalid values disable collection with a warning.
+The producer ring, normal rendering policy and diagnostics-OFF path are unchanged.
+The actual header records applied limits; the footer states the observed cutoff.
+Recorder setup must still reserve startup/recording/GPU-tail time before that cutoff.
+Increasing retention does not make a lossy or incomplete interval qualified.
+
+### Reproducible admission and presentation analysis
+
+[`home_admission_analysis.py`](../../tools/metal/home_admission_analysis.py) reduces
+a closed native stream with an explicit identity/scenario context. Cadence,
+admission, preparation, memory and input-to-presentation each have independent
+qualification gates. A successful analysis process can produce unqualified
+results; consumers must inspect the booleans and reasons. The public tool and its
+sanitized fixtures reproduce the private A02 reduction without changing numeric
+values or qualification. Output includes raw camera bits and internal identities;
+it is private evidence, not a privacy sanitizer.
+
+```sh
+python3 tools/metal/home_admission_analysis.py /PRIVATE/native.jsonl \
+  --context /PRIVATE/context.json --output /PRIVATE/new-result
+```
+
+The input budget is 513 MiB including bounded footer slack, four million records
+and one million command identities. Missing mandatory parents, ambiguous identity,
+unproved raw-camera ancestry or incomplete presented-source joins remain excluded.
+A histogram percentile is an interval when only bins are retained; a GPU activity
+union is not occupancy, and Metal presentedTime is not physical scanout.
+
+### Live Metal performance-limit counters
+
+Instruments leaves hardware counters disabled by default. Select Metal System
+Trace, then its recording options: **Counter Set → Performance Limiters**. Retain
+**Default** performance state and disable Shader Timeline when shader instruction
+tracing is unnecessary. Save an explicit local template and pin its hash for CLI
+recording with the verified PID; do not inherit a previously selected target.
+[Apple documents the counter option](https://developer.apple.com/documentation/xcode/analyzing-the-performance-of-your-metal-app).
+
+The option was observed for M1 Max in Xcode 26.6. Archive numeric values are not
+portable profile identifiers. Actual counter definitions, nonempty values, device,
+clock and common CPU/GPU coverage must qualify after recording; template selection
+alone does not establish collection. Keep these short diagnostic recordings
+separate from uncaptured cadence and latency trials. Counter replay is likewise a
+separate experiment: retain incomplete or stopped attempts without accepting values.
+
+### Independent sampled-memory window summary
+
+`tools/metal/memory_sample_analysis.py` provides pure `analyze_memory_window` for
+numeric, ordered, fully contained Mach brackets. Identity/process and native/external
+phase qualification remain the caller's responsibility. A nonzero global missed
+schedule count is retained, rather than vetoing valid selected observations. Actual
+start gaps, boundary straddlers and sampled statistics stay explicit; means average
+observations without filling gaps. This function supplies no policy-comparison gate,
+continuous peak, GPU residency or marginal frame-memory estimate. Eight sanitized
+boundary tests include global misses, zero footprint, invalid numerics and ordering.

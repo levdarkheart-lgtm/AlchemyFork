@@ -32,6 +32,10 @@
 #include "httphandler.h"
 
 #include <iostream>
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <thread>
 
 
 using namespace LLCore;
@@ -109,4 +113,59 @@ namespace
         CHECK(watch.expired());
     }
 
+}
+
+TEST_CASE("HTTP reply wake: late installation signals retained replies and clear detaches", "[HttpReplyWake]")
+{
+    auto queue = std::make_shared<HttpReplyQueue>();
+    auto first = std::make_shared<HttpOpNull>();
+    first->setReplyPath(queue, {});
+    first->stageFromRequest(nullptr);
+    int signals = 0;
+    queue->setReplyNotification([&]() noexcept { ++signals; });
+    CHECK(signals == 1);
+    queue->setReplyNotification({});
+    auto second = std::make_shared<HttpOpNull>();
+    second->setReplyPath(queue, {});
+    second->stageFromRequest(nullptr);
+    CHECK(signals == 1);
+    CHECK(queue->fetchOp() == first);
+    CHECK(queue->fetchOp() == second);
+    CHECK_FALSE(queue->fetchOp());
+}
+
+TEST_CASE("HTTP reply wake: clearing synchronizes an in-flight producer before target teardown", "[HttpReplyWake]")
+{
+    using namespace std::chrono_literals;
+    auto queue = std::make_shared<HttpReplyQueue>();
+    std::atomic<bool> entered{false}, release{false};
+    std::atomic<int> signals{0};
+    queue->setReplyNotification([&]() noexcept
+    {
+        ++signals;
+        entered.store(true, std::memory_order_release);
+        // A bounded scheduling gate only for this teardown race fixture. Real
+        // notifications must be nonblocking owner-event signals.
+        const auto until = std::chrono::steady_clock::now() + 500ms;
+        while (!release.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < until)
+            std::this_thread::yield();
+    });
+    auto op = std::make_shared<HttpOpNull>();
+    op->setReplyPath(queue, {});
+    std::jthread producer([&] { op->stageFromRequest(nullptr); });
+    const auto until = std::chrono::steady_clock::now() + 1s;
+    while (!entered.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < until)
+        std::this_thread::yield();
+    CHECK(entered.load(std::memory_order_acquire));
+    auto clear = std::async(std::launch::async, [&] { queue->setReplyNotification({}); });
+    CHECK(clear.wait_for(10ms) == std::future_status::timeout);
+    release.store(true, std::memory_order_release);
+    CHECK(clear.wait_for(1s) == std::future_status::ready);
+    clear.get();
+    producer.join();
+    CHECK(signals == 1);
+    auto later = std::make_shared<HttpOpNull>();
+    later->setReplyPath(queue, {});
+    later->stageFromRequest(nullptr);
+    CHECK(signals == 1);
 }

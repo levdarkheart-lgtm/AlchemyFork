@@ -8,12 +8,14 @@
 #import <Foundation/Foundation.h>
 
 #include <mach/mach_time.h>
+#include <mach/mach.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread/qos.h>
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -35,6 +37,19 @@ constexpr std::uint64_t footer_reserve = 4096;
 constexpr std::size_t name_capacity = 96;
 std::atomic<std::uint64_t> active_session{0};
 thread_local FrameTag current_frame;
+struct OwnerObservations
+{
+    std::uint64_t session = 0, next_input = 0, next_view = 0;
+    InputObservation input;
+    ViewObservation view;
+    PresentationSourceObservation presentation;
+    std::array<std::uint32_t,32> camera_bits{};
+    bool camera_known = false;
+    ProcessMemoryObservation memory;
+};
+// Input dispatch, camera capture and present submission use the existing main
+// owner. Native callbacks receive value snapshots, never this mutable state.
+thread_local OwnerObservations owner_observations;
 struct State;
 std::atomic<State*> initialized_state{nullptr};
 
@@ -581,6 +596,148 @@ void recordMarker(const char* name, FrameTag frame, std::uint64_t reason) noexce
     Producer producer; if (!producer.sink) return;
     Record record; record.kind = Kind::marker; record.frame = frame; record.values[0] = reason;
     copyName(*producer.sink, record.name, name); enqueue(*producer.sink, record);
+}
+
+void recordSessionMetrics(std::uint64_t session, FrameTag frame,
+    const char* name, const std::array<std::uint64_t,8>& values) noexcept
+{
+    if (!session) return;
+    Producer producer(session); if (!producer.sink) return;
+    Record record;
+    record.kind = Kind::metrics; record.frame = frame; record.values = values;
+    copyName(*producer.sink, record.name, name); enqueue(*producer.sink, record);
+}
+
+std::uint64_t activeSessionId() noexcept
+{
+    return active_session.load(std::memory_order_acquire);
+}
+
+InputObservation recordInputDispatch(std::uint64_t expected_session, std::uint32_t kind,
+    std::uint64_t event_sdl, std::uint64_t sample_sdl,
+    std::uint64_t before, std::uint64_t after,
+    std::uint64_t begin, std::uint64_t end) noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    if (!session || session != expected_session || !kind || kind > 4) return {};
+    auto& owner = owner_observations;
+    if (owner.session != session) { owner = {}; owner.session = session; }
+    if (owner.next_input == std::numeric_limits<std::uint64_t>::max()) return {};
+    InputObservation input{session, ++owner.next_input, 0, 0, end, kind};
+    if (event_sdl && sample_sdl >= event_sdl && after >= before)
+    {
+        const auto age = sample_sdl - event_sdl;
+        if (before >= age)
+        {
+            input.event_mach_lower_ns = before - age;
+            input.event_mach_upper_ns = after - age;
+        }
+    }
+    owner.input = input;
+    recordSessionMetrics(session, current_frame, "input_dispatch",
+        {input.sequence, kind, event_sdl, sample_sdl, before, after, begin, end});
+    return input;
+}
+
+InputObservation latestInputObservation() noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    return session && owner_observations.session == session
+        ? owner_observations.input : InputObservation{};
+}
+
+ViewObservation recordViewCamera(FrameTag frame, std::uint64_t group,
+    std::span<const float,16> modelview, std::span<const float,16> projection) noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    if (!session) return {};
+    auto& owner = owner_observations;
+    if (owner.session != session) { owner = {}; owner.session = session; }
+    if (owner.next_view == std::numeric_limits<std::uint64_t>::max()) return {};
+    std::array<std::uint32_t,32> bits;
+    bool finite = true;
+    for (std::size_t index = 0; index < 16; ++index)
+    {
+        bits[index] = std::bit_cast<std::uint32_t>(modelview[index]);
+        bits[16 + index] = std::bit_cast<std::uint32_t>(projection[index]);
+        finite = finite && std::isfinite(modelview[index]) && std::isfinite(projection[index]);
+    }
+    const bool previous = owner.camera_known;
+    const bool changed = previous && bits != owner.camera_bits;
+    const auto identity = [](const std::uint32_t* values)
+    {
+        std::uint64_t result = 14695981039346656037ull;
+        for (std::size_t index = 0; index < 16; ++index)
+        { result ^= values[index]; result *= 1099511628211ull; }
+        return result;
+    };
+    ViewObservation view{session, ++owner.next_view, frame, owner.input,
+        identity(bits.data()), identity(bits.data() + 16), changed};
+    recordSessionMetrics(session, frame, "view_input",
+        {view.sequence, group, owner.view.input.sequence, view.input.sequence,
+         view.input.event_mach_lower_ns, view.input.event_mach_upper_ns,
+         view.input.dispatch_end_ns, view.input.session_id == session});
+    recordSessionMetrics(session, frame, "view_camera",
+        {view.sequence, group, view.modelview_identity, view.projection_identity,
+         previous, changed, finite, 0});
+    if (!previous || changed)
+        for (std::size_t first = 0; first < bits.size(); first += 6)
+        {
+            std::array<std::uint64_t,8> row{view.sequence, first};
+            for (std::size_t index = 0; index < 6 && first + index < bits.size(); ++index)
+                row[index + 2] = bits[first + index];
+            recordSessionMetrics(session, frame, "view_camera_bits", row);
+        }
+    owner.camera_bits = bits; owner.camera_known = true; owner.view = view;
+    return view;
+}
+
+ViewObservation latestViewObservation() noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    return session && owner_observations.session == session
+        ? owner_observations.view : ViewObservation{};
+}
+
+void recordPresentationSource(PresentationSourceObservation source) noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    if (!session) return;
+    auto& owner = owner_observations;
+    if (owner.session != session) { owner = {}; owner.session = session; }
+    source.session_id = session;
+    owner.presentation = source;
+    recordSessionMetrics(session, source.frame, "ui_background_source",
+        {source.source_frame, source.surface_generation, source.color_identity,
+         source.color_generation, source.depth_identity, source.depth_generation,
+         source.selected, source.source_frame == UINT64_MAX});
+}
+
+PresentationSourceObservation latestPresentationSource() noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    return session && owner_observations.session == session
+        ? owner_observations.presentation : PresentationSourceObservation{};
+}
+
+ProcessMemoryObservation sampleProcessMemory() noexcept
+{
+    const auto session = active_session.load(std::memory_order_acquire);
+    if (!session) return {};
+    auto& owner = owner_observations;
+    if (owner.session != session) { owner = {}; owner.session = session; }
+    const auto now = machTimeNs();
+    if (owner.memory.sampled_mach_ns && now >= owner.memory.sampled_mach_ns &&
+        now - owner.memory.sampled_mach_ns < 100'000'000ull) return owner.memory;
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    const auto status = task_info(mach_task_self(), TASK_VM_INFO,
+        reinterpret_cast<task_info_t>(&info), &count);
+    const auto end = machTimeNs();
+    const bool valid = status == KERN_SUCCESS && count >= TASK_VM_INFO_REV1_COUNT;
+    owner.memory = {now, valid ? info.phys_footprint : 0,
+        end >= now ? end - now : 0, valid};
+    return owner.memory;
 }
 
 CommandToken commandCreateBegin(const char* label) noexcept

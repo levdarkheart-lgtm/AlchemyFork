@@ -1,5 +1,8 @@
 # Apple-first architecture implementation status
 
+> Current disposition — 2026-11-22: Historical architecture checkpoint, not the current implementation inventory. Owner-accepted retirement removed world preparation, source banks/rows/animated GPU records and world GPU visibility (PPD-543–546/548/550); selected scalar/CPU source, probe, shadow and lifetime contracts remain. Larger runtime/feature/performance promises are still partial.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 Updated2026-11-17. The [fresh69241 Home/club checkpoint](../../research/home-club-replay-checkpoint-69241-20261117.md)
 retains four replayed/profiled device intervals plus CPU/native/resource/logs.
 Current Home prepared transparency is active; its per-fragment main shading

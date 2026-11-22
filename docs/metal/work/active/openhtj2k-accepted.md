@@ -1,5 +1,8 @@
 # Accepted decoder changes — 2026-11-12
 
+> Current disposition — 2026-11-22: Historical decoder acceptance boundary. Production now requires OpenHTJ2K as the sole texture pixel decoder under owner instruction/PPD-559; opt-in/OFF/alternate-decoder instructions below are not current build policy. OpenJPEG header parsing/encoding remains separate.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 The owner tested the local OpenHTJ2K experiment, accepted it and explicitly
 requested committing and pushing these changes to `codex/apple-silicon-metal`.
 Approved scope: Apple Silicon decode-worker sizing, the CPU texture benchmark

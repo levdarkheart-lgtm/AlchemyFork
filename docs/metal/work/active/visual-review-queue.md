@@ -1,5 +1,8 @@
 # Owner-attended daily visual review queue
 
+> Current disposition — 2026-11-22: Historical review workflow/build scope. Valid unresolved feature and owner visual-review checklist items remain; the old attended-launch instructions do not replace later scoped owner authorization. Current owner/runtime gates and priorities are governed by the canonical register and work ledger.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 **Cadence established:** 2026-11-02 by owner direction.
 **Scope:** visual comparisons that require operating reference/candidate viewers.
 
