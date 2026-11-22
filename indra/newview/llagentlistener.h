@@ -50,6 +50,7 @@ private:
     void resetAxes(const LLSD& event_data) const;
     void getGroups(const LLSD& event) const;
     void getPosition(const LLSD& event_data) const;
+    void getCamera(const LLSD& event_data) const;
     void startAutoPilot(const LLSD& event_data);
     void getAutoPilot(const LLSD& event_data) const;
     void startFollowPilot(const LLSD& event_data);

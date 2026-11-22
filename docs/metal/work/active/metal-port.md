@@ -1,14 +1,23 @@
-# Active Metal work — PPD-556 bounded scheduling
+# Active Metal work — PPD-567 measured publication
 
-**Integrated source:** Commit `960bd3644a`, codex/apple-silicon-metal.
+Current local scope is [PPD567 and measured follow-through](ppd567-performance-20261122.md).
+Candidate69452 is built and tested. Owner now explicitly says "Commit and push
+all the changes": current-scope normal commit/push is approved. Owner visual/runtime
+verification remains pending; publication permission is not an FPS acceptance claim.
+The [results report](../../research/ppd567-performance-20261122.md) establishes lower
+hash CPU cost, mixed whole-frame results and the completed census stop decision.
+
+**Accepted baseline source:** Commit `960bd3644a`, codex/apple-silicon-metal.
 Owner authorizes maintainable Apple-first repairs, dead graphics preferences and
 abandoned-experiment removal, followed by a separate manual-test candidate.
 Owner verified/pushed Maintenance 69445; that approval covers only the prior scope.
 Scheduling69450 implements556 and graphics cleanup; full build, qualification and
 staging pass. Owner requested launch (exact PID31214 observed), then on2026-11-22
 reports "looks good..commit and push", accepting the candidate and authorizing
-normal branch publication. No automatic login
-or release. Implementation and final review are complete; agents are frozen. [CURRENT](../../state/CURRENT.md) is the observed recovery snapshot.
+normal branch publication. That earlier owner-requested launch did not log in or
+release. Its implementation and review are complete. The later autonomous scope
+explicitly authorizes Home/Club login and full-screen testing.
+[CURRENT](../../state/CURRENT.md) is the observed recovery snapshot.
 
 ## Complete-product checkpoint gate
 
@@ -44,16 +53,42 @@ automated success alone never closes an owner incident or authorizes pushing.
 
 ## Immediate executable action
 
-Record2026-11-22 owner acceptance, commit the records and normally push the
-approved Scheduling69450 scope to origin/codex/apple-silicon-metal. Verify the
-remote/local ref equality and retain the private receipt. Built source remains
-960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011; no rebuild for docs.
-No release, tag, default-branch merge, recording or private evidence upload.
+The active owner goal is [PPD567 implementation and measured follow-through](ppd567-performance-20261122.md):
+local patch and real ownership/output checks, repeated controlled Club comparisons,
+Home regression, bounded probe census with stop decision, exclusive CPU budget and
+queue table. All five local requirements are complete, including ten explicitly
+qualified final arms. Common read-only camera observation is in both new builds.
+Broad Club hash CPU cost falls about99%; sustained FPS gain is not established,
+and the slower replacement p95 is retained. Owner now approves commit/push of this
+scope's source/docs; keep owner QA and performance acceptance separate. As before,
+pool widths, budgets, shader quality and encoding ownership remain unchanged.
+
+[Overnight performance investigation](performance-investigation-20261122.md) is
+complete; the [readable report](../../research/performance-investigation-20261122.md)
+contains current69450 Home/Club baselines, GPU/source/MST attribution and ranked
+engineering decisions. Native full screen3456×2168 throughout measured runs; safe
+preferences and acceptedapp unchanged. That earlier evidence-only request made no
+production patch or push. Approved Scheduling69450 remains atd219d538ab. Current
+69452 comparison recordings and Xcode are closed. Normal candidate is logged in
+at verified Club in native full screen for owner busy-scene testing; Home regression
+checks are complete. Source is unchanged.
+Product qualification is not complete; no private evidence upload is authorized.
+
+PPD567 now lazily publishes once per consuming invocation. Actual byte/output and
+pending-view lifetime checks pass; final fixed-view Club broad hashing is about
+2.2–2.9ms/period in controls versus0.019–0.024ms in candidates. Live total-frame
+changes are mixed. The1024-record Home census selects STOP for GPU kernel variants;
+PPD353's failed predecode/scalar/tileSH evidence is retained. PPD568 allocation
+under capture and569 exact warned draw remain separate qualification items.
 
 ## Outstanding work in priority order
 
 | Priority | Item / references | Concrete next action |
 | --- | --- | --- |
+| Owner test | PPD-567 / [measured result](../../research/ppd567-performance-20261122.md) | Candidate69452 is built/tested and left native full screen at verified Club for owner rendering/stability review. Current-scope commit/push is explicitly approved; mixed cadence/adverse p95 remain and no isolated FPS improvement or visual acceptance is claimed. |
+| Next bounded CPU work | Exclusive Club budget / PPD-534 already repaired | Select one remaining registry/encoder/publication suboperation with immutable inputs and account for its complete cost. Do not repeat the already-fixed eager owning Use construction or add workers from core availability alone. |
+| Home GPU follow-up | PPD-319 / completed census / PPD-353 contrary evidence | Census completes1024records/966receivers with zero ambient bit mismatches, mean7.74SH taps and substantial containment rejects. STOP kernel variants: no new redundant operation with demonstrated beneficial transformation selected. Require new evidence before another representation change. |
+| Measurement/correctness residuals | PPD-568/569/408 | Driver allocation blocks are capture-enabled observations, baselineimpactunknown; one58msHomeblock unknown. Inspect exactearlywarningdraw/count/slot3; source32-slotguards alone do not dismiss APIwarning. Exclude789msClubMSThole, preserve failures/loss limits. |
 | 1 | Asset service and cancellation — follow-through to PPD-532/533; retained reports 463/466 | Trace completion→fetch→collect→upload→publish age, remove unnecessary frame-triggered HTTP progress, and make permit wait cancellation responsive. Preserve bounded publication and running OpenHT ownership. |
 | 2 | General background jobs — follow-through to PPD-529 | Measure queue age by category, then separate blocking file/audio work from CPU preparation where ownership permits. Default width remains one; invalid widths are already repaired. |
 | 3 | Geometry scheduling and serial scene preparation — follow-through to PPD-530 | Required/deferrable separation and combined scheduling are not implemented. Attribute rebuild/cull/sort/encode costs; extract substantial immutable preparation/private outputs while preserving required owner mutation. The accepted API rename did not enforce a geometry deadline. |
@@ -68,7 +103,8 @@ saturation in the owner session. Full build/component/static qualification passe
 candidate and authorizes publication on2026-11-22.
 Other rows retain architecture, policies, investigations and release qualification.
 The [execution ledger](production-convergence-20261121.md#explicit-remaining-engineering-actions)
-retains detailed boundaries. No new whole-viewer FPS result is claimed.
+retains detailed boundaries. Current whole-viewer baseline statistics are in the
+investigation report; no implementation speedup is claimed.
 
 ## Non-negotiable open gates
 

@@ -492,6 +492,12 @@ TEST_CASE("Empty forward batch spans do not prepare masks or publish consumer ac
         encoded(projected,false,0);
         CHECK(f.data->stats().candidate_preparations==before.candidate_preparations);
         CHECK(f.data->stats().candidate_reuses==before.candidate_reuses);
+        const auto publication=f.data->stats();
+        // Neither empty view may request the 49,216-byte forward pack,
+        // whether a request would copy new bytes or hit content deduplication.
+        CHECK(publication.published_bytes-before.published_bytes+
+              publication.reused_bytes-before.reused_bytes<
+              sizeof(ALMetalWorldReflectionProbeConstants));
         const auto& after=projected.diagnostics.probe_candidate_activity;
         CHECK(after.encoded_calls==activity.encoded_calls+2);
         CHECK(after.eligible_batches==activity.eligible_batches);
@@ -943,5 +949,136 @@ TEST_CASE("Prepared lighting keeps body and simple consumers with generic other 
         before=f.data->stats();
         auto impostor_selected=renderImpostor(f,shiny,true);
         CHECK(impostor_selected.after==impostor_generic.after);unchanged_preparation(before);
+    }
+}
+
+TEST_CASE("Forward lighting isolates reused probe packs across pending views and commands",
+          "[almetal][probe-candidate-transparency][lighting-data][PPD-567]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        Inputs input(f, {false, false, false, false, true, 97, 65});
+        // The left quad consumes the common forward pack at fragment slot 1;
+        // the right quad consumes simple-alpha lighting at fragment slot 3.
+        // Their outer quarters do not overlap, so both bindings have an
+        // independent visible response to the two authored packs below.
+        auto& shiny = input.batches[0];
+        shiny.pre_water_alpha = shiny.pre_water_simple = false;
+        shiny.pre_water_shadows = false;
+        shiny.impostor_shiny = true;
+
+        std::array<ALMetalWorldReflectionProbeConstants, 2> packs{
+            input.probes.constants, input.probes.constants};
+        for (auto& parameters : packs[1].ref_params)
+        {
+            parameters[0] *= .125f; // Simple-alpha SH response.
+            parameters[1] *= .25f;  // Shiny radiance response.
+        }
+        std::array<Planes, 2> expected;
+        for (unsigned view = 0; view < expected.size(); ++view)
+        {
+            input.probes.constants = packs[view];
+            expected[view] = input.render(false).planes;
+            positive(expected[view]);
+        }
+        const auto changed_region = [&](unsigned first_x, unsigned last_x)
+        {
+            for (unsigned y = input.cell.height / 4; y < 3 * input.cell.height / 4; ++y)
+                for (unsigned x = first_x; x < last_x; ++x)
+                    for (unsigned channel = 0; channel < 3; ++channel)
+                    {
+                        const auto index = std::size_t(y) * input.cell.width + x;
+                        if (expected[0].color[index][channel] != expected[1].color[index][channel])
+                            return true;
+                    }
+            return false;
+        };
+        REQUIRE(changed_region(0, input.cell.width / 4));
+        REQUIRE(changed_region(3 * input.cell.width / 4, input.cell.width));
+
+        struct PendingView
+        {
+            std::unique_ptr<ALMetalRenderTarget> gbuffer, composed, output;
+        };
+        std::uint64_t generation = 100;
+        for (bool external_pages : {true, false})
+            for (bool separate_commands : {false, true})
+                for (bool prepared : {false, true})
+                {
+                    CAPTURE(external_pages, separate_commands, prepared);
+                    auto other = ALMetalWorldGBufferRenderer::create(
+                        *f.device, 1, f.renderer->shaderLibrary(), &f.error);
+                    INFO(f.error); REQUIRE(other);
+                    const auto pages = external_pages
+                        ? f.data : std::shared_ptr<ALMetalWorldFrameData>{};
+                    f.renderer->setFrameData(pages);
+                    other->setFrameData(pages);
+                    f.data->beginFrame(generation++);
+                    std::array<PendingView, 2> pending;
+                    // Seed both sets before either owner has an unsubmitted
+                    // transaction; no readback or queue wait runs between views.
+                    for (auto& view : pending)
+                    {
+                        view.gbuffer = input.seeded(true);
+                        view.composed = input.seeded(false);
+                    }
+                    REQUIRE(f.renderer->beginCommandBatch("Pending forward probe view A", &f.error));
+                    if (separate_commands)
+                        REQUIRE(other->beginCommandBatch("Pending forward probe view B", &f.error));
+                    const auto first_completion = f.renderer->commandBatchCompletion();
+                    const auto second_completion = separate_commands
+                        ? other->commandBatchCompletion() : first_completion;
+                    REQUIRE(first_completion); REQUIRE(second_completion);
+                    CHECK_FALSE(first_completion->isComplete());
+                    CHECK_FALSE(second_completion->isComplete());
+
+                    for (unsigned view = 0; view < pending.size(); ++view)
+                    {
+                        // Reuse the identical caller address with different
+                        // lighting while the prior GPU view is still pending.
+                        input.probes.constants = packs[view];
+                        auto scene = input.scene;
+                        scene.gbuffer = pending[view].gbuffer.get();
+                        scene.composed_lighting = pending[view].composed.get();
+                        scene.forward_probe_projection_valid = prepared;
+                        auto& owner = separate_commands && view ? *other : *f.renderer;
+                        const auto before = f.data->stats();
+                        pending[view].output = owner.renderOpaquePostDeferred(scene, &f.error);
+                        INFO(f.error); REQUIRE(pending[view].output);
+                        const auto diagnostics = owner.opaquePostDiagnostics();
+                        const bool candidates = external_pages && prepared;
+                        CHECK(diagnostics.probe_candidate_decision.masks_bound == candidates);
+                        CHECK(diagnostics.probe_candidate_simple_batches == (candidates ? 1u : 0u));
+                        if (prepared && !external_pages)
+                            CHECK(diagnostics.probe_candidate_decision.reason ==
+                                  ALMetalProbeCandidateReason::frame_data_unavailable);
+                        if (external_pages)
+                        {
+                            // All other repeated constants in this two-draw
+                            // scene total less than one full probe block. An
+                            // extra content-dedup request for that same block
+                            // would alone exhaust this observable byte bound.
+                            const auto after = f.data->stats();
+                            CHECK(after.reused_bytes - before.reused_bytes < sizeof(packs[0]));
+                            f.data->beginFrame(generation++);
+                        }
+                    }
+                    input.probes.constants = {}; // Destroy the borrowed values before either commit.
+                    if (external_pages)
+                        CHECK(f.data->stats().retired_pages >= 2);
+                    CHECK_FALSE(first_completion->isComplete());
+                    CHECK_FALSE(second_completion->isComplete());
+                    // Creation order is not submission order. Independent
+                    // command views must keep their exact immutable slices.
+                    if (separate_commands)
+                        REQUIRE(other->commitCommandBatch(&f.error));
+                    REQUIRE(f.renderer->commitCommandBatch(&f.error));
+                    REQUIRE(f.device->waitUntilIdle(&f.error));
+                    CHECK(first_completion->isComplete());
+                    CHECK(second_completion->isComplete());
+                    for (unsigned view = 0; view < pending.size(); ++view)
+                        CHECK(f.read(*pending[view].output) == expected[view]);
+                }
     }
 }

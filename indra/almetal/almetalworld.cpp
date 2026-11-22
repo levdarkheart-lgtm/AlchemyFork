@@ -20547,6 +20547,21 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         encoder->setTriangleFillMode(
             ALMetalTriangleFillMode::fill, error) &&
         encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
+    // The pack is frozen for this invocation and command. Publish on its first
+    // consumer, then rebind that immutable slice across batches and encoder
+    // restarts instead of hashing the full pack again. Existing frame pages retain
+    // the command's completion token; the slice never escapes this invocation.
+    ALMetalWorldDataSlice forward_probe_slice;
+    const auto bind_forward_probe_constants = [&](
+        ALMetalRenderEncoder& active, std::uint32_t index)
+    {
+        if (!forward_probe_slice.buffer &&
+            !mImpl->publishLightingData(*command, &forward_probe_constants,
+                sizeof(forward_probe_constants), forward_probe_slice, error, true))
+            return false;
+        return active.setFragmentBuffer(index, *forward_probe_slice.buffer,
+            forward_probe_slice.offset, error);
+    };
     const auto bind_forward_resources = [&](ALMetalRenderEncoder& active)
     {
         bool bound = true;
@@ -20561,8 +20576,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, mImpl->probe_sampler.get(), error) &&
             active.setFragmentTexture(
                 32, probe_radiance, error) &&
-            mImpl->setLightingData(active, *command, 1,
-                &forward_probe_constants, sizeof(forward_probe_constants), error);
+            bind_forward_probe_constants(active, 1);
         }
         if (bound && (has_pre_water_simple || has_pre_water_material ||
                       has_pre_water_pbr))
@@ -21364,8 +21378,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     mImpl->setFragmentData(*encoder, *command,
                         2, scene.alpha_environment,
                         sizeof(*scene.alpha_environment), error) &&
-                    mImpl->setLightingData(*encoder, *command, 3,
-                        &forward_probe_constants, sizeof(forward_probe_constants), error) &&
+                    bind_forward_probe_constants(*encoder, 3) &&
                     mImpl->setFragmentData(*encoder, *command,
                         4, scene.alpha_lighting,
                         sizeof(*scene.alpha_lighting), error) &&

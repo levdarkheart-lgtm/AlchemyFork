@@ -42,7 +42,7 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-566 -->
+<!-- next-defect-id: PPD-582 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -7817,6 +7817,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 69277 Home capture-excluded native cadence28.763→15.161Hz, required-main CPU21.925→22.358ms and main wait7.720→37.930ms. Fresh Medium/Overlapping saved-frame profiles show main BASE ALU/invocation922.35→5378.81 at identical7520256 invocations; alpha-containing encoder244.00→1424.76 despite fewer invocations. Actual late prepared BASE/simple alpha are selected; point/projector invocations remain essentially unchanged. Per-receiver work is the demonstrated next GPU focus, but traversal/accepted weighting/SH/radiance/shadows/data access are not isolated. Blank compiler spill cells remain unknown; replay63.05→145.77ms is not live FPS. No old/new gain or sole-root-cause claim. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
 
+- 2026-11-22 owner authorizes a fresh autonomous overnight investigation of current accepted Scheduling69450 (executable df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, rendering source960bd3644a/indra7d8c095d360bd3f77ac64d1b69e23c21840e0011), including Home/club login, camera, Xcode and bounded recordings. Current18–24FPS description and historical decline are hypotheses pending current collection; minor112/120mdraw-distance differences are immaterial. Preserve settings, qualify pilot/coverage/overhead and produce ranked proposals; no broad changes, commits/pushes or publication. [Current investigation](work/active/performance-investigation-20261122.md).
+
+- 2026-11-22 final investigation: [Current69450 report](research/performance-investigation-20261122.md) reproduces Home decline at native fullscreen3456×2168 with sole OpenHTJ2K0.27. Strict matched late725nativeperiods mean60.587ms/p9573.151, versus Club847mean51.869/p9558.044; these are application cadence, not scanout. Current Home older-main GPU-dependent admission waits, actual1→39captured pack growth and dominant candidate shaders are qualified separately. Source-metadata-only Home55pack attributes sample_base_probes66.40%BASE/57.51%simple-shadow inclusive, with both acceptedtap and containment cost; no sole-cause/count-only inference, spilling diagnosis or selected shader repair. New PPD567 repeated CPUhash proposal is not a HomeGPU fix. Owner incident/product gates remain open; no production patch, commit or push.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -9661,6 +9665,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 afterownerclose, threeboundedofflineexports ofpreservedtrace exit0 withoutmodifyingfailedsession: TOC519.580843s,targetPID55666;CPU723953rows/519.318s/max85msgap;GPU16096rows/519.696s/max9.028589sgap. Expected518.452286sready→stopcovered. Originalcollector remainsFAILED; separate unchangednormal5sGPUgapgate alsoFAILSaroundcaptureAPIs, nointerpolation/relaxation. Fourindependentworkingcopiesprofiledwithallcounterrowgatespass andsources/evidence preserved. Qualifyfuturelongercontrollerraw-finalizationpeak beforeownercontrols, no rererecordrequiredtorecoverthistrace.
 
+
+- 2026-11-22 new authorized investigation retains first short MST size-guard failure at2.398GB and separate Club90sfinalization timeout. A new shorter2s/8GiB-observed Home run saves0; standalone Club retry with180sfinalization bound saves0. Original failures remain failed. Actual derived-table coverage is checked separately, including a Club~789ms CPU/GPU record hole while native FRAME/commands continue. No interpolated GPU-idle or running-CPU claim is permitted over that hole.
+
+- 2026-11-22 final investigation: Both continuous Overview runs retain~181spositiveCPU/GPU data, about164sactualworld each. Failedraw-size/finalization captures remain excluded. Short ClubMST has789msobserverhole while native15frames/268commits continue; exclude it ratherthanclaimidle. Successful short retries and exactcommandjoins support dependency diagnosis, not lossless all-table capture. Nativecontentionloss/cutoff and alignmentlimits are retained in the [finalreport](research/performance-investigation-20261122.md); no blanket collectorclosure.
 
 ## PPD-409 — Early frame admission loses the preceding required-main GPU pressure
 
@@ -13278,3 +13286,339 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
 - 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
+
+
+## PPD-566 — Read-only runtime helper rejects numeric-string control storage
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Performance investigation diagnostic helper
+- Discovered: 2026-11-22
+- Original reference: LLViewerControl.get returns current LLSD storage; numeric control consumers can coerce numeric strings. Diagnostic readers must preserve raw storage and distinguish a parsed numeric view rather than dropping the value or asserting numeric storage.
+- Evidence: [Current investigation](work/active/performance-investigation-20261122.md); private as-used-01/latest.json records invalid_type for four numeric-string controls despite successful live queries, matching saved numeric strings.
+- Next action: Retain original failed artifacts and repaired private observer; integrate diagnostic findings in the final investigation report. No production repair, commit or push is part of this request.
+- Verification: Actual read-only request completed in614.6ms with four invalid_type rows: RenderFSAAType, RenderHeroProbeResolution, RenderQualityPerformance and RenderReflectionProbeCount. This is a diagnostic coverage defect, not a viewer rendering or measured performance defect. Private observer repaired; main-01 pre-login and main-03/club-main-01 world queries now complete successfully with raw numeric strings and separately labelled numeric views. This verifies diagnostic coverage, not performance.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before helper repair. All66 declared control types matched source, but live LLSD values can retain numeric-string storage. Preserve the partial snapshot rather than replacing it with inferred values. Only private external observer changes are authorized; no renderer/configuration change, commit or push.
+
+- 2026-11-22 private observer repair and live retest: safe bounded ASCII numeric strings retain raw storage/type and a separate finite parsed view. Original failed snapshots/helper preserved. Exact accepted69450 live pre-login and both world requests complete; no viewer or quality setting changes. Diagnostic repair is runtime-verified; owner acceptance remains pending.
+
+- 2026-11-22 final investigation: Finalsource-metadata prelogin/arrival/end queries eachreturnall66safecontrols withrawnumericstringsretained, noerrors; no graphics/preferenceswrite. Finalpreservationaudit has0value/typedifferences for66whitelistedstoredkeys. Diagnosticrepairruntimeverified; originalsretained, ownerclosurepending.
+
+## PPD-567 — Immutable forward-probe constants are repeatedly content-hashed per batch
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Native per-view lighting publication
+- Discovered: 2026-11-22
+- Original reference: Current optimized shader/CPU source retains one immutable 49,216-byte forward probe block per view; setLightingData repeatedly reaches content deduplication before binding each batch.
+- Evidence: [Implementation/results report](research/ppd567-performance-20261122.md) and [execution ledger](work/active/ppd567-performance-20261122.md); original investigation/source evidence remains retained under private performance-investigation-20261122 and all component/comparison/preservation evidence under ppd567-20261122.
+- Next action: Execute the owner’s explicit current-scope commit/push authorization for the completed source/docs changes. Owner continues Publication69452 visual/loading/behavior QA and review of mixed cadence/adverse p95; publication approval does not establish visual acceptance or an isolated FPS improvement.
+- Verification: Actual old renderer fails eight duplicate-pack bounds; fixed case passes51279 assertions, full transparency1825343/12cases and related ownership/reload/water581147/40 with API/Shader Validation. Ten selected runs explicitly qualify with empty reasons; Club broad opaque-post hash CPU falls about99%, but mean cadence changes are mixed and replacement-pair p95 is11.76% worse. Home mean changes remain within0.5%; no isolated sustained FPS improvement is established.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered during the autonomous evidence-only investigation, before any production repair. No renderer/scheduler change, commit or push selected; measured scope and contrary evidence remain explicit.
+
+- 2026-11-22 final investigation: First proposed quality-preserving patch in the [report](research/performance-investigation-20261122.md): invocation-local lazy slice, deduplicate=true, same49216bytes, both existing slot1/3bindings and encoder restarts, completion-pinned pages/standalone epochs. Distinct differing forward packs in pendingviews and matched whole-viewer CPU/cadence are acceptance requirements. Existing local-light-list tests alone are insufficient. No implementation or owner acceptance in this investigation.
+
+- 2026-11-22 implementation authorized: owner sets a new autonomous goal to implement PPD567 locally, run ownership/output checks, repeat controlled Club comparisons and retain Home regression checks. First implementation uses an invocation-local lazy slice of the already frozen pack, existing deduplication and both shader slots. Preserve original source/capture evidence and earlier no-implementation investigation. Owner testing and push approval for this new scope remain pending. [Implementation/comparison ledger](work/active/ppd567-performance-20261122.md).
+
+- 2026-11-22 retest: Actual new GPU fixture fails eight full-pack duplicate-publication bounds against unmodified HEAD renderer, then passes51279assertions with the local slice. Complete transparency suite1825343assertions/12cases and related ownership/reload/water581147/40 pass with API and Shader Validation. Owner runtime comparisons remain pending; no performance gain or owner acceptance/push inferred. Common read-only camera observer is being included in both fresh comparison builds, separately hashed from the patch.
+
+- 2026-11-22 final local qualification: both distinct Release69452 apps pass full build, signing,346ARM64 checks and matching dSYMs with the same metallib/common read-only camera observer. All final six Club/four Home runs qualify; whole A03/B03 remains excluded and replacement A04/B04 has815/803periods, zero gaps. Club mean-period changes are−6.35%,+1.30%,+1.62%, with third-pair p95+11.76% retained. Broad opaque-post hash CPU2.193–2.940→0.0186–0.0237ms/period includes palette/other constants, not exact pack self-time. Unequal logical vertex-byte spans/point-light activity do not prove causation or rule out regression. Final preservation audit02 root0 checks all20selected pre/post snapshots,66controls/per-scene camera matrices, saved18present/48absent0diff and unchanged three-app hashes. Tool suite185tests/one optional skip passes after isolated dependency repair; original environment failures remain. Ready for owner69452QA; owner launch/acceptance and push approval remain pending.
+
+- 2026-11-22 explicit owner decision: "Commit and push all the changes." Current-scope normal commit/push is authorized for the completed PPD567 implementation, common observer, tests and tracked documentation; historical no-approval/pending entries above remain unchanged. Owner verification stays pending: no visual acceptance or isolated FPS gain is inferred, and private captures/settings/authentication artifacts are not approved for upload. The normal candidate is left native full screen at Club for owner testing; root owns publication and handoff.
+
+## PPD-568 — Detailed Home profiling contains a long native buffer-allocation block
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Native resource-owner and profiler attribution
+- Discovered: 2026-11-22
+- Original reference: The current native registry already detaches retired uses under lock and destroys their leases outside it; do not reintroduce the already-resolved ownership-temporary or generic deferred-release diagnosis.
+- Evidence: [Current performance investigation](work/active/performance-investigation-20261122.md); private performance-investigation-20261122 artifacts preserve exact identities, source maps and raw observations.
+- Next action: Retain exact syscall attribution and determine whether the allocation path is consequential without capture. Do not propose a ResourcePlan/deferred-release repair from this block. The continuous capture-off baseline remains throughput authority.
+- Verification: A157.0465ms syscall block occurs inside G-buffer encoding: __ulock_wait2 → os_unfair_lock → IOGPUMemoryInfo addResourceToList → AGXBuffer init → CaptureMTLDevice newBuffer → ALMetalBuffer::create. A temporally nearby graphUse sample was not the blocked stack. This establishes a captured native allocation/resource-list wait, not ordinary-session frequency or cost; capture can amplify it.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered during the autonomous evidence-only investigation, before any production repair. No renderer/scheduler change, commit or push selected; measured scope and contrary evidence remain explicit.
+
+
+
+- 2026-11-22 exact syscall retest corrects the preliminary nearby-sample attribution: native buffer allocation/Apple resource-list lock with capture hooks, not ResourcePlan. Existing owner release outside the registry lock is retained. No production repair or baseline hitch attribution selected.
+
+- 2026-11-22 final investigation: Club adds211.705msblocked native exposure-target allocation through the same Apple resource-list/driver domain under capture. Home157ms attribution is resolved; a separate57.824msblock remains unclassified. Capture-off frequency/cost unknown; do not call these ResourcePlan mutexes or assign baseline p95tails to them. Exact tables/joins/source and bounded next action in [report](research/performance-investigation-20261122.md).
+
+## PPD-569 — Early Home GPU replay reports missing-binding insights
+
+- Status: investigating
+- Confirmation: reported
+- Owner: GPU capture correctness qualification
+- Discovered: 2026-11-22
+- Original reference: A replay insight is a report to investigate, not proof that a live shader accessed an unbound resource. Conditional arguments and capture boundaries require exact call/PSO inspection.
+- Evidence: [Current performance investigation](work/active/performance-investigation-20261122.md); private performance-investigation-20261122 artifacts preserve exact identities, source maps and raw observations.
+- Next action: Inspect the preserved call/PSO argument and branch, then use an isolated validation check if necessary. Do not silently dismiss the warning, attribute current FPS to it, or treat a successful replay as validation of the binding.
+- Verification: Current exact69450 early device capture replays in Xcode and Summary lists Missing Binding on the simple G-buffer group. Fragment diffuse_textures slot3 is identified; exact warned draw/count and runtime effect remain unqualified. An attempted insight selection during profiling caused Xcode interface-layout saturation; diagnostic sample and originals are preserved.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered during the autonomous evidence-only investigation, before any production repair. No renderer/scheduler change, commit or push selected; measured scope and contrary evidence remain explicit.
+
+
+
+- 2026-11-22 stable replay inspection without profiling resolves the exact report: simple G-buffer encoder, fragment diffuse_textures at index3, generic world G-buffer PSO; selected encoder1095draws/1,739,384vertices. Actual unused-slot versus illegal-read semantics remains under source review. No rendering change selected.
+
+- 2026-11-22 final investigation: Source-only review confirms generic32-slot contract, distinct from legacy8-slot PSO. Shader guards texture_index<texture_count; CPU validates and binds activeprefix. Slot3 is unreachable under source forcount<=3, whilecount>=4 requiresbinding. Actualwarneddraw/count/selector remains unqualified, so no illegalread or FPS effect is proved. Next inspect preservedexactdraw/buffer4count/slot3, then existing [diffuse-bindings] fixture/targetedseparatevalidation ifneeded. Sourceanchors and limitation in [report](research/performance-investigation-20261122.md).
+
+## PPD-570 — Private metadata staging helper assumes unavailable Python xattr functions
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Diagnostic app staging
+- Discovered: 2026-11-22
+- Original reference: This fork and its staging tools run on macOS ARM64; extended-attribute preservation must use an available Darwin interface rather than assuming Linux-only os functions.
+- Evidence: [Current investigation](work/active/performance-investigation-20261122.md); metadata-stage-01.log and private stage receipt20261122T020705Z-748223a8 record AttributeError for os.listxattr before any clone/sign action.
+- Next action: Retain corrected private helper/native fixture and both failed receipts. Stage03 and independent signature/app checks pass; no production integration or owner closure is implied.
+- Verification: First actual root execution exits1 during accepted-app inventory; source/executable and app remain untouched. AST-only author/review checks did not establish runtime platform support.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the diagnostic-only platform correction. Preserve original helper/receipt and all signature/content guards; no weakened metadata comparison or deleted failed evidence.
+
+
+
+- 2026-11-22 corrected bounded Darwin reader passes an actual native xattr comparison for binary/empty attributes and no-follow symlink behavior. Stage03 then completes immutable bundle inventory/signing/CPU-byte proof; independent deep/strict and346ARM64 checks both0. This verifies the private diagnostic guard path, not a production change or owner acceptance.
+
+## PPD-571 — Private staging assumes an explicit designated requirement on an ad-hoc app
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Diagnostic app signing identity
+- Discovered: 2026-11-22
+- Original reference: codesign reports a derived commented cdhash requirement for an ad-hoc app with zero stored requirements. Re-signing changes that derived hash while preserving CPU bytes, identifier, entitlements and runtime flags. It must not be treated as a stored expression that remains identical.
+- Evidence: [Current investigation](work/active/performance-investigation-20261122.md); metadata-stage-02 exits1 at Incomplete signing metadata, stage receipt20261122T021154Z-37e7776b and original codesign outputs.
+- Next action: Retain corrected implicit/explicit parser and actual stage03/native signature proofs. Keep original failed receipt and unchanged CPU/inventory guards; no production integration or owner closure is implied.
+- Verification: Accepted app has Internal requirements count0 and a commented derived requirement; the helper only parses an uncommented expression. Failure occurs before clone/sign. Native xattr fixture already passes; original accepted app remains untouched.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before correcting the private signing parser. Original helper/output and both failure receipts retained. No weakening of actual identity, entitlements, CPU bytes or deep verification is authorized.
+
+- 2026-11-22 corrected implicit/explicit requirement parser passes the actual zero-count/12-byte stored-blob proof, then guarded stage03 and final signature/ARM64 verification0. New root CDHash is recorded as derived signing data while all CPU non-signature bytes/UUID and six entitlements remain equal. Original app immutable; no production patch, commit or push.
+
+
+## PPD-572 — Private exclusive CPU reducer assumes every stack sentinel has an ID
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Performance analysis qualification
+- Discovered: 2026-11-22
+- Original reference: Instrument exports may retain a no-ID stack sentinel. Every selected target sample weight must remain in the non-overlapping budget, even if the stack cannot be classified.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-cpu-queues first reducer stops before publishing a result on a no-ID stack.
+- Next action: Preserve failed helper/error; treat missing-stack samples explicitly as unclassified and reconcile every selected weight before reporting a budget. No viewer change.
+- Verification: Initial private reducer assertion failed; no partition or corrected runtime result yet. This is an analysis-schema assumption defect, not a viewer performance defect.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the private reducer correction. Never drop unknown-stack weight or manufacture a complete CPU attribution from only classified rows.
+
+- 2026-11-22 retest: Corrected private reducer retains all no-ID stack-sentinel weights, partitions43429main samples/43.429CPU-s exactly and leaves0.992sunclassified. Sentinel weights occur on generic background threads, not main. Original failure/helper/error retained. This validates offline analysis, not a viewer repair.
+
+## PPD-573 — Private census generator treats shader declarations as function definitions
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Bounded probe census diagnostic
+- Discovered: 2026-11-22
+- Original reference: Current MSL includes forward declarations. A source extractor must distinguish a semicolon before an opening brace from a function definition; unmodified helper bodies must not be replaced with unrelated following structures.
+- Evidence: [PPD567 ledger](work/active/ppd567-performance-20261122.md); private census generator/draft and initial Metal compile error under artifacts/metal/ppd567-20261122/census.
+- Next action: Preserve failed generator/source/compiler output; reject declarations and qualify exact extracted bodies before compiling/running the census. No production shader change.
+- Verification: Offline diagnostic compile reports duplicate/missing definitions; no GPU execution or census result yet. Explicit private module cache resolves a separate child default-cache permission issue.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before parser correction. Compiler failures and initial cache-path issue remain retained; neither is a production shader or viewer failure.
+
+- 2026-11-22 retest: Corrected extractor rejects semicolon-before-brace declarations; exact helper/traversal restoration audit, offline compile/link and actual root censusGPUrun02 pass. Original failures/cache path issue preserved. No production shader change; diagnostic-only correctness evidence does not close owner acceptance.
+
+## PPD-574 — Private census input validator confuses integer KTX base formats
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Bounded probe census input qualification
+- Discovered: 2026-11-22
+- Original reference: RGBA32Uint exports use an integer KTX base-format enum. The diagnostic validator must match the actual source format, not accept a normalized RGBA assumption.
+- Evidence: [PPD567 ledger](work/active/ppd567-performance-20261122.md); private preparer draft expects RGBA6408 while retained actual Xcode integer KTX header is RGBA_INTEGER36249.
+- Next action: Preserve the draft and correct the explicit format table; verify new actual55-pack input headers and byte lengths before executing the census.
+- Verification: Source-check discovery before input acceptance or GPU execution; no fabricated input or viewer change.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before correcting the private format checker. Old capture inputs may guide file-format validation but cannot substitute for the current55-pack resources.
+
+- 2026-11-22 retest: Corrected explicit integer KTX table passes six private format tests and actual root exports, including RGBA32UI4x130, RGBA16UNORM and FLOATdepth32 rather than stencil. Actual1024-record censusrun02 passes API/Shader Validation with0ambient bit mismatches; original format draft retained.
+
+## PPD-575 — Private comparison reducer requests the wrong GPU variant column
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Controlled performance comparison analysis
+- Discovered: 2026-11-22
+- Original reference: Retained Metal Overview exports name the GPU column metric-variant. An offline comparison reducer must use the actual export schema and retain each metric family, variant and layer separately.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-comparison/SCHEMA.md, preserved history/ppd575-before-reduce_run.py and schema-check-ppd575.json. The read-only source proof checks only an old Overview schema prefix: actual metric-variant versus draft variant, without new-run performance analysis.
+- Next action: Retain the original schema draft and corrected helpers/receipts. Actual final-run reductions and explicit comparison gates pass; owner review remains pending and no original failure is erased.
+- Verification: The original wrong column was caught before new-run reduction. Corrected metric-variant parsing passes syntax, six synthetic/schema checks and actual closed-run reductions used by the final ten-run comparison. This verifies offline schema handling, not a viewer fix or lossless telemetry claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the private reducer correction. The analysis agent owns draft preservation and repair; viewer code, settings and recorded inputs remain unchanged. Keep the discovery separate from the validity of the retained recordings and from any later corrected comparison results.
+
+- 2026-11-22 retest: Corrected metric-variant lookup passes syntax, six synthetic contract tests and closed A01b schema-prefix qualification. Private analysis-comparison/freeze.json records exact helper hashes and closed-a01b-schema-qualification.json; full-run comparative reductions had not executed at freeze. Original schema/draft retained; status and owner acceptance remain open.
+
+- 2026-11-22 final corrective use: the corrected schema path participates in actual final-run CPU/GPU/FRAME qualification and final-comparison-02 accepts ten explicit true/empty-reason records. Original freeze/draft, prefix qualification and six synthetic checks stay retained; owner status remains pending.
+
+## PPD-576 — Private preparation fixture retains an invalid camera basis after a focus change
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Controlled comparison preparation fixture
+- Discovered: 2026-11-22
+- Original reference: Camera qualification requires normalized, mutually orthogonal view axes. A fake fixture must construct a valid basis for the requested view rather than retain axis-aligned left/up values after the focus changes; the live validator must remain strict.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/helpers/prepare-fixture-20261122T085946Z-kaufbk35 contains receipt.json, check_prepare_arm.before.py and fixed-camera-plan.at-failure.json. The failed fixture reports Camera axis not normalized; exact private pose values remain outside tracked documentation.
+- Next action: Retain the original invalid fixture and corrected21-check receipt with actual live preparation/preservation evidence. The strict live helper remains unchanged; owner review is pending.
+- Verification: The synthetic revised-focus fixture initially failed normalization; normalized basis repair passes21checks. Actual preparations and final audit02 verify the selected runs’ fixed camera/66controls. This is fixture correction plus real preparation evidence, not a viewer camera repair.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the fixture-only basis repair. The strict live preparation helper remains unchanged. Preserve this synthetic-input failure separately from actual successful preparations and any later controlled comparison result; do not weaken pose qualification to make the fixture pass.
+
+- 2026-11-22 retest: Fixture-only normalized left/up construction passes 21 checks, including both scene poses and error/freshness/CLI guards, with no live/external calls. Receipt: private helpers/prepare-fixture-20261122T090208Z-y65hd6js/receipt.json under the PPD567 evidence root. prepare_arm.py, bridge and launcher hashes remain unchanged; original fixture/failed receipt retained. Owner acceptance remains pending.
+
+- 2026-11-22 final use: actual selected preparations and preservation audit02 confirm exact per-scene camera matrices/pose and66controls across20pre/post snapshots. The fixture-only21-check correction and original failure remain; no live helper weakening or owner closure.
+
+## PPD-577 — Private post-record sequencing can quit before the collector finishes its live-process guard
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Controlled collection lifecycle
+- Discovered: 2026-11-22
+- Original reference: A recorder's Stopping recording message does not prove that the collection driver has finished its live-process guard. Viewer exit must follow a qualified recorder-success barrier or a completed driver failure; offline export qualification can then proceed without keeping the viewer running.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/helpers/post_after_record.py and club-candidate-01/record-driver.log, overview/record.log and overview/session.json. B01 retains recorder_exit0 but collector status failed with RuntimeError: target process unavailable or inaccessible; overview/overview.trace is preserved.
+- Next action: Retain the corrected saved-recording exit barrier, original failed B01 session and separate18-second export failure. Successful90-second offline recovery and final per-measure qualification are complete; retain lossy command-footer limits and owner-review status.
+- Verification: The original premature exit caused the collector’s live-PID failure despite recorder0. Corrected subsequent sequences pass the recording_saved_qualification_pending barrier; separate offline exports recover B01 with90-second budgets and its required FRAME/CPU/GPU measures qualify. Original collector failure and command-footer loss remain explicit; no quiet_capture or viewer source fix was made.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the private exit-barrier repair. Keep raw recorder success distinct from collector failure and offline retention qualification. Normal viewer exit after the success barrier may overlap qualification exports, but must not erase native footer/loss evidence or manufacture a successful collection result.
+
+- 2026-11-22 retest: Private post_after_record.py now waits for recording_saved_qualification_pending with recorder success, or a completed driver failure, before exit. Subsequent actual sequences pass that barrier; strict native footer/loss rejections remain retained rather than relabelled successful. Original post_after_record.before-ppd577.py and B01 collector failure remain. Separate analysis-comparison/b01-offline-root.log records export deadline failure with each_export_timeout_s18, unchanged failed original session and no viewer launch/query; a 90-second retry is deferred until live collection ends. No quiet_capture or viewer source change was made.
+
+- 2026-11-22 final recovery: preserved B01 recording qualifies through separate offline exports and is included among the final explicitly qualified arms. The original failed session is not rewritten successful; saved-recording barrier tests and strict footer/loss failures remain in history. Owner verification stays pending.
+
+## PPD-578 — Private comparison reducer collapses zero-tag metric time series
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Controlled comparison metric reduction
+- Discovered: 2026-11-22
+- Original reference: Global service and cumulative telemetry rows can legitimately carry frame_id0 at different observation times. Zero is not a unique observation identity; primary observed-row statistics must retain those samples rather than select only the first row with that tag.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-comparison/metric-dedup-review-proof.json pins the original reduce_run.py/freeze.json and actual club-control-01b-result-01/summary.json and club-candidate-01-result-01/summary.json hashes. metric_report uses record frame_id as its deduplication key. The nine-file frozen manifest, batch-reduction-01.json and all result01 artifacts remain retained and unpublished as comparative conclusions.
+- Next action: Retain frozen original/result01 and corrected-copy/result02 artifacts. Primary all-observed-row metric statistics and their fixtures are verified; keep optional positive-frame summaries separate and owner review pending.
+- Verification: The old deduplication collapses zero-tag time series. The separate corrected copy retains all observed valid rows, including exact payload duplicates, with zero never an identity. Seven focused corrective fixtures pass; actual original-ten result02 review verifies field counts match observed rows and CPU/GPU/FRAME numerics/qualification flags stay unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the private reducer repair. Keep result01 and the original frozen helper manifest as failure evidence. Corrected all-observation distributions remain sampled telemetry, not time-weighted work or lossless command accounting; do not sum cumulative fields into execution cost or replace unaffected measurement results.
+
+- 2026-11-22 actual corrective qualification: corrected-freeze.json pins seven passing focused tests and untouched original helpers/results. corrective-invariance-review.json verifies all original-ten CPU/GPU/FRAME values and qualification flags unchanged; nine originals qualify, B03 remains false and is replaced as a whole pair under PPD581. Final comparison uses corrected observed-row metrics without interpreting cumulative fields as work; owner status pending.
+
+## PPD-579 — Private CPU reducer labels broad opaque-post lambdas as the forward binder
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Controlled comparison CPU attribution
+- Discovered: 2026-11-22
+- Original reference: An anonymous lambda/operator frame under renderOpaquePostDeferred does not by itself identify the forward-probe binder. Attribution labels must describe the matched source context; a specific binder cost requires an explicit name or independent source proof.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-comparison/reduce_run.py categories maps any opaque-post lambda/operator match to inline_forward_binder_inclusive_under_opaque_post. Original freeze.json and result01 retain actual A01b PhysicsShapeBatch/BoundingBox lambda examples unrelated to forward binding. B01 publishPaletteRecord ancestry separately demonstrates that broad opaque-post hash work includes other constants.
+- Next action: Retain original false-positive examples and corrected honest broad-lambda labels. Exact binder attribution still requires explicit name/source proof; final broad hash comparisons must not be reported as exact probe-pack self-time. Owner review remains pending.
+- Verification: The original anonymous matcher includes unrelated physics/bounding-box lambdas. The separate corrected copy labels it as broad opaque-post lambda context and keeps any exact named-binder category conditional. Seven corrective fixtures and actual result01/result02 invariance review pass; CPU totals/FRAME/GPU values are unchanged.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the corrective private reducer copy. Keep initial source hashes, result01 examples and broad inclusive categories; do not manufacture exclusive savings by subtracting overlapping contexts or overwrite the retained first batch with corrected labels.
+
+- 2026-11-22 final reporting: original examples and corrected-freeze.json/seven focused fixtures remain. Actual corrected runs and invariance review preserve CPU totals/FRAME/GPU; final report explicitly includes palette/other constants in broad opaque-post hash CPU and claims no exact binder self-time or exclusive savings from overlapping contexts. Owner status pending.
+
+## PPD-580 — Private preservation report helper calls an undefined timestamp function
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Controlled comparison preservation report
+- Discovered: 2026-11-22
+- Original reference: The offline preservation audit must complete its actual report-writing path before being reported as successful. A timestamp helper referenced during report construction must be defined; preliminary independent checks do not substitute for successful integration execution.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-preservation/audit_preservation.before-utc.py, initial-failure.json and independent-preliminary.json preserve the original helper, actual NameError and separate preliminary checks.
+- Next action: Retain the failed undefined-utc helper and both actual successful integration audits. Final replacement-inclusive audit02 is complete; owner review remains pending, without claiming whole settings XML byte equality.
+- Verification: The first report path failed before report/source/settings/app mutation. After the timestamp-only correction, actual root integration exits0 qualified_and_preserved; final audit02 covers20selected pre/post snapshots,66controls/per-scene camera matrices, saved18present/48absent0diff and unchanged all-three-app CPU/metallib hashes. Saved FullScreen is absent/live0; independent native full-screen evidence remains required and present.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the private timestamp-only repair. Preserve the failed helper/error and all input evidence. This is a report-authoring omission, not a viewer defect or proof of changed preferences/apps; do not claim the integrated preservation report succeeded from preliminary checks alone.
+
+- 2026-11-22 retest: Root's corrected actual integration exits0, qualified_and_preserved; private analysis-preservation/REPORT.md, preservation-audit.json and receipt.json retain 44 input hashes and all 20 original pre/post snapshots. Source helper SHA256 is51b24ef3a8bfcffb18eba32bf5f28ca13aef4daa75cc5e62182b836a7fcb782c. Original 66-control/camera comparisons, saved 66 controls and all three app CPU/metallib hashes pass. This is actual report-path evidence, not only preliminary checks; new replacement-run audit02 is pending and owner status remains open.
+
+- 2026-11-22 final replacement audit02: actual root run exits0, qualified_and_preserved; private analysis-preservation-02/preservation-audit.json and receipt.json retain final20snapshot/input/hash evidence. Checked camera matrices/pose and66controls match exactly,18explicit/48absent saved controls have0differences and all three app hashes are unchanged. Whole XML byte preservation is not claimed. Original failed helper/error and first audit remain, owner status pending.
+
+## PPD-581 — Private batch orchestration treats analysis exit success as comparison qualification
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Controlled comparison qualification gating
+- Discovered: 2026-11-22
+- Original reference: A reducer may finish analysis successfully while explicitly reporting qualified_for_comparison false. Batch status and comparative conclusions must inspect the qualification boolean and reasons, rather than infer eligible measurements from process exit0. Preserve the final comparer’s existing rejection of unqualified runs.
+- Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-comparison/batch-reduction-01.json and batch-reduction-02.json retain the first orchestration results. Both club-candidate-03-result-01/summary.json and club-candidate-03-result-02/summary.json explicitly report qualified_for_comparison false with native_FRAME_gap_in_window and ineligible_native_iterations_in_fixed_window.
+- Next action: Retain the premature all-ten claim/root-review error, actual B03 negative-gate proof and excluded whole A03/B03 pair. Replacement A04/B04 and final explicit ten-run gate now pass without weakened rules; owner review of mixed results remains pending.
+- Verification: The original batch incorrectly treated analysis exit0 as qualification. Actual B03 remains false in both retained reductions due missing iteration6258; the negative gate rejects it. Replacement A04/B04 has815/803native periods and zero gaps. Final final-comparison-02/comparison.json accepts exactly six Club/four Home records with explicit true qualification and empty reasons; no hardware/retention cause or lossless-footer claim is inferred.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-22 registered before the private gating repair and replacement-pair protocol execution. Keep both reductions and the unqualified B03 evidence; the analysis agent is examining the actual hole. Do not weaken qualifiers, pair a replacement B alone with the old A, discard adverse data or present the original batch-exit status as validated comparative performance.
+
+- 2026-11-22 retest: Root final comparer rejects the actual unqualified B03 as required; private analysis-comparison/ppd581-actual-negative-gate.json preserves the passing rejection proof. Original root/review error, result01/result02 and the whole excluded A03/B03 pair remain retained. A new whole-pair A04/B04 collection is in progress without qualifier changes; no completed final comparison, speedup or owner closure is claimed.
+
+- 2026-11-22 final gated comparison: actual negative B03 rejection proof remains; the entire A03/B03 pair stays retained/excluded. Recollected A04/B04 qualifies under unchanged window/view/controls/rules,815/803native periods with0gaps. Final gate actual0 requires all ten selected arms explicitly true/reasons[]; final preservation audit02 also passes. CPU/GPU/FRAME values of original result01/result02 remain invariant. Original early all-ten statement and root/review error remain; mixed cadence/adverse p95 and owner verification are not waived.

@@ -89,6 +89,13 @@ LLAgentListener::LLAgentListener(LLAgent &agent)
         "[\"quat\"]:  array of [x, y, z, w] quaternion values",
         &LLAgentListener::getPosition,
         LLSDMap("reply", LLSD()));
+    add("getCamera",
+        "Read the current viewer camera on [\"reply\"] without changing it:\n"
+        "global position/focus, agent-space position and axes, modelview/projection,\n"
+        "vertical_fov, aspect, near_clip, far_clip, projection_far_clip and camera_mode.\n"
+        "This is the rendered camera, not the avatar position from getPosition.",
+        &LLAgentListener::getCamera,
+        LLSDMap("reply", LLSD()));
     add("startAutoPilot",
         "Start the autopilot system using the following parameters:\n"
         "[\"target_global\"]: array of target global {x, y, z} position\n"
@@ -424,6 +431,29 @@ void LLAgentListener::getPosition(const LLSD& event_data) const
     reply["region"] = ll_sd_from_vector3(mAgent.getPositionAgent());
     reply["global"] = ll_sd_from_vector3d(mAgent.getPositionGlobal());
 
+    sendReply(reply, event_data);
+}
+
+void LLAgentListener::getCamera(const LLSD& event_data) const
+{
+    const auto& camera = LLViewerCamera::instance();
+    LLSD reply = LLSD::emptyMap();
+    reply["position_global"] = ll_sd_from_vector3d(gAgentCamera.getCameraPositionGlobal());
+    reply["focus_global"] = ll_sd_from_vector3d(gAgentCamera.getFocusGlobal());
+    reply["position_agent"] = ll_sd_from_vector3(camera.getOrigin());
+    reply["at_axis"] = ll_sd_from_vector3(camera.getAtAxis());
+    reply["left_axis"] = ll_sd_from_vector3(camera.getLeftAxis());
+    reply["up_axis"] = ll_sd_from_vector3(camera.getUpAxis());
+    const auto* modelview = camera.getModelview().getF32ptr();
+    const auto* projection = camera.getProjection().getF32ptr();
+    reply["modelview"] = llsd_copy_array(modelview, modelview + 16);
+    reply["projection"] = llsd_copy_array(projection, projection + 16);
+    reply["vertical_fov"] = camera.getView();
+    reply["aspect"] = camera.getAspect();
+    reply["near_clip"] = camera.getNear();
+    reply["far_clip"] = camera.getFar();
+    reply["projection_far_clip"] = camera.getProjectionFar();
+    reply["camera_mode"] = static_cast<S32>(gAgentCamera.getCameraMode());
     sendReply(reply, event_data);
 }
 
