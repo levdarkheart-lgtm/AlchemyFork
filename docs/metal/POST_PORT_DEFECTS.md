@@ -8255,6 +8255,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 Owner elapsed-time feedback ended investigator-imposed repeat-policy sampling, not the broader task. Final six-run cadence/memory/input comparison and all exclusions are published in review-home-admission-20261122.md; frozen private export wording that collection was stoppedbyowner is clarified here: the owner asked for status, and Codex chose to stop low-value repetition. Private experiments are absent from canonical source/tests; normal candidate keeps cap2/original order. Home GPU work and exceptional completion-delay cause remain open with specific evidence, not a completed FPS fix.
 
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -14319,7 +14321,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the real above-water/alpha fixture and owner visual gate; component coverage is complete.
 - Verification: Actual real-water pending matrix passes3805assertions/1case; final integrated transparency suite passes1,829,148assertions/13cases with Metal API+Shader Validation. It exercises real slot3 and1→3→1 restoration with differing pending packs. The initial invalid alpha-only water reference remains retained. This repairs coverage, not a demonstrated production water defect.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14329,6 +14331,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: artifacts/metal/ppd567-review-20261122/water-test-02.*; first01 preserved. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 - 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
 
 ## PPD-583 — Corrected performance qualification and reductions are not reusable from a fresh checkout
 
@@ -14341,7 +14345,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the public regression fixtures and explicit per-measure gates; owner/code review remains. No additional measurement experiment is required for this correction.
 - Verification: Versioned qualification/attribution/histogram helpers, closed Home reduction and pure numeric memory-window summary now have74new sanitized cases. Final whole suite259tests/1optional skip exits0. Actual A02 public/private values and negative gates match; actual250memory samples preserve globalmiss1 and reference statistics within1ULP quantile rounding. Caller identity/native/external gates remain separate.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14362,6 +14366,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 Minimal two-file memory summary integrated with8focused boundary tests. Full final04 exits0 after the retained default-Python missingPyYAML and QA-venv missingNumPy attempts; dependencies already exist in requirements.txt and qualified command is recorded privately. Actual global-miss window is retained, not vetoed or called continuous coverage. Original exact-equality draft assertion differs only by1ULP quantile interpolation and is documented; source values/counts/extrema/mean agree.
 
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
 ## PPD-584 — Current analysis verification fields contradict retained corrective history
 
 - Status: ready_for_owner
@@ -14373,7 +14379,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Maintain the report as the current performance disposition, the register as defect history/owner decisions, and the canonical ledger as remaining work. Completed accepted removals stay closed; preserve the74specific missing-proof actions.
 - Verification: Deep source/history audit corrects211current fields and closes44scoped accepted/removal records. All original587record IDs/histories are retained; later588/589 remain. Final current-state/ledger/report reconciliation removes superseded active measurement requests and preserves failures. Owner acceptance for new scope remains separate.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14393,6 +14399,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 Final handoff consolidates numerical performance disposition into one report instead of duplicating competing current tables. The repeated policy collection is ended with actual counts/exclusions, all four HTTP checks are complete, public tool suite259/1skip0 and current code/test boundaries are explicit. Old historical experiment plans remain labelled history.
 
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
 ## PPD-585 — Camera event API description omits request-time and infinite-plane semantics
 
 - Status: ready_for_owner
@@ -14404,7 +14412,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the precise description-only camera API contract and owner review gate.
 - Verification: getCamera API description now states request-time read-only values, non-atomic/non-frame snapshot, radians and possible infinite projection_far_clip. Behavior and fields are unchanged; integrated whole-app build and exact staged application verification pass.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14414,6 +14422,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: current follow-up ledger/PPD585. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 - 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
 
 ## PPD-586 — Dormant octree diagnostic calls a container member on a C array
 
@@ -14426,7 +14436,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain normal and enabled-diagnostic ownership/overflow controls; integration is complete and owner review remains pending.
 - Verification: Original enabled-diagnostic header fails compilation. Fixed header passes normal/diagnostic compilation, dedicated ASan/UBSan8331assertions/8cases (including67/1targeted controls), root normal octree8264/7 and full integrated application build. Live-child validation rejects a ninth child before mutation. No normal Home FPS effect is inferred.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14436,6 +14446,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: Root observed original diagnostic compile failure, normal/diagnostic0 and actual standalone ASan/UBSan8331/8(including67/1); integration pending.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 - 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
 
 ## PPD-587 — Texture HTTP completion service depends on a main-frame housekeeping trigger
 
@@ -14448,7 +14460,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Owner-test normal candidate loading/appearance and review the completed wake/teardown/exception fix. Preserve live histogram scope; no repeat collection is required for this handoff.
 - Verification: Independent bounded fetch-owner wake passes core/integrated fixtures and four actual Home/Club lifetime reply-age checks. Club control1846callbacks p95bounds32.768–65.536ms versus candidate4621 p95bounds2.048–4.096ms; age>=8.192ms84.45% versus0.48%. Home21/33callbacks is sparse. Same16/1000us budget and only inlinewake differs; populations differ, no loading/FPS gain inferred.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14459,6 +14471,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 Revised14-file source-freeze-02 integrated with exacthash/oldcanonical preconditions. Actual updated fixtures pass and preserve prior fixtures. New synthetic withheld-poll ages25.019666ms versus13.791us are component observations only. The first full-app old-freeze build was intentionally interrupted130 after~500TUs to avoid redundant shared-PCH rebuild; interruption receipt retained and no compiler defect inferred. Full integrated application build now running after reviewed Home diagnostics freeze.
 
 - 2026-11-22 Actual source-pinned ABBA-scene comparison completed: Home frame-trigger PID88525, Home fixed88618, Club fixed88740, Club frame-trigger88938, native full screen, actual OpenHTJ2K/66controls/camera verified and normal shutdown. Four bounded100s+10s fixed phases preserve ordinary caches; histograms include full fetch lifetime. Source metrics and final HTTP table are in review-home-admission-20261122.md. Fix stays local awaiting owner testing/push approval.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
 
 ## PPD-588 — Nonthreaded texture fetch runs housekeeping twice per owner update
 
@@ -14471,7 +14485,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the exact-once base-owner regression and normal integrated application; owner testing remains pending.
 - Verification: Derived duplicate commonUpdate is removed; base nonthreaded update remains the single virtual housekeeping source. Actual rebuilt queued-thread4783assertions/21cases and integrated whole-app build pass. No threaded Home cost is inferred from the nonthreaded repair.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14480,6 +14494,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 Minimal duplicate-call removal integrated from frozen587/588/589 source, with exact-once base-owner regression. Normal threaded Home cost is not inferred from this nonthreaded contract repair.
 
 - 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
 
 ## PPD-589 — HTTP notifier exception leaks its borrowed response reference
 
@@ -14492,7 +14508,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Retain the actual throwing-handler/borrowed-response lifetime fixture and integrated application; owner review remains pending.
 - Verification: Both notifier bodies scope-release the initial borrowed HttpResponse reference on normal and exceptional exit. Actual HTTP180assertions/11cases pass, including throwing handler, retained response lifetime, age-scope restoration and pending-reply rearm. Integrated whole-app build passes; no ordinary live throwing-handler leak is alleged.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -14501,3 +14517,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 Scoped borrowed-reference guards integrated without changing ordinary handler ownership; actual exception fixture passes after consistent rebuild. Failure is not hidden by test cleanup.
 
 - 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.

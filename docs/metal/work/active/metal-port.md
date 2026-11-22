@@ -4,14 +4,14 @@ Commit `ec696aa615` is the published renderer checkpoint; local review changes a
 bounded diagnostics and repair HTTP/test/tooling contracts. The [final report](../../research/review-home-admission-20261122.md)
 is authoritative for current performance measurements. [CURRENT](../../state/CURRENT.md)
 records the actual source/app/runtime boundary. **Home FPS remains unresolved.**
-New scope stays local; no push approval exists. Accepted Maintenance69445 and
+Owner approved sharing this checkpoint on `codex/review-home-admission-20261122`; product acceptance remains pending. Accepted Maintenance69445 and
 Scheduling69450/source960bd3644a remain preserved and are not reopened by this list.
 
 ## Immediate executable action
 
 | Priority | Remaining work | Required result |
 | --- | --- | --- |
-|1 | Normal candidate owner handoff | Exact Review Candidate69454 is running at Club, PID98258, in native fullscreen with diagnostics off; owner visual/loading acceptance and new-scope push decision remain. |
+|1 | Normal candidate owner handoff | Exact Review Candidate69454 was observed fullscreen at Club, then closed on owner request. Separate review-branch publication is authorized; owner visual/loading acceptance remains for a later session. |
 |2 | PPD319 main GPU work | Use exact required lighting/forward-alpha pass/resource evidence to select an output-preserving optimization; include all preparation/uploads and complete affected-pass/frame costs. No repeat cap3 or tiny adoption experiment. |
 |3 | Specific source/owner proof gaps | Follow the register truth audit's per-ID actions. Resolve only from current source plus actual accepted evidence; report genuinely missing owner/private evidence. |
 

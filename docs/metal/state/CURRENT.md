@@ -6,7 +6,9 @@ Branch `codex/apple-silicon-metal`; source base `d191bb062f` plus local review c
 [Final review/Home report](../research/review-home-admission-20261122.md) is the
 current numerical disposition; [canonical work](../work/active/metal-port.md) owns
 remaining engineering. The register retains defect history and owner decisions.
-**New scope has no push approval. Home FPS is not fixed.**
+**Owner approved publication to a separate GitHub review branch. Home FPS is not fixed.**
+Review branch: `codex/review-home-admission-20261122`; implementation checkpoint `38fb245fc1`.
+This permits sharing the code/report, not product acceptance or a release.
 
 ## Source and candidate
 
@@ -27,10 +29,11 @@ remaining engineering. The register retains defect history and owner decisions.
 All measurement viewers quit normally. Final Club control PID88938 closed after its
 100-second fixed view plus10-second drain. Four HTTP checks are complete; no further
 policy, input-target or shader experiments are planned. The exact normal candidate
-is now running as PID98258 at Club in native fullscreen. Login and rendered world
+was observed as PID98258 at Club in native fullscreen. Login and rendered world
 were observed through the UI; runtime OpenHTJ2K and executable identity match.
-Diagnostics are off, with no LEAP helper or fixed-camera controller. It is ready for
-owner testing; this runtime observation is not owner visual acceptance.
+Diagnostics were off, with no LEAP helper or fixed-camera controller. The owner then
+requested closure because they are away: normal UI Quit completed and PID98258 is
+absent. The viewer is closed; no owner testing is requested now.
 
 Cap3 removes main-policy waits but moves blocking to shadow admission and produces
 worse frame-period tails. Earlier adoption moves a roughly11µs operation before the
@@ -79,8 +82,8 @@ or local build success does not establish product completion.
 ## Exact next actions
 
 Report/register history checks and harness are complete. Preserve the coherent local
-changes and hand off the running NORMAL fullscreen candidate for owner testing.
-Do not push without new owner approval.
+changes on the owner-authorized separate review branch for access by other AI.
+The viewer stays closed. Future owner acceptance remains separate from publication.
 Next engineering is the measured main lighting/forward-alpha GPU cost (PPD319), not
 more queue-depth trials. Other surviving requirements and the audit's missing-proof
 records are linked from the canonical work list; accepted removals remain closed.

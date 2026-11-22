@@ -1,8 +1,8 @@
 # Independent-review follow-through — local engineering complete
 
 Source base `d191bb062f`, branch `codex/apple-silicon-metal`, M1 Max64GiB,
-macOS26.5.2/Xcode26.6. **No push approval exists for this new scope.** Prior approval
-covered the published PPD567 change. The [final review/Home report](../../research/review-home-admission-20261122.md)
+macOS26.5.2/Xcode26.6. **Owner approved sharing this checkpoint on the separate GitHub review branch**
+`codex/review-home-admission-20261122`. This does not establish owner visual/performance acceptance. The [final review/Home report](../../research/review-home-admission-20261122.md)
 is the authoritative numerical disposition; [CURRENT](../../state/CURRENT.md) owns
 actual app/runtime identity and [canonical work](metal-port.md) owns remaining tasks.
 
@@ -41,12 +41,12 @@ rule is weakened or requested recording duration mistaken for useful data.
 
 ## Handoff and remaining work
 
-Normal Review Candidate69454/source28hashes/exact symbols is running at Club as
-PID98258 in native fullscreen for owner testing, diagnostics off, without a LEAP
-helper or fixed-camera controller. Report/register/harness evidence is retained;
-preserve the coherent local changes.
+Normal Review Candidate69454/source28hashes/exact symbols was observed at Club as
+PID98258 in native fullscreen, diagnostics off, without a LEAP helper or fixed-camera
+controller. It was then closed through normal UI Quit at owner request; PID98258 is
+absent. Report/register/harness evidence and the local checkpoint are retained.
 No further policy, input-target or shader experiments are planned. Owner acceptance
-and explicit new-scope push approval remain. Raw account/location/capture data stays
+remains separate from the granted review-branch publication approval. Raw account/location/capture data stays
 private under `artifacts/metal/ppd567-review-20261122`.
 
 The [truth audit](../../research/register-truth-audit-20261122.md) retains211field

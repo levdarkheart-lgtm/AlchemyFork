@@ -269,8 +269,9 @@ The [audit](register-truth-audit-20261122.md) lists individual records whose pro
 owner acceptance cannot be reconstructed; they are not silently resolved.
 
 The normal candidate retains two groups, original adoption, the fixed independent
-HTTP owner service and the review fixes. New scope remains local until owner testing
-and explicit push approval. No Home FPS fix or product/release completion is claimed.
+HTTP owner service and the review fixes. The owner approved sharing checkpoint
+`38fb245fc1` on the separate GitHub branch `codex/review-home-admission-20261122`.
+Visual/performance acceptance remains pending. No Home FPS fix or product/release completion is claimed.
 
 ## Validation, candidate and provenance
 
@@ -290,9 +291,11 @@ UUID `C1C910DE-5E27-3C74-93D6-0FD739075A62`, matching dSYM. It was built from
 the restored canonical code. The Metal library is
 `6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793`.
 No private cap3, early-adoption or multi-display-capture branch is present in that app.
-The normal app is running as PID98258 at Club in native fullscreen for owner testing,
-with diagnostics off and no LEAP helper or fixed-camera controller. The rendered
-world and runtime decoder/executable identity were observed; owner acceptance remains.
+The normal app was observed as PID98258 at Club in native fullscreen, diagnostics
+off, without a LEAP helper or fixed-camera controller. Rendered world and runtime
+decoder/executable identity were checked. The owner then requested closure because
+they are away; normal UI Quit completed and the process is absent. The viewer stays
+closed. Publication does not imply visual/performance acceptance.
 
 Private immutable evidence root: `artifacts/metal/ppd567-review-20261122`.
 `home-comparison-analysis/final-descriptive-comparison-01/comparison.json` pins the
