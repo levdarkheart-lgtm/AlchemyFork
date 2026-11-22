@@ -1,13 +1,14 @@
 # Current engineering state — PPD-556 bounded scheduling
 
-Observed 2026-11-21, Apple M1 Max / 64 GiB / macOS 26.5.2 / Xcode 26.6.
+Build observed2026-11-21; owner acceptance2026-11-22.
+Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 Branch: codex/apple-silicon-metal, canonical checkout.
 **Renderer code checkpoint:** `960bd3644a`
 Indra tree: `7d8c095d360bd3f77ac64d1b69e23c21840e0011`.
-Scheduling **26.4.0.69450 is built, qualified, staged and running for owner testing**.
-PPD-556/560–565 are ready_for_owner; owner verification/publication approval pending.
+Scheduling **26.4.0.69450 is owner accepted; commit/push approved**.
+PPD-556/560–565 are verified, owner verification passed and push approval granted.
 Accepted Maintenance 69445 remains preserved and previously pushed at629984ee37;
-that approval does not cover this new implementation.
+the new explicit2026-11-22 approval now covers Scheduling69450 as well.
 
 ## Current implementation and evidence
 
@@ -52,7 +53,7 @@ and other worktrees remain untouched. Private evidence: artifacts/metal/ppd556-2
 exact baseline/sanitizer locations are linked in the current execution ledger.
 No build, validation driver, recording or capture remains running.
 
-Running candidate: /Users/dekstroza/Alchemy-candidates/Alchemy Metal Scheduling 69450.app
+Owner-tested candidate: /Users/dekstroza/Alchemy-candidates/Alchemy Metal Scheduling 69450.app
 (executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335).
 PID31214 was observed at its exact executable path. Owner requested launch after
 validation; AutoLogin=false is a temporary session override. No login, saved
@@ -61,11 +62,18 @@ The unchanged accepted69445 executable retains SHA256
 0c5de0c90878f85c7e71296c279d303adda475be39a9c31923b10a942e2b9d89.
 Older accepted69417 remains untouched.
 
+Owner launch preference2026-11-22: preselect the appropriate explicit Home or club
+destination on the login screen. Use the private destination map under
+artifacts/metal/private-testing-destinations.json; pass its canonical SLURL with
+--url as the last option. Use Home for quiet/startup/loading baselines and club for
+busy-scene tests. Preserve graphics preferences and do not infer auto-login or
+recording authorization. Exact locations stay outside tracked documentation.
+
 ## Complete-product advancement assessment
 
 | ID | State | Evidence / remaining boundary |
 | --- | --- | --- |
-| M-008 | doing | Bounded scheduler/caller repair qualified; owner and broad feature acceptance remain. |
+| M-008 | doing | Bounded scheduler/caller repair owner accepted; broad feature acceptance remains. |
 | M-011 | doing | Final static app/source gates pass; runtime/foreign subprocess qualification remains. |
 | M-012 | complete | Existing harness/build tools retained, maintained and exercised. |
 | M-013 | doing | Alchemy/RLVa/media features retained; broader runtime qualification remains. |
@@ -78,11 +86,16 @@ launch do not establish whole-viewer runtime/performance or visual acceptance.
 
 ## Exact next actions
 
-Owner tests the exact staged/running69450 candidate. Keep the new source local;
-push only after new owner verification and explicit approval. Retain all failures,
-source/app hashes and unchanged accepted69445. [Outstanding priorities](../work/active/metal-port.md#outstanding-work-in-priority-order)
-cover asset service/cancellation, General jobs, immutable geometry preparation,
-safe GPU-wait reply service, streaming policy, compilation ownership and broader
-qualification. LFS sleep is fixed; asset handoffs have bounded replacements plus
-explicit residuals; geometry scheduling and earlier GPU-wait accounting remain
-unfinished despite their narrower accepted interface/setting repairs.
+Owner reports "looks good..commit and push" on2026-11-22. Record acceptance,
+commit documentation and publish the approved scope with a normal push to
+origin/codex/apple-silicon-metal. Verify exact remote/local identity; private push
+receipt retains the result. Built source/app identities are unchanged. No tag,
+release, force push, default-branch merge or private evidence upload.
+
+[Outstanding priorities](../work/active/metal-port.md#outstanding-work-in-priority-order)
+start with asset service/cancellation and General jobs, then immutable geometry
+preparation, safe GPU-wait reply service, streaming policy, compilation ownership
+and broader qualification. LFS sleep is fixed; asset handoffs have bounded
+replacements plus explicit residuals; geometry scheduling and earlier GPU-wait
+accounting remain unfinished despite their narrower accepted repairs. Future fixes
+need their own executed checks and applicable owner publication approval.

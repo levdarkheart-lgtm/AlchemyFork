@@ -1,10 +1,10 @@
 # Scheduling candidate 69450 — PPD-556 and native preferences
 
-Status: **ready for owner testing**. Full build, final component/static validation
-and immutable staging pass. The owner subsequently requested launch; exact staged
-PID31214 was observed running with session-only AutoLogin=false. No login or scene
-collection was performed. Owner acceptance and publication approval remain pending.
-Accepted Maintenance69445 remains unchanged.
+Status: **owner accepted; commit/push approved on2026-11-22**. Owner reports
+"looks good..commit and push" after testing the exact staged69450 candidate.
+Full build, component/static validation and immutable staging pass. Previously
+observed exact PID31214 launch used temporary AutoLogin=false; agent performed no
+login or scene collection. Accepted Maintenance69445 remains unchanged.
 
 Source 960bd3644a09e6da8da57715947ef479fa16de18, indra tree
 7d8c095d360bd3f77ac64d1b69e23c21840e0011, codex/apple-silicon-metal.
@@ -108,3 +108,22 @@ residuals (532/533); geometry required/deferrable decomposition is unfinished de
 the accepted API correction (530); earlier-wait/slack accounting is unfinished
 despite the accepted live regular budget (537). These remain distinct in the active
 ledger and initial assessment; no broad completion is inferred from narrow repairs.
+
+## Owner acceptance and publication approval
+
+On2026-11-22, after the requested exact69450 launch, the owner reports
+"looks good..commit and push". This accepts the candidate's implemented bounded
+scheduling/caller repairs, seven-setting/classifier/About cleanup and associated
+records (PPD-556/560–565), and explicitly authorizes a normal push to
+origin/codex/apple-silicon-metal. The two implementation commits are a27fb1a57e and
+960bd3644a; qualification records were committed as9f4d1b75bb. The subsequent
+acceptance-only commit preserves built indra7d8c095d360bd3f77ac64d1b69e23c21840e0011.
+Exact local/remote identity and source/app verification will be retained after
+the verified normal push in private owner-approval-push-20261122.json under the
+task evidence directory.
+
+The owner report closes only the implemented candidate scope. It does not establish
+measured FPS improvement, saturation in owner workloads, complete feature parity
+or completion of the retained geometry scheduling, earlier GPU-wait accounting,
+asset-service and other production gates. No release/tag/default-branch merge,
+private evidence upload or additional viewer recording is authorized by this push.

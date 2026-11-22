@@ -13032,16 +13032,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-556 — Generic scheduled request admission can block at queue capacity
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Queued worker scheduling
 - Discovered: 2026-11-21
 - Original reference: Bounded service admission must not block its own consumer while retrying accepted work. Current generic LLQueuedThread request/retry and housekeeping paths still call WorkSchedule::post with blocking pushIfOpen; newer cache handoffs use nonblocking tryPost.
 - Evidence: [Production convergence ledger](work/active/production-convergence-20261121.md); independent asset review traces llqueuedthread postRequest/updateQueue to WorkSchedule and ThreadSafeQueue capacity1,048,576. A self-post can wait for capacity only this consumer can free.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13058,6 +13058,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 implementation checkpoint: Local a27fb1a57e replaces request/retry/wake tickets with one reusable node per registered request and separate bounded nonblocking service admission/native notification; callers roll back busy/closed outcomes without fabricated completion. Actual629984 tiny-capacity baseline fails2expected cases/12assertions; modified actual core passes793assertions/18cases under ASan/UBSan. Final read-only reviews find no blocker. Full application qualification and new owner acceptance remain pending; no current owner saturation/FPS claim. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
 
 
 ## PPD-557 — Retained CPU routing fixtures do not establish bounds capability
@@ -13134,16 +13136,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-560 — Unconsumed deferred and terrain-detail settings survive native preferences
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Native preferences maintenance
 - Discovered: 2026-11-21
 - Original reference: Upstream408fd6c pipeline already fixes deferred rendering true; RenderTerrainDetail has no corresponding reader. Native pipeline owns deferred rendering directly. These two saved/debug settings and feature masks have no current production key consumer.
 - Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); independent629984ee37 census of66current graphics/scene bindings and all quoted-key readers/writers, pipeline.cpp18851 and upstreampipeline1456.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13153,19 +13155,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
+
 
 ## PPD-561 — Native pacing settings retain obsolete OpenGL descriptions
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Native preferences maintenance
 - Discovered: 2026-11-21
 - Original reference: Upstream408fd6c settings_alchemy2295/2350 describe NVIDIA threaded OpenGL and a fixed1ms reply drain. Current ALFrameFences uses Metal serial waits and MainWorkTime is live.
 - Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); AlchemyRenderMaxFramesAhead/PacingSlackWork comments, native endFrame waits, half-minimum-eight pacing samples and live regular reply setting.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13175,19 +13179,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
+
 
 ## PPD-562 — Asynchronous texture-priority admission reports success when rejected
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Texture service admission maintenance
 - Discovered: 2026-11-21
 - Original reference: Current updateRequestPriority ignores tryPost rejection and always returns true. A queued UUID-only lookup can also reach a replacement worker after request turnover; priority belongs to the exact requested worker lifecycle.
 - Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); lltexturefetch.cpp3257 callback/return, existing worker generation and bounded service queue.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13197,19 +13203,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
+
 
 ## PPD-563 — Obsolete automatic GPU classification retains unreachable OpenGL benchmark controls
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Native feature classification maintenance
 - Discovered: 2026-11-21
 - Original reference: Upstream408fd6c loadGPUClass594–803 owns automatic GL bandwidth classification and Radeon workarounds. Current native loadGPUClass returns class3/Metal renderer/unknown bandwidth before the obsolete path.
 - Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md);629984ee37 llfeaturemanager.cpp379–817 and five exact unused settings GPUBenchmarkResult/SkipBenchmark/RenderClass1MemoryBandwidth/RenderCPUBasis/ALMesaRDNA35SettingsRestored.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13221,19 +13229,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
+
 
 ## PPD-564 — Full-admission worker fixture constructs an invalid zero-capacity queue
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Bounded worker test integration
 - Discovered: 2026-11-21
 - Original reference: The native worker test must fill a valid positive-capacity queue to exercise transient busy admission. The core explicitly rejects invalid zero capacities.
 - Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); core-tests-01.log passes5/6scopes and fails the new worker fixture on ASSERT(request_capacity && callback_capacity), with27/28assertions otherwise passing.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13243,19 +13253,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
 
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).
+
 
 ## PPD-565 — Human-readable support report omits its native backend field
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Native diagnostics presentation maintenance
 - Discovered: 2026-11-21
 - Original reference: Upstream408fd6c llappviewer3903/4085 reports the actual GL version. Native getViewerInfo already exposes RENDERER_BACKEND=Metal but the human-readable formatter still emits AboutOGL and not the native backend.
 - Evidence: [PPD556 implementation ledger](work/active/ppd556-bounded-scheduling-20261121.md); current llappviewer4049/4239 and AboutOGL localized strings. The structured OPENGL_VERSION field truthfully says not present and may remain for API compatibility.
-- Next action: Owner tests exact staged/running Scheduling69450. Preserve scoped contracts, failures and prior69445; keep this new source local until new owner verification and explicit push approval.
-- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. Component correctness/process launch do not establish owner acceptance or FPS improvement.
-- Owner verification: pending
-- Push approval: not_granted
+- Next action: Retain owner-accepted Scheduling69450 repair/regression coverage; reopen on recurrence. Broader geometry, GPU-wait accounting, asset service and qualification work remains explicit in the active ledger. Owner authorizes publication of this tested scope.
+- Verification: Source960bd3644a / indra7d8c095d360bd3f77ac64d1b69e23c21840e0011 full Release build0;58CPU/56native scopes pass with0skips, actual core ASan/UBSan793assertions/18cases, all3pipeline-cache modes, source/stage deep-strict signature,346ARM64-only Mach-O files, strict source0blocking/0scanerrors and exact7839-file/2internal-symlink stage inventory pass. Owner requested launch; exact candidate PID31214 observed, no automatic login. On2026-11-22 owner reports "looks good..commit and push", accepting this candidate and explicitly authorizing publication. This supports scoped repair acceptance, not an FPS gain or independent execution of every edge case.
+- Owner verification: passed
+- Push approval: granted
 
 ### History
 
@@ -13264,3 +13276,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 implementation checkpoint: Local960bd3644a reports AboutRenderer using RENDERER_BACKEND=Metal and removes unused AboutOGL resources across11locales. English base fallback is retained without fabricated translations. Structured OPENGL_VERSION=not present, native GPU identity, privacy/location filtering and other report data remain. Corrected Release syntax and final source review pass; owner UI verification pending. [Exact commands/evidence and remaining boundaries](work/active/ppd556-bounded-scheduling-20261121.md).
 
 - 2026-11-21 ready_for_owner: all final build/component/static/staging checks pass for separate Scheduling69450; unchanged accepted69445 preserved. Exact app executable SHA256 df28cec46e833d8eba36c38e45385a4ed469964cc2ae84a753a78a86ccd47335, owner-requested PID31214 confirmed at exact path with temporary AutoLogin=false. No login/profile collection, new owner acceptance or push approval. [Candidate identity and residuals](research/scheduling-candidate-69450-20261121.md).
+
+- 2026-11-22 owner acceptance/publication approval: after the exact staged69450 launch, owner states "looks good..commit and push". Mark the implemented candidate scope verified, Owner verification passed and Push approval granted. Retain original discoveries, failures, all component evidence and explicit broader residuals. [Accepted scope and limits](research/scheduling-candidate-69450-20261121.md#owner-acceptance-and-publication-approval).

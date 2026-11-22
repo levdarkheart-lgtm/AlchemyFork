@@ -1,8 +1,10 @@
 # PPD-556 — bounded request and service ownership
 
-Status: ready_for_owner; full application qualification, staging and requested launch complete. Base 629984ee37; accepted app69445/source a2aaaf2942 is preserved.
+Status: owner accepted; commit/push approved2026-11-22. Full application
+qualification, staging and requested launch complete. Base 629984ee37; accepted app69445/source a2aaaf2942 is preserved.
 Owner requests implementation plus renewed dead graphics-preference audit.
-New source remains local until candidate verification and applicable push approval.
+The initial local-only boundary is superseded by explicit owner acceptance and
+normal branch push approval on2026-11-22.
 Initially no launch/login, saved-setting mutation or live profiling was authorized.
 The owner subsequently requests launch after validation; exact staged PID31214 is
 observed with temporary AutoLogin=false. No login or live profiling is performed.
@@ -234,3 +236,29 @@ No builds/tests/captures remain active. Final documentation-only commit preserve
 the built indra tree; no rebuild is needed for documentation. Next action is owner
 testing of the running candidate; preserve explicit geometry/slack/asset residuals
 and broader qualification in the canonical active ledger.
+
+## Owner acceptance and approved publication —2026-11-22
+
+Owner reports "looks good..commit and push" after the exact69450 launch/test.
+PPD-556/560–565 move to verified/Owner verification passed/Push approval granted;
+all original failure histories and broader unfinished mechanisms remain. This is
+scoped candidate acceptance, not measured FPS, saturation or product completion.
+
+Preflight: canonical branch codex/apple-silicon-metal at9f4d1b75bb, no tracked
+changes, unrelated untracked worktrees/ retained. origin reports629984ee37; three
+local approved commits contain only bounded scheduler/callers/tests, native settings
+cleanup and corresponding docs. Read-only independent scope/privacy review is clean.
+Exact staged executable SHA256 and built indra tree match the accepted receipt.
+
+Update acceptance records, run ordinary harness/diff checks, commit documentation
+and normally push HEAD to origin/codex/apple-silicon-metal. Verify the published ref
+against local HEAD; save exact command/exit/local+remote identity privately in
+owner-approval-push-20261122.json. No rebuild is needed for documentation; no source,
+signed app, settings, unrelated worktree, tag, release or default branch changes.
+
+Owner also asks that future launches preselect the appropriate Home/club destination
+on the login screen. Resolve recent private launch/location evidence into ignored
+artifacts/metal/private-testing-destinations.json, then select by test purpose and
+pass --url last. Keep exact private destinations out of publication. This does not
+authorize restarting the current viewer, auto-login, saved graphics changes or a
+recording; it preserves the launch preference for subsequent test candidates.
