@@ -1,5 +1,8 @@
 # Local OpenHTJ2K viewer experiment — 2026-11-12
 
+> Current disposition — 2026-11-22: Historical local decoder experiment. OpenHTJ2K is now an unconditional production dependency and sole pixel decoder under PPD-559; the old opt-in/alternate-decoder comparison instructions are not current authorization. Preserve all experimental results and failed attempts.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 Owner requests a quick OpenHTJ2K integration, build and exact candidate launch.
 Owner controls login and teleport, and will explicitly signal when recording
 should start just before teleporting to the busy location. Do not record before

@@ -283,6 +283,7 @@ private:
 
     // Threads:  Ttf
     void commonUpdate();
+    void wakeHttpService() noexcept { requestThreadedUpdate(); }
 
     // Metrics command helpers
     /**

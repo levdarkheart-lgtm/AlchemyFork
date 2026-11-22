@@ -1,5 +1,8 @@
 # Production convergence candidate — 2026-11-21
 
+> Current disposition — 2026-11-22: Owner-accepted Maintenance 69445 record. Initial ownership tables and first PPD-556 implementation instructions below are historical; Scheduling 69450 subsequently repaired/accepted PPD-556. Preserve the source-retirement index, results and residual ownership contracts; current priorities live in the canonical work ledger.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 Status: owner-verified candidate; publication approved
 Owner: root integrator, canonical codex/apple-silicon-metal worktree.
 Base: 83d33894c37087025616bd9aaf1d831cc574da97 / indra05091a15a7.

@@ -799,6 +799,49 @@ class HarnessTests(unittest.TestCase):
             errors = module.validate_live_references(root, ["AGENTS.md"])
             self.assertTrue(any("verify-app.sh" in error for error in errors))
 
+    def test_remote_evidence_paths_are_not_local_commands(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            script = root / "tools/metal/remote.sh"
+            script.parent.mkdir(parents=True)
+            script.write_text("#!/bin/sh\n", encoding="utf-8")
+            script.chmod(0o644)
+            for url in ("https://example.invalid/docs/metal/remote.md",
+                        "http://example.invalid/tools/metal/remote.sh"):
+                for reference in (url, f"[Remote]({url})", f"[Remote](<{url}>)"):
+                    with self.subTest(reference=reference):
+                        (root / "AGENTS.md").write_text(reference + "\n", encoding="utf-8")
+                        self.assertEqual([], module.validate_live_references(root, ["AGENTS.md"]))
+
+    def test_remote_links_preserve_local_labels_and_adjacent_references(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "AGENTS.md").write_text(
+                "[tools/metal/label.sh](https://example.invalid/docs/metal/remote.md)"
+                "[Local](tools/metal/adjacent.sh)\n", encoding="utf-8"
+            )
+            errors = module.validate_live_references(root, ["AGENTS.md"])
+            self.assertIn("Stale repository path in AGENTS.md: tools/metal/label.sh", errors)
+            self.assertIn("Stale repository path in AGENTS.md: tools/metal/adjacent.sh", errors)
+            self.assertFalse(any("remote.md" in error for error in errors))
+
+    def test_local_command_validation_survives_remote_reference(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            script = root / "tools/metal/check.sh"
+            script.parent.mkdir(parents=True)
+            script.write_text("#!/bin/sh\n", encoding="utf-8")
+            script.chmod(0o644)
+            (root / "AGENTS.md").write_text(
+                "https://example.invalid/tools/metal/check.sh\nRun `tools/metal/check.sh`.\n",
+                encoding="utf-8"
+            )
+            errors = module.validate_live_references(root, ["AGENTS.md"])
+            self.assertEqual(["Referenced command is not executable: tools/metal/check.sh"], errors)
+
     def test_stale_document_relative_repository_path_is_rejected(self):
         module = load("validate_harness")
         with tempfile.TemporaryDirectory() as d:

@@ -1,5 +1,8 @@
 # PPD-567 implementation and measured follow-through
 
+> Current disposition —2026-11-22: Published PPD-567 implementation/results history; its mixed cadence and owner gate remain. The original slot-coverage claim is corrected below. Added Home diagnostics and study-specific tools are retained only on the [immutable review branch](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md); historical collection instructions are not current work.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated results/history remain retained.
+
 Status: complete for the five-part engineering goal; owner visual/performance
 verification remains pending. The owner goal authorizes local implementation, ownership/output
 checks, repeated controlled Club comparisons with Home regression checks, one
@@ -50,10 +53,14 @@ remain separate from this scoped task.
 ## Implementation and component checkpoint
 
 Root's invocation-local slice patch changes only the two existing forward-pack
-binding sites. The integrated independent fixture covers both slots with separate
-visible responses, reused caller storage, two differing packs in one or two pending
-commands, reverse submission order, external/standalone pages and candidate/fallback
-paths. Empty-view checks bound publication bytes below a full pack.
+binding sites. The original integrated fixture covers two slot1 consumers with
+separate visible responses, reused caller storage, two differing packs in one or
+two pending commands, reverse submission order, external/standalone pages and
+candidate/fallback paths. Empty-view checks bound publication bytes below a full
+pack. Correction2026-11-22/PPD582: the original “both slots” claim was false;
+simple alpha uses slot1. The new review-follow-through case uses actual above-water
+slot3 and restores alpha slot1. Its separate API/Shader Validation run passes
+3,805assertions/1case; this is additional evidence, not part of the old12-case run.
 
 Actual old renderer plus the new test fails exactly eight repeated 49,216-byte
 dedup checks; the fixed renderer passes 51,279 assertions in that case. Full

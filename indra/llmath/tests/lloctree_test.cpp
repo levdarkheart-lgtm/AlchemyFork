@@ -33,8 +33,14 @@
 #include "../lloctree.h"
 
 #include <algorithm>
+#include <array>
+#include <memory>
 #include <random>
 #include <vector>
+
+#if LL_OCTREE_PARANOIA_CHECK
+#include "llerrorcontrol.h"
+#endif
 
 namespace
 {
@@ -427,4 +433,100 @@ namespace
         CHECK(root->getChildCount() == 0);
         delete root;
     }
+
+#if LL_OCTREE_PARANOIA_CHECK
+    // Compile this actual-header TU with LL_OCTREE_PARANOIA_CHECK=1 in an
+    // isolated test executable, not beside differently configured octree
+    // template definitions from the ordinary combined math test target.
+    TEST_CASE("LLOctreeNode: diagnostic child admission counts occupied slots and rejects overflow",
+              "[LLOctree][PPD-586]")
+    {
+        struct Logs
+        {
+            std::vector<std::string> warnings;
+            LLError::SettingsStoragePtr previous = LLError::saveAndResetSettings();
+            LLError::RecorderPtr recorder;
+            Logs()
+            {
+                LLError::setDefaultLevel(LLError::LEVEL_WARN);
+                recorder = LLError::addGenericRecorder(
+                    [this](LLError::ELevel, const std::string& message) { warnings.push_back(message); });
+            }
+            ~Logs()
+            {
+                LLError::removeRecorder(recorder);
+                LLError::restoreSettings(previous);
+            }
+        } logs;
+        struct Listener final : LLOctreeListener<Entry, Entry*>
+        {
+            unsigned additions = 0, removals = 0;
+            void handleChildAddition(const Node*, Node*) override { ++additions; }
+            void handleChildRemoval(const Node*, const Node*) override { ++removals; }
+            void handleInsertion(const LLTreeNode<Entry>*, Entry*) override {}
+            void handleRemoval(const LLTreeNode<Entry>*, Entry*) override {}
+            void handleDestruction(const LLTreeNode<Entry>*) override {}
+            void handleStateChange(const LLTreeNode<Entry>*) override {}
+        };
+        LLPointer<Listener> listener = new Listener;
+        Node root(vec(0.f, 0.f, 0.f), vec(8.f, 8.f, 8.f), nullptr);
+        root.addListener(listener.get());
+        REQUIRE(root.getChildCount() == 0);
+        const auto add = [&](U8 octant)
+        {
+            auto child = std::make_unique<Node>(
+                vec(octant & 1u ? 4.f : -4.f,
+                    octant & 2u ? 4.f : -4.f,
+                    octant & 4u ? 4.f : -4.f),
+                vec(4.f, 4.f, 4.f), nullptr, octant);
+            const auto count = root.getChildCount();
+            root.addChild(child.get());
+            REQUIRE(root.getChildCount() == count + 1);
+            CHECK(child->getParent() == &root);
+            CHECK(root.getChild(root.getChildIndex(octant)) == child.get());
+            child.release(); // The successful admission transfers ownership.
+        };
+        for (U8 octant : {5, 2, 7, 0, 3, 6, 1, 4}) add(octant);
+        REQUIRE(root.getChildCount() == 8);
+        CHECK(listener->additions == 8);
+        REQUIRE(logs.warnings.empty());
+        root.validate();
+        root.validateChildMap();
+
+        std::array<Node*, 8> children;
+        std::array<U8, 8> map;
+        for (U8 octant = 0; octant < 8; ++octant)
+        {
+            children[octant] = root.getChild(octant);
+            map[octant] = root.getChildIndex(octant);
+        }
+        auto excess = std::make_unique<Node>(
+            vec(3.f, 3.f, 3.f), vec(4.f, 4.f, 4.f), nullptr, 7);
+        root.addChild(excess.get());
+        CHECK(root.getChildCount() == 8);
+        CHECK(excess->getParent() == nullptr); // Still owned by the caller.
+        CHECK(listener->additions == 8);
+        CHECK(listener->removals == 0);
+        REQUIRE(logs.warnings.size() == 1);
+        CHECK(logs.warnings[0].find("Octree node has too many children") != std::string::npos);
+        for (U8 index = 0; index < 8; ++index)
+        {
+            CHECK(root.getChild(index) == children[index]);
+            CHECK(root.getChildIndex(index) == map[index]);
+            CHECK(root.getChild(index)->getParent() == &root);
+        }
+
+        root.removeChild(root.getChildIndex(2), true);
+        CHECK(root.getChildCount() == 7);
+        CHECK(root.getChildIndex(2) == Node::NO_CHILD_NODES);
+        CHECK(listener->removals == 1);
+        root.validateChildMap();
+        add(2);
+        CHECK(root.getChildCount() == 8);
+        CHECK(listener->additions == 9);
+        CHECK(logs.warnings.size() == 1);
+        root.validate();
+        root.validateChildMap();
+    }
+#endif
 }

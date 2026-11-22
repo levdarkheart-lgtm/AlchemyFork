@@ -175,6 +175,12 @@ protected:
     bool processOne();
     void processPending();
 
+    // Wake-only, any thread while this owner is alive. One reusable pending
+    // bit is independent of callback admission; arrivals during housekeeping
+    // request another pass. Explicit pause remains an owner control policy.
+    // False after close (or for a nonthreaded owner); never acquires data locks.
+    bool requestThreadedUpdate() noexcept;
+
 private:
     void scheduleRequestLocked(QueuedRequest* req, const TimePoint& when, bool urgent);
     void finishRequestLocked(QueuedRequest* req, bool complete);
@@ -259,7 +265,8 @@ protected:
     bool mPreferHousekeeping = true;
     bool mServiceActive = false;
     bool mHousekeepingActive = false;
-    bool mThreadedUpdatePending = false;
+    enum : U32 { UPDATE_PENDING = 1, UPDATE_CLOSED = 2 };
+    std::atomic<U32> mThreadedUpdateState{0};
     std::atomic<bool> mShutdownStarted{false};
 
     // A coalesced native-thread event, independent of data/queue locks. The

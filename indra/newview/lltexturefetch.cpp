@@ -571,6 +571,9 @@ private:
             mHttpHasResource = false;
             mFetcher->mHttpSemaphore--;
             llassert_always(mFetcher->mHttpSemaphore >= 0);
+            // The slot is freed after reply dispatch. Revisit waiters on this
+            // owner without requiring the next viewer frame/HTTP completion.
+            if (mFetcher->mHttpSemaphore < mFetcher->mHttpLowWater) mFetcher->wakeHttpService();
         }
 
 private:
@@ -2807,6 +2810,12 @@ LLTextureFetch::LLTextureFetch(LLTextureCache* cache, bool threaded, bool qa_mod
 
     LLAppCoreHttp & app_core_http(LLAppViewer::instance()->getAppCoreHttp());
     mHttpRequest = new LLCore::HttpRequest;
+    if (mThreaded)
+    {
+        // Transport only signals our reusable owner event. The completion and
+        // all texture/request mutations remain on this fetch service thread.
+        mHttpRequest->setReplyNotification([this]() noexcept { wakeHttpService(); });
+    }
     mHttpOptions  = std::make_shared<LLCore::HttpOptions>();
     mHttpOptionsWithHeaders = std::make_shared<LLCore::HttpOptions>();
     mHttpOptionsWithHeaders->setWantHeaders(true);
@@ -2823,6 +2832,9 @@ LLTextureFetch::LLTextureFetch(LLTextureCache* cache, bool threaded, bool qa_mod
 
 LLTextureFetch::~LLTextureFetch()
 {
+    // Synchronize transport notifications before any target/member teardown.
+    // Queued replies still own their operations and retain the normal lifecycle.
+    mHttpRequest->setReplyNotification({});
     // A texture that outlives the fetcher, as one LLWearableList holds does (see
     // ~LLViewerFetchedTexture), never asks for its worker to be deleted, and with the
     // thread stopped nothing else will.
@@ -3336,8 +3348,10 @@ void LLTextureFetch::commonUpdate()
     // Run a cross-thread command, if any.
     cmdDoWork();
 
-    // Deliver all completion notifications
-    LLCore::HttpStatus status = mHttpRequest->update(0);
+    // Deliver a bounded turn of completion notifications.
+    // Bound only reply dispatch, not waiter selection/command work above.
+    // A handler runs to completion; remaining replies re-arm our native wake.
+    LLCore::HttpStatus status = mHttpRequest->update(1000, 16);
     if (! status)
     {
         LL_INFOS_ONCE(LOG_TXT) << "Problem during HTTP servicing.  Reason:  "
@@ -3365,11 +3379,6 @@ size_t LLTextureFetch::update(F32 max_time_ms)
     }
 
     size_t res = LLWorkerThread::update(max_time_ms);
-
-    if (!mThreaded)
-    {
-        commonUpdate();
-    }
 
     return res;
 }
@@ -3800,6 +3809,7 @@ void LLTextureFetch::cmdEnqueue(TFRequest * req)
     unlockQueue();                                                      // -Mfq
 
     unpause();
+    wakeHttpService();
 }
 
 // Threads:  T*

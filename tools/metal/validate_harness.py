@@ -67,6 +67,7 @@ SCRIPT_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_.-])(tools/metal/[A-Za-z0-9_.-]+\.(?:sh|py))"
 )
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+EXTERNAL_URL_RE = re.compile(r"https?://[^\s<>()]+")
 WORK_STATES = {"todo", "doing", "blocked", "deferred", "complete"}
 DEFECT_DOCUMENT = "docs/metal/POST_PORT_DEFECTS.md"
 DEFECT_HEADING_RE = re.compile(r"^## (PPD-\d{3}) — (.+)$", re.MULTILINE)
@@ -248,23 +249,26 @@ def validate_live_references(root: Path, documents=LIVE_DOCUMENTS):
         content = document.read_text(encoding="utf-8")
         for match in MARKDOWN_LINK_RE.finditer(content):
             target = match.group(1).strip()
-            if target.startswith(("http://", "https://", "mailto:", "#")):
-                continue
             if target.startswith("<") and target.endswith(">"):
                 target = target[1:-1]
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
             target = target.split("#", 1)[0]
             if not target:
                 continue
             if not (document.parent / target).resolve().exists():
                 errors.append(f"Stale Markdown link in {relative}: {target}")
-        for match in REPO_PATH_RE.finditer(content):
+        # Remote evidence paths are not commands/files in this checkout.
+        # Keep link labels and adjacent local references subject to validation.
+        local_content = EXTERNAL_URL_RE.sub("", content)
+        for match in REPO_PATH_RE.finditer(local_content):
             target = match.group(1)
             candidate = ((document.parent / target).resolve()
                          if target.startswith("benchmarks/")
                          else root / target)
             if not candidate.exists():
                 errors.append(f"Stale repository path in {relative}: {target}")
-        for match in SCRIPT_PATH_RE.finditer(content):
+        for match in SCRIPT_PATH_RE.finditer(local_content):
             target = match.group(1)
             script = root / target
             if script.exists() and script.stat().st_mode & 0o111 == 0:

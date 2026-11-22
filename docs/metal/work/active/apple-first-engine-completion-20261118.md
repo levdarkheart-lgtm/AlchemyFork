@@ -1,5 +1,8 @@
 # Apple-first engine completion —2026-11-18
 
+> Current disposition — 2026-11-22: Historical E1–E6 implementation/experiment boundary. Rejected optional world preparation/bank/visibility/forced-probe mechanisms were later removed under accepted PPD-543–546/548/550; do not execute old keep-OFF/activation instructions for absent controls. Component completion does not close the larger runtime/feature/performance gates.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 Owner explicitly sets a new active goal after clearing the previous one:
 complete the integrated architecture FIRST, then stage one verified viewer
 and pause for owner-started profiling/optimization. Existing69264 app/captures/

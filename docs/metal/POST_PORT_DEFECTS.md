@@ -42,7 +42,15 @@ Use one `## PPD-NNN — Title` section per record. Keep metadata fields as singl
 references may be unknown for a newly reported issue; write that uncertainty
 explicitly. Evidence must link to a retained repository note or primary source.
 
-<!-- next-defect-id: PPD-582 -->
+Current production scope (2026-11-22): owner approval covers retained production
+fixes and contradiction consolidation on `codex/apple-silicon-metal`, not product
+acceptance. Review-added native diagnostics, HTTP queue-age measurement and all
+new study-specific Python tools/tests remain on the [immutable review checkpoint](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+Their successful tests/measurements in retained histories do not claim installation
+on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
+Maintenance69445/Scheduling69450 closures and all historical failures remain.
+
+<!-- next-defect-id: PPD-591 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -1050,8 +1058,8 @@ A full ring overwrites an older packet after it was acknowledged. Related final 
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #602 and #630; 29eff897e3, 4bb9b798e6, fdda86251c, 79057e0958. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerregion.cpp:852,3150–3153; llvocache.cpp:2102; cache tree/set/cursor references.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Local1f635d6b75 /26.4.0.68914 Release candidate build,136registered entries,116tool tests,346ARM64files, deep strict signature, embedded source and owned imports pass. Deferred removal and safe entry release tests pass in registered cache suite; current source includes pending-removal gates and safe reader ordering. Disk/extras pairing remains unimplemented and this record stays investigating.
+- Next action: Retain deferred-removal, safe release and paired objects/extras persistence regressions; owner checks any still-unverified live cache/region behavior. Disk/extras pairing is implemented.
+- Verification: Deferred removal/release safety and object/extras pairing are implemented. Current load treats the pair together, writes extras with object writes and creates absent empty extras, and removal covers both files. Actual old cache control fails5checks; corrected17case real filesystem suite passes.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1072,6 +1080,9 @@ Retained subcases: map clearing leaves raw cache entry references/cursors; remov
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/llviewerregion.cpp:813–856; indra/newview/llvocache.cpp:2177–2231; docs/metal/research/upstream-remaining-common-validation-2026-11-13.md:11–42; local9d8a87d637; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-027 — Escaped floater names bypass resolved-name restrictions
 
@@ -1133,8 +1144,8 @@ The per-thread painter is reused without hb_raster_paint_clear. Failure after pa
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 45007f232d, landed in #568. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llrender/llimagegl.cpp:2355–2359.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain bounded native readback regression; owner visual/runtime gate remains separate.
+- Verification: Native readBackRaw accepts valid4096 dimensions and nonfatally refuses invalid/oversize LLImageRaw requests. Actual4096x2 native roundtrip and8192refusal pass; restored fatal2048control fails.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1152,6 +1163,9 @@ readBackRaw fatally rejects dimensions above 2048 before reaching native readbac
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llrender/llimagegl.cpp:2620,2655–2662; docs/metal/research/upstream-remaining-texture-validation-2026-11-13.md:15–94;2e77df8376/b17a8c5aad/4e230f49ad. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-030 — URI first-call initialization races and malformed URI handling diverges
 
 - Status: ready_for_owner
@@ -1160,8 +1174,8 @@ readBackRaw fatally rejects dimensions above 2048 before reaching native readbac
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 584b2cea53, 517072b781, 080980a07d, 3be4f909db / #604. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/lluri.cpp, unchanged from fork base.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Remove URI implementation TODO; do not claim TSan or live URI workflow acceptance.
+- Verification: Malformed percent escapes are preserved; immutable function-static escape sets avoid concurrent mutable first-call sorting. Sixteen simultaneous first calls and common regression suite pass.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1179,6 +1193,9 @@ A plain initialized bool guards sorting of a shared string, so concurrent first 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llcommon/lluri.cpp:77–79,122–145; docs/metal/research/upstream-remaining-common-validation-2026-11-13.md:11–42; local9d8a87d637; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-031 — Shared LLSD date and string contracts retain upstream correctness defects
 
 - Status: ready_for_owner
@@ -1187,8 +1204,8 @@ A plain initialized bool guards sorting of a shared string, so concurrent first 
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #603, #605, #607–612, #643; 8000ca483b, 1d410c39b9, 15fd4bac40, 2ed88ce337, 58a1362221, 58f471334a. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llcommon/llsdserialize.cpp/.xml.cpp, lldate.cpp, llstring.cpp/.h.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Replace no-implementation metadata with the scoped implementation/test map; retain unexecuted live behavior and any unmapped subcase as unknown.
+- Verification: The9d8a87d637 LLSD/XML/date/string correction group is integrated and its affected real CPU suites pass516592common assertions/304cases, plus date/string malformed-input contracts. Current finite date guards, first-line parser and empty-key/DOCTYPE handling are present. Original source-only statement is obsolete.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1206,6 +1223,9 @@ Retained subcases: failed/empty unzip result interpretation, single-line deseria
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llcommon/lldate.cpp:55–63; indra/llcommon/llsdserialize.cpp:131–176,1143,1491; indra/llcommon/llsdserialize_xml.cpp:475,1167–1187,1274; docs/metal/research/upstream-remaining-common-validation-2026-11-13.md:11–42; local9d8a87d637; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-032 — Nonfinite quaternion normalization emits invalid transforms
 
 - Status: ready_for_owner
@@ -1214,8 +1234,8 @@ Retained subcases: failed/empty unzip result interpretation, single-line deseria
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6a0a982f5f / #609. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/llquaternion.h:526–577, unchanged from fork base.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain finite-boundary tests under supported Release arithmetic; no fast-math claim.
+- Verification: Both normalization methods use finite magnitude admission and identity fallback. Actual Release+O3/LTO old-source control fails10checks; corrected36checks pass.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1233,6 +1253,9 @@ An infinite or overflowing squared magnitude passes the positive threshold, prod
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llmath/llquaternion.h:525–552; docs/metal/research/upstream-remaining-common-validation-2026-11-13.md:11–42; local9d8a87d637; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-033 — New mesh faces inherit placeholder face textures and materials
 
 - Status: ready_for_owner
@@ -1241,8 +1264,8 @@ An infinite or overflowing squared magnitude passes the positive threshold, prod
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 93c320b7eb / #633; full TE prerequisite 444eb52a3e / #619. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLPrimitive::setNumTEs; LLViewerObject::setNumTEs.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain new-face TE/material regression and owner mesh appearance gate.
+- Verification: Texture-entry growth copies the last valid existing TE/material via newCopy instead of default placeholders, preserving default creation when no valid TE exists. Integrated863c6bf1df and combined tests are recorded.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1260,6 +1283,9 @@ When a loaded mesh gains faces, old code copies the last existing face despite e
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llprimitive/llprimtexturelist.cpp:396–427; indra/llprimitive/llprimitive.cpp:263–268; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-034 — Octree child capacity can overflow beneath a full parent
 
 - Status: ready_for_owner
@@ -1268,8 +1294,8 @@ When a loaded mesh gains faces, old code copies the last existing face despite e
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 6ff9523744 and df5199689b / #568. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llmath/lloctree.h; LLSpatialGroup::updateInGroup.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain capacity/minimum-size contracts and actual dense-scene owner gate; PPD586 diagnostic mChild.size typo is independent.
+- Verification: Current insertion checks this node has element capacity even below a full parent, exempting minimum-size unsplittable nodes; updateInGroup uses matching placement constraints. Integrated3cac0c4963 and combined build/test evidence retained.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1287,6 +1313,9 @@ A child insertion can ignore its own capacity after a parent fills. Bring legal 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llmath/lloctree.h:328–338; indra/newview/llspatialpartition.cpp:411–419; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-035 — Asynchronous alpha-mask answers do not rebuild dependent faces
 
 - Status: ready_for_owner
@@ -1295,8 +1324,8 @@ A child insertion can ignore its own capacity after a parent fills. Bring legal 
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction bcce2bce3c, d66e1f4852, 830be4b4f4 / #601. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llimagegl.cpp:2290,3020–3110; LLGLTexture; LLViewerFetchedTexture.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain generation/cancellation/owner-detach tests; owner foliage/mask transition acceptance remains separate.
+- Verification: Final alpha-mask answers notify the attached owner after changed answers or consumed provisional no-mask, with silent provisional clear and cancelled-analysis protection. Real Metal/deferred-analysis tests pass; notification-removal control fails10checks.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1314,6 +1343,9 @@ Provisional no-mask results may select a blend pass, but a later mask answer doe
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llrender/llimagegl.cpp:2579–2593; docs/metal/research/upstream-remaining-texture-validation-2026-11-13.md:15–94;2e77df8376/b17a8c5aad/4e230f49ad. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-036 — PBR bake proxies lose local composites and body-hide ownership
 
 - Status: ready_for_owner
@@ -1322,8 +1354,8 @@ Provisional no-mask results may select a blend pass, but a later mask answer doe
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #533; ca9043a267, ce67354a60, 6b6f8cd1b2, b71807bc83, 5cc8430be5. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llviewerobject.cpp:5488; llfetchedgltfmaterial.h:70; llvoavatar.cpp:9624; native lldrawpool/pipeline texture consumers.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain base-color/HUD exclusions and actual appearance gate; remove implementation TODO.
+- Verification: PBR bake slots resolve dynamic avatar/local composites through BakedTextures and refresh them on actual bake changes; body visibility uses the material bake relationship.863c6bf1df and native-consumer review are integrated.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1340,6 +1372,9 @@ Fetched-only slots discard dynamic local composites; PBR base-color bake body hi
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/llviewerobject.cpp:5419–5426,5496–5560; indra/newview/llfetchedgltfmaterial.h:102–103; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-037 — Native HDR bloom exposure and probe paths lack complete finite boundaries
 
@@ -1382,8 +1417,8 @@ Native radiance clamping is partial: later multiplication/addition can overflow,
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction fb1a3f1b71 and f410863587 / #595. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llreflectionmapmanager.cpp:1738,2678,2705.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain native completion-query and view/reentry proof; no new owner-lighting acceptance inferred.
+- Verification: Probe list admission now clears stale occlusion when queries stop, admits placed probes independently of delayed automatic-probe occlusion, clears rejected indices and honors current frustum/off-main-view rules.3cac0c4963 integrated.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1401,6 +1436,9 @@ Placed probes are rejected like automatic probes using occlusion state; off-frus
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/llreflectionmapmanager.cpp:1420–1436,1873–1910; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-039 — Default sky swaps azimuth and altitude arguments
 
 - Status: ready_for_owner
@@ -1409,8 +1447,8 @@ Placed probes are rejected like automatic probes using occlusion state; off-frus
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction 4364fdcdba / #615. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; llinventory/llsettingssky.cpp:913–914.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Retain intended default direction correction; owner sky appearance gate remains.
+- Verification: Default sun/moon conversion passes azimuth then altitude; direction tests58assertions/11cases passed.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1428,6 +1466,9 @@ Default sun/moon construction passes altitude first to an azimuth-first API. Ups
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llinventory/llsettingssky.cpp:913–914; docs/metal/research/upstream-remaining-common-validation-2026-11-13.md:11–42; local9d8a87d637; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-040 — Texture priority and lifetime retain stale upstream demand
 
 - Status: ready_for_owner
@@ -1436,8 +1477,8 @@ Default sun/moon construction passes altitude first to an azimuth-first API. Ups
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #578, #601, #622; a4e519127d, 2ffcc7daf6, 3397e5f6cc, 6811bd93f6, 95df03ec7f. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; LLViewerTexture boosts; llviewertexturelist.cpp:965; llviewertexture.cpp:911,2040,3837; region retirement owners.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Remove these implementation TODOs; preserve separate departed-region/purge/accounting questions and current OpenHT decoder ownership.
+- Verification: Held/frame texture boost ownership, stale sliced-walk maxima reset, real drawable/group visibility, media window reset and completed-fetch floors are integrated. Boost/native-alpha/readback1170assertions/10cases pass.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1455,6 +1496,9 @@ Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineff
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/altextureboost.h; indra/newview/llviewertexture.cpp:2218–2245,4139–4185; docs/metal/research/upstream-remaining-texture-validation-2026-11-13.md:15–94;2e77df8376/b17a8c5aad/4e230f49ad. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-041 — Upstream reports additional missing general viewer state corrections
 
 - Status: ready_for_owner
@@ -1463,8 +1507,8 @@ Retained subcases: permanent temporary-use boosts, stale face-walk maxima, ineff
 - Discovered: 2026-11-13
 - Original reference: Upstream base 65c39b7bad928e165f1acdc0cbf39478e017ef1d; landed correction #593, #606, #613, #620, #635, #640, #642, #644–647, #650, #655, #660, #665, #667. Current audited fork 5a403168af62b5960126bf5bcd3c410ca791e3b4; See the general-review inventory rows and exact commit lists; current per-case runtime evidence is not available.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-only upstream/current comparison; no corrective implementation, runtime reproduction or owner retest in this audit.
+- Next action: Maintain the named integrated correction families and their focused CPU/UI evidence; qualify only specific remaining reported subcases or owner workflows, rather than reimplementing the completed batch.
+- Verification: Navigation/social/inventory/notecard/login/preferences/input, Script Studio/editor lifetime and object-roster corrections are integrated in the named commits;22contained UI/cache/material processes pass21862assertions/205cases. Current grouped source-only claim is obsolete.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1481,6 +1525,9 @@ Retained reported subcases: object roster/orphan/region overrides; inventory IDs
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988; 95e0f568dd;d7b1bbbf1c;7005584d48/7de38c3a00. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-042 — Coroutine reached locks retain upstream thread-blocking ownership reports
 
@@ -1550,8 +1597,8 @@ This inherited final normalization path is distinct from PPD-022's byte-array bo
 - Discovered: 2026-11-13
 - Original reference: Upstream dc0f4b478c describes quadratic meshoptimizer vertex-cache scoring for repeated high-valence indices. Current retained LLVolumeFace::cacheOptimize still calls the older optimizer without that cost budget.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source/upstream report only; no adversarial runtime timing or causal freeze attribution on the current fork. PPD-022 allocation/index caps do not by themselves bound vertex valence scoring.
+- Next action: Retain budget/admission tests; no attribution to owner freezes or FPS.
+- Verification: Retained optimizer estimates squared vertex incidence against2^26 before cache ordering, after unconditional valid-triangle/index admission.10000triangle fan old control reorders; fixed preserves30000indices in3checks; decoder/admission sanitizer checks pass.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1573,6 +1620,9 @@ Keep this reported cost mechanism separate from PPD-022 memory safety and PPD-00
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llmath/llvolume.cpp:5399–5419,5643–5646; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-045 — Texture boost test registration links unused viewer-only methods
 
@@ -1609,8 +1659,8 @@ This is a new local backport-integration issue, not an inherited viewer incident
 - Discovered: 2026-11-13
 - Original reference: New local indra/almetal/tests/almetal_hdr_finite_test.mm Fixture::render in the remaining-HDR worktree; this is test fixture behavior, not a published viewer incident.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner confirms unexpected dialogs cease in the normal workflow; Ignore the old dialog and do not use Reopen. Corrective runner executions already pass with explicit arguments under LLDB; no viewer launch or push.
-- Verification: Owner reports two dialogs. Actual09:47:54 PID6697 report shows strlen(nullptr) in Catch::MessageBuilder fromFixture::render.09:48:37 PID6906 shows SIGABRT from Metal render-pipeline descriptor validation; test omitted function constants. Later run manually stopped130; no further runtime until review.
+- Next action: Retain the original failure receipts and corrective child-exit proof; remove obsolete no-runtime-until-review wording.
+- Verification: Original nil-error diagnostic and unspecialized fragment crashes are retained. Null-safe diagnostics and production-equivalent function-constant specialization are implemented; actual LLDB-contained HDR1230/2 plus243759/19 pass child0/API validation.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1627,6 +1677,9 @@ The owner screenshot names almetal_tests. Both actual crash reports identify the
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/almetal/tests/almetal_hdr_finite_test.mm:189–240; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-047 — Temporary boost leaves legacy NO_DELETE state after demand expires
 
@@ -1749,8 +1802,8 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Discovered: 2026-11-13
 - Original reference: Upstream05c6ab9032 separates complete sound/animation/gesture asset requests from texture policy with AP_ASSET and AssetFetchConcurrency. Current fork routes these requests through AP_TEXTURE.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Actual shared queue ownership confirmed by source. No measured audible delay, throughput or frame-rate consequence on M1 Max.
+- Next action: Retain independent asset policy and owner loading/audio gate; remove shared-queue implementation TODO.
+- Verification: Complete assets use AP_ASSET with AssetFetchConcurrency throughd95d1e911c. This establishes admission separation, not measured audible/loading/FPS gain.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1764,6 +1817,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/llappcorehttp.h:92; indra/newview/llappcorehttp.cpp:76–78; indra/newview/llviewerassetstorage.cpp:557; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-052 — Sculpt texture copies lose aspect and finer same-level data
 
 - Status: ready_for_owner
@@ -1772,8 +1828,8 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 - Discovered: 2026-11-13
 - Original reference: Upstream85bf118da5/04d9015143 and45007f232d chosen-copy correction. Current saveRaw can resize512x8 sculpt pixels to128x128, rebuild admission only follows discard decrease, and CPU-only completion lacks postCreateTexture volume notification.
 - Evidence: [Remaining batch validation](research/upstream-remaining-batch-validation-2026-11-13.md), [active work](work/active/upstream-remaining-batch.md).
-- Next action: Owner tests exact Alchemy Metal Upstream Fixes26.4.0.68936 candidate for this record’s affected behavior; no closure or push without owner verification and explicit approval.
-- Verification: Source-confirmed current paths; no owner scene comparison or measured decode performance claim.
+- Next action: Retain aspect/copy/refresh regressions; no async readback performance or owner shape acceptance invented.
+- Verification: ALSculptCopy preserves source aspect and chooses finer/same-level replacement by actual pixel count; CPU-only publication calls rebuildSculptVolumes.209a4a3bbd and dedicated sculpt target are integrated.
 - Owner verification: pending
 - Push approval: granted
 
@@ -1786,6 +1842,9 @@ Keep this allocation/lifetime issue distinct from PPD-022 decoder bounds and PPD
 
 
 - 2026-11-13: Owner explicitly confirms resolution and authorizes committing/pushing the ENTIRE completed upstream-port series, including general/remaining fixes, geometry, sky and associated colour/probe repairs. Approval covers the implementation/tests/records already committed throughaf3558f689 plus this approval record; it does not close unverified/partial reports or authorize future unrelated repairs.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/llviewertexture.cpp:3175–3184,3218–3245,3251–3300; docs/metal/research/upstream-remaining-batch-validation-2026-11-13.md:11–69; combinedaf5c263988. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-053 — Retained geometry suite has19 expected-failure contracts
 
@@ -2521,8 +2580,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-13
 - Original reference: Owner compares Metal14:08:20 with original14:31:18 and reports a hue in the Metal image's lower grey pavement/road areas while the original looks more neutral. Original1eb reference67611 and native sourceefc3dc17d0 are available; exact corresponding surface samples and colour-profile normalization are unmeasured.
 - Evidence: [Neutral surface colour investigation](work/active/neutral-surface-colour-investigation.md), [comparison](work/active/exposure-reference-comparison.md).
-- Next action: Retain owner-passed Sky68980 colour/probe repair and evidence. Keep unrelated exposure, preview and asynchronous-SH concerns separate; the owner explicitly approved publication of the full committed upstream-port series on2026-11-13.
-- Verification: Clean same-coordinate asphalt/concrete patches reproducibly show darker and relatively warmer encoded RGB in Metal. Example asphalt means67.72/63.34/60.17 versus original74.51/71.67/70.67; identical embedded ICC bytes and same UI grey31/31/31. This confirms supplied-image differences, not a cause or full live-pipeline parity. In-viewer Metal export is unprofiled and retained separately; no repair.
+- Next action: Retain the accepted R11 publication repair and colour evidence; keep preview087, steady exposure081 and asynchronous-error088 separate.
+- Verification: The supplied-image difference was reproduced; packed-R11 probe publication/admission was repaired inb81a4645e0/Sky68980. Clean matched five-patch mean RGB error fell94.21%, with15means within1/255 of reference. Owner explicitly confirms the colour issue resolved. Preserve prior image-only inference as history.
 - Owner verification: passed
 - Push approval: granted
 
@@ -2547,6 +2606,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-13: Owner-approved full upstream series published by ordinary fast-forward37989d9d66 on origin/codex/apple-silicon-metal; exactremote verified independently. No implementation change in publication receipt.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: docs/metal/work/active/upstream-port-publication-20261113.md:3–4,28–34,45–52; b81a4645e0; PPD086 packed R11 publication repair; owner colour confirmation. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-084 — Native sRGB mip generation may differ from original raw-byte policy
 
@@ -3302,8 +3364,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: The immutable source prototype intentionally clears per-pose skin palette pointers; production preparation attaches the current owned palette. This is a new diagnostic test fixture defect, not proof of a production caster failure.
 - Evidence: [Retest readiness ledger](work/active/apple-first-retest-20261114.md).
-- Next action: Retain corrected current-pose fixture and failed first receipt; owner acceptance of retest candidate pending. Production skin validation was not relaxed.
-- Verification: First focused filter exits42,3cases2pass1fail. Family1 baseline render fails before fault injection because weight_offset48 has no palette. Native source validation correctly rejects incomplete skinning input. Failed focused-correctness-1-opaque.log is retained locally.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Corrected test-only current owned110-joint identity palette attachment, retaining all depth/query/fallback assertions and adding error INFO. Second focused native filter passes633assertions/3cases; final suite passes. First failure retained, no production source workaround. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -3315,6 +3377,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Corrected test-only current owned110-joint identity palette attachment, retaining all depth/query/fallback assertions and adding error INFO. Second focused native filter passes633assertions/3cases; final suite passes. First failure retained, no production source workaround. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-115 retained later history: - 2026-11-14: Corrected test-only current owned110-joint identity palette attachment, retaining all depth/query/fallback assertions and adding error INFO. Second focused native filter passes633assertions/3cases; final suite passes. First failure retained, no production source workaround. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-116 — New authored-mip publication fixture disables the required creation policy
 
 - Status: ready_for_owner
@@ -3323,8 +3388,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Authored multi-level native texture creation requires mipmaps enabled, whereas later partial writes require generation disabled. Public setUseMipMaps changes future policy without deleting already authored native levels.
 - Evidence: [Retest readiness ledger](work/active/apple-first-retest-20261114.md).
-- Next action: Retain corrected public-policy fixture with four-mip340-byte COW and old/new lower-mip parity coverage; owner candidate acceptance pending. Production API requirements unchanged.
-- Verification: First focused native generation filter exits42,8cases7pass1fail. createMetalTexture rejects the new fixture at318 because mUseMipMaps is false. This is rejected API input, not observed native allocation failure. Failed focused-correctness-1-generation.log is retained locally.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Corrected test-only creation policy to mipmaps=true, then existing public setUseMipMaps(false) before partial update. Preserved4mips/340logical bytes, old lease pixels, current level0 and successful/declined downscale checks; added current lower-mip parity. Second native generation filter481assertions/8cases and final suite pass. First rejection retained; no production API relaxation. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -3334,6 +3399,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Corrected test-only creation policy to mipmaps=true, then existing public setUseMipMaps(false) before partial update. Preserved4mips/340logical bytes, old lease pixels, current level0 and successful/declined downscale checks; added current lower-mip parity. Second native generation filter481assertions/8cases and final suite pass. First rejection retained; no production API relaxation. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-116 retained later history: - 2026-11-14: Corrected test-only creation policy to mipmaps=true, then existing public setUseMipMaps(false) before partial update. Preserved4mips/340logical bytes, old lease pixels, current level0 and successful/declined downscale checks; added current lower-mip parity. Second native generation filter481assertions/8cases and final suite pass. First rejection retained; no production API relaxation. Evidence: [retest delivery and exact receipts](work/active/apple-first-retest-20261114.md). Owner verification pending; no push.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-117 — Raw-image live-count statistic becomes negative during retest
 
@@ -3952,16 +4020,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-145 — Small prepared-world tickets add avoidable mechanism overhead
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex measured world preparation integration
 - Discovered: 2026-11-14
 - Original reference: Same native direct/prepared shaders and ordered input data; preparation/jobs must earn their scheduling/allocation cost while shared immutable source ownership remains intact.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). complete-path-costs-1:16/128/1024 mixed draws, direct/prepared native completion included, no competing compiler or validation layers.
-- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
-- Verification: At128 draws serial ticket median0.563750ms versus direct0.541479ms; two-job16draw tail1.10346ms versus direct0.276292ms. At1024, two-job median2.03013ms versus direct2.07631ms and tail2.36046ms versus2.53175ms. Isolated mechanism data, not live viewer FPS.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical Small prepared-world tickets and scheduler finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -3970,6 +4039,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
+
+- 2026-11-22 current-source/history audit: The historical Small prepared-world tickets and scheduler finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-146 — Disabled GPU visibility should not scan every newly published source index range
 
 - Status: ready_for_owner
@@ -4012,16 +4084,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-148 — Prepared world constants counted reuse but rebound duplicate slab offsets
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex prepared world integration
 - Discovered: 2026-11-14
 - Original reference: Existing native G-buffer reuses the previous400byte common constant slice when equal, including after another family overwrites its binding slot. Alchemy region/agent-space geometry often shares these per-view values.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Source comparison of bind_world_constants plus retained-constant-reuse-census.json from the actual68999 busy-club retest, and corrected complete-path-costs-2 showing4096draw regression.
-- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
-- Verification: New prepared branch memcmp-detects equal WorldSimpleConstants and increments reused_bindings but always binds current record.offset. Direct path rebinds previous_world_slice. This defeats native binding cache reuse and repeatedly addresses duplicate bytes; actual prior club log has substantial main/probe reuse. No live new-architecture FPS attribution is claimed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical prepared constant slab-offset branch finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4030,18 +4103,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
+
+- 2026-11-22 current-source/history audit: The historical prepared constant slab-offset branch finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-149 — Prepared slabs still published duplicate common constant bytes
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex prepared world data publication
 - Discovered: 2026-11-14
 - Original reference: Direct native constant reuse avoids both new bindings and repeated GPU arena publication of identical400byte common constants. Preserve this across worker preparation.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). PPD148 sharing repair passes762assertions/6native cases, but complete-path-costs-3 still shows4096median loss6.61208ms vs6.37077ms. Prepared constants allocation/publication retains one duplicate range per original record.
-- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
-- Verification: Rebinding the previous offset fixes binding identity but does not remove duplicate CPU slab/GPU publication bytes. Existing Alchemy per-view common-value reuse is measured in the retained club run; no new app FPS claim follows from a contained fix.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical prepared-only duplicate slab publication finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4050,6 +4127,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
+
+- 2026-11-22 current-source/history audit: The historical prepared-only duplicate slab publication finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-150 — GPU packet ownership unnecessarily held reusable CPU capture storage
 
 - Status: ready_for_owner
@@ -4154,16 +4234,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
 ## PPD-155 — Draw-count-only CPU preparation policy adds work after native material reuse
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex whole-engine cost policy
 - Discovered: 2026-11-14
 - Original reference: Worker preparation must improve complete native cost and frame latency; unchanged immutable source/input ownership does not require an extra worker for each view.
 - Evidence: [Whole-engine integration ledger](work/active/apple-first-engine-integration-20261114.md). Corrected complete-path-costs-4 uses one FrameData generation per outer frame. Native material scalar encoding at main1024 plus2probe128 beats adaptive: legacy0.510104ms versus0.562480ms, PBR0.601104ms versus0.648125ms. At4096 aggregate CPU also increases with workers.
-- Next action: Owner evaluates exact69008 combined candidate in ordinary and busy/loading/moving/teleport use; retain this history and failed receipts. No push until owner agreement and explicit approval.
-- Verification: Native material mechanism reduces main/probe encoding/publication work, but its now-cheaper scalar path changes the worker crossover. Simple1024 improves in this diagnostic while4096 regresses;12samples do not establish a safe general live-view threshold. Not a claimed viewer FPS regression.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical draw-count-only world-preparation policy finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4172,6 +4253,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14 final candidate handoff: Local implementation/test repair included in exactf3a7ac5f58/69008. Required build7,86selectedCTestgroups+10nativecases+3archivepolicies, focused3621/17, strict source and exact staged static/inventory checks pass; see [whole-engine results](research/apple-first-whole-engine-integration-2026-11-14.md). Cost-gated preparations/visibility remain OFF; contained success is not owner/runtime closure.
+
+- 2026-11-22 current-source/history audit: The historical draw-count-only world-preparation policy finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-156 — Sealed per-view batches still copy inactive authored material arrays
 
 - Status: ready_for_owner
@@ -4230,22 +4314,26 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-159 — New world-resource helper lacks the encoder's narrow private access grant
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native world-resource integration
 - Discovered: 2026-11-14
 - Original reference: Existing native shadow/resource helpers access encoder internals through explicit private friendship. Resource declarations must not use the indirect accessor that flushes indexed joining.
 - Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). native-core-diagnostic-build-1 fails new almetalworldresources.mm access to nativeDeviceForIndirect/nativeCommandBufferForIndirect/nativeHandleForResources;3 compiler errors.
-- Next action: Add only ALMetalWorldResources to the encoder's existing private friend list, preserving restricted resource declaration access; rebuild and run joining/resource/order fixtures.
-- Verification: Actual compiler integration failure in new helper, not a viewer/runtime bug. No successful candidate build claimed from this diagnostic.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical ALMetalWorldResources optional argument-table backend/private friendship finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-14: Registered actual diagnostic compilation failure before private friendship repair. Earlier shader compilation/core steps remain diagnostic only; no full app result.
 - 2026-11-14: Clean144aa7 full required build0 and clean7422 build2 pass. The narrow friend declaration resolves the actual compiler failure; actual native resource8889assertions/5cases and prior-compiled-library4721/1 pass. No viewer/owner test or push.
 
+
+
+- 2026-11-22 current-source/history audit: The historical ALMetalWorldResources optional argument-table backend/private friendship finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-160 — New group publisher neither refreshes nor independently accounts retained residency
 
@@ -4274,8 +4362,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: A before-geometry visibility query must cover actual raster samples at the fixture viewport, not just a nonempty continuous-space box.
 - Evidence: [Persistent scene/command work](work/active/apple-first-persistent-native-scene-20261114.md). native-focused-correctness-1 world-resources exits42:4cases/3pass,7734assertions/7670pass; all64 failures are the same expected.queries.front()>0 assertion returning0 across formats/families.
-- Next action: Enlarge the fixture's0.015 NDC half-extents to cover known pixel centers at side32, retain positive-before-query and exact old/new ordered result/output assertions, then rerun native validation and previous-library parity.
-- Verification: Query center coordinates0/-0.25 lie between32pixel viewport sample centers spaced0.0625 NDC; nearest X centers differ0.03125, so0.03wide boxes miss both neighbors. Direct/prepared/table pixels, actual bound counters, lifetime/fallback/joining checks otherwise pass. This is not attributed to a production renderer query bug.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Registered actual failed native receipt before fixture raster calibration repair. Full required build1 at144aa7 passes0/839.404s; group-owner native1152/18passes separately. Previous-shader process was not reached because the focused runner correctly stopped on the first failing group. - 2026-11-14: Fixture half-extent.08 repair on7422 passes all8889resource assertions/5cases and4721old-compiled-library parity assertions/1case with positive query coverage and identical ordered results. This closes no production viewer incident; owner acceptance remains pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -4284,6 +4372,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered actual failed native receipt before fixture raster calibration repair. Full required build1 at144aa7 passes0/839.404s; group-owner native1152/18passes separately. Previous-shader process was not reached because the focused runner correctly stopped on the first failing group.
 - 2026-11-14: Fixture half-extent.08 repair on7422 passes all8889resource assertions/5cases and4721old-compiled-library parity assertions/1case with positive query coverage and identical ordered results. This closes no production viewer incident; owner acceptance remains pending.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-161 retained later history: - 2026-11-14: Registered actual failed native receipt before fixture raster calibration repair. Full required build1 at144aa7 passes0/839.404s; group-owner native1152/18passes separately. Previous-shader process was not reached because the focused runner correctly stopped on the first failing group.
+- 2026-11-14: Fixture half-extent.08 repair on7422 passes all8889resource assertions/5cases and4721old-compiled-library parity assertions/1case with positive query coverage and identical ordered results. This closes no production viewer incident; owner acceptance remains pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-162 — New group publisher prepares a disabled simple render pass
 
@@ -4465,8 +4557,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Native source working-set age is measured in viewer frames (default2); alternating benchmark arms must each advance one logical frame per sample while FrameData independently protects all native consumers.
 - Evidence: [Compact source/view work](work/active/apple-first-compact-source-instances-20261114.md). Actual cost6 churn512 updates32sources/sample but reports3264publications across12samples, rather than384; raw samples alternate ~512 versus32 publications. Both actual-compact and native-group cost loops increment Inputs::gFrameCount once per arm, and alternating order creates a3tick gap. The first dirty-source admission trims unchanged entries older than2 before their warm touches.
-- Next action: Advance source/CPU-cache logical viewer frame once per paired sample; keep independent native FrameData generations per measured arm so constants/pages cannot cross-arm deduplicate. Apply the same normalization to both actual-source and native-group costs and retain raw publication counts.
-- Verification: Fixture epoch-domain defect, not a demonstrated viewer cache bug. Warm rows with zero publications and correctness receipts remain valid; churn comparisons with collateral age eviction need qualified replacement evidence. Do not raise production age limits to hide it.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Registered the exact3264=6*512+6*32 source census before timing-fixture normalization. Prior costs retained; no live viewer/frame regression attributed to this benchmark artifact. - 2026-11-14: Both actual and group fixtures now advance one paired logical viewer frame with independent native epochs per arm. Exact cold/warm/churn source-publication assertions authored; production max_age2 unchanged. Build7/retest pending. - 2026-11-14: Clean75c7ae61 full costs7 pass exact publication assertions:512source churn has384publications per arm across12samples/32updates, oneview andthreeviews. Prior3264collateral age artifacts retained; production age2 unchanged. Owner/runtime performance remains unverified. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -4476,6 +4568,11 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Both actual and group fixtures now advance one paired logical viewer frame with independent native epochs per arm. Exact cold/warm/churn source-publication assertions authored; production max_age2 unchanged. Build7/retest pending.
 - 2026-11-14: Clean75c7ae61 full costs7 pass exact publication assertions:512source churn has384publications per arm across12samples/32updates, oneview andthreeviews. Prior3264collateral age artifacts retained; production age2 unchanged. Owner/runtime performance remains unverified.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-171 retained later history: - 2026-11-14: Registered the exact3264=6*512+6*32 source census before timing-fixture normalization. Prior costs retained; no live viewer/frame regression attributed to this benchmark artifact.
+- 2026-11-14: Both actual and group fixtures now advance one paired logical viewer frame with independent native epochs per arm. Exact cold/warm/churn source-publication assertions authored; production max_age2 unchanged. Build7/retest pending.
+- 2026-11-14: Clean75c7ae61 full costs7 pass exact publication assertions:512source churn has384publications per arm across12samples/32updates, oneview andthreeviews. Prior3264collateral age artifacts retained; production age2 unchanged. Owner/runtime performance remains unverified.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-172 — Owned compact packets are fully revalidated through the borrowed-scene entry point
 
@@ -4502,22 +4599,26 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-173 — Native source-row lookup cannot recover capacity after scene churn
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native source-page implementation
 - Discovered: 2026-11-14
 - Original reference: Online Second Life travel and source churn require a bounded working set that can recycle idle GPU source identities while actual readers keep immutable old generations.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), in-progress tree based14d57c. almetalworldsourcepages.mm initially consumes free slots until4096 identities are reached, but erases none except clear(). Native reader COW exists, so permanent exhaustion is unnecessary. No viewer run or runtime regression is attributed.
-- Next action: Recycle least-recently-used slots that are not selected in the current view, advance nonwrapping allocation generation, remove exact old key/identity indexes and preserve old bank/page reader generations. Add churn beyond capacity with an old live FrameView. Replace quadratic completion-lease union scans in the same new consumer with bounded identity lookups before complete-path cost testing.
-- Verification: Source-confirmed implementation defect, registered before repair. Build/native execution pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical SourcePages source-row slot lookup finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-14: Registered source review finding; source-row experiment remains defaultOFF, unbuilt/untested. Required native scalar draws remain available on optional admission failure.
 - 2026-11-14: Preallocated LRU/current-view slot protection, exact index removal, nonwrapping generations, idle resource-context table release and hash/control-block lease unions implemented. Capacity2/churn10 with old gated GPU pixels and generation checks authored. Required build9/native execution pending.
 
+
+
+- 2026-11-22 current-source/history audit: The historical SourcePages source-row slot lookup finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-174 — Source model re-registration can retain withdrawn owner proof
 
@@ -4540,16 +4641,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-175 — Source-row consumer can ignore a compact view's UV override
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex source-row renderer integration
 - Discovered: 2026-11-14
 - Original reference: Optional GPU source-row rendering must preserve resolved compact per-view transforms or retain ordinary native rendering.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Consumer initially compares resolved MVP/modelview/normal to copied region rows, but SourcePages encodes source.texture_matrix without comparing the valid compact Draw.textureMatrix override. Production owner rejects UV animation, while a public valid Scene can supply a distinct override and otherwise reach the new path. No viewer execution is attributed.
-- Next action: Reject mismatched per-view/prototype UV matrices from optional source-row selection before freeze, retaining normal native draw output. Add actual renderer UV-override parity/fallback regression.
-- Verification: Source-confirmed provisional consumer defect, registered before repair.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical scalar source-row UV-override consumer finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4557,18 +4659,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Exact64-byte resolved/prototype texture-matrix qualification added before native freeze; actual compact UV-override parity/fallback fixture authored. Build9/native execution pending.
 
 
+
+- 2026-11-22 current-source/history audit: The historical scalar source-row UV-override consumer finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-176 — Source-row bound counter can include a failed G-buffer render
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex source-row renderer telemetry
 - Discovered: 2026-11-14
 - Original reference: Accepted-render counters must distinguish a fully encoded accepted native view from abandoned partial work; none is a GPU completion count.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Initial scalar source-row branch increments renderer-global bound immediately per draw; a later encoder/coverage/transaction failure can abandon that work while leaving bound inflated. Existing material counters accumulate locally until finishCommandBuffer accepts the render.
-- Next action: Accumulate source-row bound locally and publish at the existing successful render boundary. Document requested/fallback as setup attempts and bound as accepted G-buffer render draws, not GPU-completed work.
-- Verification: Source-confirmed telemetry defect registered before repair; no live counter result is attributed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical source-row bound counter finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4576,36 +4682,44 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Bound draws now accumulate locally and publish at successful finishCommandBuffer boundary, with setup-attempt and accepted-render semantics documented. This is not a GPU-completion count. Build9/native execution pending.
 
 
+
+- 2026-11-22 current-source/history audit: The historical source-row bound counter finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-177 — Native source FrameView lacks its narrow encoder declaration access
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex source-row integration
 - Discovered: 2026-11-14
 - Original reference: Native source resources must be declared against the exact command/encoder while ordinary binding changes keep wrapper barriers.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), required build9 at244ed38006: doctor/configure0, build1 after13.687s. almetalworldsourcepages.mm129/131 calls existing private nativeCommandBufferForIndirect/nativeHandleForResources; ALMetalWorldSourceFrameView was not added to the narrow friend list. MSL compiled before the C++ failure.
-- Next action: Grant only the source FrameView the existing private native bridge, preserving public encoder encapsulation, then rerun required build/native checks at a new clean source.
-- Verification: Compiler failure reproduced; receipt frozen-source-build-9.json and log retained privately.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical ALMetalWorldSourceFrameView private bridge finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-14: Registered exact compile failure before repair. No native test/runtime success is claimed for this checkpoint.
 
 
+
+- 2026-11-22 current-source/history audit: The historical ALMetalWorldSourceFrameView private bridge finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-178 — Native source draw fixture uses a reserved MSL keyword
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native source draw fixture
 - Discovered: 2026-11-14
 - Original reference: Native tests must compile their own ordered-draw shader before testing the production encoder.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Required native-source-row-correctness-10 at ea7ca55efc: source_row_draw_test runtime shader names its vertex_id parameter vertex, a reserved MSL stage keyword; newLibraryWithSource rejects it.
-- Next action: Rename only the fixture parameter and rerun native ordered-draw correctness. Production builtin MSL compiled in build9/10.
-- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive source-row draw shader fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4614,18 +4728,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Fixture parameter renamed vertex_index, assertions unchanged; clean build11/native retest pending.
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive source-row draw shader fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-179 — Nested source-pointer reflection aborts under Metal API validation
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native source-page ABI
 - Discovered: 2026-11-14
 - Original reference: A reflected source-row ABI must use supported Metal API operations and retain graceful optional failure.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Required native-source-row-correctness-10 SIGABRT: MTLDebugArgumentEncoder newArgumentEncoderForBufferAtIndex:0 reports No argument buffer at that index when called on the pointer bank encoder. Build10/static69020 pass but GPU source path is unverified and fails this API gate.
-- Next action: Replace unsupported nested lookup with an explicit directly reflected SourceRow layout entrypoint sharing the exact MSL type, then prove real bank-to-row shader reads, layouts and fallback on M1 validation.
-- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical source-row/table nested reflection layout finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4634,18 +4752,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Added shared-type reflection-only layout kernel and direct function-buffer argument encoder, with function/type/size/alignment checks. Missing-layout compiled69020 negative fixture authored. Build11/native retest pending.
 
+
+- 2026-11-22 current-source/history audit: The historical source-row/table nested reflection layout finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-180 — Derived resource-table generation is absent from source-row hit proof
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native source-page cache
 - Discovered: 2026-11-14
 - Original reference: Stable source revisions do not guarantee that a derived context/sampler argument table allocation still exists.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Independent review: a live ResourceSource can evict its old derived Table after more than four other contexts/samplers. Row keeps only weak Source/Material plus raw native handle signature; recycled native buffer address can falsely hit while encoded GPU table address is stale. This is a permitted address-reuse counterexample, not a runtime reproduction.
-- Next action: Keep weak exact ResourceTable control-block identity in Row; require the current prepared table to match on hit, and reset it on eviction/invalidation. Test real table/context churn and output/lifetime without assuming allocator address reuse.
-- Verification: Registered before repair. Exact build10/native/static receipts retained privately; source-confirmed counterexamples are distinguished from executed failures.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical derived argument-table row-hit identity finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4653,6 +4775,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-14: Weak exact derived Table control-block proof added/reset at all retirement paths. Real5-context churn, old gated-reader survival and renewed publication/pixel cases authored without allocator-reuse assumptions. Build11/native retest pending.
+
+
+- 2026-11-22 current-source/history audit: The historical derived argument-table row-hit identity finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-181 — World shader reload can commit one owner before the other is ready
 
@@ -4692,21 +4817,25 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-183 — Scalar GPU source-row submission regresses complete actual-source cost
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native whole-engine source/submission architecture
 - Discovered: 2026-11-14
 - Original reference: Persistent GPU source inputs must reduce complete viewer-source and submission cost; data-layout changes alone are not a performance improvement.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). fac8f0b2f1 build12/static69024 and all new native gates pass. Actual per-source Legacy/PBR capture/adopt/publication/encode/retire benchmark passes67910 assertions,48paired comparisons, exact path/publication counts and parity. Every CPU comparison regresses22.0–66.3%;512source warm CPU rises22.0–29.5%, cold32.7–44.8%, churn25.5–29.4%; GPU sums also rise~5–10% at512. Raw samples and negative results retained, not whole-viewer FPS evidence.
-- Next action: Keep scalar RenderMetalSourceRows defaultOFF. Consume retained GPU rows through bounded persistent command banks and producer-sealed groups to remove repeated per-draw preparation/submission, preserving exact order/query/feature behavior. Measure the complete actual-source path before activation; do not accept shared-prototype/component wins as owner-frontier improvement.
-- Verification: Reproduced contained M1 cost regression at an otherwise passing correctness checkpoint. Original architecture remains active/partial.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical scalar GPU SourceRows complete-cost candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-14: Registered before command-bank/group work. Source-row layer is retained as a qualified native mechanism, while scalar default activation is rejected.
 
+
+
+- 2026-11-22 current-source/history audit: The historical scalar GPU SourceRows complete-cost candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-184 — Publication callback copies can discard denied-work retry age
 
@@ -4764,39 +4893,47 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-187 — Command-bank encoding rereads mutable caller records after admission
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native source command banks
 - Discovered: 2026-11-14
 - Original reference: An admitted immutable command bank must encode exactly the already-validated key/index/range snapshot.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), unfrozen command-helper reviewed at b88bb2e0e5e734a70df51d6ef12aa2d880b93da0b597f10a2f310de3bc397863. Helper copies/proves keys and native index leases before admission, then rereads borrowed Draw records when encoding after callback. A callback can change index/count/offset without changing helper epoch, causing bank key and native leases to certify A while GPU commands encode B. No runtime attribution.
-- Next action: Encode only the validated native-pinned key snapshot; never reread caller Draw fields after callback. Add actual callback-mutation pixel/key/warm-hit regression and preserve epoch/command checks.
-- Verification: Independent source review finding, registered before repair.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical SourceCommands mutable caller bank reread finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-14: Recorded in isolated notes tree while required build13 keeps the source checkout frozen and clean.
 
 
+
+- 2026-11-22 current-source/history audit: The historical SourceCommands mutable caller bank reread finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-188 — Source FrameView does not prove native buffer device ownership
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native source-generation proof
 - Discovered: 2026-11-14
 - Original reference: Indirect resource use must retain the ordinary native encoder's exact device rejection before any Metal command encodes a foreign resource.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md). Independent command-bank review: SourcePages validates geometry ranges/material/resource matches, but not native MTLBuffer.device for vertex/index/numeric buffers. A validly shaped manual source can combine A textures with B index/numeric buffers and obtain a FrameView, unlike direct drawIndexed which rejects foreign index devices. One-device M1 runtime cannot reproduce a distinct GPU; this is a source-confirmed API proof gap.
-- Next action: Establish exact native-device proof once per unique buffer/generation before indirect row publication; retain bounded hot proofs without producer pins. Add defensive cold bank index-device check. Preserve same-native-device wrapper compatibility and report unavailable multi-device execution honestly.
-- Verification: Source-confirmed counterexample, registered before repair; no multi-device runtime claim.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical SourcePages/FrameView foreign-device proof finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-14: Independent reviewer and command-bank author reported the missing prerequisite before native bank execution.
 
+
+
+- 2026-11-22 current-source/history audit: The historical SourcePages/FrameView foreign-device proof finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-189 — Material capture bridge skips invalid direct-probe input
 
@@ -4836,16 +4973,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-191 — Cached indirect banks do not improve the actual per-source path on M1
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex end-to-end native scene/submission architecture
 - Discovered: 2026-11-14
 - Original reference: A faster architecture must improve complete preparation/submission cost and preserve GPU cost; fewer CPU execute calls alone are insufficient.
 - Evidence: [GPU source-row work](work/active/apple-first-gpu-source-rows-20261114.md), clean ec44584c06 build15/static69044/native gates pass. Actual command-bank benchmark passes79512 assertions and48pairs with proven ICB execution, MRT/depth/query parity and exact publication counts. AllCPU comparisons are40.1–121.8%slower. Warm512 CPU is60.2–70.6%higher; GPU sums26.8–85.1%higher. Warm512 one-view CPU Legacy0.741->1.199ms/PBR0.725->1.236ms; three-view Legacy2.279->3.651/PBR2.195->3.585ms. Raw samples retained; no live viewer FPS attribution.
-- Next action: Keep banks defaultOFF and reassess the GPU indirection choice. Prioritize a complete producer-sealed cohort transport/ordinary native consumer, removing per-source packet expansion and redundant preparation while preserving direct shader GPU behavior; measure before activation. Grouped CPU data alone does not prove bank usefulness.
-- Verification: Reproduced contained M1 complete-path regression, separate from earlier scalar-row PPD183.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical SourceCommands indirect bank performance candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -4853,6 +4991,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Begin source26 retained GPU cohort publication/command-bank repair attempt. It removes per-view N-reference/request/key preparation at the actual SourcePages/renderer boundary rather than merely reusing a scratch vector. Prior cost15 losses remain authoritative until complete cold/warm/churn costs pass; no activation or speedup claimed.
+
+
+- 2026-11-22 current-source/history audit: The historical SourceCommands indirect bank performance candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-192 — Cohort owner-rejection fixture aliases the producer's first member
 
@@ -4862,8 +5003,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Exact type-erased ownership proof requires the original shared control block and stored address; an alias with both equal is indistinguishable from the original owner.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Clean c57b223531 build16/static69046 pass. API/GPU validation cohort suite has4/5 cases passing,969/970 assertions. Its supposed wrong alias is &CohortCpu::sources, the first data member, which has the same address as CohortCpu. matchesOwners correctly accepts the identical address/control block; no production owner-proof defect is established.
-- Next action: Use a distinct non-first-member address, assert that the aliased address differs, and rerun the exact-owner/isolation suite. Preserve independent wrong-control-block, expired-owner and pending-native-generation checks.
-- Verification: Executed fixture failure with source-confirmed alias address mistake; remaining renderer and actual-owner checks are separate.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Registered before correcting the fixture; no viewer crash or rendering regression attributed. - 2026-11-14: Test-only2180adfac9 required17/static69047 passes; repaired exact-owner/isolation suite971assertions/5cases passes with API/GPU validation. Wrong address and wrong control block are independently rejected; pending native-generation lifetime cases remain intact. Automated repair evidence does not close the record. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -4872,6 +5013,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Registered before correcting the fixture; no viewer crash or rendering regression attributed.
 - 2026-11-14: Test-only2180adfac9 required17/static69047 passes; repaired exact-owner/isolation suite971assertions/5cases passes with API/GPU validation. Wrong address and wrong control block are independently rejected; pending native-generation lifetime cases remain intact. Automated repair evidence does not close the record.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-192 retained later history: - 2026-11-14: Registered before correcting the fixture; no viewer crash or rendering regression attributed.
+- 2026-11-14: Test-only2180adfac9 required17/static69047 passes; repaired exact-owner/isolation suite971assertions/5cases passes with API/GPU validation. Wrong address and wrong control block are independently rejected; pending native-generation lifetime cases remain intact. Automated repair evidence does not close the record.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-193 — Material cohort lifetime fixture still requires the displaced argument-table path
 
@@ -4938,8 +5083,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Retained source prototypes contain static scene facts; actual capture supplies current modelview/projection/normal transforms before ordinary rendering.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Clean e5fd8bd98e required18/static69048 pass. Native cohort1080/6, renderer764/1 and prior library286/1 pass. Actual producer suite passes46/47 cases,9787/9788 assertions; the new promotion parity case passes semantic-key/native-tuple/revision/lease checks, then directly renders a view-independent prototype with its unset modelview transform. Ordinary validation correctly rejects it. Other new source-record reuse and allocation/reentrancy cases pass.
-- Next action: Copy the two static prototypes and apply the same actual fixture view matrices before comparing rendered output. Preserve source-publication and old-tuple assertions; rerun the exact actual-producer suite.
-- Verification: Executed incomplete fixture input, not an observed viewer regression.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Registered before repairing the promotion parity input; failed18 evidence retained. - 2026-11-14: Test-only21efebeb18 supplies identical current fixture transforms to both immutable snapshots. Required19/static69049 and exact-tag actual9882/47 pass with API/GPU validation; original key/revision/tuple and output assertions retained. Record remains unclosed without owner confirmation. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -4949,6 +5094,10 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-14: Test-only21efebeb18 supplies identical current fixture transforms to both immutable snapshots. Required19/static69049 and exact-tag actual9882/47 pass with API/GPU validation; original key/revision/tuple and output assertions retained. Record remains unclosed without owner confirmation.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-196 retained later history: - 2026-11-14: Registered before repairing the promotion parity input; failed18 evidence retained.
+- 2026-11-14: Test-only21efebeb18 supplies identical current fixture transforms to both immutable snapshots. Required19/static69049 and exact-tag actual9882/47 pass with API/GPU validation; original key/revision/tuple and output assertions retained. Record remains unclosed without owner confirmation.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-197 — Ordinary direct cohorts require an unused argument-resource descriptor
 
 - Status: investigating
@@ -4957,8 +5106,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-14
 - Original reference: Ordinary native material shaders bind their existing resources directly. The argument-table descriptor is a newer optional native mechanism, with no required upstream equivalent or role in direct-cohort shader selection.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source20 native10198/48 and complete cost91726/48 pass, but cold work remains slower. Material group flavor forces native_resources=true, ordinaryMaterial/source-record sealing requires ALMetalWorldResourceSource, and restoration republishes it. Its publish routine snapshots8 padded texture slots (24 Legacy or32 PBR native views and repeated device/type/sample checks). The direct cohort renderer explicitly bypasses resource-table preparation/binding, while exact geometry/numeric/texture leases already exist in the producer's native tuple. This is confirmed unused preparation; its share of the observed regression is unmeasured.
-- Next action: Decouple ordinary immutable proof from optional argument-table descriptors. Validate optional descriptors when present, and prove every required typed texture generation from the completed producer tuple before cohort publication. Preserve resource-table/SourceRows requests, exact ownership, restoration and direct output; measure complete costs before claiming improvement.
-- Verification: Source-confirmed coupling; contained sampling20 has only41 main-thread samples dominated by waits and is insufficient to attribute cold CPU cost. A separate no-render compilation-stage fixture is authored for follow-up measurement.
+- Next action: Preserve ordinary direct cohorts without an argument-table prerequisite, optional matching typed texture-generation proof, and actual direct output/lifetime regressions. SourceRows/table consumer controls are retired.
+- Verification: Ordinary group publication sets native_resources=false and accepts absent optional ResourceSource; when present it must match. The optional argument-table backend is removed, while typed native-generation Source proof remains.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -4966,6 +5115,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-14: Registered before removing the unused descriptor prerequisite. NativeResourceSource remains required for the optional argument-table/SourceRows paths.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/pipeline_group_publication_native.inl:751,795,899; indra/almetal/almetalworldcohort.mm:90–93; indra/almetal/almetalworldresources.h:32–49. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-198 — New source-proof comparison treats a std::array as an iterator
 
@@ -5085,8 +5237,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Native shadow preparation replaces owner-side traversal with detached immutable-input work; additional CPU jobs must share the same frame admission as main/probe preparation, while denied work retains the required serial result.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Full-goal source audit: main extra preparation obtains FrameBudget::Work::preparation, but shadow count>=8192 calls alMetalPrepareShadowBatches with allow_dispatch=true. shadowprepare.mm uses dispatch_apply_f(2) without that caller obtaining shared preparation credit. It is locally bounded but can overlap other admitted work outside the global CPU plan. No executed oversubscription/FPS incident attributed.
-- Next action: Admit extra shadow preparation through the existing shared budget, hold CPU-local credit through join and preserve serial fallback on denial. Check the dispatch helper's actual extra-worker count and add focused admission/parity/lifetime evidence without moving mutable viewer state to workers.
-- Verification: Source-confirmed missing integration, registered before repair.
+- Next action: Retain budget-aware large-shadow preparation and serial fallback on denial, with exact shared-credit lifetime tests. Any future parallelism change needs new complete-cost evidence.
+- Verification: Large shadow preparation calls the budget-aware overload; shared admission reserves the two jobs before dispatch, preserving scalar fallback when denied.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5096,6 +5248,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Native24 shadow98414/14 passes, including two new shared preparation-budget cases. Busy/pressure behavior follows existing budget policy; credits retire on serial denial/join/failure. Source25 production and native binary unchanged, owner scene acceptance remains pending.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/pipeline.cpp:13628–13635; indra/almetal/almetalshadowprepare.mm:524–528. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-205 — Optional CPU slot freezing rejects a valid reader-pinned transient source
 
@@ -5125,8 +5280,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: ALScenePublicationNative::world always invokes observeMetalSourceDependencies before selecting a cached source. Direct ordinary forward requests retain that established observation boundary.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required24/static69057 pass at10498116fc. Actual source suite passes51/53cases,11773/11788assertions. All15 failures are new dependency_walks==walks expectations:14 PPD205 scenarios plus one repeated post-water glow call. Each actual call observes once (3 versus2 or6 versus5), as the source explicitly requires. The new fallback identity/revision/publication and glow output checks pass.
-- Next action: Correct only the two new fixture expectations to count one established dependency observation per world request; retain all source identity, ownership, cutoff and failure assertions. Rebuild/retest without changing production observation semantics.
-- Verification: Executed assertion failure with source-confirmed fixture mismatch; production performance is not inferred from a stub invocation counter.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Fixture-only7b49 rebuild25/static69058 and actual11788/53 pass. Both tests now count the established single dependency observation, retaining all ownership/fallback/cutoff/freshness assertions. Failed24 evidence preserved; automated checks do not close owner register. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5137,18 +5292,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Fixture-only7b49 rebuild25/static69058 and actual11788/53 pass. Both tests now count the established single dependency observation, retaining all ownership/fallback/cutoff/freshness assertions. Failed24 evidence preserved; automated checks do not close owner register.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-206 retained later history: - 2026-11-15: Fixture-only7b49 rebuild25/static69058 and actual11788/53 pass. Both tests now count the established single dependency observation, retaining all ownership/fallback/cutoff/freshness assertions. Failed24 evidence preserved; automated checks do not close owner register.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-207 — Denied command-bank publication evicts usable warm banks
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native command publication
 - Discovered: 2026-11-15
 - Original reference: A warm immutable bank needs no new publication credit; denial of unrelated optional cold work must preserve usable cached generations.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). SourceCommands prepareForCommand and new source26 prepareCohortForCommand evict cache entries for bank/index capacity before invoking publication admission. With maximum_cached_banks=1, cached A and a new B whose admission is denied, B first removes A, then returns no bank. A subsequently cannot use its former warm hit under the same denial. No executed viewer incident or performance attribution is claimed.
-- Next action: Make admission failure preserve cached warm banks, covering both bank-count and index-capacity eviction boundaries; add a focused native A/B-denial/A-hit regression. Keep all byte/live-bank bounds and completion credit semantics.
-- Verification: Source-confirmed counterexample registered before repair; new native fixture not yet executed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical SourceCommands denied cold-bank eviction finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5159,18 +5318,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source29 corrected banks3348/9 and broader88CTest pass, including A/Bdeny/A-hit, index-capacity and pending/abandon cases. Owner/runtime acceptance remains pending.
 
+
+- 2026-11-22 current-source/history audit: The historical SourceCommands denied cold-bank eviction finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-208 — Idle GPU cohort tables retain uncharged native texture generations
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained GPU cohort resource publication
 - Discovered: 2026-11-15
 - Original reference: Optional native caches require explicit bounded lifetime/accounting and must preserve existing usable publications on unrelated failed work.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source26 CohortBinding owns strong native ResourceTables, whose native texture arrays retain MTLTexture generations. Cache native/cohort identities are weak, but without later cohort freeze an expired binding can persist after CPU generations disappear. Current metadata bounds count containers, not retained asset bytes. No executed memory leak or COW incident is claimed.
-- Next action: Bound retained native asset footprint, prune expired cohort caches at the existing frame-owner boundary even when the experimental flag is off, report the separate retained footprint, and test expiry/flag-off maintenance/pending-command protection.
-- Verification: Source-confirmed integration issue, registered before repair. Source26 is unbuilt.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical GPU CohortBinding/ResourceTable idle asset retention finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5181,18 +5344,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Native27 pages1547/12 plus broad29 pass including cap/dedup/expiry and pending-reader checks; frame-boundary hook compiled. No owner/runtime closure.
 
+
+- 2026-11-22 current-source/history audit: The historical GPU CohortBinding/ResourceTable idle asset retention finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-209 — GPU cohort cache evicts warm entries before allocating its new list node
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained GPU cohort resource publication
 - Discovered: 2026-11-15
 - Original reference: Optional native caches require explicit bounded lifetime/accounting and must preserve existing usable publications on unrelated failed work.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source26 cold freeze evicts LRU cohort bindings, then calls cohorts.push_back, which may allocate and fail. The outer bad_alloc handler then returns failure after discarding usable warm bindings. No executed allocation failure is claimed.
-- Next action: Stage the fallible list node before eviction, then commit via no-throw splice; preserve a usable uncached native FrameView if optional cache insertion fails, and retain bounded cache accounting.
-- Verification: Source-confirmed integration issue, registered before repair. Source26 is unbuilt.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical GPU cohort table-cache list allocation transaction finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5203,18 +5370,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Native27 cache-insertion fault case and broader29 pass; valid uncached view/old warm membership preserved. Physical OOM not claimed.
 
+
+- 2026-11-22 current-source/history audit: The historical GPU cohort table-cache list allocation transaction finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-210 — New GPU cohort cost assertion fails Catch2 decomposition
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex integration fixture
 - Discovered: 2026-11-15
 - Original reference: Catch2 logical-OR assertions require parentheses around the complete expression.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required26 at e7eba56957 passes doctor/configure but build fails58.746s at the new cost include line199: CHECK(!capture.source_rows||capture.source_rows->candidates.empty()). Compiler diagnoses unsupported operator|| decomposition. Production SourcePages/commands compilation did not report errors in that attempt. Strict26 passes3587files/905info/0blockers/errors.
-- Next action: Parenthesize that complete fixture expression, rebuild from a fresh clean source pin and run native/cost gates.
-- Verification: Executed compile failure; no production renderer failure attributed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive GPU cohort cost fixture assertion finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5222,6 +5393,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Fixture expression repaired before required27; required29/static69063 and broader gates pass. Failure26 retained.
+
+
+- 2026-11-22 current-source/history audit: The historical exclusive GPU cohort cost fixture assertion finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-211 — Mixed renderer fixture omits its required CPU reference owner
 
@@ -5231,8 +5405,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: alMetalValidateWorldView requires both cpu_source_owner and source_owner for reference storage; retained cohort views carry their separate owners.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required27/static69061 pass. Native page1547/12, material2513/6, shadow98414/14 and directcohort1763/7 pass. Expanded renderer suite3/4cases,2216/2217assertions passes its other new rendering/failure cases; mixed SIMPLE/material/PBR/raw/reference case fails incomplete scene at275 because it supplies reference_count=1 without cpu_source_owner. Validation correctly rejects it.
-- Next action: Give the referenced prototype actual shared CPU ownership and provide that owner on the mixed scene. Preserve production validation and all pixel/query/order checks, then rebuild/retest.
-- Verification: Executed fixture failure with source-confirmed missing input, no production render defect attributed.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Shared referenced prototype owner repair passes source29 renderer2331/4 and broader gates; failure27 retained. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5243,18 +5417,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Shared referenced prototype owner repair passes source29 renderer2331/4 and broader gates; failure27 retained.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-211 retained later history: - 2026-11-15: Shared referenced prototype owner repair passes source29 renderer2331/4 and broader gates; failure27 retained.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-212 — Native range fixture waits on an unattached visibility result batch
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native command range fixture
 - Discovered: 2026-11-15
 - Original reference: VisibilityResultBatch::attachCommand must associate its actual command before wait; production world rendering already does so.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Native27 source-command suite passes8/9cases,3195/3196assertions. Its new low-level range helper creates a query batch and binds its buffer but omits attachCommand; wait at570 correctly returns unavailable despite the submitted render. PPD207 denial/capacity/lifetime cases pass. Old-library renderer400/1 also passes.
-- Next action: Attach the helper query batch to its exact command before encoding. Preserve real query sample checks, whole/ranged pixel parity, and production wait/device validation; rebuild/retest.
-- Verification: Executed fixture lifecycle failure, no production query defect attributed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive SourceCommands native range query fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5263,18 +5441,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: The attempted private API repair failed as213; final native shared query-buffer fixture reads only after exact command completion. Source29 banks3348/9 and broad gates pass.
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive SourceCommands native range query fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-213 — Query-fixture repair calls a private attachment method
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex integration fixture
 - Discovered: 2026-11-15
 - Original reference: VisibilityResultBatch command attachment is private to its production render owners. Low-level encoder fixtures can instead use an explicitly owned native query buffer and read it only after actual command completion, as almetal_indexed_join_test.mm does.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required28 at5855c64132 passes doctor/configure but fails19.320s compiling the PPD212 attempted attachCommand call because that API is private. Root inspected the implementation without checking the declaration before the attempted repair. No production code changed.
-- Next action: Replace only the low-level fixture query store with a shared native buffer, bind it on the native pass descriptor, and assert real counting results after commitAndWait. Keep higher-level renderer query/lifetime coverage and production private API unchanged.
-- Verification: Executed fixture compile failure; preserve required28 receipt.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive SourceCommands query fixture private call finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5282,6 +5464,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Root correction uses existing indexed-join native pass/query pattern, no private API exposure. Required29/static69063/native/broad pass; failure28 retained.
+
+
+- 2026-11-22 current-source/history audit: The historical exclusive SourceCommands query fixture private call finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-214 — Busy-frame CPU publication can starve older GPU metadata work
 
@@ -5307,16 +5492,17 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 ## PPD-215 — GPU cost fixture applies steady-state assertions to its first warm-up
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex three-arm native cost fixture
 - Discovered: 2026-11-15
 - Original reference: A warm-condition fixture must first publish its just-invalidated state during the initial warm-up; measured steady-state samples begin only after the declared warm-ups.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source29 three-arm run completes all144summary rows/2016samples but fails128 of140088assertions. Exactly32 each of getter/dependency/image/compile zero assertions fail at warm condition sample0 (warmup1), covering2families/4counts/2viewcounts/2cohortmodes. That first warm-up correctly performs the initial publication. All pixel/query and other assertions pass. Timings remain provisional because the gate failed.
-- Next action: Apply only those four steady-state zero-work assertions to measured warm samples after warm-ups; retain setup costs/raw warm-up output and every other parity/admission check. Rerun after the coherent next build.
-- Verification: Source30 corrected three-arm gate passes140840assertions/1case,144summary rows and2016samples. Initial warm-up costs remain recorded. No viewer performance acceptance claimed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive GPU cohort warmup cost assertion finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5327,6 +5513,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Corrected source30 cost gate passes; actual-gpu-cohort-costs-30.json/log retain all phases and parity checks. Warm CPU gains do not erase measured cold/churn/GPU regressions. Failed29 evidence retained.
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive GPU cohort warmup cost assertion finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-216 — Many-group cost fixture omits production pending/candidate container work
 
 - Status: investigating
@@ -5335,8 +5524,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Complete cost coverage must include the actual pending-range map and full cold-candidate storage used by postSort, especially for many small groups.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Peer review of new, unbuilt alpipeline_many_cohort_cost_native.inl identifies vector<Pending{Group*,raw_begin}> and vector<Pending*> where production uses unordered_map<Group*,vector<PendingGroupRange{type,raw_begin,count}>> and full ColdCohort records with shared publisher, admission pointer and flavor. Omitted per-group allocations/control copies materially narrow the intended loading-cost boundary. No executed benchmark result exists for this fixture.
-- Next action: Mirror the production containers inside the existing timed region before including/building the new fixture; retain arm isolation, warm-up/loading observations and query/parity checks.
-- Verification: Corrected source31 builds and hidden many-small gate passes1871896assertions/1case. Loading/warmup/measured costs are retained; no viewer FPS claim.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Read-only peer review passes corrected SHA. Required31 doctor/configure/build and static69065/strict pass; new native gate completes9.106s,24summary rows/2016raw samples, with all query/pixel/depth checks passing. PPD217 retains the newly exposed GPU cost regression. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5349,18 +5538,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Read-only peer review passes corrected SHA. Required31 doctor/configure/build and static69065/strict pass; new native gate completes9.106s,24summary rows/2016raw samples, with all query/pixel/depth checks passing. PPD217 retains the newly exposed GPU cost regression.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-216 retained later history: - 2026-11-15: Read-only peer review passes corrected SHA. Required31 doctor/configure/build and static69065/strict pass; new native gate completes9.106s,24summary rows/2016raw samples, with all query/pixel/depth checks passing. PPD217 retains the newly exposed GPU cost regression.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-217 — Many-small retained GPU workload repeatedly rebuilds banks and falls back
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex native cohort command admission/cache selection
 - Discovered: 2026-11-15
 - Original reference: Bounded native metadata must retain a useful working set and preserve ordinary direct rendering when GPU command preparation costs more than it saves. Original ordered group/query boundaries remain required.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source14837e631a/69065 new many-small gate passes1871896assertions/1case, but GPU mode loses completion/query settlement in all8 measured scenarios versus direct cohorts (+28.3 to148.9%) and increases GPU time26.6–104.6%. Actual bank draw fraction spans24.7–100%; requested draws, denials, evictions, builds and raw fallback are retained. At64groups/2sources/1view, measured12frames request1536draws, execute492throughbanks, fallback1044, build165banks and evict177. These demonstrate repeated work despite64warmupframes; cache/admission/fallback costs are observed, not proved the sole cause. No viewer FPS regression is inferred.
-- Next action: Select a bounded useful retained working set and avoid repeatedly rebuilding uncached small cohorts; preserve direct cohorts, ordered query boundaries, denial progress and exact completion lifetimes. Rerun the same complete cold/warm/churn and many-small costs before any bank activation. Do not raise cache limits blindly.
-- Verification: Executed contained cost regression with passing pixel/depth/query parity; owner runtime acceptance pending. Command banks remain off in the owner preview launcher.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical many-small retained bank candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5376,18 +5569,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source41 direct-bank native gates and both4arm cost matrices pass. Manydirect versus oldbank improves all8CPU/GPU/settlement, but versus direct GPU remains37.22–102.17%higher andcomplete wins2/8. Warm512complete wins6.51–42.06%; cold/churn remain adverse. Keep controlOFF, extend realuniqueindexedmesh coverage42 before generalizing3-index fixtures.
 
+
+- 2026-11-22 current-source/history audit: The historical many-small retained bank candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-218 — Page-wide freshness invalidates unrelated retained cohorts
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native source-page cohort freshness
 - Discovered: 2026-11-15
 - Original reference: Immutable publication must invalidate dependencies that actually changed. Current physical page copy-on-write must still preserve every submitted reader and exact source revision/allocation generation.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). SourcePages::changed(page) advances page_content on every row allocation/write; current(CohortBinding) compares whole-page stamps. In64groups/2sources,128rows share one page: publishing one unrelated row invalidates all other bindings on that page. pruneCohorts drops their native table/membership owners, which can make existing row.table weak proofs expire and cause further row writes; SourceCommands then removes expired memberships. Measured source31 cache uses only8–40banks (limit64), zero capacity failures;473pagefailures are admission denials. Actual fallback1044draws comprises946source_setup and98bank_admission. The repeating page-wide invalidation loop is source-confirmed, distinct from a claim that cache capacity is exhausted or that it is the sole cost cause.
-- Next action: Replace whole-page cohort freshness with precise bounded row-dependency invalidation, retaining constant-time warm qualification, native-only idle ownership and exact per-command page/bank reader leases. Register dependencies before cache commit, handle allocation rollback, invalidate before own-row mutation, and unregister on cache eviction. Add unrelated-row growth/update, own-row rewrite/reuse, pending-reader and fault/rollback coverage; rerun complete costs.
-- Verification: Source3fa3820969/69067 required/static/strict and all20 native processes pass; SourcePages3644assertions/17cases includes new sibling/pending and bounded convergence cases. Many-small1872424/1 passes strict64group full-bank/zero-rebuild assertions. No viewer performance or owner closure claim.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical SourcePages page_content/cohort membership freshness finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5398,6 +5595,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Required32 doctor/configure/build exit0, build34.304s; static69067 and strict3587files/0blockers/0errors pass. Native20processes pass, including pages3644/17, banks3348/9, actualproducer12397/53 and source-admission1874/6. Corrected3arm cost140840/1 and many-small1872424/1 pass. All four64group measured scenarios have fullbank use and zero page/bank rebuilds/denials/fallback.64x2x1 cost CPU0.766479ms before to0.187416ms after, nativebankdraws492/1536 to1536/1536. Owner preview69065 remains untouched. PPD217 stays open for remaining GPU-time/true pressure costs; no unconditional activation or owner verification inferred.
 
 
+
+- 2026-11-22 current-source/history audit: The historical SourcePages page_content/cohort membership freshness finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-219 — Optional bounds promotion rejects a valid withdrawn transient source
 
 - Status: investigating
@@ -5406,8 +5606,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Optional GPU preparation must preserve required ordinary native rendering over an exact immutable reader-held generation after cache-only withdrawal. PPD195/205 source-identity, revision and replacement guards remain required.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the unbuilt retained-visibility worktree, raw NativeVisibility requests a non-key bounds capability. world() can find an ordinary variant retained by the current reader, while its optional-promotion original_current still requires the child's State.publication()==that payload. Cache-only withdrawal removes that publisher but not the exact reader lease, causing an empty required source instead of fail-visible ordinary rendering. The earlier transient guard excludes this newly introduced bounds-only native-material request. This is source-confirmed in new code; no observed viewer regression or executed test result is claimed.
-- Next action: Extend the exact authored-transient fallback guard only for optional bounds. Preserve no resources/cohort-source promotion, no child-cache resurrection, exact identity/revision/transient owner, and newer-payload rejection. Add actual-owner withdrawn-reader bounds fallback plus revision/newer replacement controls before build.
-- Verification: Registered before repair; source review only. Existing PPD195/205 tests/guards must remain and execute with the new capability.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Exact transient bounds-promotion and actual owner revision/newer-generation protections pass source35 native gates; owner verification remains pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5418,18 +5618,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Exact transient bounds-promotion and actual owner revision/newer-generation protections pass source35 native gates; owner verification remains pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-219 retained later history: - 2026-11-15: Exact transient bounds-promotion and actual owner revision/newer-generation protections pass source35 native gates; owner verification remains pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-220 — Retained visibility arguments lack exact cohort generation qualification
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained visibility consumer
 - Discovered: 2026-11-15
 - Original reference: Optional culling may suppress required geometry only when its bounds/arguments belong to the exact immutable source and native generation being rendered. Mismatched optional preparation must fail visible through ordinary native rendering.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the unbuilt retained visibility consumer, generic Arguments::appliesTo(index,count,MVP) can accept a view created from a different certified cohort/native generation when logical range and MVP coincide. The new cohort API has exact certificate and CPU/native control-block identities available, but this generic consumer check does not compare them. No observed viewer incident or executed failure is claimed.
-- Next action: Add appliesToCohort(index,count,CohortView) and use it only for retained cohort indirect selection. Require exact pointer/control-block ownership plus matching copied MVP/range. Wrong cohort/native-generation arguments must retain required direct rendering; store qualification identities weakly so GPU retirement does not retain CPU source graphs. Add swapped-generation/cohort negative tests and execute pending-lifetime coverage.
-- Verification: Source-confirmed pre-freeze qualification gap registered before repair; native execution pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical GPU visibility Arguments/cohort generation certificate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5438,18 +5642,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Exact current cohort/native/MVP qualification and both raw/cohort mismatch directions pass source35 visibility2506/9; owner verification pending.
 
+
+- 2026-11-22 current-source/history audit: The historical GPU visibility Arguments/cohort generation certificate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-221 — Retained visibility native row cap charges logical instead of allocated bytes
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained visibility native row storage
 - Discovered: 2026-11-15
 - Original reference: Apple unified-memory admission must account for actual retained native allocation debt; small logical records can occupy larger physical Metal buffer allocations.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). The unbuilt new cohort visibility storage charges48logical bytes per row against its8MiB live native cap. Independent MTLBuffer allocations may have larger allocatedSize, so many small buffers can exceed the cap physically while appearing within it. One attempted allocation is limited by the existing65536row per-view bound; no arbitrary-size allocation or observed viewer OOM is claimed.
-- Next action: Charge immutable MTLBuffer.allocatedSize after creation and reject unknown/over-cap debt before retention/encoding. Keep logical upload bytes separate, subtract the exact admitted charge at native buffer retirement, and add small-row actual-debt/cap rejection coverage.
-- Verification: Source-confirmed new-path accounting gap registered before repair; native execution pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical GPU visibility native row-buffer byte cap finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5458,18 +5666,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source35 native tests verify physical allocatedSize accounting for small retained row buffers; large cap exhaustion/recovery is not yet tested or claimed.
 
+
+- 2026-11-22 current-source/history audit: The historical GPU visibility native row-buffer byte cap finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-222 — New retained visibility cold publication bypasses shared frame admission
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained visibility and FrameData admission
 - Discovered: 2026-11-15
 - Original reference: Optional native metadata publication must coordinate with the existing frame-wide main/probe/CPU compilation/streaming policy and retain credits only through actual command completion. A private memory cap is not frame admission.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). The unbuilt new Visibility::encode cold cohort row cache and dirty raw bounds generation allocate/write optional native metadata without invoking FrameData's stored source-publication callback. Existing8MiB live storage bounds retention, but does not schedule this work with main/probe publication. Source owner confirms the missing callsite before repair. No observed viewer stall is attributed.
-- Next action: Accept optional FrameData at encode, coalesce only new cohort/dirty or COW raw bounds work, request existing shared metadata admission before native allocations/writes, and retain granted credit on the exact command. Denial returns no optional visibility arguments so required direct rendering continues. Unchanged warm argument/compute output requires no extra publication ticket. GroupSources raw fallback must avoid optional per-source bounds scans after group admission denial. Preserve standalone API compatibility and add real denial/warm/retirement/cost counters; no new scheduler.
-- Verification: Source-confirmed new integration gap registered before repair; native execution pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical GPU visibility cold row publication admission finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5477,6 +5689,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15: Source35 admission2248/8 and visibility2506/9 verify shared publication denial/direct fallback, warm zero-ticket, age, abandonment/completion and reentrant generation guards.
+
+
+- 2026-11-22 current-source/history audit: The historical GPU visibility cold row publication admission finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-223 — Cold persistent cohort region mapping bypasses publication work charge
 
@@ -5486,8 +5701,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: A persistent native mapping created for an optional retained composition is publication work. Required transient per-view camera/global buffers remain distinct.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). In the frozen unbuilt ordered-pass backend, freezeInternal computes mapping_bytes/view_bytes for a persistent region map but does not include its writes in SourcePublicationWork::chargedBytes(). Resource preparations return0publicationBytes when an existing table is reused. A new composition reusing valid rows/tables can therefore allocate/copy its persistent multi-region map with charged==0, bypassing the existing admission callback. The earlier exclusion for required per-view maps does not cover this new retained cache allocation. Root confirms exact charge and existing-table code paths; no runtime incident is attributed.
-- Next action: Charge persistent certified-cohort mapping writes explicitly before allocation/publication, preserve ordinary transient per-view buffer behavior and zero warm tickets, and add a mapping-only cold composition denial case over already reused rows/tables. Verify no allocation/cache eviction on denial and exact command-only credit retirement.
-- Verification: Sourcef78f994b64/69073 required/static/strict and all20native processes pass. SourcePages5364assertions/22cases includes mapping-only denial, old-warm preservation and actual command abandonment/completion; shared admission1993/7 also passes. Actual renderer composition integration/performance remains pending.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Required33 doctor/configure/build0 (build163.914s), static69073/346ARM64/signatures/source/imports and strict3587files/0blockers/0errors pass. Native20processes pass, pages5364/22 incl5ordered-pass cases, banks3348/9 andactualproducer12397/53. Existing-single3arm140840/1 andmany1872424/1 regressionsuites also pass; no pass-renderer consumption or performancegain claimed. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5501,6 +5716,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Required33 doctor/configure/build0 (build163.914s), static69073/346ARM64/signatures/source/imports and strict3587files/0blockers/0errors pass. Native20processes pass, pages5364/22 incl5ordered-pass cases, banks3348/9 andactualproducer12397/53. Existing-single3arm140840/1 andmany1872424/1 regressionsuites also pass; no pass-renderer consumption or performancegain claimed.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-223 retained later history: - 2026-11-15: Required33 doctor/configure/build0 (build163.914s), static69073/346ARM64/signatures/source/imports and strict3587files/0blockers/0errors pass. Native20processes pass, pages5364/22 incl5ordered-pass cases, banks3348/9 andactualproducer12397/53. Existing-single3arm140840/1 andmany1872424/1 regressionsuites also pass; no pass-renderer consumption or performancegain claimed.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-224 — Optional visibility capture allocation failure discards required geometry
 
 - Status: investigating
@@ -5509,8 +5727,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Failure of optional visibility metadata must fail visible and preserve admitted required geometry. Required geometry/source allocation failures retain their established incomplete-capture handling.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). captureMetalPublishedWorldBatch currently places optional visibility vector growth/publishBounds inside its outer bad_alloc handler, which marks the whole capture incomplete and clears required draws. The retained visibility sparse index vector adds another optional allocation at that boundary. Source owner confirms this existing/new-path failure boundary before repair; no observed viewer OOM/crash is attributed.
-- Next action: Catch only optional visibility preparation allocation failure locally, clear/disable that capture's optional metadata and skip optional view construction while retaining raw/ref/cohort geometry/order/native owners. Preserve required-source/geometry OOM behavior. Add actual-function failure injection verifying ordinary rendering/query output and no repeated optional work after disable.
-- Verification: Source-confirmed pre-freeze failure-isolation defect registered before repair; native execution pending.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source35 actualproducer14269/58 includes optional visibility metadata fault injection preserving required geometry/query inputs; owner verification pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5521,18 +5739,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source35 actualproducer14269/58 includes optional visibility metadata fault injection preserving required geometry/query inputs; owner verification pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-224 retained later history: - 2026-11-15: Source35 actualproducer14269/58 includes optional visibility metadata fault injection preserving required geometry/query inputs; owner verification pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-225 — Visibility cost labels requested offscreen fraction as actual for one source
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained visibility cost fixture
 - Discovered: 2026-11-15
 - Original reference: Performance evidence must identify the geometry workload actually submitted, including integer rounding in small adverse cases.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Pre-execution peer review of new alpipeline_cohort_visibility_cost_native.inl finds requested outside_percent=50 with1group/1source displaces0sources because the odd-source predicate never selects the only source. That row duplicates actual0% while labeled50%. Other even-source shapes realize the intended fraction; no executed benchmark result exists yet.
-- Next action: Keep the requested percentage and adverse one-source scenario, and emit actual outside source count and effective fraction in every raw and summary row. Do not claim a fractional source was culled or count that label as evidence of50% actual offscreen geometry.
-- Verification: Registered before narrow fixture-only label correction; no production changes or native results claimed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive GPU visibility cost offscreen-label fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5544,18 +5766,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source35 cost gate passes with explicit requested/actual/effective offscreen output; one-source requested50 correctly reports actual0. No fractional geometry or independent unique-scenario claim.
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive GPU visibility cost offscreen-label fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-226 — Retained visibility implementation uses incomplete world types
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex retained visibility integration
 - Discovered: 2026-11-15
 - Original reference: Objective-C++ implementation units require complete declarations before accessing native batch members or FrameData methods; the backend deliberately has no precompiled header.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Final root review of almetalworldvisibility.mm finds new accesses to ALMetalWorldSimpleBatch::index_count and ALMetalWorldFrameData::requestSourcePublication. Its included cohort/draw/source-pages headers only forward-declare those world types; almetalworld.h supplies their definitions. Generated visibility source contains shader text, and almetal/CMakeLists explicitly avoids a backend PCH. No compiler attempt has been made yet.
-- Next action: Include almetalworld.h directly in this implementation before first feature build, retaining the public forward declarations and existing ownership/API behavior.
-- Verification: Source-confirmed missing direct include registered before the one-line integration correction; required34 compilation will verify it.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical deleted almetalworldvisibility.mm incomplete types finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5566,18 +5792,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Direct include compiles successfully in required35 and native visibility passes; no owner runtime result claimed.
 
+
+- 2026-11-22 current-source/history audit: The historical deleted almetalworldvisibility.mm incomplete types finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-227 — Visibility cost fixture restores a const device pointer to mutable owner state
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex retained visibility cost fixture integration
 - Discovered: 2026-11-15
 - Original reference: The fixture must preserve the actual pipeline device pointer type while swapping independent arm contexts; no production API constness change is needed.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Required34 at60a28bf449 passes doctor/configure but build fails59.265s in new cost fixture line62. MaterialCacheScope stores previous_device as constALMetalDevice* then assigns it back to mutable Inputs::sNativeSceneVisibilityDevice in its destructor. This discards qualifiers and Clang rejects it. Failed34receipt/log retained; no native execution occurred for this source.
-- Next action: Match the saved device field to the actual mutable owner pointer type only. Keep arm swapping, all workload/parity/admission assertions and production APIs unchanged; rebuild as35 and execute required gates.
-- Verification: Executed fixture compile failure; correction/retest pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive GPU visibility cost owner-device fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5586,18 +5816,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Narrow saved-pointer type correction afe694394b passes required35 build and all21 native processes; failed34 receipt/log retained.
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive GPU visibility cost owner-device fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-228 — Cohort bank mode implicitly enables the slower scalar source-row capture
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex ordered-pass capture integration
 - Discovered: 2026-11-15
 - Original reference: Unsupported/denied retained group preparation must keep required ordinary native rendering. Enabling cohort command preparation must not silently select a different experimentally regressive per-source route.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). pipeline.cpp beginMetalWorldGBufferCapture calls beginSourceRows((source_rows()||source_banks())&&!impostor_bake), so bank mode enables scalar SourceRows even when GroupSources is on and SourceRows/CompactInputs controls are off. Raw fallback therefore captures per-source candidates/references and their known costs. Earlier audits recorded this behavior; ordered-pass consumer integration now reaches the concrete correction boundary. No new viewer FPS incident is attributed.
-- Next action: Preserve explicit SourceRows and prior non-GroupSources bank semantics, but activate the implicit scalar path only for bank mode with GroupSources off. Update actual capture/cost fixture policy and add unsupported/denied mixed raw/cohort fallback assertions without scalar expansion. No default activation or required feature removal.
-- Verification: Source-confirmed capture callsite before repair; integration/native/cost tests pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical bank/SourceRows capture control coupling finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5608,18 +5842,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source39 actual-owner14537/59 passes the complete mixed raw/cohort CPU/GPU-denial fixture after232setup correction, retaining no scalarSourceRows/resource-descriptor expansion and exact output/query checks. Source38 renderer5046/8 and full accepted-bank cost checks also pass; owner runtime pending.
 
+
+- 2026-11-22 current-source/history audit: The historical bank/SourceRows capture control coupling finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-229 — Retained frustum visibility remains a net cost in cheap draw workloads
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Codex retained visibility dispatch/selection
 - Discovered: 2026-11-15
 - Original reference: Useful native visibility must remove enough work to repay capture, dispatch and indirect draw costs. Preserving ownership/correctness alone does not justify default activation.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source35 corrected new cost gate passes5672016assertions/1case,504summary rows/14064raw samples. Against direct cohorts, visibility wins CPU only5of168configuredscenarios and GPU only4of168; warm actual50%offscreen has0of22CPU/GPUwins. Many warm50% loses settlement34–72% and GPU123–184%, despite zero warm row uploads, expanded source members, admission tickets or fallback. Geometry is explicitly3indices/source; these are cheap-draw contained results, not proof about heavier mesh workloads or viewer FPS. Current encode issues one dispatch per cohort and CPU consumption qualifies per draw; their separate cost shares are not yet measured.
-- Next action: Keep control off; investigate batched dispatch, cheap coarse acceptance/rejection over immutable bounds and useful geometry-cost selection. Extend workload geometry coverage before claiming general benefit, preserve full capture/query/parity/admission boundaries, and never hide fallbacks or offscreen rounding. Remaining CPU direct bindings and frustum-only scope stay explicit.
-- Verification: Executed performance rejection with passing geometry/MRT/depth/query correctness. Whole-engine owner performance acceptance remains pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical retained GPU frustum visibility cost candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5632,6 +5870,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source38 packed dispatch passes6110352/1 cheap and5551008/1 heavy cost gates. One dispatch/view is proven; warm96B/group descriptor uploads are reported (not zero total uploads). Heavy many50% GPU−21.11..+11.73%, settlement−11.41..+0.79%, CPU+7.91..+14.55%; conditional selection/remainingCPUwork remain open. Native7521/13 passes true cap/borrowed/pending lifetime cases.
 
+
+- 2026-11-22 current-source/history audit: The historical retained GPU frustum visibility cost candidate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-230 — New heavy-mesh fixture can miss all target samples
 
 - Status: investigating
@@ -5640,8 +5881,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Geometry-cost parity must include real visible coverage; matching empty outputs cannot prove useful raster/depth correctness.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). During authoring, source review finds the new32x32 triangle grid gaps align with16px target pixel centers. The heavier helper could therefore compare empty images. No native failing run or production defect is attributed; original3-index workload remains unchanged.
-- Next action: Shift internal grid phase without changing bounds/endpoints and require non-clear depth coverage for heavier cases before accepting their parity/cost evidence. Execute the full new geometry tag after integration.
-- Verification: Source review during fixture authoring; corrected mesh and non-empty coverage assertion are authored but unexecuted.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source37 heavier gate5532576/1 passes non-clear depth coverage plus full output/query parity; phase correction and original cheap workload retained. Owner verification remains pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5652,6 +5893,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Source37 heavier gate5532576/1 passes non-clear depth coverage plus full output/query parity; phase correction and original cheap workload retained. Owner verification remains pending.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-230 retained later history: - 2026-11-15: Source37 heavier gate5532576/1 passes non-clear depth coverage plus full output/query parity; phase correction and original cheap workload retained. Owner verification remains pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-231 — Private bundle verifier requires the displaced single-cohort consumer symbol
 
 - Status: investigating
@@ -5660,8 +5904,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Compiled feature checks must verify the implementation actually used by the native renderer; dead-stripped unused wrappers are not product requirements.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source38 required build7246b19e96 succeeds, but static-native-38 fails gpu_cohort_native_view because private verify-g2g5-bundle-30.py requires defined freezeCohortForCommand. Ordered renderer now calls freezeCohortsForCommand; the unused single-cohort wrapper is dead-stripped from the viewer. SourcePages single API compatibility is still covered in contained native tests. No production link/render failure is attributed.
-- Next action: Preserve old verifier/failing receipt; create private verifier38 requiring the actual plural compiled symbol plus composition and batched visibility census/kernel evidence. Retest the same unmodified source38 bundle under a new receipt.
-- Verification: Executed static marker failure after successful build; native rendering suites are still running. No original verifier or app modification is needed.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Corrected private verifier38 passes exact unchanged69079 bundle, requiring plural compiled consumer plus composition/descriptor census and packed kernel markers. Original failed static38 receipt and old verifier remain retained. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5672,6 +5916,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Corrected private verifier38 passes exact unchanged69079 bundle, requiring plural compiled consumer plus composition/descriptor census and packed kernel markers. Original failed static38 receipt and old verifier remain retained.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-231 retained later history: - 2026-11-15: Corrected private verifier38 passes exact unchanged69079 bundle, requiring plural compiled consumer plus composition/descriptor census and packed kernel markers. Original failed static38 receipt and old verifier remain retained.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-232 — New mixed fallback fixture assumes zero disables scene admission
 
 - Status: investigating
@@ -5680,8 +5927,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: ALNativeFrameBudget normalizes scene_publications_per_frame to at least one; denial tests must exhaust an actual frame quota without changing production admission semantics.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Source38 actual producer test has59cases/14531assertions,58cases/14523assertions pass and eight checks fail in the newly added PPD228 case. The fixture sets limit0 then expects its first CPU compile to be denied; budget.cpp:20 clamps0 to1, so producer/publication/layout are correctly created. All later raw/MRT/query/native-bank-denial assertions pass. No production admission regression is attributed.
-- Next action: Set explicit limit1, acquire and release the one scene credit before the CPU compile, then require per-frame count1 and in-flight0. Keep every existing no-producer/no-publication/ordinary raw/query/GPU-denial assertion. Rerun the complete actual-owner scope.
-- Verification: Executed fixture assumption failure; native renderer5046/8 and visibility7521/13 pass in the same source. Failed38 receipt/log retained; repair/retest pending.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Explicit quota exhaustion correction1630611063 passes source39 actual-owner14537/59 with all original denial assertions retained. Native tail and broader88CTest+10specialization+3archive processes also pass; failed38history retained. No production budget change. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5694,18 +5941,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Explicit quota exhaustion correction1630611063 passes source39 actual-owner14537/59 with all original denial assertions retained. Native tail and broader88CTest+10specialization+3archive processes also pass; failed38history retained. No production budget change.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-232 retained later history: - 2026-11-15: Explicit quota exhaustion correction1630611063 passes source39 actual-owner14537/59 with all original denial assertions retained. Native tail and broader88CTest+10specialization+3archive processes also pass; failed38history retained. No production budget change.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-233 — New direct-bank scene guard is authored in the renderer factory
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex direct-bound bank renderer integration
 - Discovered: 2026-11-15
 - Original reference: Scene validation belongs in renderInternal, where the scene exists; renderer construction is independent of per-view settings.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). During first unbuilt WIP in isolated direct-bound-cohort-banks tree, generic patch context places source_direct_command_banks validation in create() near world.cpp:3548. That function has no scene parameter. No build, native test or owner incident is attributed; source39 product is unaffected.
-- Next action: Move only the scene guard to the exact renderInternal validation boundary before feature freeze/build. Keep factory behavior unchanged and preserve old bank control semantics.
-- Verification: Author source review before compilation; correction and executed gates pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical direct-bank scene guard finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5716,18 +5967,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source40and41 compile successfully with guard at renderInternal;41 renderer9394/9 includinginvalidconfiguration/oldlibrary directfallback pass. No owner runtime attribution or closure.
 
+
+- 2026-11-22 current-source/history audit: The historical direct-bank scene guard finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-234 — Direct-bank WIP applies the index/ICB ceiling to all retained scene assets
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex direct-bound command resource admission
 - Discovered: 2026-11-15
 - Original reference: Native command allocation/index retention and gross existing scene-asset retention are distinct scopes. SourcePages already resolves its asset ceiling from the device recommended working set; shared assets are not new ICB allocations.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Unbuilt direct-bank WIP sourcecommands.mm:124–145 adds binding_bytes (including geometry/numeric/tables/root textures) to the existing64MiB ICB-plus-index admission sum. A legal material/resource set can exceed this before any large ICB allocation, so the new experiment can reject useful banks due to an unrelated inherited ceiling. No runtime rejection or source39 regression is attributed.
-- Next action: Preserve existing64MiB command/index bound. Account and bound the additional deduplicated gross binding-asset retention separately using the existing hardware-derived SourcePages working-set policy, including pending generations and idle pruning. Report both scopes/caps and test actual denial/recovery; do not increase existing command/index limits or count overlapping gross retention as new physical allocation.
-- Verification: Root source/policy review during first unbuilt implementation; correction and executed tests pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical direct-bank ICB/index/asset accounting finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5738,18 +5993,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source41 commands4055/12 verifies independent native asset cap versus unchangedICB/index cap and denial/retirement; role-overlap safeguards236 included. Broader/cost gates pass, owner pending.
 
+
+- 2026-11-22 current-source/history audit: The historical direct-bank ICB/index/asset accounting finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-235 — New direct-bank many-group cost gate omits strict warm-reuse acceptance
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex direct-bound actual-cost fixture
 - Discovered: 2026-11-15
 - Original reference: Fitting64group native-bank scenarios must prove complete accepted work and zero warm N-command reencoding, new policy/slot allocation, admission, eviction or fallback; logging alone is weaker than this mechanism gate.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Before first direct-bank build, new many-cost mode3 checks requested/bound/fallback only. Its new counters are emitted, while old mode2 additionally requires hits and zero builds/evictions/page failures/admission denials. A mode3 rebuilding every warm frame could still pass the new gate. No executed failure or performance outcome is attributed.
-- Next action: Extend only fitting64group measured warm mode3 checks with exact composition hits, zero bank builds/direct encoded calls, zero policy/slot allocations/binding work and unchanged admission/eviction/page counters. Preserve loading and256pressure rows without assuming their warm success.
-- Verification: Root pre-build fixture review; narrow strengthened assertions and execution pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive direct-bank warm cost gate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5760,18 +6019,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source41 newmany4arm cost2568360/1 passes strict64 measured reuse with fullacceptedwork/zeroNreencodes,policy/slot allocation,bindingcharge/denial/eviction. All32summaryrows/2688rawsamples retained;256adverse cases unfiltered.
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive direct-bank warm cost gate finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-236 — Failed direct-bank staging permanently changes a shared buffer accounting role
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex direct-bound native accounting
 - Discovered: 2026-11-15
 - Original reference: Failed optional preparation must preserve existing valid native owners and their budget accounting. A native buffer may legally serve both geometry and indices; actual active leases determine scope.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Post-freeze source review finds Commands::markIndex reclassifies an existing binding-only shared native lease before new admission/capacity success. BankA can bind allocationX as geometry, then denied BankB stages X as indices. A still owns X but accounting remains in the index role, changing live scope after failed work. LLVB commonly separates allocations, but the helper accepts legal aliasing; no runtime incident or source39 regression is claimed.
-- Next action: Remove destructive role promotion. Track/deduplicate actual index and binding leases by role with transactional staging, retaining support for native aliases. Scope counters may overlap for a dual-role allocation and must not be summed as unique physical RAM. Preserve all existing limits, old valid bank reuse and native completion/abandon retirement; add denied-alias regression coverage.
-- Verification: Source author reports before repair; executed gates pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical direct-bank staging role accounting finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5782,18 +6045,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source41 command4055/12 includeslegalcombinedbuffer Ageometry/Bindex deniedpreparation, unchangedolddebt/cache, actualGPUreader retirement andproperrecovery output. Allnative/broad gates pass; owner pending.
 
+
+- 2026-11-22 current-source/history audit: The historical direct-bank staging role accounting finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-237 — Generic inherited-bank API accepts a direct-binding view
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex native command ABI validation
 - Discovered: 2026-11-15
 - Original reference: A frozen view must be consumed with its actual native binding ABI. Direct-bound views declare resources and rely on non-inherited per-command buffers; they cannot supply the old inherited source-row state.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Root pre-build review finds generic prepareForCommand validates source/index rows but does not reject frame.directBindings(). matchesSourceCommand accepts private cohort membership, so a valid direct frame can reach generic inherited ICB construction. Direct FrameView::bind declares native resources without binding the old row/view arrays. Production renderer uses prepareCohortForCommand correctly; no runtime incident is attributed.
-- Next action: Reject direct-binding frames at the generic inherited API entry before staging/admission. Add valid-direct-frame wrong-API rejection followed by proper direct preparation/output recovery, retaining ordinary/generic compatibility.
-- Verification: Source-confirmed consumer ABI mismatch before first feature build; correction/test pending.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical generic inherited-bank/direct-bank ABI finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5804,18 +6071,22 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 - 2026-11-15: Source41 commands4055/12 proves matchingnonemptydirectframe descriptors rejected atwronggenericAPI withcallback0/noallocateddebtchange, thenproperdirectAPI renders Legacy/PBR output/query recovery. Oldgeneric/oldlibrary controls pass.
 
+
+- 2026-11-22 current-source/history audit: The historical generic inherited-bank/direct-bank ABI finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-238 — New slot-pressure fixture exceeds the Metal command-queue capacity
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex direct-slot native fixture
 - Discovered: 2026-11-15
 - Original reference: almetaldevice.mm creates its queue with max64 non-completed command buffers; the installed MTLDevice.h documents that upper bound. Slot pressure can involve many view occurrences on one command and must not require more queue buffers than the device permits.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Before first source40 native run, root review finds the new128slot test creates128uncommitted native command buffers plus denial/blocker commands. Queue construction explicitly caps64; the fixture can block before testing slots. No hung process or runtime viewer incident occurred.
-- Next action: Keep128slot pressure but use only a few native commands: separate abandon/GPU-gated commands for the first two views, and one shared uncommitted command retaining the remaining126distinct view-slot readers. Preserve full-cap denial, CPU-borrowed protection, actual GPU completion and slot-reuse assertions. Do not raise production queue or slot limits.
-- Verification: Source/installed SDK confirmation before any native execution; fixture repair pending. Source40 build may finish but this fixture must not run until corrected.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical exclusive SourcePages slot-pressure fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -5826,6 +6097,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - 2026-11-15: Source41 pages5914/25 finishes normally and proves128distinctslots on bounded nativecommands, borrowedCPUreader protection, actualGPUcompletion andsameallocation recovery. No unmodified238fixture was executed/hung; productionqueue64 unchanged.
 
 
+
+- 2026-11-22 current-source/history audit: The historical exclusive SourcePages slot-pressure fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-239 — Stability helper can recreate pending age on a stale call
 
 - Status: ready_for_owner
@@ -5834,8 +6108,8 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 - Discovered: 2026-11-15
 - Original reference: Stale/duplicate owner-frame consideration must not create new pending work or alter service age after publication completion.
 - Evidence: [Direct cohort work](work/active/apple-first-direct-cohorts-20261114.md). Unbuilt stable-cohort-admission helper calls notePending(frame) before rejecting stale/duplicate frames. After publicationCompleted clears pending state, a stale standalone helper call can recreate an older pending age. The wrapper already short-circuits duplicate/stale work and actual frame budgets do not rewind; no source42 or runtime incident is attributed.
-- Next action: Reject stale/duplicate frames before notePending and add completion-then-stale regression coverage requiring pending to remain absent; preserve valid unstable pending age and eventual eligibility.
-- Verification: Source author reports before repair; no build/test execution.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: - 2026-11-15 source43 6af308d165/69085 required build, static/strict and all21native processes pass. Common stability/frame-budget5091assertions/27cases and actual owner15220/60 include stale-after-completed regression plus current raw pixels during deferral. Owner confirmation/push remain pending; no closure from tests. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -5845,6 +6119,9 @@ Contracts include cylindrical/mirrored/creased normals, S/T seams, caps, zero-ar
 
 
 - 2026-11-15 source43 6af308d165/69085 required build, static/strict and all21native processes pass. Common stability/frame-budget5091assertions/27cases and actual owner15220/60 include stale-after-completed regression plus current raw pixels during deferral. Owner confirmation/push remain pending; no closure from tests.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-239 retained later history: - 2026-11-15 source43 6af308d165/69085 required build, static/strict and all21native processes pass. Common stability/frame-budget5091assertions/27cases and actual owner15220/60 include stale-after-completed regression plus current raw pixels during deferral. Owner confirmation/push remain pending; no closure from tests.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-240 — Trial cohort publication failures lack a diagnostic reason breakdown
 
@@ -6128,8 +6405,8 @@ No viewer crash or production rendering repair is attributed to this test failur
 - Discovered: 2026-11-15
 - Original reference: ALMetalRenderTargetPool::acquire increments acquisitions only for reusable owned targets; borrowed-attachment descriptors are not reusable. Native pass timing windows count actual render passes separately.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Correct the new probe fixture's pool expectation to one owned acquisition for tile and two for separate passes; keep physical pass1versus2 assertion independent. Re-review before execution.
-- Verification: New fusion test expects pool2versus3 including the borrowed framebuffer wrapper; source pool increments are inside reusableRenderTargetDescriptor, which excludes borrowed colors. No affected test/build execution or viewer behavior claim.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source50 probe native7562/4 passes, including exact output/depth, one-vs-two physical passes and owned target acquisitions. Pool wrapper accounting agrees with implementation. Owner verification remains pending; push not granted. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6143,6 +6420,9 @@ proof that eligible tile lighting replaces two render passes with one.
 
 
 - 2026-11-15 observed verification: Source50 probe native7562/4 passes, including exact output/depth, one-vs-two physical passes and owned target acquisitions. Pool wrapper accounting agrees with implementation. Owner verification remains pending; push not granted.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-249 retained later history: - 2026-11-15 observed verification: Source50 probe native7562/4 passes, including exact output/depth, one-vs-two physical passes and owned target acquisitions. Pool wrapper accounting agrees with implementation. Owner verification remains pending; push not granted.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-250 — Empty local/projector lists still submit accumulation render passes
 
@@ -6201,8 +6481,8 @@ last active page after content interning; retain the exact matched page.
 - Discovered: 2026-11-15
 - Original reference: ALMetalDevice::waitUntilIdle creates and commits a real barrier command; new benchmark counters include it after settlement.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Count and label the one barrier in the cost frontier. Keep independent pre-wait zero-pass/no-work assertions and nonempty correctness checks.
-- Verification: Source-only review finds expected views*2 read after waitUntilIdle; actual command debt is views*2+1. No affected test/build execution or production failure claim.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source50 complete empty/nonempty cost suite2948/1 passes with one explicitly labeled settlement barrier included; no command debt excluded. Owner verification remains pending; push not granted. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6212,6 +6492,9 @@ last active page after content interning; retain the exact matched page.
 
 - 2026-11-15 observed verification: Source50 complete empty/nonempty cost suite2948/1 passes with one explicitly labeled settlement barrier included; no command debt excluded. Owner verification remains pending; push not granted.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-252 retained later history: - 2026-11-15 observed verification: Source50 complete empty/nonempty cost suite2948/1 passes with one explicitly labeled settlement barrier included; no command debt excluded. Owner verification remains pending; push not granted.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-253 — Combined lighting fixture includes expose ambiguous helper names
 
 - Status: ready_for_owner
@@ -6220,8 +6503,8 @@ last active page after content interning; retain the exact matched page.
 - Discovered: 2026-11-15
 - Original reference: C++ unqualified lookup after a using-directive; two new test appendices share the existing base-lighting translation unit. No upstream viewer equivalent.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Qualify EmptyLightPass::Fixture/Pixels in its three cases and remove broad using-directives before combining includes. Preserve all native assertions.
-- Verification: Fusion includes the existing world-prepare fixture's anonymous Fixture/Pixels; empty-light tests import same-named nested types unqualified. Independent peer and author source review agree this is ambiguous only in combined translation unit. No affected compile/test executed.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Required48/49/50 compile successfully; combined native probe and empty-light suites pass50. No broad using-directive workaround or production change. Owner verification remains pending; push not granted. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6232,6 +6515,9 @@ last active page after content interning; retain the exact matched page.
 
 - 2026-11-15 observed verification: Required48/49/50 compile successfully; combined native probe and empty-light suites pass50. No broad using-directive workaround or production change. Owner verification remains pending; push not granted.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-253 retained later history: - 2026-11-15 observed verification: Required48/49/50 compile successfully; combined native probe and empty-light suites pass50. No broad using-directive workaround or production change. Owner verification remains pending; push not granted.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-254 — Old-library probe fixture passes unique ownership to a shared API
 
 - Status: ready_for_owner
@@ -6240,8 +6526,8 @@ last active page after content interning; retain the exact matched page.
 - Discovered: 2026-11-15
 - Original reference: ALMetalShaderLibrary::loadFile returns unique_ptr; renderer factory takes shared_ptr<const ALMetalShaderLibrary>. Existing explicit-library callers transfer shared ownership.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Bind the newly loaded old library to an explicit shared const owner before renderer creation; rebuild without changing any rendering or fallback condition.
-- Verification: Required47 atdfcfb911b0 doctor/configure pass; build exits1 after60.165s. New probe appendix217 passes an lvalue unique_ptr to the shared-library overload, so no matching create overload. No47native/cost execution occurred.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Explicit shared const library owner builds48/49/50; source50 preserved old-library native65/1 passes and selects the original separate passes. Owner verification remains pending; push not granted. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6251,6 +6537,9 @@ last active page after content interning; retain the exact matched page.
 
 
 - 2026-11-15 observed verification: Explicit shared const library owner builds48/49/50; source50 preserved old-library native65/1 passes and selects the original separate passes. Owner verification remains pending; push not granted.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-254 retained later history: - 2026-11-15 observed verification: Explicit shared const library owner builds48/49/50; source50 preserved old-library native65/1 passes and selects the original separate passes. Owner verification remains pending; push not granted.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-255 — Probe tile light-map draw binds a nil depth/stencil state
 
@@ -6310,8 +6599,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Current HDRI G-buffer shader writes normal={0,0,0,1}; unchanged base-light sky transfer requires that family marker. The synthetic clear must reproduce it.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Set the synthetic normal attachment to the actual HDRI marker; retain exact tile/separate parity, both nonzero sky assertions and API/GPU validation. Rebuild and rerun the four targeted native scopes before costs.
-- Verification: Required49 da8c24dbca/69092 doctor/configure/build0; static/strict pass. Probe scope3/4cases and7560/7562assertions pass. Only nonzero sky red/blue fail; tile/separate equality passes because both correctly reject the fixture normal alpha0. Source review confirms actual HDRI alpha1 and unchanged shader marker condition. Later native/cost checks did not run.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source50 synthetic HDRI marker correction passes probe native7562/4, including exact parity and both nonzero sky checks. Production source unchanged. Owner verification remains pending; push not granted. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6322,6 +6611,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source50 synthetic HDRI marker correction passes probe native7562/4, including exact parity and both nonzero sky checks. Production source unchanged. Owner verification remains pending; push not granted.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-257 retained later history: - 2026-11-15 observed verification: Source50 synthetic HDRI marker correction passes probe native7562/4, including exact parity and both nonzero sky checks. Production source unchanged. Owner verification remains pending; push not granted.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-258 — Compact-restoration fixture indexes a retired layout
 
 - Status: ready_for_owner
@@ -6330,8 +6622,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: CpuLayoutResidency clears the superseded layout source vector when a successful reseal replaces it. Independently retained immutable source rows remain valid.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: In the new allocation-failure fixture, use its retained immutable row for the later expired-generation check, preserving all production and failure-retry behavior.
-- Verification: Author source self-review finds old layout.sources[0] read after successful replacement; no affected build/test has executed. This is fixture authoring, not an observed viewer fault.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6342,6 +6634,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-258 retained later history: - 2026-11-15 observed verification: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-259 — Private probe cost driver selects the CPU publisher test binary
 
 - Status: ready_for_owner
@@ -6350,8 +6645,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Native probe and empty-light appendices are registered in almetal_tests; llrender_tests contains the separate producer/palette cost fixtures.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Point only private probe/empty-light cost drivers at the registered native app. Preserve source50 build, failed receipt and binary-hash guard; run under new retry labels without rebuilding production.
-- Verification: Source50 required/static/strict and allfourtargetednative scopes pass. First probe cost command selects llrender_tests and exits2 without matching tests after0.025s; no cost samples ran. Subsequent costs did not execute.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Private drivers corrected to registered almetal_tests; source50 retry1 probe2448/1 and empty2948/1 costs pass. Failed no-test receipt retained; no production rebuild for driver-only repair. Owner verification remains pending; push not granted. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6362,6 +6657,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Private drivers corrected to registered almetal_tests; source50 retry1 probe2448/1 and empty2948/1 costs pass. Failed no-test receipt retained; no production rebuild for driver-only repair. Owner verification remains pending; push not granted.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-259 retained later history: - 2026-11-15 observed verification: Private drivers corrected to registered almetal_tests; source50 retry1 probe2448/1 and empty2948/1 costs pass. Failed no-test receipt retained; no production rebuild for driver-only repair. Owner verification remains pending; push not granted.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-260 — Compact-restoration fixture assumes completion handlers retired synchronously
 
 - Status: ready_for_owner
@@ -6370,8 +6668,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Metal Completed status permits subsequent completed-handler execution. Existing native source-owner fixtures wait for weak lease retirement separately.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: In the new fixture, wait with a bounded deadline for actual native lease retirement before asserting weak geometry expiry and stale-generation rejection. Preserve the final assertions and production lifetime behavior.
-- Verification: Independent source review finds render/readback followed by eviction and immediate weak expiry assertion without a retirement token. No affected test has executed; transient failure is a source-confirmed test race, not an observed product fault.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6381,6 +6679,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-15 observed verification: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-260 retained later history: - 2026-11-15 observed verification: Source51 actual publisher18617assertions/73cases passes under API/GPU validation. Fixture correction retains failure/retry, weak-generation rejection and production lifetime. Owner verification pending; no push approval.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-261 — Terrain patch capture republishes pass-common material constants
 
@@ -6422,16 +6723,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-263 — World-preparation cost baseline omits owned-view adoption
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex integrator / owned-preparation cost author
 - Discovered: 2026-11-15
 - Original reference: Current scalar production consumes ALMetalWorldViewInputs through renderOwnedInputs, while optional preparation consumes the same adopted packet. The earlier hidden cost matrix compares raw render(scene) with adoption plus preparation.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Add a paired complete owned-input cost comparison for scalar, serial preparation and credited two-range preparation. Include adoption, actual shared-frame admission, join, encoding, CPU reclaim and native completion in every arm, with explicit typed-source frontier and worker CPU accounting. Preserve old literal measurements and keep production selection disabled pending evidence.
-- Verification: Source51 pipeline16549 adopts before either renderOwnedInputs or renderPrepared; existing hidden world-prepare-cost direct arm calls render(frame_scene) without adoption, while f.prepare adds it. Old results accurately describe those literal paths but cannot alone determine a current owned-path crossover.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical prepared-ticket cost comparison/owned adoption frontier finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -6439,6 +6741,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-15 observed verification: Fair owned31595/1 cost suite passes54/55 with realcredit denial and allGPU samplesready. No usefulworker crossover found; productionworker control staysOFF. Owner verification pending; no push approval.
+
+
+- 2026-11-22 current-source/history audit: The historical prepared-ticket cost comparison/owned adoption frontier finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by7684791731 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-264 — New matched terrain path relies on a replaceable batch resource owner
 
@@ -6448,8 +6753,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: A matched immutable terrain publication proves exact texture generations; the encoded command must retain that publication's native-only resource lease independently of public mutable batch owner fields.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Matched terrain encoding retains terrain_pass.resourceLease independently; unmatched/raw retains existing owner behavior. Add pending-command coverage where the public owner is reset/replaced and CPU inputs retire.
-- Verification: Author pre-freeze review finds new terrain path still retains only batch.terrain_texture_owner, which public callers can replace without changing matched static fields. No affected build/runtime execution; no viewer failure claim.
+- Next action: Retain these actual pending-command regressions; no remaining implementation TODO.
+- Verification: Matched terrain independently retains terrain_pass.resourceLease; resetting public terrain_texture_owner does not remove exact private native-generation leases. Source55/57 pending/cancel/CPU-expiry GPU cases pass.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6460,6 +6765,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source55/57 terrain pending/cancel/CPUexpiry cases pass underMetal API/GPU validation, independent private selected-texture leases retained afterpublic ownerreset. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/almetal/almetalworld.cpp:11748–11762; indra/almetal/tests/almetal_terrain_pass_publication_test.inl:289–313,531–551. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-265 — Static source qualification omits the new terrain-pass owner field
 
 - Status: ready_for_owner
@@ -6468,8 +6776,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Static cohort/page/group certificates exclude terrain and attachment owner fields so cached static records cannot retain unrelated resource graphs. The new shared terrain-pass field must obey the same contract.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Reject nonnull terrain_pass in static cohort/page/group qualification, independent of the terrain flag or replaceable terrain_texture_owner. Add an otherwise-qualified material certificate negative case and retain normal terrain behavior.
-- Verification: Source261 adds shared_ptr terrain_pass to every batch. Existing static cohort/page/group gates reject terrain flags and old owner fields but not the new field. A public otherwise-static batch can carry this unrelated native-resource owner into retained static metadata. No affected execution or viewer regression observed.
+- Next action: Retain real terrain-owner rejection test
+- Verification: Static publication rejects nonnull terrain_pass regardless of flag/public owner, and private restoration strips unrelated owner fields. Native owner-only negative proof passes.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6480,6 +6788,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source55fullcohort/pages/source/actual tests pass; native terrain otherwise-qualified owner-only rejection passes. Unused unrelatedowners stripped fromprivateprototype. No capchange. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/pipeline_group_publication_native.inl:470–471,745; indra/almetal/almetalworld.cpp:10580–10584; indra/almetal/tests/almetal_terrain_pass_publication_test.inl:508–525. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-266 — Actual terrain helper fixture confuses viewer facade with LLImageGL
 
 - Status: ready_for_owner
@@ -6488,8 +6799,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Existing Publication fixture exposes image as an LLViewerFetchedTexture facade and white as its real LLImageGL owner. The included terrain helper consumes LLImageGL pointers and native texture leases.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Use the fixture's actual white LLImageGL owner for native handles and helper input arrays; preserve every assertion and production source. Rebuild and execute all combined checks.
-- Verification: Required53 00a90f4177 doctor/configure0, build1 after58.152s. Four errors in new actual terrain helper fixture: facade has no getMetalTexture and cannot convert to LLImageGL*. No native53 or cost53 execution occurred.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Corrected actual LLImageGL fixture compiles54/55/57; actual context44/2 passes57. Prior53failedbuild retained. Owner verification pending; no push approval. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6500,6 +6811,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Corrected actual LLImageGL fixture compiles54/55/57; actual context44/2 passes57. Prior53failedbuild retained. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-266 retained later history: - 2026-11-15 observed verification: Corrected actual LLImageGL fixture compiles54/55/57; actual context44/2 passes57. Prior53failedbuild retained. Owner verification pending; no push approval.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-267 — Scalar cohorts repeat producer-invariant flag and common-constant preparation
 
 - Status: ready_for_owner
@@ -6508,8 +6822,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Completed static cohort records already certify immutable fields. Scalar rendering rebuilds the400B common value and scans fixed material flags per draw even when adjacent source policies and the cohort view are identical.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Cache exact fixed flag/policy relationships at immutable publication; build common constants once per proven equal run and retain required slot rebinding after queries or special draws. Keep raw/pose-dependent paths and shader ABI unchanged; gate complete cold/warm/churn cost including metadata work.
-- Verification: Source54 audit finds MaterialSource publication computes normal/specular flags once but scalar loop derives them again. bind_world_constants already reuses native GPU ranges on400B equality, so this defect concerns repeated CPU assembly/comparison, not repeated GPU uploads. No performance gain is established.
+- Next action: Retain complete warm/cold/churn evidence and raw fallback; do not claim general FPS or zero cold debt.
+- Verification: Immutable sources retain scalar recipe flags and proven consecutive common-value equality; scalar encoding consumes them while preserving raw/matrix/slot reset boundaries.136family/format tuples and actual owner costs execute.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6520,6 +6834,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source55scalar recipe7835/3 passes underMetalAPI/GPU validation,136format/familytuples. Actualsingle265608/1,many1844512/1 and oldtags142080/2 pass; actualreusescounted. Warmbenefit supported, colddebt and cross-run/small-runlimits retained. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/almetal/almetalworldcohort.mm:21,67,155–158,220–221; indra/almetal/almetalworld.cpp:11578–11584,11876–11884; PPD267 later source55 recipe7835/3 plus actual single265608/1 and many1844512/1. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-268 — Terrain sharing setup regresses single-patch passes
 
 - Status: ready_for_owner
@@ -6528,8 +6845,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Single-patch passes have no repeated terrain common work to remove. Raw native behavior remains valid; pass sharing must earn its creation/matching cost.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Extend the paired cost frontier to2/4/16patches, identify a supported selection boundary, and avoid sharing setup in passes below it. Preserve raw and shared output/lifetime paths.
-- Verification: Source54 all27native scopes and all8cost suites pass. Single-patch CPU regresses4/4configurations2.55–4.09%; completion regresses3/4. All64/256patch CPU/GPU/completion8/8configurations improve. No whole-viewer FPS claim.
+- Next action: Retain actual threshold/control evidence Owner runtime interpretation remains separate.
+- Verification: Expanded1/2/4/16/64/256 frontier supports sharing at16patches; all four actual pool contexts use shouldShare before constructing a shared pass. Below-threshold raw path remains.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6540,6 +6857,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Expanded55matrix1/2/4/16/64/256 shows CPUlossbelow16 and CPU+completionall12winsat/above16. Source57fourcaller selection at16 builds/static/strict/focusedterrain pass; owner/runtime confirmation remains pending. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/lldrawpoolterrain.cpp:515–516,622–623,759–760,1083–1084; PPD268 later source55 six-size frontier;PPD270 sourceac2dfaeb6b/69102. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-269 — New scalar-recipe cost geometry can occlude its required-positive query
 
 - Status: ready_for_owner
@@ -6548,8 +6868,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Query results are valid zero when authored geometry occludes them. A fixture asserting a positive result must place its query in a proven visible depth range.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Move only the new cost fixture's required-positive query volume in front of its authored triangles while retaining all query offsets, geometry coverage and exact parity assertions.
-- Verification: Author pre-execution review finds new right-side triangles can cover inherited center(.35,-.5,.75); later queries can correctly returnzero despite CHECK(samples>0). No affected test or production execution occurred.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Corrected frontquery costfixture passes55single265608/1,many1844512/1 with allgeometry/nonzero/query/MRT/depthparity assertions retained. Owner verification pending; no push approval. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6560,6 +6880,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Corrected frontquery costfixture passes55single265608/1,many1844512/1 with allgeometry/nonzero/query/MRT/depthparity assertions retained. Owner verification pending; no push approval.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-269 retained later history: - 2026-11-15 observed verification: Corrected frontquery costfixture passes55single265608/1,many1844512/1 with allgeometry/nonzero/query/MRT/depthparity assertions retained. Owner verification pending; no push approval.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-270 — Terrain caller-selection integration assumed three call sites instead of four
 
 - Status: ready_for_owner
@@ -6568,8 +6891,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Both classic/PBR main and probe paths have four terrain pass contexts. A caller policy is effective only when each existing context passes the selected pointer.
 - Evidence: [Direct-cohort continuation](work/active/apple-first-direct-cohorts-20261114.md).
-- Next action: Wire all four contexts to the measured selection helper and rebuild. Validate edits before writing files and stop dependent shell steps on any failed command.
-- Verification: Integrator edit guard expected3contexts, actual4; Python aborted after writing only the standalone helper. Subsequent shell commands incorrectly continued, producing da11a16ead with unused helper and starting56build. No caller selection or runtime success was established; source55cost evidence remains valid.
+- Next action: Retain four-site selection checks and fail-fast mutation discipline; do not rerun obsolete integration fix.
+- Verification: All four callers use measured terrain-sharing selection. Intermediate56 unused-helper-only build remains preserved and superseded.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6579,6 +6902,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Allfouractualpool call sites now use selectedpointer atsourceac2dfaeb6b/69102. Required57doctor/configure/build/static/strict andactual44/2/native5157/6 pass. Intermediate56successfulbuild remains unused-helper-only/superseded. Owner verification pending; no push approval.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/lldrawpoolterrain.cpp:515–516,622–623,759–760,1083–1084; PPD270 sourceac2dfaeb6b/69102 required57/static/strict and actual44/2/native5157/6. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-271 — GPU visibility retains CPU binding/submission for culled source rows
 
@@ -6606,8 +6932,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Catch INFO streams its argument; an unparenthesized conditional expression binds after stream insertion.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); `artifacts/metal/apple-first-persistent-native-scene-20261114/frozen-source-build-58.json` and build log.
-- Next action: Parenthesize only the fixture diagnostic conditional, rebuild, then execute the unchanged cache lifetime assertions.
-- Verification: Source4870b28117 doctor/configure exit0; build exit1 after19.792s at new fixture line83. No source58 native execution or successful combined build claimed. Production renderer unchanged.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6616,6 +6942,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 failure registered before fixture correction. Preserve source58 receipts and exact error; no viewer runtime defect inferred.
 
 - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-272 retained later history: - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-273 — New CPU visibility fixtures misread partial-union contract and omit third-mode parity
 
@@ -6675,8 +7004,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Actual LLVB upload uses frame-fence retention independently of the source publication/native-only tuple. Existing ownership fixtures release frame fences at the reader-retirement boundary.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); native-correctness-59-source-cache-lifetime.log.
-- Next action: Settle initialization and release real frame-fence ownership at the fixture retirement boundary, retain every source-reuse and native-resource lifetime assertion, then retest.
-- Verification: Source59 required/static/strict pass; new lifetime case2516/2520 assertions pass, four final resource-retirement checks fail, one per control. Same-frame reuse/build census matches all expected controls. Missing fixture frame-owner retirement is source-confirmed; production leak not established.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6687,6 +7016,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-275 retained later history: - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-276 — Warm cohorts never acquire newly requested bounds capability
 
 - Status: ready_for_owner
@@ -6695,8 +7027,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: current/currentMaterial and seal/sealMaterial accept an existing unbounded group before source capability promotion. Live enabling of GPU visibility already had this limitation; the CPU experiment exposes the same issue.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), bounded integration source review.
-- Next action: Stamp completed bounds-attempted capability during cold cohort publication, check it in warm lookup/seal when requested, and promote once. Unknown bounds must not cause repeated compilation.
-- Verification: Fresh-start enabled requests are wired correctly. Existing warm unbounded groups remain fail-visible indefinitely until unrelated mutation; no missing geometry or owner FPS attribution.
+- Next action: Retain once-promotion/unknown fail-visible tests; keep current implementation.
+- Verification: Bounds-attempted capability is stamped and warm lookup requests one promotion when absent; attempted unknown bounds do not force repeated publication. Actual producer bounds-promotion/recovery cases pass.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6706,6 +7038,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/pipeline_group_publication_native.inl:58,595,835,926,943; PPD276 later source60actual21713/77. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-277 — Pressure texture reductions bypass frame-wide native admission
 
@@ -6735,8 +7070,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: New C++ fixture cases call the existing small() policy helper before its declaration.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); author pre-execution review in native-maintenance-admission worktree.
-- Next action: Move only the three new fixture cases below the helper definition, preserving policy and assertions.
-- Verification: WIP source issue found before integration/build; no executed failure or production defect claimed.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6747,6 +7082,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-278 retained later history: - 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-279 — New static verifier searches mangled symbols with a demangled method name
 
 - Status: ready_for_owner
@@ -6755,8 +7093,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Existing verifier reads nm -m output without demangling. New stats marker incorrectly contains C++ :: syntax.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), validation-60-static-0.log and retained static-native-60.json.
-- Next action: Use the exact emitted SourceWorkingSet5stats mangled-name substring and rerun static verification with new receipt/log paths before native checks.
-- Verification: Source60 doctor/configure/build pass69108; verifier stops at missing marker although nm confirms __ZNK24ALNativeSourceWorkingSet5statsEv. No binary repair or source rebuild needed. Native/cost60 not started yet.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6767,6 +7105,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-279 retained later history: - 2026-11-15 observed verification: source60 required/static-retry/strict and relevant existing native scopes pass; actual21713/77 includes cache retirement and bounds promotion, common5496/41 includes residency counters. Earlier failures retained. Owner runtime acceptance/push approval pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-280 — New maintenance fixture undercounts successful publication mutation events
 
 - Status: ready_for_owner
@@ -6775,8 +7116,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Signal::willWrite and didPublish each advance mutationRevision; successful scaleDown advances mutation twice and publishedRevision once.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md); new native fixture pre-execution source review.
-- Next action: Correct only success mutation delta to2, retaining published delta1 and exact denial/no-mutation assertions.
-- Verification: New fixture currently expects mutation delta1; no build/execution or production defect claimed.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6787,6 +7128,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-280 retained later history: - 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-281 — New mixed CPU visibility fixture requires a positive query under reverse-Z
 
 - Status: ready_for_owner
@@ -6795,8 +7139,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Required-positive visibility volumes must use the native query depth convention for each depth mode; exact raw/optimized result parity remains mandatory.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), native-correctness-60-published-cpu-visibility.log.
-- Next action: Trace actual query vertex/depth convention and author a visible query for both forward/reverse-Z without dropping nonzero coverage, MRT/depth parity or original query offsets.
-- Verification: Source60 required/static-retry/strict pass; prior28native scopes pass including actual21713/77. New CPU visibility4cases:3pass, mixed case fails only raw-reference required-positive query at family0/format4,786/787 assertions pass. CPU optimized arm not yet reached for that format. Production fault not established; new CPU cost not run.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: repaired CPU visibility suite1780assertions/4cases passes61 underAPI/GPU validation with positive reverse-Z query and all parity assertions retained. Actual cost3674320/1 also passes. Owner runtime acceptance pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6807,6 +7151,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: repaired CPU visibility suite1780assertions/4cases passes61 underAPI/GPU validation with positive reverse-Z query and all parity assertions retained. Actual cost3674320/1 also passes. Owner runtime acceptance pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-281 retained later history: - 2026-11-15 observed verification: repaired CPU visibility suite1780assertions/4cases passes61 underAPI/GPU validation with positive reverse-Z query and all parity assertions retained. Actual cost3674320/1 also passes. Owner runtime acceptance pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-282 — System-avatar view palettes lose immutable identity after composition
 
 - Status: ready_for_owner
@@ -6815,8 +7162,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Existing LLViewerJointMesh world-pose publication preserves original ordered joint/pivot calculation. Camera-specific buildJointMatrixPalette remains required, but main/probe/forward and shadow consumers expose its180floats only as raw pointers.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), exact9182fbeb7e body capture/adoption/validation/publication audit.
-- Next action: Publish a privately sealed view-specific body palette, pin its CPU owner through capture/adoption, and use exact typed identity for validation/native frame publication. Preserve original180float shader layout and all per-view composition.
-- Verification: Main capture15316/shadow14477 allocate raw180float arrays; ViewInputs snapshots them, validation rescans them and frame publication hashes them. Attachment proof excludes avatar_skinning, so prior243 does not cover body. No cross-view matrix reuse or measured FPS attribution.
+- Next action: Retain identity/output/lifetime tests; do not claim cross-view matrix reuse or FPS improvement.
+- Verification: System-avatar view composition publishes a privately sealed body palette; view validation/publication uses typed exact identity while preserving180float layout and per-view composition. Native body/shadow output passes; timings remain mixed/near parity and native-byte ratio1.0.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6828,6 +7175,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 observed verification: Source65/9c2b48c23d required doctor/configure/build passes (29.166s), static/strict passes; repaired palette/preparation3150 assertions/18 cases passes under API/GPU validation, including raw/record body shadow parity. Independent64 body cases and24-condition actual cost remain valid: only fixture/docs changed65. Timings mixed/near parity, native-byte ratio1.0; owner acceptance pending.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/newview/pipeline.cpp:478; indra/newview/pipeline_body_palette_capture_native.inl; indra/almetal/almetalworld.cpp:1618–1620,2442–2446,2473–2477; PPD282 source65/9c2b48c23d palette3150/18;64bodycases;24condition actualcost. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-283 — New maintenance fixture uses authored-mip overload for a non-mip image
 
 - Status: ready_for_owner
@@ -6836,8 +7186,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: LLImageGL::createMetalTexture(span<MetalMipLevel>) requires mUseMipMaps and a complete authored chain. Non-mip images use the existing raw-pixel overload.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), native-correctness-61-native-maintenance-and-generations.log.
-- Next action: Use the raw-pixel overload only for the new fixture's non-mip branch, preserve authored-chain branch and all native maintenance assertions, then retest.
-- Verification: Source61 required/static/strict pass69109; common5585/44, pressure174/23 pass. Combined old/new texture scopes646/649assertions,15/18cases pass. Allthree new cases stop at non-mip fixture setup before exercising maintenance. Production defect not established; no CPU visibility/cost61 execution yet.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6848,6 +7198,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-283 retained later history: - 2026-11-15 observed verification: required62/static/strict and native maintenance+oldgeneration/mip843/18 pass underAPI/GPU validation, allthree real maintenance cases included. Common5585/44 and pressure174/23 passed61. Earlier fixture failures retained. Owner runtime acceptance/push approval pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-284 — Published CPU visibility repeats eight corner transforms for wholly visible bounds
 
 - Status: ready_for_owner
@@ -6856,8 +7209,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Current classifier transforms eight AABB corners and repeats component/plane checks. Qualified box support intervals can establish the same conservative frustum result with fewer operations.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), actual-published-cpu-visibility-summary-61.json.
-- Next action: Replace repeated corner work with conservative affine/support intervals and preserve finite/subnormal/overflow/eye and rounding safeguards; gate exact native parity and the same complete actual cost frontier.
-- Verification: Source61 CPU parity1780/4 and full48condition cost3674320/1 pass. Against retained direct, warm50%outside improvesCPU8/8median12.55%,completion8/8median9.21%; all-visible CPU loses8/8median4.41%, churn all-visible loses8/8median5.97%. No default activation or FPS claim.
+- Next action: Retain interval oracle and adverse complete-cost rows; keep current implementation. No default activation/FPS claim.
+- Verification: Conservative affine/support-interval classification is implemented with subnormal/overflow/rounding fail-visible safeguards. Correctness/cost frontier passes; all-visible/cold debt remains and optional policy stays gated.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6868,6 +7221,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 observed verification: Source64 independent CPU GPU parity1780/4 and interval oracle137/3 pass, plus48-condition actual cost3674320/1. Warm half-outside CPU/completion medians19.987%/11.133% lower versus retained direct; all-visible warm CPU1.739% higher and cold debt remains. Control staysOFF; owner acceptance pending.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/almetal/almetalworldvisibility.cpp:8–80; PPD284 source64 interval137/3,CPU/GPU parity1780/4 and48condition cost3674320/1. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-285 — New body-palette fixtures misstate scene inputs and comparison policy
 
 - Status: ready_for_owner
@@ -6876,8 +7232,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Adopted scene must advertise both authored batches; negative mixed-proof fixture must retain a real shared attachment record using its actual API.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), body-palette worktree pre-execution source review.
-- Next action: Set batch_count2 for the mixed scene and retain a live shared attachment record, preserving all negative proof assertions.
-- Verification: WIP fixture only; no integration/build/runtime failure claimed. Author found a count1 scene and nonexistent owner() call on a temporary attachment record.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source65/9c2b48c23d required/static/strict and repaired palette/preparation3150/18 pass, with avatar_mask and post-call diagnostics. Source63 compile and64 reference setup failures retained. No production shadow rendering fault established; owner acceptance pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6895,6 +7251,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 observed verification: Source65/9c2b48c23d required/static/strict and repaired palette/preparation3150/18 pass, with avatar_mask and post-call diagnostics. Source63 compile and64 reference setup failures retained. No production shadow rendering fault established; owner acceptance pending.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-285 retained later history: - 2026-11-15 observed verification: Source65/9c2b48c23d required/static/strict and repaired palette/preparation3150/18 pass, with avatar_mask and post-call diagnostics. Source63 compile and64 reference setup failures retained. No production shadow rendering fault established; owner acceptance pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-286 — CPU interval stress fixture omits its inside controls from result counts
 
 - Status: ready_for_owner
@@ -6903,8 +7262,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: The stress fixture classifies explicit underflow/ordinary-inside controls after its boundary corpus, but does not add those results to the non-vacuity counters.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), native-correctness-62-published-cpu-visibility-and-intervals.log.
-- Next action: Count the existing additional control classifications without removing any finite-grid, float/FMA/FTZ or nonzero coverage assertion; retest.
-- Verification: Source62 required/static/strict pass69111. Native maintenance/generation/mip843/18 pass. CPU visibility+interval1916/1917assertions,6/7cases pass; only counts[inside]>0 fails. Independent175616grid and invalid-case oracle plus four GPU parity cases pass. No false cull or production defect established.
+- Next action: Retain the corrected source/helper or fixture and its exact scoped regression evidence; do not repeat the completed repair as new work. Keep any unexecuted owner/runtime behavior separate from this corrective result.
+- Verification: Recorded corrective result: Source64 interval oracle137 assertions/3 cases passes after counting the existing controls; CPU GPU parity1780/4 also passes. Earlier62 missing-counter failure retained; no false-cull defect established. Owner acceptance pending. Original failed attempts remain retained; this read-only reconciliation adds no new runtime or owner verification.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -6915,6 +7274,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source64 interval oracle137 assertions/3 cases passes after counting the existing controls; CPU GPU parity1780/4 also passes. Earlier62 missing-counter failure retained; no false-cull defect established. Owner acceptance pending.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD-286 retained later history: - 2026-11-15 observed verification: Source64 interval oracle137 assertions/3 cases passes after counting the existing controls; CPU GPU parity1780/4 also passes. Earlier62 missing-counter failure retained; no false-cull defect established. Owner acceptance pending.; Current source/exclusive fixture exact continuity was not independently re-executed in this read-only audit.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-287 — Persistent native scene rows exclude rigged animated surfaces
 
@@ -7009,21 +7371,25 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-289 — Optional animated promotion can reject a required reader after cache withdrawal
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex animated producer author
 - Discovered: 2026-11-15
 - Original reference: An exact reader-pinned transient may remain usable after residency withdraws State publication without changing producer revision. Existing optional promotion checks require that publication to remain current.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), new animated-capability path source review before enabling it.
-- Next action: Decline optional GPU promotion while retaining only the exact required reader when state identity/revision, actual draw-info state, empty publisher and weak transient identity/control block all still match. Preserve all existing stale/new-publisher rejection guards and hook ordering.
-- Verification: New animated request on exact withdrawn metadata would otherwise return an empty required lease when promotion cannot publish. No viewer/runtime failure claimed; GPU candidate must decline and raw native rendering remain available with the same pose.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical optional AnimatedGpuView promotion (ordinary CPU AnimatedSource survives) finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
 - 2026-11-15 registered before narrow no-promotion fallback branch. No cache cap bypass, resource/seal work or producer invalidation relaxation permitted.
 
+
+
+- 2026-11-22 current-source/history audit: The historical optional AnimatedGpuView promotion (ordinary CPU AnimatedSource survives) finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-290 — Fixed-order animated CPU admission can repeatedly serve a failed source first
 
@@ -7033,8 +7399,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-15
 - Original reference: Existing group caller sorts service-adjusted source priority before admission. New per-source animated factory traverses fixed pass order; CommonAdmission currently passes original pending age to budget even after recent service.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), pre-execution animated admission integration review.
-- Next action: Pass existing service-adjusted unserved_since into budget acquisition while retaining original pending age and once-frame semantics; verify unsorted repeated failures cannot starve older sources and existing sorted admission remains valid.
-- Verification: Under busy one-item progress, continuously failing first source can remain aged forever and consume each opportunity before later unserved source. This is source-confirmed new caller/policy integration, not a measured viewer regression.
+- Next action: Retain both fairness and old deferral recovery cases; keep current implementation without altering quotas.
+- Verification: Eligibility retains original pending age; service_order/unserved_since only orders already aged work. Fixed-order fairness and old recovery/capacity regressions pass after failed intermediate repair.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7052,18 +7418,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 observed verification: Source67 common5867assertions/46cases and actual publisher23280/80 pass, restoring all failed old recovery/capacity/cohort cases while retaining new fixed-order fairness and split-age assertions. Admission/shadow/maintenance/pressure suites also pass. Source66 failed repair receipts retained; owner acceptance pending.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llcommon/alnativeframebudget.h:228,259–276; indra/llcommon/alnativeframebudget.cpp:244–248; PPD290 source67 common5867/46 and actualpublisher23280/80. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-291 — Subnormal packed weights can invalidate cold animated bone bounds
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex animated source/bounds author
 - Discovered: 2026-11-15
 - Original reference: Existing object skinning falls back to first influence when GPU weight sum flushes to zero. CPU cold scan can instead see a positive subnormal fraction and bound a different bone.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), pre-execution animated source/shader peer review.
-- Next action: Mark bounds unqualified for any nonzero subnormal encoded weight; retain normal native drawing/unknown visibility. Cover CPU/GPU FTZ fallback and possible visible first influence in focused parity tests.
-- Verification: Example packed weights7.0/subnormal/0/0 can make CPU select joint0 while GPU FTZ selects first joint7; different poses could otherwise falsely cull. New code unbuilt/unexecuted; no owner rendering incident claimed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical animated GPU bone-bounds culling (ordinary CPU AnimatedSource has no such culler) finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -7072,18 +7442,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 Separate pre-freeze GPU enclosure review: a constant32*FLT_MIN floor does not bound intermediate skin-coefficient underflow amplified by large positions. Register before scaling world/clip underflow floors by both operand magnitudes (source extents/linear coefficients and point/MVP), retaining conservative relative and uncertain-W/cancellation guards. Rendering vertex math and shader ABI remain unchanged.
 
 
+
+- 2026-11-22 current-source/history audit: The historical animated GPU bone-bounds culling (ordinary CPU AnimatedSource has no such culler) finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-292 — Idle animated command banks outlive expired source proofs
 
-- Status: investigating
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex animated native command author
 - Discovered: 2026-11-15
 - Original reference: Existing idle-bank pruning follows weak membership proofs. New animated banks use native source closures but leave that membership proof null, so they are not retired by the same expiry path.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), animated backend lifetime/census peer review before execution.
-- Next action: Add weak exact CPU-source/native-tuple generation proof for idle lookup/pruning; remove expired animated cache banks while prepared/queued views keep their independent native leases. Do not reject already prepared work merely because CPU metadata expired.
-- Verification: Shared index/binding/asset caps already bound storage; no unbounded leak or COW-pin claim. Source-page census may release its accounting while idle bank closure still holds native assets; each census must describe its owner scope correctly.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical idle animated GPU command banks finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -7092,18 +7466,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-15 proof review also requires mutable AnimatedGpuView native lease to match the private captured weak owner/control block (and finite view) before warm binding. Register before adding matchesNativeLease alongside idle proof; no strong CPU parent or change to already prepared lease validity.
 
 
+
+- 2026-11-22 current-source/history audit: The historical idle animated GPU command banks finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
+
 ## PPD-293 — Animated cost evidence omits retained cache footprints and numeric cap coverage
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: source_confirmed
 - Owner: Codex integrator / animated validation authors
 - Discovered: 2026-11-15
 - Original reference: Original Goal4 requires working-set and lifetime checks against direct native execution; bounded retained bytes remain part of the unified-memory goal.
 - Evidence: [Execution ledger](work/active/apple-first-direct-cohorts-20261114.md), animated cost console and bounded SourcePages/Commands counter audit at17ce73c68c.
-- Next action: Log existing per-arm retained metadata/assets/binding/index/ICB scopes outside the timed frontier, sampled once per shared FrameData cache. Add a focused native animated cap check using small injectable limits; retain required native rendering on denial.
-- Verification: Current cost output reports FrameData arena_logical_bytes only. Existing four native cases test pending CPU/native ownership, cancellation and admission retirement, but do not assert numeric animated retained-byte caps. Source-enforced bounds exist. Metadata/assets/bindings/index scopes overlap and cannot be summed as physical RAM or compared to a zero raw-cache counter as total memory amplification. No measured memory leak or cap violation claimed.
-- Owner verification: pending
+- Next action: Remove this retired-mechanism implementation/test/keep-control-OFF TODO from active work. Reopening a new mechanism needs a new scope and full output/lifetime/complete-cost qualification.
+- Verification: The historical animated GPU page/bank retained-footprint/cap fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner tested exactMaintenance69445 and explicitly confirmed "looks good ...verified", then approved commit/push of that maintenance/removal scope.
+- Owner verification: passed
 - Push approval: not_granted
+- Resolution: Historical finding remains valid and retained. Resolution is removal of the affected optional mechanism in the owner-tested and explicitly accepted Maintenance69445 scope (sourcea2aaaf29421dd49821606457923f246f73f77318), not dismissal of the old defect. Owner verification passed for this selected-production/removal remedy; no injected recurrence of the original failure, new FPS gain, or acceptance of a surviving unrelated path is claimed.
 
 ### History
 
@@ -7111,6 +7489,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-15 observed verification: Source68/83c8b70ad7 required/static/strict and new native five-case suite3604/5 passes; tiny metadata/asset/ICB caps, required raw fallback control and actual pending byte/credit retirement all execute positively. Actual48-condition cost87446/1 and parser48pairs/1680raw rows passes. At64sources warm: page metadata256.3KiB; gross binding801.9KiB(one view)/930.4KiB(three); ICB64/192KiB; index12KiB. These scopes overlap and are not total physical RAM. All explicit cap assertions pass; actual physical process-memory behavior/owner acceptance remains pending.
 
+
+
+- 2026-11-22 current-source/history audit: The historical animated GPU page/bank retained-footprint/cap fixture finding and any fixes/adverse trials remain retained. Its optional backend/route and exclusive fixture were removed by24de2b2e99 in the explicitly owner-tested/accepted Maintenance69445 scope. Current ordinary scalar/immutable CPU source paths remain. Owner-accepted69445 retirement is the repair being verified here; no original fault-injection, FPS benefit or broader owner-incident closure is inferred. Current metadata and active work now describe the surviving selected production path; original failed/corrective trial history is retained unchanged.
 
 ## PPD-294 — Teleport cleanup logs remaining old-region map objects
 
@@ -7246,8 +7627,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: The shared native frame budget is new to this fork; original viewer work queues are the nearest producer/consumer boundary. Preserve render completeness with same-Metal owner execution when optional CPU jobs decline, while bounding admitted asynchronous CPU work and lifetime.
 - Evidence: [Original architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). At restored-coredd2a3ba0dd, Work::preparation job check is inside initialized-only branch in alnativeframebudget.cpp390; supplied logical_bytes never enter preparation stats/denial and Credit retirement only decrements job count. Shadow snapshots enable another CPU batch/query array while prior packet is retained. No measured physical-memory/COW incident is attributed to this source gap.
-- Next action: Add an explicit32MiB default logical preparation packet capacity cap, checked job/byte admission even before frame initialization, outstanding-byte stats and exact CPU-completion retirement. Preserve CPU-busy preparation; deny nonzero additional metadata under actual memory pressure. Snapshot failure/denial must retain packet/original admitted command for existing native execution. Native resource residency is accounted separately and must not be double-charged as packet CPU bytes.
-- Verification: Source inspection confirms missing enforcement, not a runtime performance result. Common/native helper tests and integrated build remain required.
+- Next action: Retain startup/byte/credit/fallback regressions; owner-runtime/physical working-set claims remain unproved. Update stale architecture-status69149 test TODO.
+- Verification: Preparation admission enforces job count and32MiB logical packet debt before initialization, rejects unknown/overflow/pressure, and retires jobs/bytes on exact credit destruction. Actual byte/startup/packet/native fallback tests and integrated build pass.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7267,6 +7648,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 preparation299 integrated frozen80/app69149 repeats actual byte49/4 and native task2424/5 PASS, full native-budget6112/52 within complete34renderer scopes PASS. Selected owner candidate includes packet-owned retirement repair and current byte-debt/denial census. Source-confirmed gap is repaired and contained native-verified; owner runtime verification remains pending, status investigating retained. No physical working-set/whole-engine benefit or owner closure inferred from logical-byte tests.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: indra/llcommon/alnativeframebudget.h:47,138; indra/llcommon/alnativeframebudget.cpp:441–443,549–562,629–632; PPD299 frozen80/app69149 byte49/4,nativetask2424/5,budget6112/52. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-300 — Frame admission cannot observe required-main native completion backlog
 
@@ -7299,8 +7683,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original LLSpatialPartition cull, stateSort/postSort pass/occlusion/area policy and ordered queries remain authoritative. This adds speculative native bounds work over existing immutable static producers; it does not replace simulation/selection/asset discovery or reorder alpha/query spans.
 - Evidence: [Original architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). Current5da3a2eb: camera matrices exist before main updateCull, and successful group seal/current publication owns complete static cohorts/native tuples. No weak typed resident-group index is exposed before CPU cull. Native Visibility makeView is built after draw capture; appliesToCohort requires late logical offsets and drawIndexed requires its original command token. Warm retained-direct capture already avoids rebuilding candidate Batches. Moving the old late dispatch alone would not create early GPU/CPU overlap or bypass CPU bindings.
-- Next action: Keep RenderMetalEarlyGroupVisibility nonpersistent/defaultOFF after failed complete-cost selection. Integrate visibility with actual native ordered cohort command consumption so it removes per-row CPU submission; preserve query/raster splits, current owners/transforms and required-main publication priority. Inspect existing native bank cost failures before choosing a consumer. Do not repeat standalone early dispatch or force readiness waits. Whole-engine69151 runtime analysis is separate pending evidence; old apps remain preserved.
-- Verification: Source9be33e2b3e/build69155 doctor/configure/build0; native early500assertions/4cases, actual producer75/2, existing visibility7521/13 and shader reload1248/6 PASS with API/GPU validation. Static native/strict3598files0blockers0errors PASS. Source83 complete34renderer1130599/358 is explicitly reused through unchanged105archives/objects/native libraries and exact source/test-scope proof, not reported as new84 execution. Complete24-cell480-row actual-owner cost passes195988/1 output/accounting but enabled policy is rejected:16/16 prefix-active owner medians slower16.61–86.59%;12/16 settled medians slower; no whole-viewer benefit established. Decision/every raw row retained in canonical evidence early-visibility-selection-84.json and early-visibility-cost-84-summary.json.
+- Next action: Preserve the rejected cost/correctness history and selected CPU path. Do not recreate the retired early-GPU setting or consumer without a newly justified scope.
+- Verification: The early static GPU visibility route was implemented and rejected by complete costs, then retired under PPD545/546 in24de2b2e99. Its old defaultOFF control and GPU consumer no longer ship; the conservative CPU classifier remains.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7323,6 +7707,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 one complete actual-owner84 cost run, no viewer/profile:24cells480samples,195988assertions/1case PASS output/query/accounting. Enabled early visibility REJECTED: all16 prefix-active conditions have higher owner-wall point estimates (+16.61..+86.59%),12/16 also higher settled medians. Measured8-source requested views adopt0/128;256-source adopt24/104, with all fallback/first factory/loading rows retained. Warm256/one-view prefix uses one of existing16 shared publication credits: baseline settles groups atsample4, candidate atsample5. This is contained admission contention and deadline misses, not a live-viewer bug attribution, harmful-main-GPU-backlog proof, changed cap, or hardware-wide verdict. CPU still performs cull/capture/bindings, so standalone bounds does not remove the work that dominates the owner. Mixed256 groups preserve inside/outside rows; wholly-outside one-row fixture groups cannot prove extra rejection benefit because real CPU cull already rejects their tested bounds. Flag remains nonpersistent/defaultOFF, tested source preserved as codex/apple-first-early-visibility-tested-69155; no new app staged/recommended and69151 remains owner candidate. Core original goal stays active/partial; no launch/login/profile/push or owner closure.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llappviewer.cpp:3044 exact retired setting; almetalworldvisibility.cpp retained CPU classifier;24de2b2e99. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-302 — Static native bank submission has no integrated GPU visibility consumer
 
 - Status: investigating
@@ -7331,8 +7718,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original1eb44bbd ordered LLDrawInfo/pass capture, indexed type/offset, raster and occlusion-query boundaries remain authoritative. Native compute-written retained commands are new; no original GPU command equivalent exists. Static opaque submission and material/lighting outputs must remain equivalent.
 - Evidence: [Architecture continuation](work/active/apple-first-direct-cohorts-20261114.md). Current9a6bc0b92d static prepareCohortForCommand cold-encodes full-count calls and renderer skips actual CPU rows using ordered executeRange; scene.native_visibility explicitly declines banks. Animated preparation already uses same-command compute to update ordered ICB counts without resetting bindings. Source41/42/50 full warm bank hits still incur GPU penalties, so reducing metadata alone cannot establish useful native visibility/submission. PPD301 early classification does not remove CPU bindings and failed costs.
-- Next action: Add a distinct visibility-qualified DIRECT bank mode with immutable cold bounds/index descriptors, current fixed-slot region/globals input and same-command GPU count updates. Preserve full-count banks, current native generations/base instances, sparse query/raster ranges, bounded publication and no CPU readiness wait. Compare against selected stable retained-direct with actual small/mixed groups, cold/warm/churn, all-visible/partial rows and complete GPU/owner/settlement costs before any enabled policy.
-- Verification: Implemented and current88 native/actual-producer/full34 correctness PASS. Actual qualified bounds observed in92 cost samples (4816/4816 encodedrows). Complete cost does not establish an enabled advantage; keep modeOFF. No viewer or FPS claim.
+- Next action: Retain adverse full-cost rows and the accepted retirement. No new bank implementation or activation is pending under this old prototype record.
+- Verification: The visibility-qualified DIRECT bank prototype was implemented and passed contained correctness/accounting, but did not establish an enabled cost advantage. Its bank/GPU route and controls were retired under PPD545/546; current ordinary CPU sources remain.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7356,6 +7743,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 qualification88 source24fe03/build69160: doctor/configure/build0/0/0; native2848/4, certificate609/4, producer3029/2, early500/4, full34renderer1134237/364, exactapp/static and strict3598zero PASS. Complete24cell720row cost and strict parser PASS;92 classified samples contain4816qualified/4816encodedrows. This rules out absent qualified producer bounds in the tested cost route, not all possible shader/culling failures. Independent native synthetic-bounds oracle proves actual zero-count writes. In common256warmhits6–9, visible owner medians about−43%, GPU+22.30%(allinside)/+20.99%(halfoutside), settled+6.97%/−0.05%; fullbank GPU+15.71%/+26.13%, settled+6.55%/+8.84%. Requestedwarm medians retain genuine publication debt; no quota override or untimedpreseal. OFF decision recorded static-visibility-command-selection-88.json. No further repeated cost run justified without a new algorithm or identified defect.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llappviewer.cpp:3040-3044 retired controls;24de2b2e99;6fc608fb9e. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-303 — Source FrameView declaration proof uses a recyclable native encoder address
 
 - Status: investigating
@@ -7364,8 +7754,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Every original encoder/pass must receive its resource usage declarations. Native argument-buffer resources and GPU-address roots require declarations on each actual encoder lifetime; an object address alone is not a lifetime proof.
 - Evidence: [SourceFrameView binding](work/active/production-convergence-20261121.md#retired-source-history) and [native table declarations](work/active/production-convergence-20261121.md#retired-source-history). Original pre-retirement almetalworldsourcepages.mm FrameView::bind compares view.declared_encoder raw id<MTLRenderCommandEncoder> to current native. A later encoder in the same allowed command can reuse that native object address and incorrectly inherit the previous encoder's declaration proof. Existing ALMetalRenderEncoder::declarationIdentity and animated command scopes already provide an exact inert lifetime identity. No live viewer fault or driver address-reuse incident has been observed.
-- Next action: Validate maintained immutable source/native-generation ownership in the production maintenance candidate. The old FrameView/table prototypes are retired under PPD545/550; retain their original findings and verification history through the retired-source index. Owner acceptance remains pending.
-- Verification: Source-confirmed proof weakness only; no reproduced live GPU fault or fixed test result yet.
+- Next action: Preserve the original unobserved counterexample and retired-source index. Validate surviving immutable CPU/native generation ownership, without restoring FrameView/table prototypes.
+- Verification: The recyclable encoder-address proof finding was source-confirmed; no live GPU fault was reproduced. The affected SourceFrameView and argument-table consumers were subsequently retired under PPD545/550, while immutable ResourceSource generation proof remains.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7375,6 +7765,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 producer review extends303 to ResourceTable raw native encoder marker used by bind/declareResources as well as FrameView. Exact weak encoder lifetime identity now authored for both; no observed driver object-address reuse is claimed. Certificate302/304 uses a separately owned native table-closure span and does not mutate per-table declaration proofs. Original1eb44 per-pass resource binding/flush is the nearest source contract; native resource declarations have no direct GL equivalent. Tests/build pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: production-convergence-20261121.md:124 retired Git source index; almetalworldresources current Source proof retained. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-304 — Cohort resource tables redundantly retain and declare an already-owned closure
 
 - Status: investigating
@@ -7383,8 +7776,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original accepted static pass owns every source resource through its submitted work. New native cohort certificates must preserve that lifetime and per-encoder resource declarations while avoiding repeated application-side discovery of immutable resources.
 - Evidence: [SourceFrameView binding](work/active/production-convergence-20261121.md#retired-source-history) and [native table declarations](work/active/production-convergence-20261121.md#retired-source-history). Original pre-retirement SourceFrameView::bind retains shared_from_this once, which owns CohortBinding tables; then visits each table through Resources::declareResources, redundantly retaining each table using the command's linear owner-vector search. T distinct tables cause quadratic owner comparisons. Native table/context validation and resource span submission also repeat despite immutable successful publication. Runtime dominance and whole-viewer attribution are unknown; old bank GPU penalties remain independent.
-- Next action: Validate maintained immutable source/native-generation ownership in the production maintenance candidate. The old FrameView/table prototypes are retired under PPD545/550; retain their original findings and verification history through the retired-source index. Owner acceptance remains pending.
-- Verification: Source-confirmed redundant host work only; no measured saving, rendering repair or hardware-wide performance claim.
+- Next action: Retain historical table costs/failures and current immutable generation proof. No ResourceTable implementation or owner activation task remains.
+- Verification: The redundant table-closure experiment and its fixture/preflight failures remain historical. The argument-resource table backend was removed under PPD550; current ResourceSource retains exact typed generations without that table consumer.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7401,6 +7794,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-21 historical implementation removed under PPD545/550. First post-removal harness fails on dead local source links; evidence now points to the retained Git-source index. Prior tests/failures remain unchanged; no new runtime fault or owner closure is inferred.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: production-convergence-20261121.md:124;24de2b2e99. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-305 — Detailed profiling template retains a short window despite five-minute recording
 
@@ -7446,8 +7842,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original1eb44bbd ordered point-light limit, fades, frustum rejection, ordinary/projector separation and bounded/fullscreen grouping remain authoritative. Nearby-light updates and projector priority/cookie/shadow work retain their original traversal boundaries.
 - Evidence: [Architecture implementation status](work/active/apple-first-architecture-status.md); current24fe03 endMetalWorldGBufferCapture seals owned inputs then synchronously calls renderOwnedInputs; point-value gathering in renderMetalWorldLocalLights runs later on the same owner. No independently owned early point packet or useful main encoding/owner-gather overlap exists. This is a remaining architecture boundary, not an observed crash or proved frame-rate cause.
-- Next action: Separate exact CPU point-value gathering into an owned bounded packet. Optionally encode the preopened main command with one exclusive worker while the owner gathers values; join before any renderer statistics, sky, commit, query settlement or target publication. Preserve serial route and avoid OFF-route packet/task allocation. Decline active stage diagnostics; rebind original submission ownership; preserve renderer/TLS state and exception joins. DefaultOFF until actual producer/native correctness and complete cost justify selection.
-- Verification: Source/design review only. Projector and native resource work stay serial. Early packet validates exact frame/camera/dimensions/light scale/count/attachment policy before reuse; deferred constants are consumed only at the original downstream boundary. No implementation execution, speedup or runtime acceptance claimed.
+- Next action: Preserve serial owner execution and the31of32 adverse results. Do not reimplement the removed overlap without a new independent stage and full-cost justification.
+- Verification: Main encode/point-value overlap was implemented and cost-tested; owner wall time was worse in31of32 active cells. The rejected mechanism and RenderMetalMainLightOverlap control were removed under PPD543; source9bb0f4e289 retains the retirement history.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7467,6 +7863,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 sourcef04d025/build69168(93) doctor/configure/buildPASS41.529s; values96/5, main596/3, full34renderer1135022/375 and exactapp/static/strict3602zero PASS. Corrected40cell800row costPASS149364/1 and strict parserPASS. All320raw starts (256measured) have zero observed overlap; measured gather median0.000750ms/max0.0035ms, join median0.036917ms. Active-cell owner-wall paired medians worse31/32, range−0.43..+27.00%; settled−4.94..+9.90% mixed. Main CPU reductions do not select elapsed performance. Keep307OFF, preserve value-packet extraction for308. Synthetic getters/16×16 typed-clear frontier and unobserved positive RGB limit interpretation; no universal viewer/architecture/FPS failure claimed. Receipt/selection93 retain every startup/loading/denial/adverse pair and failed92.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: 9bb0f4e289;llappviewer.cpp:3038 retired RenderMetalMainLightOverlap. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-308 — Main lighting reopens render encoders on one accumulation target
 
 - Status: ready_for_owner
@@ -7475,8 +7874,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original1eb44 ordered base/sky/local/projector accumulation and later post-deferred haze-depth synchronization remain authoritative. Preserve currently accepted native order and arithmetic; do not opportunistically reorder light families.
 - Evidence: [Architecture implementation status](work/active/apple-first-architecture-status.md); private lighting-renderpass-coalescing-source-review-20261116.{json,md}. Actual native main base, modern sky, point and projector calls share one RGBA16F accumulation target and command batch, but create separate render encoders. Point/projector do not sample accumulated color. Existing point/projector PSOs have no depth attachment; shared-pass variants require exact depth32FloatStencil8 compatibility.
-- Next action: Implement one main-only compound native lighting operation receiving all ready scenes. Preflight cookie/shadow/BRDF work before encoder opening; encode the existing ordered bodies into one pass with explicit depth/no-write/state resets, preserving current standalone native APIs for other scopes and the comparator. Reuse joined307 point values. Preserve selected two-color memoryless probe fusion.
-- Verification: Source-feasible only; no native execution or speedup claim. Haze remains outside because intervening forward/water draws and its current-depth snapshot require the later ordered boundary. No persistent encoder spans mutable pipeline gathering calls. Allocation/validation decline before prefix may use serial; post-prefix failure cancels the original transaction without replay/publication. DefaultOFF until actual native output/depth/query/lifetime parity and complete owner/GPU/settlement costs justify selection.
+- Next action: Preserve the diagnostic and existing standalone comparators. Require complete current producer/owner/GPU/settlement evidence before selecting it; rejected307 overlap is not a dependency to restore.
+- Verification: Main-only compound lighting exists through renderMainLightingChain, native output/depth/query tests and its caller gate. RenderMetalMainLightingCompound remains a packaged defaultOFF diagnostic; it is not an accepted production speedup. Haze retains its later ordered continuation boundary.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7504,6 +7903,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 separately staged69172 VERIFIED8273 identical app inventory nodes/21checksum rows, executable b8e5596c3abcc69403a36d9bdb7935a991877edbc1f792b4513f2f161b41e9e4. Same app provides explicit308ON/OFF launchers; all other policy keys identical and307/banks/newvisibility remainOFF. Primary308ON is a provisional owner comparison, not an accepted performance policy. Source pinned local codex/apple-first-integrated-candidate-69172. No viewer launch/login/profile/push. Owner whole-viewer FPS/pacing, quality/functionality/loading and stability remain pending; mark ready_for_owner, not closed. Prior69151/69149/69134/69129/69122 preserved.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: pipeline.cpp:17547 renderMainLightingChain;17959 gate;settings.xml:7996 default0;4da1017af8. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-309 — Runtime phase controller waits for a nonexistent recorder message
 
 - Status: investigating
@@ -7512,8 +7914,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: xctrace continuous20s preflight records successfully after printing Starting recording and Ctrl-C to stop; it emits no Recording started message.
 - Evidence: [Instrumentation contract](INSTRUMENTATION.md); private architecture-69172-integrated-session-20261116T101436Z session/logs and prior controlled-record.log. Exact69172/PID65178 and xctrace65180 are live; CPU/GPU collection and full viewer/log observer are active.
-- Next action: Keep the current recorder alive. Use a separate authoritative phase timer keyed to the observed CLI control prompt plus live login state; retain the original detector's startup label as invalid diagnostic metadata, without editing recorder output or restarting capture.
-- Verification: Source check confirms the original artifact controller waits for literal Recording started, absent from the proven CLI log. Underlying recording/log collection remains active; phase timing, not trace retention, is affected. No viewer performance or rendering bug inferred.
+- Next action: Retain the bad phase label and corrected collection receipts. Future captures use current explicit authorization, exact identity and retained-coverage gates.
+- Verification: The nonexistent-recorder-message failure belongs to the completed20261116 collection. Retained history records corrected bounded phase control and both saved scenes; there is no recorder left to keep alive for this incident.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7525,6 +7927,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 new bounded Overview controller uses per-scene recorder exit and actual saved TOC start/end as phase authority. Both300s scenes save/TOC0 with correct owner arrival markers; original faulty phase metadata remains only in discarded-attempt history. No fabricated recorder text or replacement of old evidence.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: record retained final20261116 history; current collection scope explicitly changed. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-310 — Integrated Instruments recording stalls during system-trace teardown
 
 - Status: investigating
@@ -7533,8 +7938,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Exact69172/source350b803597 runtime; Apple xctrace continuous CPU/GPU template, owner-controlled quiet/club/logout session. This is a collector symptom, not a viewer crash.
 - Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); Private architecture-69172-integrated-session-20261116T101436Z xctrace-record.log, recorder-stop-sample-65180/65212.txt and recorder-raw-preservation.json. Full logs and LEAP histories are saved independently.
-- Next action: Preserve the original recorder and raw data; investigate/recover offline without another viewer run. Verify actual CPU/GPU coverage and collection overhead before using any timing for acceptance.
-- Verification: Viewer exited10:38:54UTC; recorder reports Target app exited / Stopping recording but no saved bundle or terminal exit as of10:43:51UTC. DTServiceHub waits in authorized_ktrace_stop/XPC reply; dtsecurity remains CPU-active. Raw269309939712-byte ktrace stopped growing10:38:55 and was APFS-cloned successfully. Adequate disk space remains. Cause and recoverability are unknown; no successful CPU/GPU coverage claim.
+- Next action: Preserve failed recovery/deletion receipts and qualified replacements. Do not resume an obsolete original-trace recovery instruction.
+- Verification: Original system-trace teardown stalled. Later history records the owner-directed stop/deletion and qualified replacement work; the original raw trace is not claimed preserved or recoverable.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7547,6 +7952,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 lighter recovery attempt starts11:22:50UTC from APFS-cloned later269311200736-byte attachment using installed Game Performance Overview(windowLimit0), handle44448/PID78586; original65180 preserved. Original progresses into DWARF symbol processing with cursor warnings; inspect actual symbol coverage after export, not warning counts alone. No new viewer or successful-retention claim. Prepared detailed parser qualifies only against short69151 fixtures and has sizing/RSS guards.
 
 - 2026-11-16 owner explicitly stops recovery and orders old trace deletion. Jobs65180/78586 killed; original trace and both APFS raw snapshots deleted, receipts/logs retained. Fresh identical69172 viewer then records quiet300.826s/club300.737s with proven Overview template and390s/2GiB per-scene bounds: both record0/TOC0, final40.1/50.7MB. ActualCPU spans>300s and GPUmetric coverage100%/99.9469% verified. The failed detailed capture supplies no CPU/GPU assessment and must not be auto-resumed.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: record final20261116 history; no new source change. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-311 — Live rigged skin data repeatedly requires nonfinite-matrix stabilization
 
@@ -7631,8 +8039,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Exact350b803597 llviewerdisplay.cpp eligibility excludes teleport/logout/hidden/snapshot states; almetalbenchmark.cpp permanently invalidates a post-start ineligible sequence. The strict benchmark intentionally covers one controlled sequence, initializes once and has no UTC frame anchors/rearm API. This is a workflow coverage gap, not a defect in that strict contract.
 - Evidence: [Integrated69172 assessment](research/integrated-build-69172-quiet-club-20261116.md); private analysis-frame-csv-audit.md/.json and analysis-frame-stats-report.md retain source and observed rolling-history limits.
-- Next action: Add a small opt-in continuous wall-frame stream at the actual LLAppViewer frame boundary with measured steady/system timestamps and transition/focus status. Preserve strict benchmark semantics, normal rendering/loading, private local output and failure isolation. Keep this diagnostic work isolated until the current assessment is complete.
-- Verification: Existing environment settings cannot provide complete UTC-aligned quiet/teleport/club/logout frame rows. LLStats histories lack frame IDs/timestamps and overlap; selected disjoint histories cover only232/250seconds of the two300s intervals. No completed new stream, runtime capture or whole-viewer improvement is claimed.
+- Next action: Retain explicit FRAME gap/eligibility qualification and command-stream loss limits. New collection needs a concrete unanswered question, not reimplementation of this stream.
+- Verification: Opt-in timestamped outer FRAME telemetry is implemented and exercised in current comparisons. Exact FRAME/CPU/GPU per-measure qualification is separate from the lossy command stream/footer; no universal lossless native stream is established.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7646,6 +8054,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 actual owner Terminal run PID62863/fd5/69200 proves the raw appiteration hook executes and reproduces eligible24.162→14.467FPS with exact Mach/UTC world anchoring.3430frame rows survive, zero malformed rows. The bounded64MiB cutoff and344reported dropped events keep whole-stream acceptance partial (PPD-326); requested world0–120s phases are covered. See clean Terminal findings; no strict benchmark behavior change or defect closure.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llappviewer.cpp:1397-1429 heartbeat/recordFrame; almetaldiagnostictelemetry.mm:565; final-comparison-02. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-315 — Main-frame admission throttles three transactions as two commands
 
 - Status: investigating
@@ -7654,8 +8065,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Exact350b803597 pipeline.cpp main G-buffer/sky17075–17399, light-map/lighting26449–26510 and opaque/optical8756–10337 use the same renderer/default2pending-command limit. almetalworld.cpp2434–2481 counts command entries, despite a comment describing two complete graphs. Original1eb44 uses end-frame pacing/resource reuse rather than this conversion-era intra-frame command cap.
 - Evidence: [Verified69172 engine assessment](research/integrated-build-69172-overview-quiet-club-20261116.md); private fresh-session analysis-source-overlap-audit.md/receipt.json retain exact excerpts/hashes, CPU/GPU results and validation recipe.
-- Next action: Implement explicit bounded main-frame groups with a finite invocation bound, preserving the three early commits, ordered native queue, completion-owned resources/credits and separate special-view policies. Event-gated actual native transaction/group, cancellation/error/output/lifetime checks before integration. Do not globally raise2to6 or merge the whole graph into one late commit.
-- Verification: If current-frame G-buffer and lighting remain pending, beginning its post transaction waits for its own G-buffer. This source path inserts an avoidable CPU completion wait into normal frame overlap. Runtime incidence, magnitude and whole-viewer FPS benefit are unproved; Overview latency spans are not isolated GPU execution time.
+- Next action: Preserve logical-group limits, transaction ownership and exact native completion. Assess only specifically observed remaining admission waits or owner symptoms.
+- Verification: Required-main admission now groups up to three transactions per logical main group with explicit bounded group ownership and completion. The source-only missing-group mechanism is repaired; current measured waits do not by themselves prove an FPS or freeze repair.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7669,6 +8080,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 failure source review identifies an invalid test premise: shader reload creates eager fallback/lookup textures through commitAndWait on the same queue, so holding an artificial GPU event across reload requires watchdog release. Existing world-library tests keep earlier encoded commands unsubmitted for this reason. Test now releases the gate after proving six-stage overlap and before reload, then verifies transfer and retirement of the existing ledger receipts. No renderer workaround or longer timeout; corrected native execution pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalworld.cpp:4231 beginMainFrameBatch;almetalframeadmission.cpp;6a84463ee4. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-316 — Repeated dependency roles rescan the same Signal subscription
 
 - Status: investigating
@@ -7677,8 +8091,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Native llspatialpartition_native_dependencies.inl Relay::remember92–112 and refresh145–153 call Signal::observe for every role, although alnativepublication.cpp55–63 makes identical observer subscription idempotent. Original1eb44 current draw/resource selection and before-write invalidation behavior must be preserved; this Relay has no GL API equivalent.
 - Evidence: [Verified69172 engine assessment](research/integrated-build-69172-overview-quiet-club-20261116.md); private fresh-session analysis-source-publication-review.md/receipt retain source and real-body validation conditions.
-- Next action: Subscribe once per immutable Signal identity while retaining the full ordered role topology and existing ownership/inline-spill behavior. Validate repeated/distinct identities, producer mutation, transactional failure/reentrancy, cache withdrawal and actual subscription counts. No cap/retention policy or rendering/loading change.
-- Verification: The real30-role fixture has3distinct Signals but performs30prune/observer scans; a correct dedup makes3actual subscriptions while retaining30ordered identities. Distinct30must remain30. Busy Signal::observe totals3.777CPU-s, only part redundant; no large or whole-viewer FPS gain inferred.
+- Next action: Keep exact ordered dependency/generation semantics and subscribe-once regressions. Do not rediagnose the repaired repeated-role subscription as current.
+- Verification: Production dependency walking deduplicates exact repeated Signal identities before observe, using remember/skip in llspatialpartition_native_dependencies.inl. Integrated3c52f5dd29 and318assertions/9cases are retained; remaining Signal costs need a distinct identified redundancy.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7688,6 +8102,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 takeover integrates reviewed local4050b02a88 as3c52f5dd29. Independent actual-body baseline has8assertion failures/4failed cases; candidate318assertions/9cases passes, including identical-unique-set duplicate order/multiplicity, invalidation, reentrancy and transactional failures. Full production test TU compiles. Private ppd316-takeover-validation receipts retained under successful69172 Overview evidence. Combined build and owner acceptance remain pending; no FPS claim or push.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llspatialpartition_native_dependencies.inl:91 remember and152 skip;3c52f5dd29. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-317 — Native residency withdrawal discards unchanged CPU source recipes
 
 - Status: investigating
@@ -7696,8 +8113,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Original1eb44 current draw/material preparation remains the semantic reference. The new native cache has no original GL equivalent. At290c25ea60 pipeline_scene_publication_native.inl Payload171–182 combines CPU variants with strong native generations; current257–273 and extend301–315 cannot recover variants after the sole native-cache Payload and weak transient expire. State::evict in alnativepublication.cpp142–147 preserves revision while dropping the Payload. Existing group Source/StaticRestoreTuple and restoreMaterial already demonstrate owner-free CPU facts plus weak native identities for a narrower static path.
 - Evidence: [Takeover engine audit](research/engine-takeover-20261116.md); successful69172 Overview private evidence retains publication CPU stacks and cumulative source-miss telemetry. Quiet/busy interior same-revision-expired getter deltas5626666/10870652 dominate revision-changed1112/29080; getter/factory calls are not unique producers. Club world18.010CPU-s, publish13.977, native retain7.681, remove2.262 and buildWorld2.177 overlap and cannot be summed.
-- Next action: Separate bounded immutable CPU recipes from optional native residency for shared world/shadow consumers, with exact producer revision/variant and weak native-generation proofs. Share existing CPU layout/recipe allowance, preserve same-frame writes, all current pose/view/coverage/resource behavior and native completion ownership. Validate complete cold/warm/churn/denial costs; no arbitrary native-cap increase or worker/bank activation.
-- Verification: Source and real miss distribution establish repeated same-revision source reconstruction after cache withdrawal. CPU recipes are currently retained only within narrower static-group layouts. New general recipe implementation, integrated build, pixel/lifetime checks and whole-viewer benefit remain unverified. Recipe restoration alone cannot eliminate native retention/eviction cost.
+- Next action: Preserve shadow recipe qualification and original fallback/lifetime. Any broader world recipe needs its own applicability and complete-cost evidence.
+- Verification: Selected shadow-only weak CPU source recipes are implemented. The broader world/SIMPLE recipe proposal was deliberately not selected; current weak recipes do not retain native generations or imply a general cache repair.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7717,6 +8134,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 selected final covered-only49a31097de passes335assertions/7actual-body cases and19495faithful byte-pressure checks. Raw192iteration rows/16counter receipts retained; final owner-wall5.99605→4.78750microseconds and settled957.90205→932.22710 remain tiny-workload component observations, not FPS acceptance. World/SIMPLE/opaque proposal is preserved at eb7d7aac13/branchcodex/source-recipes-full-proposal-20261116 and omitted from selected source. Combined build/native/whole-engine owner checkpoint pending. Subsequent owner instruction authorizes exact-candidate launch with owner login, quiet→teleport/loading→settledclub bounded profiling after coherent groups; push still not granted.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: pipeline_source_recipes_native.inl:9-90; b73c4c5754;92ddb0966c. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-318 — Checkpoint collector fails before recording and delays startup capture
 
 - Status: investigating
@@ -7725,8 +8145,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Private checkpoint_collect.py in engine-checkpoint-workflow-20261116T144053Z, based on existing low-overhead Xcode capture helpers. No original GL rendering equivalent. event(self,name,...) receives event(...,name=...) in start_record, producing TypeError before actual recording; ready detection also expects Recording started while the installed CLI emits Starting recording plus Ctrl-C banner.
 - Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private capture-session.json/capture-events.jsonl/quiet-detail-failure.json and restarted session/record.log. Source App92ddb0966c is separate from these artifact scripts.
-- Next action: Under the active quiet-FPS diagnostic objective, correct and exercise actual recorder-start/ready/finalization paths, start low-overhead recording before owner login, preserve live child/raw-data proof, keep the recorder parent to capture its exit status, and bound detail overhead/coverage. No settings comparison or detail export may delay startup recording. Prepare tooling now; no new viewer launch/profile without explicit instruction.
-- Verification: First viewer PID19966 initial quiet24→14FPS transition was missed. Restarted PID21370 continuous Overview actually covers466.3998s from15:01:23.165, before STATE_STARTED15:02:44, through quiet25→15–17drop/teleport/club loading/settled15:09:09.565. New continuous recorder detached exit status is unknown; saved-output log and successful bounded exports do not manufacture that status. Captures/logs preserved; no other viewer restart authorized after closure without owner steering.
+- Next action: Use current scoped authorization and capture qualification. Retain the initial recorder failure without imposing an obsolete blanket launch prohibition.
+- Verification: The failed early checkpoint collector chronology is retained, followed by successful later recordings. Its old session-specific do-not-launch instruction is historical; current owner authorization governs current work.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7740,6 +8160,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 new owner Terminal recorder and cached CPU/GPU exports complete180.692s/exit0. The outer collector instead returns1 because its positive-only GPU-family start-gap guard rejects explicit retained zero-associated-frame rows across focusloss. PPD-325 records the new confirmed qualification defect before repair. Preserve the failed receipt, use the actual covered data and do not manufacture missing GPU execution.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: CURRENT/current owner scope; later successful retained recordings. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-319 — Quiet frame cadence declines after login as completion latency grows
 
 - Status: investigating
@@ -7747,9 +8170,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Owner: Codex whole-engine performance assessment
 - Discovered: 2026-11-16
 - Original reference: Owner reports initial24→14FPS in first69187 login and25→15–17 on restarted exact92ddb0966c/69187. Earlier source350b803597/69172 quiet profile is context, not a matched baseline. Native main/probe/shadow scene and original Alchemy visual behavior must be preserved.
-- Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.
-- Next action: Complete the fresh69241 four-frame replay profiles and current bound-input audit. Home1472 is CPU-prepared16/16 and actual GPU draw30764 confirms the candidate shader/buffers8/9, yet completion waits still grow. Club5617 is all_full before admission and has a different CPU/effective-lighting workload. Measure mask usefulness and accepted lighting/shadow/data-access costs with unchanged/restored controls before selecting a general quality-preserving change; old69238draw38566reason remains unknown. [Fresh checkpoint](research/home-club-replay-checkpoint-69241-20261117.md).
-- Verification: Quiet aligned40s/44s cadence23.00→15.52→14.22→13.88FPS; GPU-associated envelope70.84→136.61ms while GPU-end/display tail stays~4ms. Main CPU falls38.3→25.5%wall and decoder samples are0 over late124s; foreground timer spans the interval. Native older-group wait grows~23→50ms/group with peak2groups/6commands and0fail/cancel/width-denials. This is downstream completion/backpressure evidence, not isolated quiet GPU execution or shader attribution. Club diagnostic post-startup950ms has appGPU86.29%/allGPU92.80%active, fragment78.60%, and177.63msolder-groupwait mostly overlappingGPU. No matched old/new FPS improvement/regression or release-performance acceptance is established.
+- Evidence: [Build69187 checkpoint findings](research/engine-checkpoint-69187-findings-20261116.md); private restarted Overview466.3998s, CPU633562Running samples, actual phase anchors, main-admission census, GPU exports, warnings/source reports and hashes. [Whole-frame shader/receiver map](research/home-whole-shader-map-20261117.md) retains current138-row compiler census, sampled call stacks and exact early/late main probe/depth exports.; [retained review-branch Home evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain two main groups and original adoption. Address the measured required main lighting/forward-alpha GPU cost with an output-preserving transformation and complete affected-pass/frame evidence; do not repeat rejected cap3 or tiny adoption reorders. Keep the separate un-attributed completion tail and owner acceptance open.
+- Verification: Review-branch diagnostics identify an exact oldest-post wait29.685ms/GPU27.517ms with19.889ms forward-alpha Fragment activity and actual27probe inputs; separate53probe live joins/counters remain scoped. Extended cap3 observations have about110ms p95 versus about75ms normal; selected-source presentation delays and6/10/12qualified input counts are descriptive unequal populations. Early adoption moves about11us before the gate without a material repeated frame gain. These added diagnostics/private arms are not retained on the usual branch. No Home FPS repair or owner acceptance is claimed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7821,6 +8244,30 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 final investigation: [Current69450 report](research/performance-investigation-20261122.md) reproduces Home decline at native fullscreen3456×2168 with sole OpenHTJ2K0.27. Strict matched late725nativeperiods mean60.587ms/p9573.151, versus Club847mean51.869/p9558.044; these are application cadence, not scanout. Current Home older-main GPU-dependent admission waits, actual1→39captured pack growth and dominant candidate shaders are qualified separately. Source-metadata-only Home55pack attributes sample_base_probes66.40%BASE/57.51%simple-shadow inclusive, with both acceptedtap and containment cost; no sole-cause/count-only inference, spilling diagnosis or selected shader repair. New PPD567 repeated CPUhash proposal is not a HomeGPU fix. Owner incident/product gates remain open; no production patch, commit or push.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: performance-investigation-20261122.md;ppd567-performance-20261122.md; current active ledger. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
+- 2026-11-22 Owner explicitly requires measured answers for each required-main blocking interval: oldest pass/resources, actual independent-ready work, reason withheld, earlier-admission/preparation critical-timeline experiment and input-to-present/memory effects. New bounded diagnostics and private2-vs3policy measurements are active, not a final unknown disposition. Retained exact5748→5746 analysis shows queued newer Vertex overlap and no CPU Metal submissions during54wrapper waits. Before any new compile/runtime, independent draft review found timestamp-validity must also require end>=start and TASK_VM_INFO returned-count validation; original draft/receipt are preserved in home-admission-questions/draft-review-01 and corrected before integration. No new measurement or queue-depth benefit is inferred.
+
+- 2026-11-22 Reviewed nine-file admission/input/presentation/memory diagnostics integrated with cap2/adoption order unchanged. All7sourceTUs syntax0; contained CPU observers107assertions/2cases and root-context real native token fixture140/2 pass. Child context Metal-device unavailability retained, not treated as native pass. Three draft findings—session-qualified command IDs, actual selected UI-world provenance and memory sampling on nonblocking arms—were corrected before source-freeze; final independent review-02 verifies exact9hashes. Full consistent app build is active before matched real Home runs.
+
+- 2026-11-22 measured follow-through: canonical diagnostic/source integration and exact normal/private app identities now qualify. Ordinary2A01/3B01 cadence windows independently pass; input and detailed-trace inclusion remain separate. A01 sent no input after the original readiness precondition failed; B01 single input did not qualify. B01 recorder exited0 but began15.740s after native cutoff, so it is retained as unjoined, never used as exact admission proof. Corrected private lifetime guards reject a footer/stale tail and verify init-relative600s coverage before spawn;18fixtures pass. Private camera-prefix/cue/parent/presentation completeness corrections have34sanitized fixtures, and failed receipts remain. Fresh capturejoin01 rejected an early recorder request before spawning; one transient control timeout was resolved by a read-only all66-control recheck, without relogin. Freshjoin02 recorded5s MST/TOC0 alongside current late capture, then normal quit with zero pending commands. Exact coverage/joins are under analysis. These are collector corrections and observations under319, not new production scheduling switches or an FPS acceptance.
+
+- 2026-11-22 collection-budget follow-through before repair: Current app fixes telemetry to Configdefault600s and permits only64–256MiB, although the underlying bounded diagnostic API supports up to3600s and explicit byte limits. CUA setup/reset/observation and complete input trials exceed this finite session, so A02 detail preflight correctly rejects insufficient remaining lifetime; original failure stays retained. Root will expose an opt-in integer maximum seconds(1–3600,default600) and extend the opt-in file ceiling to512MiB, retaining fixed producer ring, normal defaults/OFF behavior and byte/duration footer. This is diagnostic collection infrastructure, not a renderer/FPS policy. A02 closed per-measure reduction and actual missing-input-chain diagnosis precede further trials.
+
+- 2026-11-22 exact captured-target qualification: Private four-display controller/test passed actual242assertions/2GPUcases, then both were restored byte-for-byte; no private capture or scheduling experiment remains in canonical code/tests. Late capture stopped by the5s watchdog after3observed transitions, retaining65CBs/fourordinary-main bodies. Exact endpoints, independent sorted/unsorted capture role/order,18-render-instance sequence and matching captured/staged Metal-library hash bind captured post38672/group1871 to its later29.684625ms wait. Its atmospheric-haze encoder has19.889083ms Fragment activity including fullscreen and forward/alpha work; actual pack has27probes and bindingsradiance32/SH37/buffer1. This is not an isolated fullscreen haze/probe cost. Full65 and selected-command counter replays were stopped incomplete and provide no accepted counter measurements; actual live limiter collection is the next mechanism. Public251-test analysis qualification and exact A02 equivalence are separate from GPU acceptance.
+
+- 2026-11-22 ordinary completion timing: Fixed150–200s waited-target GPU-end→diagnostic-completion tails reach~100–125ms in both privatecap3runs; ordinary cap2 main-admission targets remain below1.73ms, while other cap2 wrapper targets have adverse tails. The diagnostic timestamp follows handler entry/status reads, with separate resource-retirement/owner/timing handlers also registered; execution ordering or exclusive cleanup cost is not inferred. CPU notification after the diagnostic completion is short. Keep these measured gaps separate from actual GPU execution and recorder-startup outliers.
+
+- 2026-11-22 current follow-through: Exact captured/native/MST command association is now established through unique endpoint matching independently validated against504 strong ordinary joins and capture API label/order/resource evidence; failed CPU lifecycle capture route and all unmatched/ambiguous commands remain excluded. Four new normal group2-final l01 input trials are provisionally complete; closed reduction follows. Actual3s PerformanceLimiters recording exits0; values export90s deadline is retained and bounded recovery proceeds. This supersedes prior pending-join current fields, without changing older history or asserting a shader/FPS fix. Canonical source restoration and private experiment boundaries remain explicit.
+
+- 2026-11-22 Owner elapsed-time feedback ended investigator-imposed repeat-policy sampling, not the broader task. Final six-run cadence/memory/input comparison and all exclusions are published in review-home-admission-20261122.md; frozen private export wording that collection was stoppedbyowner is clarified here: the owner asked for status, and Codex chose to stop low-value repetition. Private experiments are absent from canonical source/tests; normal candidate keeps cap2/original order. Home GPU work and exceptional completion-delay cause remain open with specific evidence, not a completed FPS fix.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner selects production-only fixes and contradiction consolidation on the usual branch. Added Home diagnostics, private cap3/early-adoption/capture arms and one-off analysis tools remain review-only at immutable a608; this record retains their evidence without installing them or declaring Home FPS repaired.
+
 ## PPD-320 — Quiet diagnostic sequence can miss between-capture world invalidation
 
 - Status: ready_for_owner
@@ -7829,8 +8276,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: New uncommitted diagnostic-only alquietdiagnostics.cpp heartbeat returns when no capture is active, so it cannot terminate an already-started quiet sequence on an app-iteration transition between early/late captures. Hook invalidation tests only gTeleportDisplay; LLAgent TELEPORT_LOCAL can transition without that screen. No original renderer behavior is changed by these hooks.
 - Evidence: Independent integration source review of the in-progress quiet diagnostic controller and actual llagent.cpp local teleport path; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md).
-- Next action: Retest the exact staged69200/fd5 controller with the owner quiet-scene session. Preserve finite attempts, normal rendering and explicit cutoff/invalidity; no architecture changes or automatic launch.
-- Verification: Actual production controller links/executes in the new native fixture: early-stop/between-capture invalidation45 assertions, collision25, active sink-cutoff33 and default-off12 pass in separate processes. Retained native traces/JSONL and exact commands are in private preparation correctness/. Compilation, fixture repairs and profiling-layer incompatibility are retained below; real viewer activation and owner acceptance remain pending.
+- Next action: Preserve controller/current-world regressions and qualify recurrence on the current source-pinned executable; do not direct relaunch of the old candidate.
+- Verification: The heartbeat/controller component and subsequent qualified captures exist; the old69200/fd5 launch identity is historical. Per-measure retention and world-phase identity remain required, with the original owner incident separate.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7846,6 +8293,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 combinedfd5 build69200 passes with diagnostic-only code and optimized source-recorded shaders. Actual fresh-process controller checks above confirm transient invalidation between captures and asynchronous sink cutoff cancel/terminate correctly. No retry/overwrite or GPU wait added. App entry invokes the cheap heartbeat even after sink disable; normal world scopes/batches/worker overlap remain unchanged. Ready for owner runtime; not a PPD-319 cause/fix or closure.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: alQuietDiagnosticsHeartbeat appviewer1397/1429; later completed native captures. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-321 — New diagnostic telemetry allocates while disabled and mishandles startup failure
 
 - Status: ready_for_owner
@@ -7854,8 +8304,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: In-progress default-off native diagnostic sink calls its allocating state() accessor from stop()/statistics(); new viewer cleanup would allocate the ring despite no collection request. Independent review also finds header-write/allocation startup failure needs descriptor RAII and active-session publication must follow successful writer creation. These are new diagnostic-only lifecycle defects, not an original renderer or measured FPS cause.
 - Evidence: [Diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md), root and independent source review of isolated codex/quiet-gpu-telemetry; retained native/core/observer-cost fixtures under private artifacts/metal/quiet-diagnostic-telemetry-20261116T160407Z and preparation receipts.
-- Next action: On explicit instruction run the verified69200/fd5 viewer and check actual activation/output/cutoff and observer cost across the quiet decline. Do not resume architecture optimization or push.
-- Verification: Corrected lazy existing-state lookup, descriptor RAII and writer-start handoff integrated. Combined native diagnostics plus policy1207 assertions/13 cases and renderer completion/submission/admission/lighting/shadow lifecycle10161/24 pass with API/GPU validation. Default-off controller12 assertions passes. Exact stage/static gates pass; original/utility-QoS prototype cost pairs are retained and do not prove viewer overhead or explain PPD-319. No viewer launch/profile occurred.
+- Next action: Preserve defaultOFF cheap guards and failure cleanup. Current explicit owner scope governs any new launch or measurement.
+- Verification: Disabled-sink allocation/startup failure corrections are source-integrated and later telemetry ran. Old69200-specific stop/resume restrictions belong to that completed session; telemetry-off overhead remains unmeasured outside the recorded controls.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7864,6 +8314,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 component lifecycle review findings retained during preparation. Original architecture work stays paused; no architecture optimization selected.
 
 - 2026-11-16 corrected sink integrated and combined-tested in fd5/69200. No ring allocation from never-started stop/statistics, no native object/asset ownership in queued records and no GPU wait for diagnostics. API/GPU-validation correctness is separate from frame capture with those layers unset. Ready for actual owner runtime, not owner-verified/closed.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: current owner scope; almetaldiagnostictelemetry.mm. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-322 — Manual Xcode launch rejected by document-versioning debug argument
 
@@ -7890,8 +8343,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Manual Xcode launch of staged69200/fd5 retains MTL_DEBUG_LAYER=1 plus GPUTools capture/interposer and MainThreadChecker/backtrace helpers. Prior manual setup guidance specified Metal frame capture but omitted explicit validation-off instructions. This is a measurement-configuration issue; the FPS penalty and original viewer performance cause are unproved.
 - Evidence: Owner-provided ~/Alchemy.trace, exact stable private copy/211file hashes and TOC at artifacts/metal/quiet-owner-manual-20261116T165709Z; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md). Safe context JSON records only relevant switches. PID61191/69200,62.766128s16:53:17.597–16:54:20.363UTC, STATE_STARTED16:53:35. Owner reports14–15FPSfromstart, never24.
-- Next action: Complete bounded CPU/GPU/log analysis, quantify directly attributable instrumentation CPU separately from wrapped driver work, and retain this as a slow-state diagnostic. A same-build/view control without validation/capture/debug helpers is required to measure their FPS cost; no new launch/profile without instruction.
-- Verification: Overview capture valid and starts before login; only aggregated GPU metrics/RunningCPU samples, no detailed encoder/shader capture or available per-frame rows. API layer enabled is proved; shader validation is not explicitly enabled in TOC. No proof that capture overhead accounts for the whole low-FPS state or earlier25→14decline. New runtime architecture-path differences under audit; do not attribute them to owner graphics changes.
+- Next action: Retain exact workflow/identity receipts and compare only genuinely controlled environments; do not wait for an already completed first validationOFF reproduction.
+- Verification: The frame decline was later reproduced through a validationOFF Terminal workflow and subsequent captureOFF baselines. This does not quantify validation/capture overhead or prove all helper routes equivalent.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7901,6 +8354,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 owner Terminal run62863 has explicit API/shader validation/capture OFF and zero sampled MetalTools/GPUTools/Backtrace/MainThreadChecker main-stack union. The24→14decline still reproduces. This establishes that the prior developer-helper work is absent and is not necessary for the original decline; it is not a matched OFF measurement of the manual session FPS penalty because restored architecture paths/loading/scene history also differ. No code fix or closure.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: record20261116 Terminal validationOFF history;20261122 captureOFF baselines. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-324 — Plain manual diagnostic launch omits selected architecture arguments
 
 - Status: investigating
@@ -7909,8 +8365,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Earlier exact69187/source92 owner session explicitly selected GroupSources, GroupSourceStability, ShadowViewOverlap and MainLightingRenderPass TRUE through --set launch arguments. Staged69200/fd5 preserves the source and FALSE defaults; manual Xcode Debug Executable guidance did not carry those run arguments. Runtime log confirms new group/stability/shadow-overlap/main-lighting preparation paths inactive. The owner did not need to change any visible graphics setting for this difference to occur.
 - Evidence: Safe filtered original session.json viewer_argv pairs plus old/new runtime control and census joins under private quiet-owner-manual-20261116T165709Z/analysis-log; [diagnostic ledger](work/active/quiet-fps-diagnosis-20261116.md).
-- Next action: Preserve this manual run as a distinct instrumented/default-path slow-state capture. Restore exact previously selected architecture arguments in the next diagnostic launch recipe, with validation/debug/capture modes explicitly bound. Do not change renderer defaults or resume architecture optimization. Owner still controls any new launch/profile.
-- Verification: Source/default/argument/runtime difference is confirmed, not an owner graphics change or measured cause of the old quiet decline. Current trace has no24FPS world interval and cannot be treated as a matched retest. Correction and actual same-configuration runtime remain pending.
+- Next action: Keep exact historical argv. Use current source/decoder/quality/identity protocol for future launches, without resurrecting retired architecture controls.
+- Verification: The old launch omitted19then-selected architecture arguments. Several associated bank/visibility/preparation controls are now intentionally retired under PPD543–546; restoring that old override list would not reproduce the current production policy.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7920,6 +8376,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 owner-run Terminal capture PID62863/69200 restores the exact19 prior override pairs, including the four TRUE architecture controls. CPU samples show native shadow-worker execution; runtime census verification is retained with the new analysis. This corrects launch provenance for the new run, without retrospectively matching the earlier manual run or proving an architecture FPS benefit.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llappviewer.cpp:3038-3044 retired names; current comparison-protocol. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-325 — GPU coverage gate mistakes explicit no-frame intervals for missing data
 
 - Status: investigating
@@ -7928,8 +8387,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: New quiet_capture.py coverage qualification measures the maximum separation between positive-frame aggregate bucket starts. A retained zero-frame aggregate is evidence of no associated frames, but is excluded from that continuity calculation. This is a collector classification defect, not an upstream viewer rendering defect.
 - Evidence: [Clean Terminal findings](research/quiet-terminal-findings-20261116.md); owner Terminal run /Users/dekstroza/Alchemy-quiet-l9vbrfzj, exact stable242-file/186388665-byte private copy and input receipt under artifacts/metal/quiet-terminal-analysis-20261116T172257Z. Recorder exits0 with180.691688s trace; cached CPU export covers180.414s and GPU families180.289s. coverage.json instead reports insufficient positive-frame GPU Begin to End coverage.
-- Next action: Complete analysis of retained data first. Then qualify aggregate coverage using actual retained rows/ranges while reporting explicit no-frame intervals separately; preserve the existing failed receipt. Do not suppress genuine missing data or assume why the viewer stopped producing associated frames.
-- Verification: Same-layer buckets explicitly report zero associated frames at trace69.292/70.349/71.358/72.309s, between positive buckets starting68.289 and73.306s. The resulting5.016658s positive-start gap exceeds the hard5s guard. A second explicit no-frame interval occurs126.295–128.364s. Native focus flags go OFF69.476→ON74.674s and OFF126.721→ON129.363s, aligning with these intervals; raw app iterations continue and visible/non-minimized flags remain set. These aggregates do not establish viewer0FPS. Full retained export is usable. No code repair or passing regression check yet.
+- Next action: Preserve explicit no-frame acceptance and real-gap rejection tests, including actual negative qualification. No gate weakening or collection rerun follows.
+- Verification: The explicit no-frame-versus-real-gap coverage distinction was corrected inbae0170c91. Retained history records179tests and positive/negative cached outcomes; true missing coverage remains a failure.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7939,6 +8398,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 repair integratedbae0170c91; valid zero-associated-frame buckets bridge retained timestamp coverage, positive/zero/invalid counts and positive-only gaps remain explicit. Missing/wrong-PID/all-zero/malformed/genuine-gap checks remain fail-closed. Exact-final179tool tests/harness/diff PASS in private quiet-home-tool-qualification-20261116T183912Z. Cachedl9 PASS actual1.05648s max gap; qy retains genuine5.524927s gap FAIL. No repeat owner recording requested and no renderer FPS claim. Owner verification remains pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: record20261116 repair/retest history;bae0170c91. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-326 — Native telemetry byte budget ends before the requested three-minute run
 
 - Status: ready_for_owner
@@ -7947,8 +8409,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Diagnostic telemetry intentionally has a bounded64MiB lossy asynchronous sink. The three-minute Terminal recipe had not been qualified against actual viewer command/event volume. Reaching the explicit cutoff is safe designed behavior, but leaves the requested native recording incomplete; it is not evidence of a renderer memory leak or the FPS cause.
 - Evidence: [Clean Terminal findings](research/quiet-terminal-findings-20261116.md); same immutable owner-run copy as PPD-325; native/diagnostic.jsonl SHA25602f5a102c0692bb016781752c2c4f74a456d0b7a4cd579cbae2d74f4273aed8d,67105193bytes. Footer and offline summary under analysis-native retain all loss, budget and pending counts.
-- Next action: Use the covered early/decline/late prefix before changing tooling. For a later authorized run, choose a bounded retention policy consistent with observed event rate and required duration, and retain explicit loss/cutoff reporting. No engine optimization or viewer relaunch is authorized by this defect.
-- Verification: Footer byte_limit after approximately163.85s from header/~149s after first world marker;339054 parsed rows,3430 raw app iterations, zero malformed rows,203 contention drops/141 budget drops/zero full-ring drops/zero I/O errors,20 pending committed commands. All requested world0–120s analysis phases precede cutoff, but individual unmatched/lost records and the unrecorded tail cannot be reconstructed. No full native-stream success or zero observer-cost claim.
+- Next action: Retain actual limit/header/footer facts and per-measure qualification; budget new runs from measured stream rates without asserting lossless telemetry.
+- Verification: The initial64MiB retention limit gained bounded configurable retention and header/limit tests. Current footers may still show contention loss or cap termination; a configured256MiB allowance is not proof of full command-stream coverage.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -7960,6 +8422,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 actual controller targetbuild0 at285c85e7df,18fresh-process startup/header checks PASS with API/GPU validation. Unset/empty/default and64/65/72/128/255/256/leading-zero boundaries accepted; out-of-range,negative/plus/whitespace/junk/overflow rejected beforeoutput. Source/binary/command/log/header receipts retained in privatequiet-home-fix-20261116T183158Z/controller-budget. No viewer run or complete180s native retention claim yet.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: record256MiB header controls; current lossy final native footers. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-327 — Native simple-alpha spilling and generated texture-selector storage
 
 - Status: ready_for_owner
@@ -7968,8 +8433,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Pinned1eb44 class3/deferred/reflectionProbeF.glsl601–641 uses named automatic/manual scalar pairs and explicit branches. Native almetal_builtin.metal6293–6338 stores five two-element thread-private arrays and indexes them by runtime family. Source semantics correspond; storage/compiler shape differs. This confirmed difference is a performance hypothesis, not proof of a regression or spill cause.
 - Evidence: [Actual quiet GPU findings](research/quiet-gpu-frame-findings-20261116.md); private quiet-frame-analysis-20261116T174649Z/analysis-gpu source audit and parent-replay-counter-observations.json. Actual early/late captures have mainprobe bounds1/20. Saved late recompiled shader A/B/A default-only traversal control125.57/91.45/121.62ms is a separate workload intervention; it does not rewrite accumulator storage.
-- Next action: Owner Home checkpoint of local840bae8c33/build69228; compare initial/settled FPS and quality and inspect actual selected pipeline census. Exact bound counts one/two select the qualified variants; generic owners remain. Keep all rejected experiments and timing drift. Broad architecture and PPD319 remain open. [Selector evidence](research/home-texture-selector-20261117.md).
-- Verification: Saved old69200 High2 selector A/B/A139.96/116.80/114.01ms; B214registers/0spill, restored A2224/304B with full lighting. Spill allocation removal confirmed, replay timing gain not established. All seven hot draws count2. Actual CMake librarya40a256 preserves generic native2716f and pair6ad8f without recognized stack ops; strict archives/sparse232images exact/27433assertions pass. Integrated466case executions/2387027assertions, doctor/build/strictsource/346ARM64/signature/exactstage pass. Private eligible overdrawcells14.6–15.8% lower GPU time, not live FPS. Full304B decomposition/dynamic traffic and owner acceptance remain unknown.
+- Next action: Preserve selected low-selector output/activation tests and current source-pinned recurrence checks. Keep broad cadence319 and unmeasured spill causality separate.
+- Verification: Low-selector simple-alpha specialization is integrated and observed in normal rendering. The old69228-only owner action is obsolete; recalled14to17FPS is not an isolated specialization A/B result.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8016,6 +8481,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 owner recalls settled Home performance before the fix at about14FPS and after it at about17FPS. Retain this as an observed/recalled practical improvement, approximately21%FPS or12.6ms/frame. It is consistent with the controlled304→0spill repair and faster eligible shader cells, but the exact causal share is not isolated. Later normal-mode telemetry confirms the repaired PSO is selected in sampled main draws; fresh untouched Xcode compiler fields remain blank/unknown(PPD343). The remaining within-run decline still needs a whole-frame explanation.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: shader low-selector entries;record normal-mode activation history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-328 — Material-alpha source samples the same SSR ray for two lobes
 
 - Status: investigating
@@ -8060,8 +8528,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Pinned1eb44 llviewershadermgr.cpp865–878 selects SHADOW_PCF_KERNEL2/4/6/4 and SHADOW_PCSS for quality3; shadowUtil.glsl compile-time branches select one filter. Native almetal_filter_directional_shadow reads quality from shadows.config.w and retains both PCSS and variable-width PCF, including thread-private wx[6]/wy[6] indexed loops.
 - Evidence: [Home repair ledger](work/active/quiet-home-performance-fix-20261116.md); exact original/current source audit. Saved quiet-qy viewer.log graphics statistic AlchemyRenderShadowFilterQuality2, not inferred from Q6. Runtime producer/bound-pack audit under way. Prior synthetic shadow costs used quality3 and remain stress evidence only; parity covered2/3.
-- Next action: Test optional bool function constant3 almetal_directional_shadow_high, true selects exact quality2, false/unset retains runtime quality. Specialize only the PSO actually paired with quality2 pack; generic quality3/other consumers retain fallback. Measure High2 count20 repeated blended draws separately from classic constant2.
-- Verification: Lost compile-time quality boundary source-confirmed; High2 specialization may remove PCSS and make six-wide PCF indices constant, but generated registers/spills/cost and Home FPS effect are unproved. Reverse-Z is shadows.config.z and must remain paired with its projection/bias; it is not depth clamp. No owner graphics setting or renderer PSO integration changed.
+- Next action: Keep High2/generic selection, output and required library compatibility tests; owner confirms any remaining affected scene behavior.
+- Verification: High2 directional-shadow quality Bool3 functions and matched highShadowPipeline selection are implemented. Retained native image/replay evidence establishes scoped quality selection, not an isolated live FPS effect.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8073,6 +8541,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 selected after actual saved late Home source A/B/A: 142.99→119.21→140.90 ms, Medium/Overlapping; installed original 140.89 ms. Fixed-quality2 shared-filter source intervention shortens replay 15.39–16.63% against adjacent recompiled controls, not live FPS. Simple-alpha registers245→224 but304-byte spill persists; light map/projector registers improve, PBRspill80→32/material32→0. Separate High2 overdraw fixture: 36 exact images, all60pairs favorable (~11–13%). Both saved logs report quality2; producer/pack chain verified. Earlier quality3 timings remain stress checks. Optional3 MSL local; exclusive world.cpp integration preparing37prebuilt matching-pack PSOs with generic fallback. Original logic restored before StopGPU/Don'tSave. Build, engine qualification, staging and owner Home acceptance pending. [Recorded evidence](research/quiet-home-shadow-specialization-20261116.md).
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: builtin.metal:7886;world.cpp:3326 highShadowPipeline;333 exact fusion follow-up. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-331 — Proposed High2 pipelines reject supported explicit older libraries
 
 - Status: ready_for_owner
@@ -8081,8 +8552,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Existing native reloadShaders(explicit_path) preserves a private older library without changing the shared main/probe epoch. stageShaderReload and previous-library fixtures retain generic rendering when optional executable features are absent. This native diagnostic contract has no original GL library equivalent; original shader reload likewise retains coherent owners and existing targets on failure.
 - Evidence: [High shadow integration](research/quiet-home-shadow-specialization-20261116.md); independent review of proposed world.cpp593486b123 / integratedfb6606552c. New37 High2 creates require boolconstant3 even for an otherwise valid older library lacking it; ALMetalRenderPipeline correctly rejects absent requested constants. Existing world-library/source-command/resource previous-library fixtures require the older private path to work.
-- Next action: Query actual declared bool metadata during pipeline construction. Preserve generic cloned descriptors when optional3 is absent, with an explicit compatibility label; when3 exists, specialize and propagate real creation failures. Verify current bundled library declares3 for all selected consumers and test an explicit fd5 reload with no3 against unchanged shared ownership and pixels.
-- Verification: Source-confirmed introduced compatibility regression found before viewer delivery; no user-visible runtime failure. A compatibility generic path cannot establish High2 performance. Exact staged source/library and metadata checks must prove the accelerated candidate uses3. No other shader fallback/backend or draw-time compilation is added.
+- Next action: Retain older-library and required specialized-library checks, without introducing another renderer/backend fallback.
+- Verification: Optional Bool metadata is queried before selecting High2 variants; supported older explicit libraries receive a compatible generic PSO clone. Maintained old-library fixtures cover that contract.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8090,6 +8561,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-16 root refines prior fail-closed instruction to preserve the existing explicit older-library contract. Independent source review found no pack/descriptor/lifetime blockers. Optional performance metadata absence is distinct from a failed real pipeline creation; retain generic behavior for the former, reject the latter. Actual tests/build pending.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: world.cpp:3332 hasBoolFunctionConstant;world_library_test.mm:213-221. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-332 — Native test matrix incorrectly enables shader instrumentation for disk archives
 
@@ -8099,14 +8573,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Native pipeline cache intentionally refuses to serialize shader-validation programs; original GL has no native binary-archive equivalent. Current almetalpipelinecache.mm239–243 increments shader_validation_bypasses and returns before archive mutation. Dedicated instrumentation tests require that behavior; disk-persistence cases require uninstrumented programs.
 - Evidence: [Home integration evidence](research/quiet-home-shadow-specialization-20261116.md); private combined-correctness/renderer-full-default.log at source060942a945,464cases/457pass/6fail/1skip. Five failed cases expect archive files/hits/serializations while global MTL_SHADER_VALIDATION1 correctly bypasses them. Dedicated instrumented archive case passed; one separate tile pixel mismatch is PPD-333.
-- Next action: Run disk-tag cases in fresh API-validation-only processes with shader-validation variables unset; run selective-instrumentation test with its documented explicit selection; run ordinary correctness with API/GPU validation and those incompatible tags excluded. Preserve initial failure rather than changing archive policy to satisfy a wrong matrix.
-- Verification: Wrong validation configuration confirmed by actual PSO instrumentation receipt and unchanged cache policy. No renderer/archive code regression established. Correct matrix execution pending.
+- Next action: Keep explicit6+1+1 mode partition and exact environment receipts; do not claim one global validation mode qualifies disk persistence.
+- Verification: Mode-specific pipeline-cache execution is recorded in later PPD333/458: disk persistence, actual instrumentation bypass and selective instrumentation run separately. The old globally instrumented disk-cache failure remains preserved.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-16 root full-suite invocation used one global instrumentation mode for tests with opposing requirements. Failed exit42 and all assertions retained. Do not claim all464 passed or treat archive suppression as a shader-optimization regression.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD333 history; PPD458 native6+1+1 modes. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-333 — High2 separate light-map specialization breaks exact fused probe parity
 
@@ -8116,8 +8593,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Existing native probe-lighting fusion requires exact parity with separately sampled RG8 visibility. Both producer entry points call almetal_world_light_map_value; this Apple tile implementation has no GL imageblock equivalent. Proposed High2 specialized the separate light-map producer while leaving its fused counterpart generic.
 - Evidence: [Home integration evidence](research/quiet-home-shadow-specialization-20261116.md); private combined-correctness/renderer-full-default.log and tile-parity-array-diff.json. Odd31x31/family2/reverse-Z/HDR/normal-HDR/shadows/quality2 case fails;63half components in21pixels differ on center row/column, maximum16half ULP /0.03515625HDR. Other457cases passed. No owner viewer run occurred.
-- Next action: Reproduce the focused failure, qualify matching prebuilt High2 fused light-map PSOs selected from the exact bound pack, and retest strict images without disabling fusion or weakening equality. Investigate map-level bytes if the shared specialization does not restore parity.
-- Verification: Pixel failure reproduced in the combined native suite. Source asymmetry confirmed; attribution to that boundary is a hypothesis until the focused repair passes. No global architecture rollback, quality reduction or accepted regression.
+- Next action: Retain exact separate/fused quality parity and original failure. Current owner scene/performance gates remain separate from the repaired component.
+- Verification: The separate High2 light-map path initially broke exact fused probe parity. The fusion repair and819focused plus2375887assertions/457cases are recorded after the failure; this is component correctness, not owner FPS closure.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8127,6 +8604,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-16 PPD333 repair819 passes strict probe fusion1526assertions/3cases plus full corrected renderer2375887/457; productionparity7580/2 and oldlibrary80/1 pass. Cachematrixcorrectmodes5905/6+98/1 pass (PPD332); no archivepolicychange. Budget18actualprocesses, all9acceptedheaders source819 pass. Combined69224 build/app/native gates pass, owner livechecks authorized/completed; Middaydecline27→15 remainsPPD319. Automated parity repairs are ready_for_owner, not closed or FPS-accepted.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD333 final20261116 history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-334 — Xcode source indexing exits during a private shader replay
 
@@ -8157,8 +8637,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-16
 - Original reference: Private experimental extension of the production-fragment fixture, not an original-viewer defect. Production water-plane discard is required behavior. New deep cascade/boundary receiver cases inherited the fixture plane z+8 and water_fog.z1; the intended surface can be discarded before shadow evaluation.
 - Evidence: [PCF control](research/home-pcf-control-20261116.md); private quiet-home-pcf-20261116T221358Z/extended-parity/ source revisions and independent review retained.
-- Next action: Before executing the new gate, move its synthetic plane below the receiver range and require actual non-clear covered pixels per case. Retain the initial source and review; do not weaken production discard or comparison tolerances.
-- Verification: Independent pre-run source review found eye_z below-8 triggers the inherited water plane. Positive clear RGB/alpha makes the proposed nonzero-image counter insufficient. No passing runtime result from these cases is claimed.
+- Next action: Keep the qualified positive-depth/coverage controls and image scope; do not repeat the completed draft correction or infer viewer-wide performance.
+- Verification: The private deep-receiver PCF fixture was corrected and executed39703assertions across1050actual production-fragment images with positive controls. The original unexecuted draft remains retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8167,6 +8647,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-16 registered before qualification repair. This invalidates the proposed extra-case coverage until corrected; existing frozen firstgate results do not claim these new deep cases. Engine/shipped fixture and owner captures remain unchanged.
 
 - 2026-11-16 corrected private setup and measured zero-draw clear controls pass39703assertions/1case and1050actual-production-fragment A/Bimages. Everyarm/case has2560/2560nonclearpixels; exacthalf output equality and finite/pixel thresholds pass.350runtimeprobe/bool0true and210genericQ2/High2pairs match;10ordinary-vs-probetap contrasts differ. Rawinitialunexecutedrevisions retained. No production water/shader policy changed, viewer launch or owner acceptance.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD335 final20261116 history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-336 — Private selector fixture compound assertions do not compile
 
@@ -8212,8 +8695,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Native diagnostic-only successful-descriptor census; no original GL equivalent. Normal-frame async telemetry deliberately avoids the legacy commandTimingEnabled path and its different scheduling.
 - Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); world.cpp21084 and pipeline.cpp3757; private apd4_a6o/analysis-live bounded-log/source-gate receipts.
-- Next action: Use the separately staged69230 normal-mode diagnostic candidate when the next repair group is ready; assess live sampled coverage and overhead without enabling legacy timing. Whole-viewer performance acceptance remains open.
-- Verification: Both census construction and log emission require ALMetalDevice::commandTimingEnabled. Qualified native async diagnostics alone does not enable it. A bounded64KiB live log read contains no selected-PSO rows, as expected from that source gate. Actual runtime3/4 hit coverage is unobserved, not proved disabled. Existing source/native/selection tests retain their narrower scope.
+- Next action: Retain normal-mode census guards and current actual activation receipts; use current source-pinned runs only for a specific remaining question.
+- Verification: Normal asynchronous selected-pipeline census is integrated and was used; old69230-only staging is historical. Sampled activation does not measure its overhead or establish every runtime path.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8223,6 +8706,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 producer repair4a8da26e27 plus fixture correction414baaf040 built as69230/exactbuilder e7190e89f892734fe017ac7222301d8f7f3f91ee. First full run452pass/4setupfail retainedPPD346; corrected affected/native cases pass12/36846 with API/shader validation. Four actual JSONL rows match successful main/probe descriptors and exact generic-control pixels/depth, rate/failure/default-off checks pass, zero fixture losses. Normal GPU batching/legacy gates preserved; no viewer69230 launch or new FPS/overhead acceptance.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD338 history/current native diagnostic telemetry. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-339 — First warm follow-up records settled scene instead of repeating login
 
 - Status: ready_for_owner
@@ -8231,14 +8717,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Owner's requested warm repeat concerns the login-to-settled FPS transition. This is private capture orchestration, not a rendering or original-viewer defect.
 - Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); apd4_a6o/warm-start.json, warm-result.json and preserved warm-overview; corrected7rbc49pc launch/record/result receipts and owner observations.
-- Next action: Use the corrected warm-login capture for the requested comparison; retain the interrupted settled interval separately. Review measured startup/settling evidence with the owner before further engine groups.
-- Verification: Wrong-scope same-session interval starts07:26:20, then owner explicitly requires login repetition. Agent requests graceful stop; target closes, recorder finalizes0/collector1, partial output retained. After that recorder becomes terminal, exact69228 relaunch68936 records the second login, receives owner30FPS startup/Shared environment reports and completes recorder/collector0. Full phase analysis remains pending.
+- Next action: Retain both attempts and use qualified replacement evidence. No current login collection is pending solely to correct this old sequencing error.
+- Verification: The first warm capture used the wrong startup condition; the intended warm-login replacement subsequently completed under the corrected workflow. The wrong-start capture remains excluded.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-17 owner correction acknowledged immediately. Urgent stop/owner-driven close/relaunch preceded this register update; chronology is retained rather than claiming prerepair registration. No failed/partial output is relabeled as the requested three-minute warm-login capture, and no renderer/settings change is hidden by the restart.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD339 history plus347/348 successful replacement. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-340 — Startup texture-cache bodies disagree with index size metadata
 
@@ -8248,8 +8737,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 and current lltexturecache.cpp1855–1874 perform the same startup1/256 entry validation, compare LLFile::size with entries[idx].mBodySize and mark/remove a mismatching entry. This is inherited cache behavior, not a demonstrated selector regression.
 - Evidence: [69228 checkpoint](research/home-checkpoint-69228-20261117.md); private selector-home-checkpoint-69228-20261117T0733Z/log-audit source/whitelisted mismatch receipts, original run logs retained privately.
-- Next action: Owner runs candidate69343 with the retained AlchemyNext cache and checks startup/loading across ordinary logouts. Preserve any new mismatch and its write sequence; do not clear the cache. Interrupted-write recovery remains a separate qualification limit.
-- Verification: A real LLFile shorter rewrite reproduces the inherited stale-tail producer mechanism. The combined producer/completion suite passes26cases/153checks underASan/UBSan after five baseline producer failures; candidate69343 is built and qualified. Exact historical mismatch causality and runtime recovery remain unproved.
+- Next action: Preserve cache-body metadata/short-read regressions and inspect only source-pinned recurrence. Do not delete owner cache or infer broader crash coverage.
+- Verification: Texture-cache body/index repair and subsequent candidate evidence are recorded; the old69343-only retest instruction is historical. Interrupted-write and every live-cache recurrence are not independently proved.
 - Owner verification: pending
 - Push approval: granted
 
@@ -8271,6 +8760,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD340 final candidate/history; related accepted cache528/532. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-341 — Private checkpoint analysis needs complete warning forms and precise sample bounds
 
@@ -8372,8 +8864,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Pinned1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp8455–8501 constructs the histogram with18,432parallel points into64bins before one-pixel resolve. Original plan requiresRGBA32F histogram; meter/history quantization isRGBA16F.
 - Evidence: [69228 GPU phases](research/home-gpu-phases-69228-20261117.md); native almetalworld.cpp exposure dispatch(1,1,1,1,1,1) and almetal_builtin.metal14316–14447; private selector-followup-20261117 exposure source audit.
-- Next action: Retain the combined69231 candidate and evidence for owner visual/runtime evaluation. Continue the separate growing Home-cost investigation; this fixed-cost repair does not close PPD319 or the original architecture/performance acceptance gates. Do not change precision or exposure behavior to seek further gains.
-- Verification: Selected ordered64-thread SIMD implementation retains tested histogram/history outputs and boundaries. Actual built library passes236exact half-vector cases; isolated primary GPU cost3.872167→0.590303ms with0/150adverse pairs and zero command-envelope overlap. Build/seven renderer cases75059assertions/staged8272nodes/346ARM64/signature/import checks pass. Connected B2/A2 retest observes69.20200→66.48788ms eligible period and46.38444→43.56011ms main wait in80–120s, with all49selected controls equal. Workload differs and only one sequential pair is available; exact live causal share/repeated acceptance remain unproved. New GPR/spill allocation is unknown; earlier560B and serialized~4ms readings remain separate evidence.
+- Next action: Preserve finite/exposure output and complete component controls. Do not reimplement the removed serial histogram or claim a full-viewer gain from the kernel result.
+- Verification: The native histogram now uses a64-thread SIMD/threadgroup implementation rather than one serial GPU thread. Actual component gain and mixed sequential Home observations are retained; overall cadence319 is not closed.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8384,6 +8876,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 implemented89c1a58838, builder7060967e3069f85d808d7b7ac6cca2bfef836dd2/69231. Build0/68.86s, seven relevant realrenderer cases75059assertionspass (including pending consecutive GPU history). Actualbuilta533 library passes236exacthalf-vectorcases and primarymode1 isolated300samples/arm/150ABBApairs, median3.872167→0.590303ms,0adverse/zeroenvelopeoverlap. All8272stagednodes/346ARM64/signature/import checks pass. GPR/spillbytesunmeasured. FirstHomecandidateconnectionfailsPPD348, noacceptedFPSgain; controllernormallogoutrepairPPD347/retestpending. See [implementation](research/exposure-simd-histogram-20261117.md).
 - 2026-11-17 corrected-controller healthy B2 then A2 both complete recording/normallogout0. Exact80–120s cadence is14.45045baseline versus15.04034candidateFPS, approximately4.08%higher in this pair; observed main wait drops2.82433ms while remainder stays~22.8–22.9ms. Overview agrees and late decodeCPU is0. Both still decline; B has more populated probes/objects/texture bytes, so this is not an isolated or repeated matched-workload acceptance result. Earlier14→17owner selector/spill observation remains separate because both new arms include that fix. PPD345 is ready_for_owner as a qualified component, not verified or a closure of Home/product gates.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: builtin.metal:14035-14196 threadgroup64;89c1a58838. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-346 — New telemetry fixture uses invalid provenance and retained-test parent mode
 
@@ -8431,8 +8926,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: AIS, capability404, attachment-expiry and circuit-timeout handlers retain original1eb44 behavior. Whether server, viewer/session handoff, local network or other state causes this incident is unknown; the renderer change is not established as its cause.
 - Evidence: [Home GPU phases](research/home-gpu-phases-69228-20261117.md); private ppd345-home-checkpoint-20261117 native/Overview/log audits for Alchemy-home-vigc4boq.
-- Next action: Preserve and exclude B1 from accepted FPS comparison. After correcting PPD347, make one fresh saved-location connected retest with the unchanged verified candidate and matched baseline if healthy. Stop treating startup capability failures, missing scene population or post-disconnect CPU spin as normal rendering.
-- Verification: B1 has44AISNotFound failure pairs/88warnings from world−6…+1s,21attachment expiries and EventPoll404 at+24s, repeated capability404 and circuit last-ping104.932s/drop/logout alert near+96s. Overview GPU ends+96.842041s; native world invalidates+97.560921s. Main CPU then spins~99.5%one core; native reaches256MiB byte limit+118.33s with full/contention/budget loss. A1 collector passes; B1 recorder0/collectorFAILED. At the common pre-disconnect window, objects7981vs3674, probes27–33vs43–50 and resource/light rectangles differ. No matched whole-viewer gain follows from these two runs.
+- Next action: Retain original disconnect and healthy replacements; investigate recurrence with exact simulator/capability evidence rather than attribute it to rendering.
+- Verification: The original Home checkpoint disconnect remains cause-unknown. Healthy B2/A2 replacement comparisons subsequently completed, so the requested first healthy rerun is no longer pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8440,6 +8935,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 registered from independent native, Overview and log audits before any retest. Both processes were exactly identified and exited after recording; no ERROR/FATAL or confirmed new renderer crash is observed. PPD347 may affect handoff but attribution is not established. Keep saved asset/cache data and all private raw evidence intact.
 - 2026-11-17 one corrected-controller B2 candidate and A2 baseline retest both complete normally. Their retained Overview CPU/GPU coverage spans the intended interval, with181positive GPU cadence buckets each and no B1-style cutoff. Initial/full warning screening finds no repeated AIS/event-poll/circuit failure; all6settings snapshots match. This restores a usable comparison boundary but does not establish the cause of B1 or a network-code repair. Native frame/workload qualification remains separate.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD34820261117 successful healthy replacement history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-349 — Copied checkpoint specifications retain stale version and library metadata
 
@@ -8545,8 +9043,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Exact named Metal function-constant metadata and explicit specialization are required before labelling a pipeline false/true. An empty function-constant dictionary cannot prove that a requested optimization was selected.
 - Evidence: [Home probe qualification](research/home-producer-sh-qualification-20261117.md); private home-automatic-probe-specialization-20261117/parity-harness draft7a71417d and independent evidence-agent source review.
-- Next action: Before compilation/execution, move optional Bool5 metadata validation outside the nonempty-dictionary branch; require its presence for explicit false/true modes, and retain generic old-library handling separately. Preserve the draft and review.
-- Verification: Root and peer source inspection find the explicit-mode presence/type/index assertions nested under dictionary.count!=0. A dictionary with no constants skips them and can mislabel a generic pipeline. Current candidate source is pinned, but the fixture must fail closed independently. No native compilation or GPU run has used this draft.
+- Next action: Retain fail-closed metadata checks and the later independent failure. No repeated precompile guard repair is needed.
+- Verification: The private specialization metadata guard was corrected and actually qualified40pipeline rows before the independent355failure. Generic old-library handling remains distinct; this did not select a production specialization.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8555,6 +9053,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 chronology correction: the fixture author had already added an outside-dictionary requested-mode guard in draft344950b1 before the peer reply and this registration. Exact7a714pre-fix draft is retained; registration precedes the remaining required/name/type/index metadata hardening. No compilation/GPU execution occurred in either draft and no result is relabelled. This is a private harness validation defect; no production PSO selection, viewer behavior or Home FPS attribution is established. Strict pixel thresholds remain unchanged.
 
 - 2026-11-17 corrected metadata guards execute in the preserved all-caller run:40pipeline rows validate named optionalBool5 and actual validationEnabled1 before the separate PPD355 pixel failure. No missing-constant path is relabelled; private fixture correction is ready_for_owner, not a viewer fix.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD354 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-355 — Private automatic-probe specialization changes strict water-helper output
 
@@ -8585,8 +9086,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Candidate bounds are half-open rectangles; a zero-width or zero-height rectangle has no covered pixels. Default0 remains deliberately included independently.
 - Evidence: [Implementation ledger](work/active/probe-candidate-preparation-20261117.md); new almetal_world_probe_candidate_tiles source and independent pre-execution fixture review.
-- Next action: Require nonempty axes for ordinary intersection while retaining malformed-rectangle fail-open and unconditional default0. Check exact GPU output against an independent rectangle oracle.
-- Verification: The initial four intersection comparisons can include an interior zero-width rectangle. This is conservative extra inclusion, not lost lighting. No consumer, GPU execution or performance claim exists yet.
+- Next action: Retain no-false-rejection and actual consumer gates; do not infer full-frame benefit or complete coverage from mask-word correctness.
+- Verification: The tile-mask kernel passed266520actual word comparisons and prepared consumers subsequently executed. Conservative extra inclusion is permitted; the old no-consumer/no-GPU statement is superseded.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8595,6 +9096,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 source finding registered before correction; new preparation is not connected to viewer consumers. Keep malformed rectangles full-candidate and invalid packets all-ones.
 
 - 2026-11-17 explicit nonempty-axis predicate integrated before execution. Actual kernel correctness29cases/266,520words passes exact oracle, zero guard changes/nonfinite native errors and input bytes unchanged, API/GPU validation enabled. Default0/malformed/invalid fail-open behavior retained. No scene/performance or owner acceptance inferred.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: builtin candidate tile kernel;PPD356 retest. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-357 — Reentrant candidate admission can hide an existing native prefix
 
@@ -8624,8 +9128,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Native tile-mask publication is new; original1eb44 reflectionProbeF.glsl probeHolds/traversal consumes current eye-space geometry and probe selection independently from SH/radiance values. Preserve all current lighting inputs and accepted taps.
 - Evidence: [Transparency preparation group](work/active/probe-transparency-preparation-20261117.md); almetalworld.cpp ProbeCandidateKey/prepareProbeCandidates and almetal_builtin.metal almetal_world_probe_candidate_tiles.
-- Next action: Owner Home→club checkpoint of69236; quantify real preparation reuse/consumer activation and whole-viewer results. Keep current lighting/quality and completion safety; no FPS gain is inferred from bounded reuse tests.
-- Verification: Corrected persistent key contains only exact4112B mask packet and kernel library/epoch. Current pack/count/manual/projection validation still precedes hits; miss-only full pack/P/I snapshots preserve reentrant failure classification. Canonical completed-lighting-change reuse, true dependency misses, library/epoch switches, abandonment, resident32/32MiB and prefix tests pass in final1225097/34 native run. Staged sourcef99b2daf14; actual Home reuse/FPS benefit remains unmeasured.
+- Next action: Preserve immutable probe-candidate identity/reuse tests and actual current consumer evidence. Any new cache change needs complete current costs.
+- Verification: Candidate identity/reuse preparation exists and later current captures/census supersede the old69236Home-to-Club action. Removing unrelated lighting identity does not itself prove fewer full-frame costs.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8637,6 +9141,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 source correction separates exact packet/library/epoch mask identity from miss-only borrowed full input snapshots. Current lighting remains independently published; positive reuse and original resident/reentrant/abandoned guards are in canonical tests627f59f5b1. Combined compilation/native execution still pending; no runtime FPS benefit inferred.
 
 - 2026-11-17 final native03 and existing renderer correctness pass with sourcef99b2daf14; staged69236 is exact and static verified. PPD361 records the old BASE test rejecting valid cross-cell reuse before its premise correction. No whole-viewer or owner-verified performance result.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalprobepublication.*;current actual source55-pack census. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-359 — New transparent parity fixture expects the wrong output stencil
 
@@ -8732,8 +9239,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Simple-alpha forward lighting serves the existing ordered pre/post-water rendering owners. Preparation should be selected only for supported standard simple consumers and preserve generic fallbacks; no broad activation claim follows from mask production alone.
 - Evidence: [Group1](work/active/probe-transparency-preparation-20261117.md); private goodrun /Users/dekstroza/Alchemy-home-e2onni_5 analysis/log-audit and actual Native prepared probe alpha log rows. [Post-water repair and qualification](work/active/probe-transparency-post-water-repair-20261117.md).
-- Next action: Current69241 Home1472 actual GPU draw30764 uses candidateHigh2pair with buffers8/9, matching16/16CPUprepared; both club main captures report all_full before admission. Complete four-frame cost/input qualification and general usefulness analysis. This establishes current activation, not the old69238draw38566fallback reason, saved GPU time or visual/FPS acceptance. Preserve legitimate fail-open behavior; no push. [Fresh checkpoint](research/home-club-replay-checkpoint-69241-20261117.md).
-- Verification: Old-gate post-only native test reproduces0versus2actual prepared draws. Minimal pre/post eligibility OR then passes1,777,824assertions/36native cases plus50,837/18existing renderer cases with API/GPU validation. New post-only8cell/50arm matrix preserves strict color/depth/stencil and rigid readonly-depth; cumulative activity survives same-frame generic/custom calls and shared reload, rejects invalid preflight publication. Full Release build and69238separate stage pass8272exact nonrootnodes/346ARM64/strict signature/owned directimports; indra3d4a2d9b/root035/builderf0c match. Actual in-world activation and FPS benefit remain pending; historical69236zero snapshots alone were not exhaustive coverage.
+- Next action: Use the current consumer/source/census map and unresolved GPU evidence; do not repeat an already completed four-frame routing audit as unperformed.
+- Verification: Prepared post-water routing was observed in69241 and current Home evidence; its absence in the older69236checkpoint remains historical. This does not establish all forward families use prepared candidates.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8761,6 +9268,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-17 fresh69241 successful encoding reasons distinguish current Home1472 ready25probes/full20/bounded4/16prepared from club5617 all_full10probes/full9/93eligible0prepared before admission. Actual Home draw30764 selects almetal_world_pre_water_simple_shadow_candidates_fragment/High2pair and binds arena projection8 plus immutable tile masks9. Current routing repair is active; no new100%all-view selection, mask savings, old69238reason, visual or FPS acceptance is inferred. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: builtin active simple/body candidates;current report,census. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-364 — Initial multi-scene capture draft retains teleport permission across terminal invalidation
 
 - Status: ready_for_owner
@@ -8769,8 +9279,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Native diagnostic mechanism has no upstream equivalent. A second capture generation is authorized only for a connected post-teleport scene; logout/disconnect/exit must not revive collection, and failed captures remain terminal.
 - Evidence: [Integration group](work/active/home-probe-cost-integration-20261117.md); private home-probe-cost-integration-20261117/capture-policy/orchestration-pre-review.diff retains the uncommitted first draft. Independent source review finds teleport_pending can survive a subsequent non-teleport invalidation and permit a later same-process readiness event to rearm. No viewer execution, unexpected capture or overwritten evidence was observed.
-- Next action: Clear pending permission on terminal non-teleport invalidation and exclude simultaneous disconnect/logout/exit from the teleport-only signal. Qualify policy and caller guards before the combined build/checkpoint.
-- Verification: Corrected caller source review and actual controller fresh-process positive/revocation tests pass. Two real stopped early captures prove generation2/private distinct output/Home preservation; revocation keeps capture_failed false while preventing later readiness from rearming. Seven controller cases265assertions pass under capture-supported configuration; full build/staging pass. Four actual SL workload captures and owner acceptance remain pending.
+- Next action: Retain clear/rearm/terminal revocation regressions and exact authorized scope. Do not carry permission from an obsolete session into future runs.
+- Verification: Teleport permission is cleared/rearmed through the corrected capture-controller lifecycle, with revocation tests and later actual multi-scene collection. Normal logout remains outside terminal failure handling.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8783,6 +9293,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 actual controller selectors rearm/revoke/conflict/native/cutoff/off/budget pass265assertions/seven fresh processes. Rearm produces two distinct stopped tiny-blit captures, original metadata/sentinel stay unchanged, third generation is refused; source-guarded terminal invalidation revokes permission without hiding behind a failure flag. No viewer or four-phase SL coverage is inferred. Initial unsupported validation configuration failures remain separately registeredPPD366.
 
 - 2026-11-17 actual69241 Home then club teleport produces two distinct generations and four stopped device captures223→224/1472→1473/4505→4506/5617→5618. Original Home and separate scene-2 archives are preserved; normal logout does not produce a third generation. Source revocation tests remain the direct terminal-rearm controls. Replay qualification is in progress; no owner visual/performance acceptance or closure follows solely from stopped metadata. [Fresh evidence](research/home-club-replay-checkpoint-69241-20261117.md).
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD364 finalhistory;366 supported capture-controller modes. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-365 — Private capture-aware receipt fails on a missing GPU export family
 
@@ -8847,14 +9360,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Diagnostic editor restoration has no original-viewer rendering equivalent. Restored controls require the exact original functional source before Reload; one Undo operation is not evidence of restoration.
 - Evidence: [69241 checkpoint](research/home-club-replay-checkpoint-69241-20261117.md); private run /Users/dekstroza/Alchemy-home-4slyg4mv/analysis/gpu/mask-home-restored-source.ax.txt retains the failed restoration attempt. After a multi-line typeText edit, one Undo removes the selected_masks=nullptr declaration but leaves diagnostic comment/indentation and an undefined selected_masks reference in the source editor. Verification catches this before Reload; valid compiledB remains active. Production source and original frame archive are unchanged.
-- Next action: Restore the exact original lookup through a bounded source-context replacement, verify both candidate entrypoint contexts and declaration/use before Reload, then require a completed restored-A profile. Retain the bad editor state and failed Undo assumption; never count it as a restored control or compile failure.
-- Verification: Failure observed in source-editor AX before any Reload or GPU action on that bad text. Correction and restored-A profiling pending. No engine rendering defect, compiler failure, Xcode crash or accepted mask-cost result is inferred.
+- Next action: Retain failed Undo and closure receipts; there is no old editor state to restore or desktop action to resume under this record.
+- Verification: The multi-line Undo attempt failed and its restored-control limitation remains historical; later profiles were stopped/closed. No successful candidate shader result is manufactured from that failed editing step.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-17 registered before correcting the private source editor. First valid maskB profile124.60ms versus adjacent unchanged-mathA128.10ms remains preliminary; a missing restored control prevents selection. All original archives, current production shader and staged69241 remain unchanged.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD368 retained private experiment; later final capture closure. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-369 — Private probe-return fixture omits actual compute shader-validation proof
 
@@ -8864,14 +9380,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Private GPU qualification has no original-viewer equivalent. Requested validation and a nonnull PSO do not prove the actual pipeline validation enum; claims must match each executed graphics and compute pipeline.
 - Evidence: [69241 checkpoint](research/home-club-replay-checkpoint-69241-20261117.md); private analysis/no-output-qualification source review edb95068 finds graphics PSOs check actual shaderValidation while mask_pso only checks nonnull. The fixture and planned1,233 comparisons are unexecuted. No disabled pipeline, false passing result or viewer defect has been observed.
-- Next action: Preserve the reviewed source and add the actual mask compute shaderValidation Enabled assertion, or explicitly narrow the qualification claim. Freeze current source/library/header pins and run only after replay profiling releases the GPU quiet window.
-- Verification: Independent source-only review finds this evidence gap and no concrete ABI/binding/comparator blocker. Correction and execution pending; compile/run/cost acceptance remain false.
+- Next action: Keep the private draft unselected/historical unless its exact corrective receipt is located. Do not classify it as a current production viewer defect or run it without current authorization.
+- Verification: This is an unexecuted private preflight evidence-guard finding. No exact corrected mask-compute ShaderValidation receipt is recorded for that draft; unrelated native passes cannot supply it.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-17 source review registered before qualification execution. This is a private evidence-assertion gap, not demonstrated invalid rendering or an actual failed validation configuration. Preserve all prior shader-validation configuration failures underPPD366 separately.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD369 source-only finding; original no-output fixture. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-370 — Private relation-failure evidence treats an artifact directory as a regular file
 
@@ -8881,14 +9400,17 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: Private correctness evidence must retain both compared planes on failure. A directory environment value must be validated as a directory, independently from source/library regular-file guards.
 - Evidence: [69241 checkpoint](research/home-club-replay-checkpoint-69241-20261117.md); private analysis/no-output-qualification frozen fixture34ea7f1e91d3b5e615c1d516ca20506dc6a96821008fb59699a88d4ec07ae403 source review identifies two new relation-failure paths calling requiredEnvironment(ALCHEMY_PROBE_TEST_ARTIFACT_DIR). The inherited helper requires a regular file, so it would abort before saving the additional generic-before or previous-SH planes. Existing current-plane save runs first. The source is unexecuted and no failure planes have actually been lost.
-- Next action: Use a narrow validated directory retrieval for those two paths, preserve the reviewed source and independently review the corrected failure-evidence path before any qualification execution.
-- Verification: Source-only reviewer and author confirm the guard mismatch. No compile/link/native execution or false passing result; comparator and renderer math are unchanged. Correction pending.
+- Next action: Keep the private draft unselected/historical or locate its precise corrected receipt. Preserve the failed evidence-path guard and do not schedule an engine repair from it.
+- Verification: The private draft used a directory path where its helper required a file. No lost framebuffer planes, compiled run or false passing result was demonstrated, and no exact corrective receipt is established here.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-17 registered before correction on the author's explicit hold. Preserve this private evidence-path defect separately fromPPD369actual compute-validation proof and all renderer performance findings. Planned1,233 comparisons remain unrun.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD370 original frozen private fixture. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-371 — New GPU-feedback fixture assumes the wrong existing optional in-flight cap
 
@@ -8966,8 +9488,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-17
 - Original reference: A stale outer transaction must reject its own attempt without invalidating a newer successfully published transaction. Reentrant source/working-set callbacks and exact immutable reader ownership must preserve progress.
 - Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); independent source review of new almetalshadowpublication.cpp Cache::seal owner-revision mismatch branch. Outer seal captures ownerR; a retain callback invalidates owner toR+1, reenters the same cache key/publisher and publishes validN. Outer Publisher rejects its stale revision, but outer Cache unconditionally publisher.invalidate() discardsN. Author confirms the counterexample. No wrong pixels, viewer execution or GPU failure is demonstrated.
-- Next action: Preserve the reviewed source and add a deterministic nested owner-invalidation/reseal reproducer. Guard outer cleanup against publication identity/revision so it only withdraws its own stale attempt; preserve a newer nested publication and its accounting/native leases.
-- Verification: Source-confirmed before repair. Existing invalidation tests cover callback mutation but not successful nested owner reseal. Reproducer/repair/retest pending; earlier helper passes do not qualify this transaction boundary.
+- Next action: Keep exact nested-publication and authoritative revision tests, accounting and fallback. Owner/runtime benefit remains separate.
+- Verification: Shadow publication uses current-child/witness logic and guarded installation, preserving a newer reentrant publication when a stale outer seal completes. Focused later378/383results supersede the from-scratch repair request.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -8976,6 +9498,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-17 independent reviewer and author stop before integration/repair and request registration. Keep the issue separate fromPPD372fixture trigger andPPD373native metadata lifetime repair; no production viewer has used this helper.
 
 - 2026-11-17 same reentrant cache transaction also exposes a statistics subcase: Cache uses a shared Publisher before/after resource_unions delta across callbacks. An inner successful seal increments once and its Cache accounts1; the stale outer sees the same shared delta and accounts it again. Assign this exact-count invariant withinPPD375 before correction, preserve reproducer/counters and do not infer native work or runtime benefit from the overcount.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalshadowpublication.cpp:272-342 witness/current-child install; retained shadow publication fixtures. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-376 — Main GPU feedback renderer includes a common header outside its include path
 
@@ -9027,8 +9552,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A derived publication depends on its current immutable membership, not every historical source. Obsolete callbacks must not invalidate a newer publication; current dependencies must still withdraw idle leases before COW, while real readers retain exact native generations.
 - Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); new Publisher constructs mDependencies once and reuses it for every source and group owner. After sealingA, changing membership toB and sealingB, removed sourceA still holds a weak subscription to that live observer; invalidatingA therefore discardsB even though A is no longer a member. No forget/replacement/epoch guard is present. This is a source-confirmed false invalidation/progress risk, not observed wrong pixels or a viewer run.
-- Next action: Preserve the source and add removed-child/current-child controls plus a nested newer-publication case. Separate persistent group-owner invalidation from current-generation child dependencies, retire obsolete edges and ensure an older in-progress callback cannot clear a newer publication or overwrite its observer ownership.
-- Verification: Integrator source review finds this after earlier mechanics/reentrancy cases pass. Reproducer/repair/retest pending; active reader native-resource protection must remain unchanged.
+- Next action: Preserve exact current membership and dependency-lifetime tests; do not recreate removed stale edges or infer owner-visible benefit.
+- Verification: Per-generation child dependency objects and the owner dependency split are implemented. Retained325/11 and348/12 component proofs cover changed membership and obsolete-edge retirement.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9037,6 +9562,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before repair/integration. Preserve old source and all prior receipts; do not infer complete dependency qualification from earlier callback cases that keep the same source set.
 
 - 2026-11-18 isolated component green11 passes325assertions/11cases on frozen exact old-ABI libraries. Removed-child/current-child controls and old-in-progress observer after nested newer publication pass. Follow-up sizeof-derived entry accounting is included in final green12 (348/12). No viewer/whole-engine gain claim.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalshadowpublication.cpp:186,272,288,342. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-379 — Temporary builder checkout loses tracked files and Git pointer at midnight
 
@@ -9071,8 +9599,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Existing native frame admission includes bounded deferral/progress eligibility. A derived owner must preserve its first unserved frame rather than reset that age on every view.
 - Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); new shadow cache passes the caller's oldest_dirty_frame to seal, but stores no pending age. The root draft bridge passes current budget frame each call. Sustained busy pressure therefore keeps the optional publication permanently young and can prevent the existing maximum-deferral progress path. Required old per-row rendering remains available; no viewer regression has been observed.
-- Next action: Store optional first-unserved frame per existing bounded cache entry (including valid frame0), preserve it through denials/revision churn, and clear only on exact retained/reused publication. Test existing busy/progress admission without changing policy thresholds or fairness credits.
-- Verification: Source review before integrated build. Reproducer/repair/retest pending; do not infer scheduling progress from component happy paths.
+- Next action: Retain original eligibility age, denial/retry and exact-publication reset tests without changing thresholds or quotas.
+- Verification: Shadow publisher stores first_unserved age and resets it only on exact publication, preserving denial age through retries. Current source implements the original source-confirmed missing-age correction.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9084,6 +9612,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 harness02 also flags the draft380 evidence citation and stale next-ID marker; correct those documented fields and retain the failed validation log. No source/runtime change follows from this schema repair.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalshadowpublication.cpp:367,450,515-517,564. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-381 — Automatic replay policy cannot explicitly sample the later settled Home workload
 
 - Status: investigating
@@ -9092,8 +9623,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: The active goal requires representative early/loading and settled GPU frames, with exact retained coverage qualified. A decline-triggered frame is not proof of the later fully populated workload.
 - Evidence: [69241 report](research/home-club-replay-checkpoint-69241-20261117.md); lateHome GPU frame1472 occurs around62s with25probes, while subsequent native logs reach41. ALMetalQuietCapturePolicy defaults late_min60s/fallback90s, exactly2attempts per scene; alquietdiagnostics.cpp exposes no timing override. Extending the CPU recorder to360s alone cannot move that second GPU sample into the later settled interval.
-- Next action: Preserve default decline behavior. Add one explicit bounded diagnostic-only late-age override,60–240integer seconds under existing300s maximum/two-attempt limits, with exact config telemetry and invalid-input tests. Use it for an additional later checkpoint, preserving default-timed and capture-disabled controls rather than relabeling62s as final settled.
-- Verification: Source/retained-coverage audit before correction. No new viewer run or performance conclusion; current late frame remains valid decline-phase evidence.
+- Next action: Preserve phase/time/coverage controls and current qualified late evidence. No first late-window implementation is pending.
+- Verification: Late180s capture/replay policy was implemented and exercised after the initial pre-correction finding. Retained GPU coverage failures still fail; a later sample policy does not repair missing data.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9109,6 +9640,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 actual late180 runtime sowsq5_l captures3625→3626 at180s with47main probes, versus54inlater native tail; this is a later FPS-plateau sample, not proof of the final populated configuration. Earlier228→229 has1probe. All traces replay/profile successfully on independent copies; original default timing preserved in77ib0k3e. Both replay runs keep normal GPU-gap failures, while separate normal control passes. Coverage improvement is verified at the actual retained phase; final/owner club acceptance remains partial.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD381 final20261118 history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-382 — Unguarded shadow group caching regresses tiny, changing and denied owner workloads
 
 - Status: investigating
@@ -9117,8 +9651,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Optional derived publication must amortize repeated owner work while preserving required serial output. Selective admission/stability guards must retain the shared architecture rather than promote demonstrated regressions or remove valid draws.
 - Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); exact frontier-cost-01 report626652ac under /Users/dekstroza/Alchemy-home-4slyg4mv/analysis/shadow-publication-implementation. ABBA/BAAB20blocks retain2880rows/36cells, correctness125348assertions passes, validation/capture off. Warm opaque1row handoff+35.04% (all20blocks adverse), covered1+44.78%; opaque2 is marginal-3.14%, opaque4-34.96%,8-46.85%,16-55.17%,64-61.00%,256-59.97%. Every-view cold+131..570%, revision/order/subset churn+15..165%, denied+13..101%. These are scoped owner-frontier CPU costs, not viewer FPS or GPU speedups.
-- Next action: Preserve raw controls and reject blanket/tiny-group selection. Apply demonstrated minimum/cold-stability/denied guards using existing owner and admission boundaries, then repeat exact corrected controls plus correctness on current integrated ABI. Required old rendering remains the fallback; no lower8192worker threshold, cull/quality change or architecture abandonment.
-- Verification: Root combined native978662/39 and full viewer build01 pass, but no new viewer run or performance acceptance. Unguarded source is retained in local commits; cost report excludes full cull/query/merge/encoding/completion and actual byte-pressure.
+- Next action: Keep the guarded selection and negative frontier. Revisit only with a changed mechanism and complete controls, rather than reactivate the rejected unguarded policy.
+- Verification: The unguarded shadow cache loses in tiny/cold/churn/denied complete-owner workloads; selected applicability guards and corrected04d23a0d evidence retain those adverse cases. No blanket owner gain is established.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9130,6 +9664,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 source-sensitive core0d067 (canonicalee990) passes478assertions/17cases; actual integrated afc9278 native run passes978792/44 and current-ABI frontier427323/3, validation1/capture0. Per-entry last-attempt bounds first-denied retries, required old outputs remain exact. Final cost04 retains5040positions/7regimes: warm4+ handoff~-31..63%, eight-frame cold-to-stable medians~-6..33%, but source-only residual~+4..15% and fresh busy-denial~+5..27% (4row3.311→4.204microseconds/7views,64row43.173→46.639; all20adverse). Four-row startup median improves while some upper-tail ratios regress. All adverses remain OPEN/UNACCEPTED; source stress deliberately shares inputs across3group keys, not exact independent SL-group incidence. Report04d23a0d/manifestdf22a906. No further architecture machinery this group: stage only a correctness/static-verified provisional combined viewer for authorized whole-engine Home comparison, no FPS/performance acceptance.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD382 corrected report04d23a0d history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-383 — Shadow dependency subscriptions can outlive row debt without proportional accounting
 
 - Status: investigating
@@ -9138,8 +9675,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Retained dependency preparation metadata needs bounded logical CPU debt through its own lifetime, including when cached rows have retired. This is not a physical UMA allocation-total claim.
 - Evidence: [Current integration](work/active/shared-shadow-and-main-gpu-admission-20261117.md); ALMetalShadowMembershipPublisher retains mChildDependencies in the cache publisher after working-set eviction can release the Member publication. Each input.producer.observe(child_dependencies) adds weak observation storage to Source State's Signal. Current payload charge covers rows/ranges/resources/Records and fixed entry observer objects, but no input-proportional dependency observation storage surviving independently. Signal.observe/notify prune expired subscriptions; persistent live watchers are distinct from expired weak slots. Entry and member-count bounds still exist; actual process-memory impact is unmeasured.
-- Next action: Charge conservative active subscription capacity and any added source-mutation witness/owner metadata under the existing global debt domain, with an independent RAII lifetime that can survive cached rows. Preserve owner-only observer operation, current/removed-child semantics and independent native completion leases. Do not call the resulting logical debt a physical whole-process total.
-- Verification: Source accounting audit before source-sensitive guard implementation; add eviction/no-row active-observer debt and final-retirement controls. No viewer memory or FPS regression has been measured for this omission.
+- Next action: Preserve dependency/accounting/cap/retirement tests. Measure only newly identified residual work; do not repeat already implemented debt accounting.
+- Verification: RAII witness/dependency debt is charged to source publication and released with exact owner lifetime; integrated978792/44 result is retained. Logical subscription debt is not unique physical UMA allocation.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9148,6 +9685,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before repair. Source-sensitive PPD382 gating must not introduce an uncharged long-lived watcher; retain previous scalar/metadata/native-only completion qualifications.
 
 - 2026-11-18 repaired core0d067/canonicalee990 accounts SourceWatch+observer/subscription capacity through an independent RAII ticket under the existing global32MiB logical domain. Native eviction/no-row active watcher debt, denied retries, removed-child and nested newer-witness controls pass478/17 isolated and978792/44 integrated native. Source-only peer receipts4f314167 andbd4653ee retained. This verifies the bounded logical metadata mechanism; no physical whole-process/UMA total, viewer memory improvement or owner closure is claimed.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalshadowpublication.cpp current dependency debt;PPD383 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-384 — First unattended Home control never leaves Login after CUA input
 
@@ -9199,8 +9739,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: GPU replay coverage and actual shader bindings must be retained without changing original frames or confusing tool/UI failure with renderer failure.
 - Evidence: [69258 checkpoint](research/shared-shadow-main-admission-checkpoint-69258-20261118.md); GPU agent actual default-late69258 frame1588 original-control profile completes110.26ms and records prepared main draw42772/buffers8,9. A subsequent typed reflection-buffer double-click/AX read reaches30s CUA timeout and resets its kernel. Both completed frames' counter categories remain saved. No source Reload, new timing result, app crash or viewer defect is established. Exact UI/transcript paths will be added with final GPU receipt.
-- Next action: Retain failed inspection and boundedly reacquire Xcode UI; prioritize remaining two control profiles. Mark inaccessible uniforms unknown; do not re-record the viewer or invent missing buffer values.
-- Verification: Two completed control profiles and saved counter snapshots precede the inspection timeout; remaining coverage/recovery pending.
+- Next action: Retain timeout/closure and export identities. Do not reopen an obsolete UI recovery action or transplant resource contents between captures.
+- Verification: The old saved-frame buffer UI lookup timed out; subsequent bounded exports/capture closure exist. The exact inaccessible old values remain unknown and cannot be replaced by the newer55-pack values.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9210,6 +9750,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 PPD386 bounded UI reacquisition recovers existing Xcode/profile without restarting Xcode or launching a viewer. All four unchanged controls complete67.91/110.26/66.80/131.43ms, counters67/44/116/107rows in all5categories. Stop/Finished/Replay and all work windows closed to Welcome observed; CUA completion summary sent. Failed call/recovery retained gpu-replay-69258-20261118/cua-tool-failure.json and default-late-probe-buffer.ax.txt; transient unretained quicklook numbers are excluded. Initial disabled-row-only count100 was corrected against full116API-indexed rows, with raw head/tail preserved. No new shader source/reload, GPU experiment, engine crash or exact ambiance inference. Final GPU report913f9bf6/receipt1ddb185b and native addendum6a7904 retain exact coverage/unknowns.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD386 finalhistory; new census actual-export manifest. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-387 — Checkpoint defect-register additions miss counter and citation metadata
 
 - Status: investigating
@@ -9218,8 +9761,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Every new retained defect record must advance the unique contiguous next-ID marker and include a Markdown evidence citation before handoff.
 - Evidence: [69258 checkpoint](research/shared-shadow-main-admission-checkpoint-69258-20261118.md); checks/final-docs-harness-01/receipt.json retains actual validate_harness.py exit1 at04:28:13UTC: stale next-ID marker plus missing Markdown citations for PPD385/386. The staged executable/library post-runtime hashes still match; no viewer/code/recording defect is inferred from this documentation check.
-- Next action: Retain failed receipt, advance the next-ID marker through this record, add links to existing evidence for385/386, and repeat the required documentation harness in a new evidence directory.
-- Verification: Actual documentation harness failure retained before correction; corrected check pending.
+- Next action: Retain failed01 and passed02 receipts and the mandatory metadata/link checks; no pending corrective check remains from this attempt.
+- Verification: The initial document/register harness failure is retained; final-docs-harness02 subsequently exits0 after metadata/link correction. No production rendering change follows.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9229,6 +9772,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 PPD387 corrected next-ID388 and Markdown evidence citations; final-docs-harness-02 actual validate_harness.py exits0 with33required files, empty stderr. Failed01 remains retained. This is documentation structure qualification, not viewer or performance acceptance.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD387 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-388 — Private scoped shader clone fails strict current-source parity
 
 - Status: investigating
@@ -9237,8 +9783,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A source-math-identical helper clone is not automatically output-bit-identical or compiler-isolated; preserve strict half-output/depth/stencil gates for production selection. Diagnostic wrong-image variants are separate from quality-preserving fixes.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); private checks/scoped-clone-parity-01/qualification.json e4ef7b67 records current239144 control vs6a7d5c99 scoped-clone gate. Compile/link succeeds,22pipeline validation rows are enabled;4images pass, case5 has1RGBA16F component mismatch and actual run exits42 (483assertions,482pass/1fail). Remaining1228planned images do not execute. Raw18failure files, inputs, exactcommands/binarye54a999f/librarya1f96e7e are retained. No prepared-target image was reached; no production/viewer failure is established.
-- Next action: Inspect raw bits/case identity and baseline/candidate compilation paths; qualify an A/A control if needed without changing tolerances. Keep clone unselected as a production improvement. Saved-frame cut diagnostics may proceed only with the strict-parity limitation and compiler/control changes explicit, unchanged/restored scoped controls and no quality claim.
-- Verification: Actual strict failure retained before diagnosis/correction. No tolerance change, rerun or source repair has occurred at registration.
+- Next action: Preserve strict nonzero outputs and exact endpoint scope; do not reopen or select the clone without new full-consumer bit parity and complete costs.
+- Verification: Two real strict scoped-shader-clone differences remain unexplained. Ancillary oracle/conversion corrections do not establish that clone parity; the representation remains rejected/unselected.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9250,6 +9796,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 full strict characterization completes1233/1233 with0unrun, nofatalinfra/parseerrors, overallexit42 retained. All549 actual offline production-entry images match exactly, including2preparedBASE/2preparedsimple/2preparedsimple-shadow images; configured4probe/mask/FC tests are not actual47scene proof. Two of684helper images each differ1component/+1half step (row1green62,9 and row53red57,20). Pairedinputs equal,176factoryvalidation rows1;75legitimateblackcontrols retained. PPD393 auxiliary expected relation stillfails separately. No production selection or tolerance waiver. Characterization report2a211a04/finalreceiptfaba1661 retained under original private checks/scoped-clone-parity-01/characterization-01.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD388/393 retained strict outputs. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-389 — Saved-frame source editor cannot receive bounded input
 
 - Status: investigating
@@ -9258,8 +9807,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Shader cuts require actual source-buffer edits and verified Reload/restored controls, not proposed file hashes or successful screenshot reads. No original rendering equivalent for CUA input delivery.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); fresh untouched47-probe replay completes131.36ms and retains all107counter rows before any edit. Actual fragment source editor opens, but AX SourceEditor click reports cannotClickOffscreenElement; coordinate focus reports noWindowsAvailable although screenshots show the editor and inventory lists Xcode running. No text mutation, Reload, variant profile, viewer or source edit is observed. Exact failure/attempt receipts pending GPU agent handoff.
-- Next action: Preserve actual failures and one bounded state/rebind recovery; confirm desktop/window availability rather than retry a blind10KB/full-file paste. Request owner desktop-unlock information if input remains unavailable. Continue independent source/correctness work after stopping replay and releasing the quiet window.
-- Verification: Unchanged A0 control qualified; shader-cut input route currently unqualified. Cause of input failure is unknown; no GPU/engine crash or shader performance result is inferred.
+- Next action: Preserve the failed interactions and closure proof. Do not resume old UI work or treat it as a current renderer blocker.
+- Verification: The saved-frame editor input timed out; later four profiles were stopped/closed and recovery receipts retained. The former desktop/editor recovery request is historical.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9272,6 +9821,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 first69264 workingcopy GoTo filepath entry throughAXtypeText/setValue didnotcommitfileeditor state; Meta key rejectedpreaction and onePerformanceelementstaledafterasyncprofilecompletion. No wrongcaptureopened/sourcechanged. ExplicitselectTextclear+individualnativepressKeycharacters openedverifiedexactpath; later3filesselectedobservedsamefolderrows. All4profiledstopped/closed,WelcomeobservedandCUAcompletionreceived; input-recovery.json retained.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD389 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-390 — Private GPU receipt generator has an unescaped apostrophe
 
 - Status: investigating
@@ -9280,8 +9832,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Derived evidence receipts must reflect actual completed runs; a failed metadata writer cannot manufacture a qualification result.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); final GPU receipt inline Python command fails at parse time on an unescaped apostrophe in Don't Save. No statements execute and no source/counter/profile result changes. Full report/numeric reduction already exists; exact command/error is retained separately.
-- Next action: Retain failed command/error and correct quoting in a new private receipt script. Reuse actual saved inputs/results; do not rerun profiles or relabel failed gates.
-- Verification: Parse failure observed before bookkeeping mutation; corrected writer pending. All profile/closure evidence remains independent.
+- Next action: Retain the corrected receipt/report and failed writers. No GPU rerun or production repair is required.
+- Verification: Both private receipt-writer quote failures remain preserved. A JSON-backed writer subsequently exits0 and pins actual completed controls/closure without rerunning profiles or changing source/library bytes.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9291,6 +9843,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 PPD390 final receipt writer had a second pre-execution quote error while quoting failure prose; both exact failed scripts/tool errors remain under derived/before-PPD390. New JSON-backed writer exits0, final receipt656cbbf1/report e332380e/focus60db1219 pin all actual completed controls and stop/Don'tSave/closure proof. No profiles are rerun, no source/library bytes change and no failed parity/coverage result is relabelled.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD390 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-391 — Private characterization assigns a read-only pipeline label
 
 - Status: investigating
@@ -9299,8 +9854,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Native pipeline descriptors own writable labels; an MTLRenderPipelineState label is read-only. Test-only metadata must not change rendering or fabricate endpoint coverage.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); peer review of private characterization draft82299770 identifies assignment p.label after PSO creation. Installed MTLRenderPipeline.h343 declares it read-only. Draft/patch retained in checks/scoped-clone-parity-01/characterization-01/precompile-readonly-label-draft/receipt.json. No compiler/native run occurred on that draft.
-- Next action: Retain draft and use a bounded host-side creation-function metadata map or writable descriptor label before creation. Preserve rendering, strict comparator and nonzero failure status; review corrected metadata routing before compile.
-- Verification: API misuse caught by source review before execution, not an observed compile/GPU/production failure. Corrected harness remains unrun.
+- Next action: Retain metadata-map qualification and failed readonly-label draft. Do not present completed metadata coverage as strict shader parity.
+- Verification: The corrected private characterization uses a host metadata map rather than assigning a read-only pipeline label. Full1233image and176metadata-row coverage completes; strict numeric failures388/393 remain.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9310,6 +9865,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 corrected characterization uses fail-closed host creation-function metadata map without changing PSO descriptors, labels or rendering. Full1233image coverage/176validation metadata rows completes; no readonlylabel misuse, no missingendpointmetadata. All initial drafts retained, ownerverification pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD391 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-392 — Private input-hash helper omits an actual RGBA8 sRGB texture format
 
 - Status: investigating
@@ -9318,8 +9876,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Input hashing must preserve the actual renderer resource format without changing its bytes, sampling or shader output. Unsupported metadata capture must fail closed and retain partial coverage.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); characterization-01/pre-rgba8-hash-failure/receipt.json retains native exit86 at09:10:46 after compile/link0. The hash helper rejects alpha_diffuse RGBA8Unorm_sRGB (fixture523), missing its4-byte handling. Three complete imageJSON rows remain; fourth material A/B comparison is exact but metadata hash is incomplete. No shader mismatch or production failure is attributed to this hash error.
-- Next action: Retain first attempt and add only raw4-byte support for RGBA8Unorm/RGBA8Unorm_sRGB, then rerun characterization under unchanged strict comparison rules in qualified02. No rendering/texture/comparator/tolerance changes.
-- Verification: Fatal infrastructure guard terminates as intended, exact unrun/prefix retained. Corrected hash writer pending.
+- Next action: Retain format correction, original86attempt and numeric failures. No repeat hash-format repair or passing characterization claim is warranted.
+- Verification: Qualified02 adds the actual raw4-byte RGBA8 formats; compile/link succeeds and1233of1233comparisons finish without hash/parse fatal error. Overall exit42 still represents real numeric failures.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9329,6 +9887,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 qualified02 adds only both raw4-byte formats; compile/link0, full1233/1233comparison coverage completes withoutfatalhash/parseerror. Original86 attempt remains preserved. Overall42 stillcorrectly reflects numeric failures, not a passingcharacterization.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD392 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-393 — Private classic-ambient contract assumes a different half conversion
 
 - Status: investigating
@@ -9337,8 +9898,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A CPU half initializer is not automatically the same conversion as a GPU RGBA16F attachment store; expected numerical relations need an independent format-correct oracle.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); the inherited never-run classic ambient relation reports5120components despite exact A/B GPU images. Both controls store (0x3028,0x32b8,0x34f5,0x3c00), whereas its CPU _Float16 expectation is (0x3029,0x32b8,0x34f6,0x3c00). Red/blue differ1half step across2560pixels. Raw outputs/expectation remain retained; no actual A/B or production lighting regression follows from this auxiliary relation alone.
-- Next action: Keep this CHECK failing and the run nonzero while completing diagnosis/actual endpoint coverage. A later independent attachment-conversion reference may qualify the relation; do not use candidate output as its own oracle or loosen the bit comparator.
-- Verification: Expected-versus-both-control mismatch source/bit evidence observed; exact conversion mechanism remains to be independently qualified. No fix or new shader result.
+- Next action: Keep strict failures and the new oracle draft unselected until its exact compile/run qualifies. Do not use candidate output as its own reference or reopen rejected predecode clones.
+- Verification: Independent same-device conversion proof establishes the auxiliary oracle domain mismatch for the tested inputs: rawF32/language-half RNE and buffer/literal RGBA16F store behavior are distinct. The source-only passthrough-reference replacement remains uncompiled/unrun, and two real helper differences remain.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9351,6 +9912,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 independent reference source4483/MSLc44c qualifies on M1Max/currentMetal3.1Fast/default options: rawF32 and explicitlanguage-halfRNE0mismatch; buffer/literal RGBA16F stores RTZ0mismatch (RNE76/128),384written pixels/all3actualPSOvalidation1. This proves the auxiliary oracle domain mismatch for these inputs without changing shaders/flags. Reportd094c806/summary4a4d91b5 retain rawfirst outputs. Source-only auxiliary repair now uses a separate same-device/same-format passthrough reference, never candidate output or universalRTZ; uncompiled/unrun. Two real scoped helper A/B differences remain unchanged.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD393 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-394 — Private cost invocation replaces the strict gate argument
 
 - Status: investigating
@@ -9359,8 +9923,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Cost runs must consume exact same-source strict/precheck receipts before device creation; command construction may not replace a gate with an output directory or reuse prior results.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); private tile-sh-consumer-pilot-01/cost-cell1-01-run-receipt.json records PID87471 exit1 at09:30:43UTC and stderr gate-file-unavailable. The inline wrapper changes argv5 (strict receipt) instead of argv4 (output). Host rejects before Pilot/device creation; no output directory or GPU observations are produced. Host/shaders and passed43/29 receipts remain unchanged.
-- Next action: Preserve failed argv/receipt; construct the complete invocation from named executable/library/output/strict/precheck/cell values and assert gate files plus new output before launch. Retry in a fresh cost-cell1-02 tag under the same quiet window; no compilation or comparator change.
-- Verification: Actual preflight failure retained; no cost or production result. Corrected invocation pending.
+- Next action: Retain exact corrected argv/gates and every adverse cost row; no wrapper rerun is pending solely for the original argument omission.
+- Verification: Corrected named-argument invocation completes three600observation cost cells with fresh strict/precheck gates and unchanged host/source/library identities. Initial bad argv is preserved; no old or partial result supplies the retry.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9371,6 +9935,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 corrected named-argument cost-cell1-02 exits0 with immediate A/A+A/B passes and600 observations (300/arm); original01 failure remains. Following cells3/4 also complete600 each. Host/source/library and gate identities unchanged; no false result was reused. Runtime wrapper repair demonstrated, ownerverification remains pending.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD394 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-395 — Private conversion-proof runner has invalid compressed ternaries
 
 - Status: investigating
@@ -9379,8 +9946,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A private evidence runner must parse before preparing commands or executing a source-pinned compiler/native binary; draft syntax failure cannot supply test evidence.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); ppd393-conversion-reference-01/pre-AST-draft/receipt.json retains source94538feb6c and AST SyntaxError at line36. The timeout and exit expressions contain else60/else0 rather than separated Python tokens. No planning/compile/GPU or production/oracle mutation occurred.
-- Next action: Retain draft/error; correct both token boundaries with normal readable Python formatting, rerun AST and source-only planning, then submit frozen reference sources for root review before compilation. No PPD393 expected-value correction before independent proof.
-- Verification: Source/AST failure observed before execution; native conversion mechanism still unqualified.
+- Next action: Preserve exact source/binary/command provenance and the original draft. No production shader or rounding policy changed.
+- Verification: The readable private conversion runner passes AST/source planning, then exactsource4483compiles underWall/Werror and independent proof exits0. Original compressed-ternary SyntaxError remains retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9391,6 +9958,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 readable corrected runner passes AST and source-only plan; later exactsource4483 proof compiles withWall/Werror0 and runs0. Original94538draft and SyntaxError retained. No private stale binary or shader/oracle change supplied results.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD395 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-396 — Private matched-control CLI accepts an unsupported cost selector
 
 - Status: investigating
@@ -9399,8 +9969,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Unsupported cost selectors must fail before device creation; the all-policy correctness label is not a measured comparison mode.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); source-only host-controls-02.mm05021 main accepts all-policies in cost mode, while selected() only accepts geometry/cache-loads. That invalid argument could reach initial device/A-A work before rejection. Valid proposed invocations are unaffected; no compiler/GPU run or numerical failure occurred.
-- Next action: Preserve draft, tighten only the mode-dependent selector check before device creation and re-pin source/plan; valid strict/precheck/cost behavior and numeric criteria remain unchanged. Review correction before compile.
-- Verification: Caught by source review before execution. Unsupported invocation has not run and no result is claimed.
+- Next action: Retain fail-closed selector/gate identity checks and all cost results. No correction or activation follows for the unsupported selector.
+- Verification: Unsupported cost-selector admission was guarded, hostcompiled0 and qualified with fresh strict87/precheck59 plus six matched cost processes. New binary identity supplied every gate; no stale gate was reused.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9411,6 +9981,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 corrected32bdaab guard is reviewed and hostcompiled0; fresh strict87/precheck59 and six matched cost processes allpass with newbinary9fa7b55f. Unsupported selector remains excluded beforedevice by source; no oldgate reuse or weakenedcomparison.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD396 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-397 — Private conversion reference uses a deprecated sample-count property
 
 - Status: investigating
@@ -9419,8 +9992,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Fresh Metal fixtures must use the installed supported descriptor API and retain compiler warnings; do not weaken warning flags to pass an obsolete API call.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); conversion-proof.mm0448fbe6 sets d.sampleCount under the proposed -Wall/-Werror command. Installed Xcode26.6 MTLRenderPipeline.h190 marks this property deprecated since macOS13 with rasterSampleCount as its replacement. Source review caught it before compile/native run; no actual compiler failure is claimed.
-- Next action: Preserve draft, change only the descriptor property to rasterSampleCount=1, re-pin source-only plan and retain -Wall/-Werror. Numerical inputs/oracles, output formats and rounding flags remain unchanged.
-- Verification: Installed SDK/source mismatch observed before execution; independent conversion proof still pending.
+- Next action: Preserve the actual API/PSO proof and original failed draft; no production setting or shader rounding repair is implied.
+- Verification: The private proof replaces deprecated sampleCount with rasterSampleCount; exactsource4483compiles underWall/Werror and actual three-PSO validation proof exits0. Source/SDK deprecation evidence is retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9430,6 +10003,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-18 onlysampleCount→rasterSampleCount correction source4483 then compiles withWall/Werror0; native independent proof0 with actual3PSOvalidation1. Originalsource/SDKdeprecation proof and stale prepared01 plan remain retained. No production setting/rounding change.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD397 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-398 — Catch2 attribution generation lacks a copyright-holder identity
 
@@ -9457,8 +10033,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve wearable/appearance behavior and duplicate/rollback guards; distinguish misleading diagnostics from avatar rendering defects or active network work.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); incoming isolated codex/appearance-warning-investigation-20261118 handoff reports that first valid wearable insertion can warn before creating its type bucket. It also reports equal-version24621 stale duplicates and redundant bake returning before POST. Exact source/report remains pending integration review; no canonical source repair or avatar/FPS attribution is established.
-- Next action: Review the isolated warning report/raw evidence and emitting source, retain duplicate/rollback/bake safeguards, and allocate399 consistently because389 is already occupied. Keep code unchanged until any diagnosis/repair is qualified.
-- Verification: Incoming investigation only; root source verification and any repair/runtime retest pending.
+- Next action: Retain valid-type/no-warning and actual insertion tests. Any reported visual propagation/network/bake behavior remains separately owner-qualified.
+- Verification: Warning-only getWearableIndex insertion correction is integrated and the exact appearance suite passes883/18. Later69264Home/Club tour has no llwearabledata.cpp warnings, a bounded negative observation rather than avatar propagation acceptance.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9476,6 +10052,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 owner69264 Home/club runtime has0llwearabledata.cpp warningrows; expected otherappearance/assetcallback groups remain source-mapped. ExactgetWearableIndexrepair supports absenceofoldvalid-typefalsewarning, notfullavatarpropagation/visualacceptanceorFPScause. Automated andpriorred history preserved.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD399 finalhistory actual getWearableIndex repair. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-400 — Root tile-policy field is placed in the adjacent color-grade type
 
 - Status: investigating
@@ -9484,8 +10063,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Tile geometry must belong to immutable BASE/forward view inputs; color grading is unrelated and must retain its layout/behavior.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); root diff review finds the new forward lighting_raster_tile_size member after tone_curve_amount in ALMetalWorldColorGrade, rather than ALMetalWorldOpaquePostDeferredScene. Root-geometry-integration-01/before-forward-field-placement.h retains the exact unbuilt source. Forward consumers refer to a missing member; no compile/viewer run or runtime defect occurred.
-- Next action: Remove only the misplaced member and place it at the actual opaque-post-deferred scene boundary, preserving color-grade source. Re-review the full source and include actual world qualification in the next ABI-consistent build.
-- Verification: Source integration error caught before compilation; no successful native result attributed to this draft.
+- Next action: Retain correct scene ABI/caller tests and defaultOFF diagnostic qualification; no field-move/recompile repair remains.
+- Verification: The policy field now belongs to ALMetalWorldOpaquePostDeferredScene; ColorGrade is restored. Full ABI rebuild02/finalRelease06 and actual world-main1255075/11 plus backend/readiness698443/32 pass; original wrong-placement failure remains.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9498,6 +10077,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 full ABI rebuild02 and finalRelease06 pass; actual world-main1255075assertions/11cases and backend/readiness698443/32 pass on final25faff/cf8355. The field is correctly in ALMetalWorldOpaquePostDeferredScene; no ColorGrade state remains altered.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalworld.h opaque-post scene;PPD400 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-401 — New lighting tile census is dropped by shader reload
 
 - Status: investigating
@@ -9506,8 +10088,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Cumulative renderer telemetry must survive a successful same-owner shader reload alongside its other lifetime counters.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); Read-only peer review515b659e confirms commitShaderReload copies other cumulative stats but omits the new lighting_tile_stats before swapping Impl. The unbuilt experiment would reset these counters after reload; rendering is unchanged.
-- Next action: Root0ad repair and final populated-census native reload test pass. Keep owner checkpoint and viewer counter continuity distinct from the verified component test.
-- Verification: Source repair plus final actual native populated-census reload test pass; all15fields and retained/rerendered output are equal. Whole-viewer counter continuity and owner acceptance remain pending.
+- Next action: Keep populated reload-census tests and separate real forward-output fixtures. No census-copy implementation task remains.
+- Verification: Actual compound/reload tests populate both owner histories and preserve all15named census fields across successful public shared-shader reload, then rerender exact pixels. Empty forward proves telemetry retention, not alpha contribution coverage.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9520,6 +10102,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 final actual native compound/reload tests pass within world-main1255075assertions/11cases at25faff/cf8355. Positive BASE and real empty-forward encoder calls populate both owner histories; all15 named census fields remain equal across successful public shared-shader reload, then rerendered pixels remain exact. Empty forward proves telemetry retention only; separate world fixtures prove alpha contributions.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD401 actual15field reload test history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-402 — Lighting tile telemetry omits each pass requested and effective policy
 
 - Status: investigating
@@ -9528,8 +10113,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Actual16 dimensions alone cannot prove explicit selection because automatic hardware choice may also be16; runtime evidence must distinguish request, capability fallback and actual dimensions.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); Read-only peer review515b659e confirms the new stats record actual dimensions only and the log prints the current global control, which can differ from earlier passes. No runtime activation or performance result was inferred from this source-only telemetry.
-- Next action: Root0ad records original request/effective policy separately from actual dimensions at every BASE/forward begin. Actual real-world parity and cost assertions now validate activation; owner routing/census still needs the whole-viewer checkpoint.
-- Verification: Actual API/world/compound tests and all5400cost samples distinguish requested/effective/actual policy. Whole-viewer main/probe routing and continuation split remain pending; no FPS acceptance.
+- Next action: Retain policy/census/output tests and full costs; qualify only a specific unobserved caller or policy question before new selection.
+- Verification: Requested/effective/native tile policy and dimensions are recorded and asserted with actual compound BASE/sky/point/projector participation and exact outputs. Complete cost rows remain separate from unobserved full viewer-routing coverage.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9542,6 +10127,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 final compound path explicitly asserts original/effective/native16 policy and actual BASE+sky+point+projector PSO participation in one encoder, with exact output/depth/stencil/stores/query controls. New runtime owner routing and continuation-family split remain unobserved in a viewer; no full coverage waiver.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD402 final compound-path history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-403 — New atmospheric-restart fixture can discard its post-restart alpha draw
 
 - Status: investigating
@@ -9550,8 +10138,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A renderer restart parity test must prove the post-restart draw contributes; matching pixels and begun-encoder counts from an earlier draw cannot establish later alpha coverage.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); peer review of unrun newworld fixture4812b69 confirms atmospheric marker places ordered2 after-water, while inherited water-plane(0,0,1,-100)/sign−1 causes that draw to discard after the original post-water sign flip. The earlier pre-water draw can satisfy positive-output and actual-tile counters. No production change or native test failure is attributed.
-- Next action: Corrected3.875 plane and post-draw omission control pass the actual-world native parity suite. Preserve the source-only failure history and confirm ordinary viewer visuals at the next checkpoint.
-- Verification: Initial draft caught before compilation/GPU; corrected3.875plane and mandatory omission control pass actual final world parity. No owner visual acceptance.
+- Next action: Retain mandatory alpha omission difference and full output/depth/query controls; owner visual acceptance remains separate.
+- Verification: The atmospheric-restart fixture now requires a visible post-restart alpha contribution: omitting that draw changes color. Actual world parity02/03 passes with API/GPU validation across material/PBR/rigid/skinned/water/haze paths.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9564,6 +10152,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 corrected fixture passes full actualworld parity02/03 with API+GPU validation1 and mandatory post-restart omission difference. Scope covers actual ordinary material/PBR/rigid/skinned/water/haze output paths, not owner visual acceptance.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD403 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-404 — Actual-world tile fixture rejects its first material-alpha attribute declaration
 
 - Status: investigating
@@ -9572,8 +10163,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Material/PBR parity requires a valid real vertex/texture attribute contract; a failed fixture setup cannot prove a production rendering regression or qualify unrun cases.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); world-raster-parity-01/receipt.json records native28541 exit42, binaryd31b384e/source90ff23f7/indraf391 with unchangedfae7 library, actualsamefactoryvalidation1. BASE case passes; alpha reaches family1/i0/prewater/rigid/generic then input.render rejects batch0 at fixture574 (textures2/materialslots2/pbrslots0/alpha1/glow0/rigged0/min-alpha.004).804722assertions pass before1failure;2cases entered, remaining alpha/atmosphere/water unqualified. Rawstdout/stderr retained; no cost run.
-- Next action: The three authored declarations are corrected: material mode1, PBR mode0 and UV1/UV2 aliases to the valid UV0 stream. Complete actual-world parity passes; preserve the failed bundle and require owner visuals for viewer acceptance.
-- Verification: Initial fail-closed rejection and invalid authored mode/UV declaration confirmed; three fixture-only corrections pass full final world/main parity. Failed bundle/history retained; no production regression/guard relaxation or owner visual acceptance inferred.
+- Next action: Keep actual material-alpha/PBR attribute admission and positive coverage checks. Do not repeat the corrected fixture repair or claim production regression.
+- Verification: Test-only attribute/material declarations were corrected without production guard/math changes. Fullbuild04/05 and actualworld parity02/03 each pass1249016/4 with validation; original native rejection and unreached suites remain retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9584,6 +10175,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 cause confirmed against production validation: authored legacy material_alpha_mode0 was invalid for the material path; PBR needs mode0 and all declared UV streams must be present. Isolatedc588/root6a2 changes only three fixture declarations. Failed native28541 bundle/binaryd31b384e retained under world-raster-parity-01. Fullbuild04/05 pass, actualworld parity02/03 each pass1,249,016assertions/4cases with validation1 and unchanged production shader/math/guards. No tolerance change or cost from the failed run.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD404 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-405 — Private world-cost reducer assumes the wrong probe-count column
 
 - Status: investigating
@@ -9592,8 +10186,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Reductions must use the actual retained CSV schema and never relabel, drop or rerun valid native observations to hide an analysis failure.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); world-raster-cost-cell0-01/reducer-failure-01.json retains inline KeyError configured_count after600 rows parsed. Actual header is configured_probes. No summary had been written; native cost exits0 with300observations/arm andactualvalidation2. Raw output/source unchanged; no renderer/test failure.
-- Next action: Corrected reduction uses configured_probes and qualifies unchanged600rows/300perarm/150completeblocks. Retain the failed reducer receipt; use paired block estimates and all adverse blocks, without replacing native samples.
-- Verification: Failed reduction retained, corrected schema-only reducer qualifies unchanged raw600rows. Cell0paired ratio is neutral; all adverse pairs retained and no native rerun.
+- Next action: Retain the corrected schema and unchanged raw reduction. Do not rerun GPU work or relabel a neutral result as a positive optimization.
+- Verification: Corrected reduction of unchanged600rows succeeds with300perarm/150completecounterbalanced blocks and actual32/16modes. Paired GPU ratio1.0000708 is neutral; the initial probe-column KeyError remains retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9605,6 +10199,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD405 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-406 — Private build-warning evidence writer fails before execution
 
 - Status: investigating
@@ -9613,8 +10210,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: An evidence-writer parse failure cannot create a successful report or invalidate independently retained build diagnostics; keep the failed attempt separate.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); combined-build-warning-review-02/evidence-writer-draft-failure.txt preserves the heredoc generator SyntaxError at line151 caused by nested triple-quoted report text ending the outer string. The stdin script did not parse; no audit.py/report/receipt was written or executed. Independent build03/04/05 receipts and raw log counts are unchanged.
-- Next action: Preserve the parse failure, replace only the private evidence writer with a directly authored file, syntax-check it and regenerate the warning inventory from unchanged logs. No native test or build rerun is required.
-- Verification: Initial parse failure retained; corrected direct writer passes AST/execution0 and pins unchanged build03/04/05 raw logs/counts in a generated report. Build06 appendage is separately retained; no build/native rerun.
+- Next action: Retain exact warning inputs, corrected receipt and failed writer. No pending production/build repair follows.
+- Verification: The private warning writer passes AST/execution0 and reproduces unchanged build03/04/05 inventories20/5/5warnings,0errors. Initial parse failure is retained; no native/build rerun or suppression occurred.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9626,6 +10223,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD406 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-407 — Latest checkpoint paragraph move exceeds recovery-document line caps
 
 - Status: investigating
@@ -9634,8 +10234,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: CURRENT and the main active ledger must remain within their160/180line recovery limits; moving the latest observed state must preserve bounded recovery structure.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); checks/final-document-validation-01/initial-failure.json retains both failed harness diagnostics and actual line counts. Moving the existing accepted-probe paragraph to the top inserted an extra blank line in each already-at-limit document. A combined shell wrapper returned the final command0, so the harness exit was not retained separately; its explicit failure diagnostics were observed and are not called a pass. Diff check separately reports a new final blank line in this register.
-- Next action: Whitespace-only correction and separate captured harness/diff exits pass0. Keep the initial failed diagnostics and standalone-check receipt; do not treat the earlier combined wrapper0 as a harness pass.
-- Verification: Initial line-limit/EOF failures retained; whitespace-only correction passes separate harness33 and diff-check0. No source/build/app/cost/owner acceptance changed.
+- Next action: Preserve line-cap/link/whitespace checks and both failure/pass receipts; no new app or cost run follows.
+- Verification: Whitespace-only recovery-document correction passes standalone harness0 and diff-check0; previous failed wrapper and staged application identities remain retained and unchanged.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9646,6 +10246,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 optional blank lines only removed, all prior facts retained. Standalone harness0 (33requiredfiles) and diff-check0 are captured in checks/final-document-validation-01/receipt.json. No production change or replacement app/cost execution.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD407 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-408 — Combined Home/club Overview recorder exceeds its raw-size guard during finalization
 
 - Status: investigating
@@ -9654,8 +10257,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: A stopped recorder and finalized trace do not establish complete CPU/GPU coverage. Preserve size-guard failures and qualify the retained data independently without relabeling the failed collector.
 - Evidence: [Accepted probe work](work/active/accepted-probe-lighting-20261118.md); private Alchemy-home-jhdlfjso/overview/session.json statusfailed and terminal-result recorder_exit_code1. Underlying xctrace recorder_exit0, operator stop12:12:27UTC, max_observed_raw_bytes2223515824 exceeds2048MiB guard during finalization; final_trace_bytes86782294 is preserved. Four device-allqueue capture metadata records stopped Home219/220+3326/3327 and club4498/4499+7893/7894. Native206633219bytes/1129082records/0malformed at collector audit remains below256MiB. No CPU exports or coverage qualification executed by the failed collector.
-- Next action: Keep failed session/transcript and all captures. After the owner closes the viewer, perform bounded read-only exports/coverage analysis of the existing finalized trace in a new evidence directory, separating capture gaps from normal-frame claims. Determine size-guard/finalization cause; do not silently raise the failed run cap or rerun the viewer.
-- Verification: Four stopped capture intervals and raw trace exist; replay contents, GPU profile and CPU retention are still unqualified. Source says the active-display policy stops triggering if telemetry is disabled; native cap did not block these four captures.
+- Next action: Use current per-table/phase coverage and exact-command joins. Preserve retention failures, native loss/cutoff and alignment limits; no original stalled-recorder recovery task remains.
+- Verification: Later continuous Overview traces retain about181spositiveCPU/GPU data and about164sactualworld each. Successful short MST retries exist; failed raw-size/finalization attempts remain excluded. Club789ms observer hole is excluded while native frames/commits continue, not called GPU idle.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9670,6 +10273,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 final investigation: Both continuous Overview runs retain~181spositiveCPU/GPU data, about164sactualworld each. Failedraw-size/finalization captures remain excluded. Short ClubMST has789msobserverhole while native15frames/268commits continue; exclude it ratherthanclaimidle. Successful short retries and exactcommandjoins support dependency diagnosis, not lossless all-table capture. Nativecontentionloss/cutoff and alignmentlimits are retained in the [finalreport](research/performance-investigation-20261122.md); no blanket collectorclosure.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: performance-investigation-20261122.md MST coverage/native joins. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-409 — Early frame admission loses the preceding required-main GPU pressure
 
 - Status: investigating
@@ -9678,8 +10284,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: New native frame-wide coordination must preserve required-main priority and eventual texture/probe progress. Original1eb44 textureFIFO/probe update behavior is the functional reference; a Metal GPU-completion pressure policy has no direct OpenGL equivalent.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); alnativeframeplan.cpp100 seeds only previous_required_cpu, while alnativeframebudget.cpp240–253 clears measured GPU wait operands at beginFrame. Earlier texture/update/upload work precedes later required-main wait observation. The source gap prevents earlier decisions from using the preceding closed-frame measured GPU remainder; attribution to owner FPS/texture regressions is unproved.
-- Next action: Implement a separately identified bounded preceding-frame pressure hint with consecutive-frame, owner, lifecycle/reset/drain validity. Preserve exact current measured counters, unknownCPU, fairness/progress and required serial work; qualify red/green policy/caller tests before integration.
-- Verification: Source audit only before correction; no performance or whole-viewer correctness claim.
+- Next action: Retain measured-feedback/reset/admission regressions and precise owner-phase accounting. Treat safe reply service and current owner FPS effects as separate work.
+- Verification: Preceding closed-frame measured GPU-pressure hint is implemented with owner, consecutive-frame, reset and stale-feedback guards. This admission feedback does not establish safe arbitrary reply execution inside renderer waits or repair every end-pacing slack mismatch.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9687,6 +10293,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before implementation in isolated admission worktree. Owner explicitly defers new viewer recordings until architecture implementation checkpoint; contained CPU/GPU checks remain authorized.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: alnativeframebudget.cpp:271-287,683-685. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-410 — Producer-preparation draft lacks complete generation and retained-publication proof
 
@@ -9830,8 +10439,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Original synchronous readback consumes completed rendering. Native buffer shared readback already submits a queue barrier before CPU reading; texture shared getBytes requires an explicit producer-completion contract.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); ALMetalTexture::readback shared/non-combined-depth path directly calls getBytes, unlike the shared-buffer path's ordered completion wait. Individual callers may already settle their producers; no owner image defect or FPS attribution is established.
-- Next action: Audit original and current readback callers, add typed readback dependency/completion for already committed work, and preserve explicit handling of uncommitted producers. Never infer queue submission from command creation or silently commit somebody else's command.
-- Verification: Source gap only before repair; contained shared readback and error/lifetime tests required.
+- Next action: Keep known-writer/opaque-scope and completion/readback gates distinct. Do not permit unsubmitted writes or infer normal frame performance benefit.
+- Verification: Shared-texture CPU readback now rejects an uncommitted known writer and inserts typed ordered completion for submitted work. Actual resource-plan native fixture covers unsubmitted rejection separately from committed gated producer/barrier/pixel controls.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9841,6 +10450,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 before native execution, fixture preflight finds its raw Gate encoder marks the command opaque before the negative unqueued-writer check. That could pass from the opaque guard without isolating the writer counter. Preserve the unrun fixture, split an ungated unqueued-write rejection/no-extra-commit control from a fresh committed gated producer/barrier/pixel control. Pure CPU168assertions/9cases already isolate known writers from opaque scope; native coverage remains pending.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalresource.mm:1874-1877;resource_plan_native_test.mm:391-407. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-418 — Optional native visibility preparation cannot report failure after a compute prefix
 
@@ -9868,8 +10480,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Original display preserves generateSunShadow before normal stateSort. Native producer-owned publication must fit that order and must not depend solely on a later main-view drain.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); root653d4e/f810 builder group places bounded draining only after main postSort flushBuffers. llviewerdisplay.cpp2027 precedes normal stateSort2105; probe display similarly2454 precedes2463. Thus completed producers encountered in earlier shadow sorting still fall through their first required factory. Existing immutable source reuse and rendering remain correct, but first-boundary completion is not established.
-- Next action: Invoke bounded producer preparation from actual completed group publication, sharing one outer-frame row allowance and reentrancy guard with the later drain. Preserve original display order, required factory recovery, source readiness and all view-specific inputs. Qualify callback, total-work and first-shadow tests.
-- Verification: Source scheduling gap only; no runtime failure or performance regression attributed. First combined build remains a preserved intermediate qualification, not completion.
+- Next action: Retain pending cursor retry and mapped/unpublished-store rejection. Preserve64/256fairness; do not delete this CPU phase with the retired GPU route.
+- Verification: The early producer-completion phase is selected CPU infrastructure, with published vertex/index-store prerequisites and a64of256shared row allowance preserving at least192for later main drain. This survives removal of early GPU visibility.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9879,6 +10491,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 before executing the early hook, source review of LLVertexBuffer::prepareMetalBuffers1514/setBuffer1504 finds a pending mapped producer would be forcibly unmapped with a missing-unmap warning. Early optional preparation must instead require already-published vertex/index stores, retain pending cursor state, and retry after the original flush boundary. Earlier shadow/probe postSort can use only the shared64-row early allowance; preserve at least192rows for the later main drain. No early-hook binary or viewer ran with the unguarded draft.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: pipeline_scene_publication_native.inl; current producer drain; accepted maintenance keeps CPU routes. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-420 — Prepared impostor draft places its local snapshot in a different renderer owner
 
@@ -9942,8 +10557,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: One acquired CAMetalDrawable texture is the shared backing consumed by UI rendering and presentation. Native ordering/lifetime already exists; new dependency accounting must identify that same allocation without claiming foreign physical bytes.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); new raw render-pass import allocates an external record and conservatively marks opaque, while a separate Surface.present import would create another record. ALMetalDrawable::Impl currently owns no imported View. These records cannot prove a shared render-to-present edge. No integration/runtime/physical-allocation defect attributed.
-- Next action: Import one exact backing View per acquired drawable and forward it to typed color-pass creation and presentation. Keep raw imports conservative, foreign sizes unknown, old Metal presentation retention and failure/device/surface generation checks.
-- Verification: Draft/source integration gap only; typed native presentation and lifetime qualification required.
+- Next action: Maintain drawable/render/present identity and exact completion/lifetime tests; no alternate rendering backend or weakened import proof.
+- Verification: Drawable owns an exact resource_view identity and Surface.present reuses it, preserving device/generation and conservative opaque recovery. The earlier missing backing-identity gap is not current.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -9951,6 +10566,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 registered before Surface/Drawable/UI typed-closure changes. Preserve the old raw entrypoint as a conservative control.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalsurface.mm:136-148,475-479. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-424 — New declared render handle does not flush pending joined indexed draws
 
@@ -10164,8 +10782,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Required native lifetime/dependency tracking must retain the shared architecture while avoiding demonstrated submission-path regressions. Existing binding caches already avoid redundant native binds; repeated indexed reads still revisit the new command map/registry mutex.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); resource-plan/owner-primary-cost-summary-01 retains2400rows,4fresh-process primary controls, unchanged explicit9a/b61c code and actual shaderValidation2. Paired enabled/disabled owner-wall ratios1.00391/1.01896/1.02596/1.00858; threadCPU1.03656/1.04170/1.08265/1.04524 for cached1/16/256draws and cold16pool. All pixels/ledger/no-overlap gates pass; all adverse/order blocks retained. AC100%/thermal0 is observed, not a no-throttle proof. No viewer/FPS result is attributed.
-- Next action: Preserve controls; remove redundant within-pass index-read bookkeeping through an exact backing/generation/registry-aware cache with explicit active-pass validity. Reject empty/cross-plan/stale/invalidated reads, reset on encoder/pass changes, preserve joins/order and completion retirement. Qualify unique-index changing controls as well as repeated-index wins, then actual integrated renderer costs before activation.
-- Verification: Measured bounded backend-owner overhead is confirmed. Per-index repeated declaration is a source-grounded hypothesis, not exclusive CPU attribution. Production defaults remain unselected; no performance gain/owner acceptance.
+- Next action: Preserve exact keys/pins/access/pass boundaries and completion retirement. Identify and measure a new redundant operation before another bookkeeping change; do not repeat already repaired hit construction/cache work.
+- Verification: Within-pass indexed-read cache and exact native backing/generation proof are implemented; PPD534removes eager owning Use hit construction, with owner destruction outside registry locking. Sampled registry/hash costs remain real residual work, not guaranteed removable time or a planOFF FPS comparison.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10176,6 +10794,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 Independent all36strict prechecks pass sixcells×threemodepairs×twomatchedversions with actualrender/computevalidation2, exactpixels/pattern/conservation and no warm/measured rows; receiptc3b47377cabf7e965a65790fb5de9a9452214651d8f85114b83690837bf3309d. Quiet primary12processes then pass0,7200rawrows,300observations/arm/cell; receipt2526d4ea3e7d3e6101c09e83e8b767de18d46bfb683d09710d28c1bdc66b477d. Cache enabled/disabled CPUratios cells0–5=1.03645,1.03437,1.03018,1.03670,1.08875,1.20683; wall=1.00402,1.00520,1.00840,1.00977,1.01410,1.04703. Repeated256 tax improves fromoriginal1.09192 to1.03018; alternating/unique remain adverse. Absolute unique CPUincrement21.502us/256draw,19.349us encoding; alternating6.295us/5.799us encoding. Source mutex/map/sharedptr costs remain hypotheses within measured encode scope. Preserve allorders/adverse/power/thermal data; no universalwin/FPSclaim, actualWorldcost/defaultselection stillpending.
 
 - 2026-11-18 real69277 Club120–173.292s main thread consumes52.473CPU-s/53.292s. Resource-plan stacks6.515s inclusive and2.374s exclusive hash insertion leaf corroborate a bookkeeping target, not guaranteed removable seconds or a plan-OFF FPS comparison. Existing key-hit Use temporary construction is a bounded source candidate; exact pins/generations/pass/access/completion retirement must remain. Binding/index read caches already exist. No implementation change before owner reboot pause. [Checkpoint ledger](work/active/apple-first-engine-completion-20261118.md).
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetalresourceplan.cpp:174,196useCachedRead;534 accepted69445. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-436 — Contained surface fixture can leave SDL initialized on constructor skip
 
@@ -10475,8 +11096,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Producer certificates require aligned real native vertex streams and complete valid ordinary batch inputs. Invalid test geometry cannot qualify visibility or command preparation, and production validation must remain intact.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); final06c46b/b8d8, enabledGraph/API+GPU1, broad547 gate process24272 stops42 after29passed/1failed (3855successes/1failure); remaining517 are unreached. almetal_source_applicability_test.mm147 REQUIRE(proof) reports `Metal world simple batch is invalid` at ALMetalWorldCohortSource::seal before draw. Exact executable/library/source/logs preserved; failure receipt13c18a11d212724515314cf76ac3540ada70393d253e8d7a68e62106982c9a93. Source review points to large-grid tangent stream:4225vertices give185900byte tangent offset, not16aligned, after unpadded4byte color stream; normal-mapped Legacy/PBR validation requires16alignment. Exact failure condition still requires author verification.
-- Next action: Inspect actual batch/predicate and correct fixture stream packing only if confirmed; keep real unique geometry, offsets, both index types and strict output/query/capability gates. Repeat failed case then broader combined gate; no production validation relaxation or cost/activation.
-- Verification: Reproduced certificate-construction rejection; engine versus fixture cause not yet natively isolated. No rendering/FPS regression claimed.
+- Next action: Keep real stream alignment, positive sealing/output and exact query/depth assertions. No production validator relaxation or repeated fixture-cause diagnosis is needed.
+- Verification: The original authored batch rejection was isolated to a185900byte tangent offset violating16byte alignment. Test-only40a1corrects stream alignment; actual targeted case passes1562assertions with resource planning/API/GPU validation and0skips. Original partial/rejected broad run remains retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10485,6 +11106,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 registered before corrective edits. Original30-case partial result and remaining517unreached status retained; all costs held.
 
 - 2026-11-18 Author confirms185900byte tangent offset violates16alignment. Test-only source commit40a1 aligns every stream without changing payload/index topology. Build07 targeted real native case passes1562assertions/1case under enabled resource planning and API/GPUvalidation,0skips. Receipt471f4a695585fc97b18599d3efa8b3788962b276bf27ebe22f9b5d1193a5cc35; broad rerun advances to123passed before independent452, not all547. Production validators unchanged, owner pending.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD451 final20261118 history; test-only40a1. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-452 — Broad enabled native gate reports an incorrect nonfinite exposure reset
 
@@ -10637,8 +11261,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Existing native source publication explicitly permits another ALMetalDevice wrapper for the identical native Metal device. Resource ownership/dependency tracking must preserve that contract and unique backing identity while rejecting genuinely foreign devices/registries and unsafe mixed qualification modes.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); mode-correct cache8casespass then remaining177 passes131cases before source_pages_test family1 fails view.bind at fixture101. Exact10exe1652cb11/b8d8, enabledGraph/API+GPU1; partd0c0c312c5735a9a10fe80ab7351ef6e43c0e1827180e358029ea0d49a4e201c, aggregateea0f040ce69f89374a1045ae17773cbf1fb45d22604812de59684edce015477b. Fixture creates second real ALMetalDevice with same nativeHandle, republishes geometry/numeric buffers, and expects original source-page renderer to bind valid replacement. Distinct per-wrapper tracking registries may reject it despite native compatibility; exact error must be traced.45cases remain unreached.
-- Next action: Audit exact binding failure and resource registry factory/lifetimes before repair. Preserve valid same-native-wrapper publication, actual native pixels, immutable old generations and generic foreign-plan rejection. Qualify any registry sharing/import solution against unique accounting, old commands after wrapper retirement and mixed disabled/accounting/enabled controls; do not weaken cross-registry guards blindly.
-- Verification: Reproduced binding refusal in an existing native compatibility contract, not yet isolated to a precise emitting branch. No fix or performance attribution.
+- Next action: Preserve same-native-device compatibility, exact registry/backing/generation and completion tests. Do not restore the retired table consumer or infer whole-frame performance closure.
+- Verification: The old SourcePages/table consumer is retired under PPD545/550. Shared native-device registry compatibility remains active in Device and actual native16plus exact completion checks pass; no wrapper address is accepted as foreign-device proof.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10656,6 +11280,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Final13 actualnative16 passes3272assertions including11actualFactoryenv/precedencerows; freshunset exactcompletion33/1 coversall3sections. Aggregate78243fbc110301b9a5c47bc50db4bd0c8b0262dd7f93870cadaf8520f3427766 preservesd20afailedselectorqualification while linkingvalidnativecomponent andcompletion6c5. Coherentenableddefaults andsharednativeowner readyforowner runtime; no whole-frame performance closure.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: almetaldevice.mm shared native registry;24de2b2e99;PPD459 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-460 — E3 small-cell parser assumes two triangles for the authored one-triangle mesh
 
 - Status: investigating
@@ -10664,8 +11291,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Small-work scalar routing uses a real three-vertex triangle when grid1 is selected; cost metadata must describe actual geometry without inventing workload or discarding valid observations.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); producer six cost processes allpass, then E3cell0 native passes756assertions with640rawrows but privateparser rejects authoredindices. Actualsixsources×3indices=18, fourqualified×3=12; parser erroneously applies grid formula6indices/source and expects36/24. Receipt6df5553f1b4b63b5146e53e349fae25fb05e437a30615a9feb9e847f89e278cd retains native/raw/source. No laterE3cells run.
-- Next action: Correct private small-mesh census to the actual3index triangle, preserve all route/PSO/output/clock/order/sample guards, CPU-qualify actualpositive and malformedcensus negative controls, reparse retained cell0 without native repetition, then run six unrun cells in a new quiet window.
-- Verification: Source-confirmed private expected-count error after nativepass, not renderer or clock failure. Independent six producer cost outcomes remain qualified.
+- Next action: Keep exact authored mesh census and all adverse rows; no repeated old parser repair or retired visibility activation task.
+- Verification: The small-mesh parser was corrected; unchanged full13report/cost adverse results remain retained. The associated rejected native visibility route is retired under PPD545/546, not a pending six-cell activation candidate.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10675,6 +11302,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 Privateparser now appliesactual3indices forsmallgrid1. CPUretained640rowpositive18total/12qualified passes; wrong36/24negative rejected, AST0, raw unchanged. Qualification930d32fb04f3c2bf018ecd02de65511b97e2de7900bb884b0900c2d12024db95. Correctedreparsec48b16ab8034058168dbc5d83a701ec35cb18887b2b070e35f09a0d6072d998d preservesinitialfailedreceipt. Cell0 wall1.00414/GPU.999990, adverse78/75 of150, medians.27925→.28010ms/.033125unchanged. Remaining6E3timings then allpass; fullALL13 report94e0c9b368090b8b3b69187fdb644e4dad733a08ff177e81def320d76b26b41d retainsallraw/orders/adverse. NativeheavyGPUcosts adverse andchurnwall+20.296%; do notenableGPUnativevisibility indiscriminately.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD460 finalhistory;24de2b2e99. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-461 — Prepared and generic lighting variants show mixed controlled GPU costs
 
 - Status: ready_for_owner
@@ -10683,8 +11313,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve all accepted lighting contributions and choose actual-workload implementations by complete-owner cost. Shared preparation is not a universal speedup; retain valid generic alternatives and qualify any consumer/workload selector.
 - Evidence: [Engine completion work](work/active/apple-first-engine-completion-20261118.md); E6 all18strictprechecks and36quietcost processes pass exactquality/PSO2/nonoverlap guards.16200measuredrows with allorders/adverse retained. Current generic→prepared enabled-mode wallpercent cells0–8: +.67,-4.52,-11.29,+5.60,+4.78,+1.41,+6.35,+.55,-.91; GPU +.13,-5.44,-13.42,+6.80,+6.18,+.27,+6.16,+.42,-.60. Families:0material47probes,1skinnedcustomPBR54,2body/cloth47,3forwardshiny54,4mixedmaterial/shinyimpostor47,5churnPBR54,6capstressPBR128,7fullmanualPBR54,8genericwater4. Some oldfae7generic→currentgeneric controls also slower beforepreparation; exactsource cause unisolated. Graph same-current-arm D/E wall within~.84%, CPU generally+1–6.65%; never attribute shader differences to Graph.
-- Next action: Freeze exact per-order/absolute results, audit actual receiver/family/churn/coverage gates, distinguish systematic measured negatives from drift, and implement justified quality-preserving applicability/alternative selection or isolate demonstrated shader/source regressions before enabling indiscriminately. Preserve shared publication/support and allold/current/restored controls; no open-ended viewer profiling or FPS claim.
-- Verification: Controlled authoredworkload mixed performance, not a whole-viewer FPS comparison or captured SL scene. Current source cause and final policy selection remain partial.
+- Next action: Preserve selected simple/body masks and generic fallback for other families. Do not recreate rejected force factories or claim a whole-viewer gain.
+- Verification: E6 selected only supported simple/body candidate families. Rejected forced material/PBR/shiny/impostor variants were removed under PPD548; active generic output and mixed raw costs remain.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10699,6 +11329,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 build12 fresh16native(3272586assertions)+old3(240705)+all18strictprechecks pass, actualPSO2/exactallplanes/inputpacks. Then36quietcosts pass16200measurements,0overlap/unknownCPU. Restoredgeneric B now matches in-batch oldA across9cells: GPU−.66..−.01%,wall−.64..+.50%; prior material/PBR/impostor/churn generic penalties disappear. This supports the direct-generic source repair; no unsupported spill/register attribution. Body2 prepared retains−12.79%GPU/−10.43%wall (adverse2/3 of150), while preparedPBR1+4.96/+4.73%,material0+3.65/+3.53,shiny3+7.40/+6.05,impostor4+10.18/+7.48,churn5+4.88/+5.34,cap6+6.90/+6.70 regress; fullmanual7/water8 nearflat. Next authorized boundedpolicy attempt: retain original BASE/simple coverage, select new body/cloth prepared consumer bydefault, use generic alternatives for demonstratednegative new families before optionalpreparation; preserve fullprepared support as explicitprivate diagnostic override forvariantvalidation. No scene-specific probe-count threshold, quality/math or Metalshader downgrade. Finalnativepolicy/default/overhead checks required.
 
 - 2026-11-18 Final13 defaultnativepolicy179933/1 +forcedvariant3272586/16 +old240705/3 ALLPASS3693224assertions/20cases,0fail/skips underAPI/GPUvalidation. Exact4817/b144; defaultsForceAll/resourceenvabsent, diagnosticForceAll1explicit. Aggregate2ccaa8bdeff73054dc3c0b0e783f4ebbb2f0248c73bfa414450e16732f79cce0. Sourcee426/buildd2c9/69277 separatelystagedexact8273nodes/signature0. Genericregressionrepair andmeasuredconsumerpolicy readyforowner; FPS/visual/stabilityacceptancepending.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: world.cpp noforce factories;builtin active simple/body;PPD548 accepted69445. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-462 — Private source qualification adapter fails Python syntax before execution
 
@@ -10729,8 +11362,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve original Second Life HUD/asset startup and display behavior, including existing black-login repair PPD008; correlate actual startup/first-world/presentation and asset work rather than guessing from the progress indicator.
 - Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Owner Home report29→16FPS, slow HUDs and dark post-progress interval; exacte426/builderd2c9 appPID65356 and private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retained.; [69343 owner run](research/warning-runtime-69343-20261119.md).
-- Next action: Verify general world/avatar/texture/HUD loading and responsiveness across scenes/teleports on the integrated parallel candidate. Compare aggregate decode/admission/raw/upload/publication phases; use representative metadata only when needed for stage attribution. No single HUD is a required special case.
-- Verification: Owner delayed-then-loaded HUD report remains unresolved. Exact run confirms OpenHTJ2K, topology10/8, workers6, adaptive2/4/6; native governor frequently clamps2. All38870 jobs complete, but early queue wait reaches28.083s before sampling. HUD identity and its causal stage remain unknown.
+- Next action: Correlate a precise recurrence with qualified frame/asset handoffs. Preserve the positive owner report without closing PPD002 or assigning a cause to every dark interval.
+- Verification: Owner later reports substantially better69377loading, with actual native worker activation retained. Specific dark-world interval/HUD latency and current timing cause remain unclosed; this bounded positive report is not general loading/freeze acceptance.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10752,6 +11385,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19 Exact69377 owner reports textures/HUDs almost instant and much better; general loading positive, occasional Home turning freezes remain002/464 and login-background outcome unreported. Nativeworker actually active and no retries/pending atfinalcensus; no pairedlatency/FPS attribution or single-HUD specialcase. Retain mixed-report scope and [closed-run audit](research/world-turn-freeze-69377-20261119.md).
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD463/487 histories;current report worker table. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-464 — Owner reports brief unresponsiveness just after club teleport
 
@@ -10786,8 +11422,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Every owner checkpoint requires qualified actual retained CPU/GPU/native coverage and replay contents, including Home and club arrival/settlement; successful recorder exit alone is insufficient. Preserve failed evidence and separate diagnostic overhead from normal pacing.
 - Evidence: [69277 checkpoint findings](research/engine-checkpoint-69277-findings-20261118.md). Private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retains full recordings, four archives and exact per-attempt qualification. Native600s expires21:01:05.947789251UTC before Club late180s target. Overview exports exit0 but coverage fails13.481942458s GPUgap (>5s). External later archive is not simultaneous; its replay profile remains incomplete/unavailable.
-- Next action: Pause for owner reboot. After resume, repair coordinated scene/duration scheduling and qualify the incomplete external replay before relying on it; preserve all original archives, missing intervals and refusal/failed/corrected derivative receipts. Do not relax the5s gap gate or interpret placeholders/blank spill fields as measured zero.
-- Verification: Home early/late and Club early have complete Medium/Overlapping profiles with all five counter categories and shader rows; external opens/replays but profile never completes before stop. Native footer191contention drops,24committed pending, zero full/budget/I/O loss; pending is not GPU failure. GPU workloads stopped, Xcode/viewer closed. No normal control or complete four-phase profile acceptance.
+- Next action: Use current explicit owner scope and per-measure retention gates. Do not resume obsolete paused-session UI or recording actions.
+- Verification: The owner-reboot pause and unfinished old replay instructions are historical. Later bounded collection/profile evidence is complete; original failed/truncated intervals remain excluded, not retroactively qualified.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10808,6 +11444,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-18 source review catches an unexecuted four-frame comparison draft choosing the first same-label projector encoder even when Club-early main has none: API42303 belongs to the ordinary-probe sequence after production UI, not the main-view sequence. Preserve the draft before narrowing selection to actual primary API order before first production UI/fused presentation; retain later duplicate rows separately and represent missing main projector as absent, not measured zero. Existing Home primary API matches remain valid; no published four-frame result or GPU run relied on the draft.
 - 2026-11-18 saved external Club archive opens/replays to12CB/37render/1compute/5blit/6580draws, but Medium/Overlapping profiling remains in background with incomplete activity and43 cost rows showing '-' plus placeholders. No completed profile is claimed. Stop debugging GPU workload for owner reboot pause; retained stopped UI says Finished running, and subsequent app inventory confirms Xcode/viewer not running. Three automatic archives have completed profiles and full counter/shader tables; external profile/timing/spills remain unavailable. No shader variant, renderer change, new viewer run or counterfactual performed. Private log-audit final hash-print step raises NameError after artifacts were written; failed command retained and subsequent separate read-only hash/consistency inspection passes, without rewriting raw evidence.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: performance-investigation-20261122.md;PPD408 history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-466 — Owner reports slow avatar texture and hair appearance after club arrival
 
 - Status: investigating
@@ -10816,8 +11455,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve original avatar/attachment texture, material, bake and rigged appearance behavior during loading. Retain valid resource admission and eventual progress; distinguish transport/content failure, geometry deformation and loading latency.
 - Evidence: [69277 checkpoint ledger](work/active/apple-first-engine-completion-20261118.md). Private run /Users/dekstroza/Alchemy-home-69277-rqs_6lzz retains owner reports that avatar textures, especially hair, seemed incomplete, followed by most appearing loaded at21:04:27UTC. Closed full-log warning audit02 maps22 distinct HTTP403/marked-missing textures,19 material failures across15 assets,29 missing bake auxiliary masks, transport timeouts and recurring PPD311 palette fallbacks. No exact affected hair/HUD object-to-asset correspondence is available.
-- Next action: Preserve the owner report and full warning-site/trigger audit. After the owner reboot pause, correlate affected object/material/texture identity and first-visible state with bounded private asset/admission/palette diagnostics before selecting a general repair. Do not discard valid lighting or relax resource lifetime safety to improve apparent loading.
-- Verification: Reported appearance/loading symptom; cause and regression attribution unknown. The mostly-loaded receipt is after native and Overview coverage ended. Eventual recovery of the22 specific marked-missing textures is not established; palette fallback affects intended deformation but is not proved to explain this report.
+- Next action: Preserve the appearance report and investigate exact current object/asset/LOD state if it recurs. Use only the verified required OpenHTJ2K decoder; no alternate decoder experiment or old reboot instruction.
+- Verification: The reported hair/appearance symptom remains unmapped to exact object/asset state. Sole OpenHTJ2K is now owner-required and accepted under PPD559; prior wrong-decoder identity failure remains historical, not permission for alternate pixel decoding.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -10829,6 +11468,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-18 All29warned bake inputs recovered complete from retainedAlchemyNextcache with five encoded components. Before decoder execution a runtime-identity guard finds audit libraries OpenJPEG2.5.4 rather than capturedOpenHTJ2K0.27.0 and refuses42withzero decodes. Preserve that failure; compare both actual implementations offline and restore captured configuration before launch.22HTTP403textures have no active cache entries; no original raw cache data was changed.
 
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD559 accepted69445;a2aaaf2942;current required decoder dependency. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-467 — Fetched worker upload finalizes failed native texture publication
 
@@ -10916,8 +11558,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-18
 - Original reference: Preserve complete world geometry/material rendering across region changes. Original1eb44 tree deferred draw and face indexed-render readiness contracts must be traced before repair; current pipeline.cpp captureMetalWorldTreeBatch16596 has a compound region/buffer/image/attribute/native-publication/extent guard.
 - Evidence: [Warning input collection](work/active/warning-input-diagnostics-20261118.md). Exact source96f10353af/viewer69331/PID74144. Owner screenshots23:54:49 and23:55:33 show missing/black/blue floor sections at the club after teleports; original bytes retained privately. Earlier23:49:48–54log has230incomplete native world-capture warnings, first invalidation pipeline.cpp16596 in native tree preflight,0batches retained. Screenshot-to-warning causality is not proved.; [69343 owner run](research/warning-runtime-69343-20261119.md).
-- Next action: Retain owner-passed69343 object-floor recovery and reopen on recurrence. Keep PPD002 retained-world freezes, PPD463 slow HUD/world loading and unproved PPD473/475 incident causality separate. Push remains unapproved.
-- Verification: Owner-visible visual failure reproduced in two supplied images on exact candidate. Native tree capture rejection also reproduced, but its exact compound predicate and connection to the floor are unknown. The legacy warning text saying retainedGL does not prove any OpenGL execution or fallback backend.
+- Next action: Retain the owner-confirmed floor recovery and reopen on recurrence; keep PPD002/463and exact473/475causality separate. This reconciliation adds no push scope.
+- Verification: Owner originally supplied two missing-floor images. On exact69343the owner later explicitly confirms the floor at initial loaded Club and after return teleport; that reported floor symptom is verified. The compound tree-capture predicate and causal attribution to473/475remain unproved.
 - Owner verification: passed
 - Push approval: not_granted
 
@@ -10937,6 +11579,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-19 owner explicitly confirms again after returning to the club: the floor is there. Fresh LEAP global-region cell matches the initially UI-verified club. Preserve this second positive visual result across teleport; exact PPD473/475 causal attribution remains unproved. Overall loading/retained-world issues PPD002/463 stay separate.
 
 - 2026-11-19 closed run ends normally Goodbye08:45:04UTC, PIDabsent; full log7,915,356bytes/SHA8be8fdc6655c9cb394b5dc2cca3f2e5e629d3bbc79c291065c8f9456768ff1f1. Owner explicitly confirms both initial loadedclub and afterreturnTP that floor is present. Mark the reported floor symptom verified on exact69343; this is not general render/loading acceptance or proof which independent mechanism caused it. No push permission.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD470 final owner floor initial/returnTP confirmation. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-471 — Requested bake auxiliary data can be omitted from successful final callbacks
 
@@ -11377,8 +12022,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: Original1eb uses RenderGLMultiThreadedTextures (defaultfalse) to opt into shared-context OpenGL uploading. Current Metal-only worker needs no graphics context and has native publication/rollback ownership, but LLViewerWindow still passes that legacy setting unchanged to LLImageGL::initClass.
 - Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); current llviewerwindow.cpp2412, llimagegl.cpp400–415/3654–3695 and llviewertexture.cpp postNativeTextureUpload; complete69343 native texture publication census.
-- Next action: Verify the final source-pinned app starts its native worker and records actual worker posts during owner loading/teleport, then evaluate whole-viewer latency and shutdown. Preserve explicit new-key opt-out.
-- Verification: Exact69343 had zero worker posts. New packaged native default, full actual startup-call/initializer/constructor plus width selection pass38CPUchecks; realnative startup/retirement/width101assertions6unique cases pass withAPI/GPUvalidation. New default-enabled app not yet owner-tested.
+- Next action: Preserve native-control activation/worker-post diagnostics and generation/publication ownership. Investigate only precise remaining loading handoffs, not the repaired legacy-setting gate.
+- Verification: Native uploads use their own default-enabled native control rather than the disabled legacy GL setting. Actual69377tour records worker posts with zero synchronous creates and owner-positive loading; no isolated latency/FPS or all-feature acceptance follows.
 - Owner verification: pending
 - Push approval: granted
 
@@ -11397,6 +12042,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llviewerwindow.cpp:2411 native setting;PPD48769377 activation history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-488 — Native upload continuation may lose fetched-image ownership during shutdown
 
@@ -11487,8 +12135,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: send_viewer_stats optionally serializes complete nondefault global and per-account controls, logs the body, then adds session_id and submits that same body. Trace original1eb and current preference collection before repairing. Session-ID log exclusion alone does not sanitize arbitrary saved controls.
 - Evidence: [Integrated follow-up](research/warning-followup-integration-20261119.md); llviewerstats.cpp816–836. Closed69343 INFO statistics includes a translation-service credential-bearing preference. Actual value remains private and is not repeated in repository evidence.
-- Next action: Sanitize optional preference telemetry before both logging/debugserialization and HTTP-body use using an explicit non-sensitive settings contract. Reproduce with synthetic secrets/nested values and preserve ordinary numeric/Boolean graphics/performance statistics. Do not change credentials, account files or send requests during tests.
-- Verification: Actual inherited exporter skips declared strings but permits nested string values in LLSD controls. Corrected actual exporter/consumer/addToMessage/tail plus real LLSD/XML fixture passes51cases277checks underASan/UBSan versus88baseline failures. Full viewerStatsTU syntax and source peer review pass; root normalCMake target/CTest pass. No actual account/credential setting changed or request sent by validation.
+- Next action: Retain fail-closed allowlist/schema and sanitized recurrence checks. Never reopen credential-bearing values or unrestricted settings dumps for this audit.
+- Verification: Preferences telemetry now uses an explicit24field/type plus3pool allowlist before use, integrated inc71b9c39f1. Actual69377shutdown packet structure was screened without exposing values; operational metadata is not declared anonymous.
 - Owner verification: pending
 - Push approval: granted
 
@@ -11505,6 +12153,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: c71b9c39f1;PPD491 actual shutdown packet history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-492 — Selected mirror advertises another owner's completed radiance
 
 - Status: ready_for_owner
@@ -11513,8 +12164,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 llheroprobemanager.cpp491–535 and class3/deferred/reflectionProbeF.glsl779–816; count0 omits only mirror contribution. Native completed-radiance identity is new and must qualify advertisement.
 - Evidence: [Closed69377 freeze investigation and original mapping](research/world-turn-freeze-69377-20261119.md).
-- Next action: Qualify the uniform producer against successful publication owner/epoch; retain same-owner completed refresh, native coherence guards and original selection/math. Actual-body controls and combined build pass; owner-test exact69381 turning/walking/TP with fresh bounded diagnostics.
-- Verification: Source counterexample: camera selection changesA→B while renderProbes defers or B is occluded; ready(A) still advertisesB, native exact-owner fill rejects and ordinary base lighting silently returns. Runtime linkage to PPD002/464 remains unproved. The actual uniform body now passes135assertions/6cases versus14baseline failures, with downstream guards unchanged; full candidate build and owner freeze retest remain pending.
+- Next action: Keep current owner/epoch mirror and stale-completion tests; qualify any precise recurrence on the current source rather than relaunch old69381.
+- Verification: Selected mirror radiance publication now checks exact owner/epoch and135/6actual-body controls pass. The later69384owner report notices no freezes in that run, a bounded report rather than closure of PPD002or all freeze causes.
 - Owner verification: pending
 - Push approval: granted
 
@@ -11531,6 +12182,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD492 combined69384/history;native uniform producer include. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-493 — Logout snapshot failure is latched as saved
 
 - Status: investigating
@@ -11539,8 +12193,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 LLAppViewer::saveFinalSnapshot and idleShutdown; native rawSnapshot/readMetalWorldSnapshot replace original framebuffer capture. Inspect inherited caller latch separately from native exact-frame readiness.
 - Evidence: [69377 closed-run investigation](research/world-turn-freeze-69377-20261119.md); private asset-watch/logout-snapshot-order.json and shutdown-structural-scan.json retain safe source/call order and numeric rejection state.
-- Next action: Trace original/current saveFinalSnapshot and native snapshot production; latch successful saves only and preserve exact-current frame/target guard. Do not select arbitrary retries, stale frames or overwrite an existing last image on failure.
-- Verification: At11:18:33 final snapshot request is followed by native world snapshot did-not-complete-exactly and raw save failure, then LogoutRequest. Current frame9542 has no completed world/UI/presentation product. Caller ignores saveSnapshot false and sets mSavedFinalSnapshot, suppressing future attempts. Actual failure is recorded; cause of missing native products is unproved and separate from PPD480 last-image loading fallback. Result-only caller repair passes actual-body68checks/12cases versus12baseline failures; missing native products and owner final-image retest remain unresolved.
+- Next action: Preserve failed-save retry/success latch tests. Verify the actual final image and current native snapshot product before closing the broader logout-image behavior.
+- Verification: Logout snapshot caller returns on saveSnapshot failure and latches only successful saving; actual-body68checks/12cases pass. A current native frame product/final owner image remains separate and unverified.
 - Owner verification: pending
 - Push approval: granted
 
@@ -11562,6 +12216,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: llappviewer.cpp:5530-5547;actualbody68checks12cases history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-494 — Atmospheric shader disabled leaves no native lighting target
 
 - Status: ready_for_owner
@@ -11570,8 +12227,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: 1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 pipeline.cpp11819–11824 clears transparent screen unconditionally, then conditionally omits sunlight/soften-sky; local/projectors11869–12194 and post-deferred geometry12203–12239 continue. Persisted RenderDeferredAtmospheric Boolean defaults true but false is an existing supported control.
 - Evidence: [Continued493 producer audit and494 mapping](research/world-turn-freeze-69377-20261119.md#continued-native-snapshot-production-audit); current renderDeferredLighting26941 and local/projector/composition prerequisite guards.
-- Next action: Supply an explicit native transparent-zero lighting color owner with current GBuffer depth when atmospheric lighting is disabled, then retain existing local/projector/post chain and native failure guards. Qualify actual caller branches and GPU clear/depth/accumulation; do not force the setting on or reuse old world.
-- Verification: Current false skips the only native base-light producer; local/projector require base/main-ready and composition requires successful base/local/projector. This source counterexample blocks world/exact snapshot instead of original darker local/emissive scene. Actual69377 control value was not observed, so no freeze/logout-failure attribution. No repair/runtime acceptance yet.
+- Next action: Retain false-mode target/depth/continuation regressions; owner-specific disabled-atmosphere runtime acceptance remains pending.
+- Verification: Atmospheric-disabled mode now supplies a transparent-zero lighting target with current depth and ordered local continuation. CPU194/18 and GPU641/3pass. Actual69384used flag1and did not exercise this false-mode owner path.
 - Owner verification: pending
 - Push approval: granted
 
@@ -11589,6 +12246,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-19 owner explicitly instructs commit/push of the current checkpoint before later69390 scene testing. Push approval covers the existing qualified implementation/diagnostics only; status, unresolved causes and owner-verification result are unchanged. This supersedes the earlier publication hold, not the pending test. [Exact scope](research/water-ssr-history-69388-20261119.md#owner-publication-authorization-before-scene-retest).
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: pipeline_zero_lighting_inputs_native.inl:27-49;pipeline_base_lighting_dispatch_native.inl. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-495 — One texture decode failure during69384 owner tour
 
@@ -12147,8 +12807,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: Manual release workflow toolchain step requires macOS SDK major26, while alnativeimtranslation.swift references preferredStrategy/lowLatency declarations introduced in SDK26.4. Runtime availability guards preserve macOS26.0 runtime compatibility but do not supply missing compile-time declarations.
 - Evidence: [Alpha7 release ledger](work/active/release-alpha7-20261119.md).
-- Next action: Require SDK26.4 or newer and typecheck the actual Swift translation source before expensive dependency/build work. Validate old/new SDK gate boundaries and the actual local Swift source, then observe the hosted preflight.
-- Verification: Pre-fix workflow accepted26.0–26.3; those SDKs lack declarations used by the source. Exact old/new gate controls and actual Swift typecheck now pass locally. Current local Xcode26.6/SDK26.5 is suitable. No current hosted compile failure or runtime defect is attributed; this is an early validation gap.
+- Next action: Retain SDK minimum/typecheck and downloaded-package provenance. No first hosted run is pending; owner runtime qualification remains separate.
+- Verification: Hosted run44626887693passes SDK/source typecheck and full build/package/publication; independent downloaded-package static verification passes20261121. Deployment minimum26.0and application source remain unchanged.
 - Owner verification: pending
 - Push approval: granted
 
@@ -12161,6 +12821,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 Hosted44626887693 passes SDK/source typecheck, complete build/package/publication on2026-11-19; independent downloaded-package static verification passes2026-11-21. Deployment minimum26.0 and indra source unchanged. Owner runtime acceptance remains separate.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD51920261121 history;release-alpha7 ledger. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-520 — Downloaded release license verification depends on runner source
 
 - Status: investigating
@@ -12169,8 +12832,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: build_openhtj2k.sh emits the dependency receipt without license_sha256. verify_release.py can establish the packaged notice digest from receipt.source_dir/LICENSE on the build host, but cannot repeat that step from the downloaded embedded receipt alone when that source directory is absent.
 - Evidence: [Alpha7 release ledger](work/active/release-alpha7-20261119.md).
-- Next action: Preserve hosted provenance and original receipt unchanged; independently retrieve the LICENSE at pinned72ea0450d2b522a88e7dbb9c1a9c164fb029c1f2, compare its digest with the packaged notice and hosted report, and use a separately labeled derived receipt for local static reverification. A future tool repair should include the source license digest in newly built receipts and cover offline verification.
-- Verification: Source inspection confirms the portability gap. Hosted package/license validation has its original source and is not bypassed. No incorrect packaged license or viewer runtime failure is established. Alpha7 build remains pinned bd9306126c with application tree6cfca54e03 unchanged; no workflow cancellation/rebuild is needed for this supplementary verification path.
+- Next action: Repair future emitted-receipt portability with exact source/license provenance and tests. Do not call the supplementary derived receipt a production-tool fix or mutate original hosted evidence.
+- Verification: Independent package verification passes only with a separately labeled pinned-LICENSE derived receipt. The original hosted provenance is unchanged; newly emitted receipt/license-digest portability repair remains open.
 - Owner verification: pending
 - Push approval: granted
 
@@ -12181,6 +12844,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-21 Independent verification completes using pinned LICENSE and a separately labeled derived receipt; verify_release.py exits0. Published provenance remains unchanged, original hosted archive unavailable locally. Future emitted-receipt portability repair stillopen.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD520 finalhistory;build_openhtj2k/verify_release boundary. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-521 — Supplementary release check assumes public Swift helper exports
 
 - Status: investigating
@@ -12189,8 +12855,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-19
 - Original reference: The private Alpha7 independent-download checker incorrectly requires all8 Swift C ABI wrappers in nm -gU. Actual compiled bridge functions are internal/private; optimized viewer links retain6 production-used definitions, while the two wrappers referenced only by standalone tests are dead-stripped.
 - Evidence: [Alpha7 release ledger](work/active/release-alpha7-20261119.md); private original failed independent-download-verification.log and exact downloaded main SHAa7d59a48d0032434dfd82528fdbd534f46c3971b733d9a1c1fdfefe8168ca580. Source C++ consumers are llfloaterimsession.cpp and llappviewer.cpp; optimized -dead_strip is set by00-Common.cmake.
-- Next action: Preserve failed checker evidence; correct the supplementary check to require the6 actual production-used definitions from nm -m, exclude undefined references and retain exact-name matching. Rerun downloaded-package/source/license/IM-resource checks without changing the published application.
-- Verification: Original check exits1 only at the over-specified public export assertion; GitHub digest/checksum/source identity,346ARM64 binaries and strict downloaded signature checks already passed. Source and actual nm -m agree on all6 production functions. No missing production entry point, runtime translation regression or application repair is established.
+- Next action: Retain exact required definitions and negative missing-symbol behavior. No repeat private checker repair or runtime acceptance claim is needed.
+- Verification: Corrected supplementary checker verifies the six actual defined private/internal production Swift ABI symbols and package/source/license/IM-resource checks. The original over-specified public/eight-symbol failure is retained; application unchanged.
 - Owner verification: pending
 - Push approval: granted
 
@@ -12200,6 +12866,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-21 Corrected private checker completes on2026-11-21: six exact defined private/internal production ABI symbols pass, along with independent package/source/license/IM-resource checks. Initial over-specified failure retained; application unchanged.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD521 final20261121 history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-522 — BoM mesh overlay breaks into camera-dependent polygon patches
 
@@ -12258,8 +12927,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: CURRENT.md lives in state/ and its ../work/active links are correct there. The same prefix copied into work/active/metal-port.md retains those relative links, resolving to a nonexistent work/work/active path.
 - Evidence: [Investigation ledger](work/active/bom-overlay-rendering-20261121.md); private release-alpha7 final-continuity-harness.log retains two stale-link errors from the first check.
-- Next action: Correct those two active-ledger links to sibling file paths and rerun the ordinary harness; preserve the failed result. No engine change or owner runtime attribution.
-- Verification: First ordinary harness fails with exactly two stale Markdown links; the later commit command ran despite that failure and did not make it a passing result. Link correction and fresh validation required before delivery.
+- Next action: Keep relative-link/recovery checks and the original failed receipt. No current two-link repair remains.
+- Verification: Both relative documentation links were corrected; fresh ordinary harness33files and whitespace check pass. The accepted69417publication scope includes supporting evidence repairs, not individual stress acceptance.
 - Owner verification: pending
 - Push approval: granted
 
@@ -12271,6 +12940,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-21 after confirming the overlay fixed, owner explicitly requests commit and push. Approval covers the accepted shader/compiler correction, synthetic GPU regression, supporting integration repairs and evidence records. Publish normally to codex/apple-silicon-metal; no default-branch merge, force push, release/tag replacement or private capture upload. This authorization does not close unrelated records.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD524 finalhistory;accepted69417 publication scope. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-525 — New standalone depth fixture misses mandatory project flags target
 
@@ -12302,8 +12974,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-21
 - Original reference: Owner reports a shoreline advancing/retreating over sand in69417 and clarifies the fixed-line comparison is Firestorm or another viewer. Original Alchemy1eb44/parent65c39b7 already contains optional 3D displacement; inspected Firestorm7.1.13 uses planar geometry. Exact owner reference version and terrain-versus-object sand draw remain unknown.
 - Evidence: [Shoreline capture ledger](work/active/water-land-line-20261121.md).
-- Next action: Retain owner-confirmed stable waves-off behavior and the upstream 3D waves option; reopen if the moving edge persists with displacement off or new evidence shows an Alchemy parity defect. PPD-013/497 acceptance, open PPD-015 shading mismatch and PPD-527 help text remain separate. Do not change the product default or push based on this comparison.
-- Verification: Exact69417/exe0b8bab95fd3d/OpenHT0.27 verified. Restarted44179 captures early264–265 and late2157–2158, native_error0; late cloned capture replays the reported curved shoreline. Actual wave draw17023 changes3681292depth pixels, all closer; reconstructed replaced finite current-cell geometry reaches only2.95cm above base, water stays inside captured12.19cm displacement bound. RGB/depth masks agree except21pixels, supporting geometry coverage rather than a broad color-only overlay. Original Alchemy wave geometry and stencil admission match the reviewed Metal path; history places 3D waves upstream before the fork. Firestorm7.1.13 inspected source uses planar geometry/animated shading. Owner later tests the existing Water waves control in the same69417: "yeah that makes is stable". This is owner-reported waves-off stability; no independently attested active setting, paired screenshots or separate waves-on recheck is claimed. Exact Firestorm build remains unknown. Viewer exits0 normally10:36:28.767636Z; Xcode replay stopped. Private exports/hashes and analysis retained; no renderer repair or full port-correctness claim.
+- Next action: Preserve the owner-explained waves setting/feature and unrelated water defects. Do not recreate a shoreline-mask bug or keep527as an active help repair.
+- Verification: Owner confirms stable shoreline with existing water waves off; inherited optional geometry waves explain this scoped comparison. The feature remains; PPD527obsolete GL help has since been repaired and accepted in69445.
 - Resolution: The reported advancing/retreating boundary is explained by inherited optional Alchemy 3D geometry waves against a Firestorm-style planar-water comparison. Captured geometry/coverage and original mask/displacement contracts agree; owner confirms stable shoreline with the existing displacement switch off. No missing Metal shoreline mask or renderer correction is established. This scoped explanation does not clear unrelated water defects or full product gates.
 - Owner verification: passed
 - Push approval: not_granted
@@ -12317,6 +12989,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-21 owner requests the comparison launch. Same69417/exe0b8bab starts48466, window/process/hash and sole OpenHT0.27 verified; STATE_STARTED11:12:48Z. Normal settings retained, no capture or forced wave value. Guide existing Lightbox checkbox comparison; owner result pending and viewer remains running.
 
 - 2026-11-21 owner reports "yeah that makes is stable" after the guided existing Water waves comparison. Record owner waves-off stability and dismiss this scoped report as an explained feature/settings difference, with original source and captured-depth proof retained. No new shader change, forced default, automated setting action, paired screenshot gate pass, separate waves-on result or push authorization is claimed.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD526 owner clarification;527 accepted69445. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-527 — Water waves help still claims an OpenGL requirement
 
@@ -13296,8 +13971,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: LLViewerControl.get returns current LLSD storage; numeric control consumers can coerce numeric strings. Diagnostic readers must preserve raw storage and distinguish a parsed numeric view rather than dropping the value or asserting numeric storage.
 - Evidence: [Current investigation](work/active/performance-investigation-20261122.md); private as-used-01/latest.json records invalid_type for four numeric-string controls despite successful live queries, matching saved numeric strings.
-- Next action: Retain original failed artifacts and repaired private observer; integrate diagnostic findings in the final investigation report. No production repair, commit or push is part of this request.
-- Verification: Actual read-only request completed in614.6ms with four invalid_type rows: RenderFSAAType, RenderHeroProbeResolution, RenderQualityPerformance and RenderReflectionProbeCount. This is a diagnostic coverage defect, not a viewer rendering or measured performance defect. Private observer repaired; main-01 pre-login and main-03/club-main-01 world queries now complete successfully with raw numeric strings and separately labelled numeric views. This verifies diagnostic coverage, not performance.
+- Next action: Preserve typed/raw observation, strict numeric parsing, original failures and safe66control scope; diagnostic runtime proof does not imply owner-renderer closure.
+- Verification: Corrected read-only numeric-string observer is exercised on actual66safe controls in prelogin/arrival/end requests; final preservation audit has0value/type differences for the stored whitelist. No production or quality-setting mutation occurred.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13309,6 +13984,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 final investigation: Finalsource-metadata prelogin/arrival/end queries eachreturnall66safecontrols withrawnumericstringsretained, noerrors; no graphics/preferenceswrite. Finalpreservationaudit has0value/typedifferences for66whitelistedstoredkeys. Diagnosticrepairruntimeverified; originalsretained, ownerclosurepending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD566 final66controls/0diff history. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-567 — Immutable forward-probe constants are repeatedly content-hashed per batch
 
 - Status: ready_for_owner
@@ -13317,8 +13995,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: Current optimized shader/CPU source retains one immutable 49,216-byte forward probe block per view; setLightingData repeatedly reaches content deduplication before binding each batch.
 - Evidence: [Implementation/results report](research/ppd567-performance-20261122.md) and [execution ledger](work/active/ppd567-performance-20261122.md); original investigation/source evidence remains retained under private performance-investigation-20261122 and all component/comparison/preservation evidence under ppd567-20261122.
-- Next action: Owner continues Publication69452 visual/loading/behavior QA and review of mixed cadence/adverse p95. The explicitly authorized source/tests/reports are pushed at ec696aa615; publication does not establish visual acceptance or an isolated FPS improvement.
-- Verification: Actual old renderer fails eight duplicate-pack bounds; fixed case passes51279 assertions, full transparency1825343/12cases and related ownership/reload/water581147/40 with API/Shader Validation. Ten selected runs explicitly qualify with empty reasons; Club broad opaque-post hash CPU falls about99%, but mean cadence changes are mixed and replacement-pair p95 is11.76% worse. Home mean changes remain within0.5%; no isolated sustained FPS improvement is established.
+- Next action: Retain published once-per-invocation ownership, corrected real water/alpha pending-view coverage and mixed/adverse performance evidence. Owner visual/loading/behavior QA remains pending; no new acceptance is inferred.
+- Verification: Invocation-local immutable forward-probe publication is integrated and published. The original bound test catches eight duplicate-pack regressions; after PPD582correction actual above-water slot3and1→3→1transitions pass3805/1with API/Shader Validation. Ten selected comparisons explicitly qualify: broad hash CPU drops about99%, Club cadence remains mixed with replacement p95+11.76%, Home means within0.5%. No isolated sustained FPS gain is established.
 - Owner verification: pending
 - Push approval: granted
 
@@ -13338,6 +14016,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 publication: normal commit ec696aa615 includes the reviewed implementation, shared camera observer, GPU tests and both completed reports/ledgers. `git push origin HEAD:refs/heads/codex/apple-silicon-metal` exits0, advancing origin from d219d538ab to ec696aa615. Private recordings and unrelated local worktrees are excluded. Owner acceptance remains pending.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: ec696aa615;world.cpp:20555-20563;582 correctedrootGPUpass3805/1. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-568 — Detailed Home profiling contains a long native buffer-allocation block
 
 - Status: investigating
@@ -13346,8 +14027,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: The current native registry already detaches retired uses under lock and destroys their leases outside it; do not reintroduce the already-resolved ownership-temporary or generic deferred-release diagnosis.
 - Evidence: [Current performance investigation](work/active/performance-investigation-20261122.md); private performance-investigation-20261122 artifacts preserve exact identities, source maps and raw observations.
-- Next action: Retain exact syscall attribution and determine whether the allocation path is consequential without capture. Do not propose a ResourcePlan/deferred-release repair from this block. The continuous capture-off baseline remains throughput authority.
-- Verification: A157.0465ms syscall block occurs inside G-buffer encoding: __ulock_wait2 → os_unfair_lock → IOGPUMemoryInfo addResourceToList → AGXBuffer init → CaptureMTLDevice newBuffer → ALMetalBuffer::create. A temporally nearby graphUse sample was not the blocked stack. This establishes a captured native allocation/resource-list wait, not ordinary-session frequency or cost; capture can amplify it.
+- Next action: Preserve exact joins and bounds. Measure only a controlled captureOFF recurrence before proposing a production lock/resource repair or baseline hitch attribution.
+- Verification: Capture-enabled MST attributes the157msHome and211.705msClubblocks to Apple driver/native buffer-allocation locking, not ResourcePlan registry locking. A separate57.824msblock remains unclassified; captureOFF frequency/cost and baseline p95cause are unknown.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13361,6 +14042,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 final investigation: Club adds211.705msblocked native exposure-target allocation through the same Apple resource-list/driver domain under capture. Home157ms attribution is resolved; a separate57.824msblock remains unclassified. Capture-off frequency/cost unknown; do not call these ResourcePlan mutexes or assign baseline p95tails to them. Exact tables/joins/source and bounded next action in [report](research/performance-investigation-20261122.md).
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: performance-investigation-20261122.md exactMST joins. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-569 — Early Home GPU replay reports missing-binding insights
 
 - Status: investigating
@@ -13369,8 +14053,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: A replay insight is a report to investigate, not proof that a live shader accessed an unbound resource. Conditional arguments and capture boundaries require exact call/PSO inspection.
 - Evidence: [Current performance investigation](work/active/performance-investigation-20261122.md); private performance-investigation-20261122 artifacts preserve exact identities, source maps and raw observations.
-- Next action: Inspect the preserved call/PSO argument and branch, then use an isolated validation check if necessary. Do not silently dismiss the warning, attribute current FPS to it, or treat a successful replay as validation of the binding.
-- Verification: Current exact69450 early device capture replays in Xcode and Summary lists Missing Binding on the simple G-buffer group. Fragment diffuse_textures slot3 is identified; exact warned draw/count and runtime effect remain unqualified. An attempted insight selection during profiling caused Xcode interface-layout saturation; diagnostic sample and originals are preserved.
+- Next action: Inspect the preserved exact draw/count/binding before targeted separate validation. Keep early insight and static-contract limits without assuming slot3was unused.
+- Verification: Generic32slot shaders guard texture_index<texture_count and CPU binds the validated active prefix. Exact warned draw buffer4count/slot3remains unqualified; source reachability alone neither dismisses the insight nor proves an illegal read/FPS effect.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13384,6 +14068,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 final investigation: Source-only review confirms generic32-slot contract, distinct from legacy8-slot PSO. Shader guards texture_index<texture_count; CPU validates and binds activeprefix. Slot3 is unreachable under source forcount<=3, whilecount>=4 requiresbinding. Actualwarneddraw/count/selector remains unqualified, so no illegalread or FPS effect is proved. Next inspect preservedexactdraw/buffer4count/slot3, then existing [diffuse-bindings] fixture/targetedseparatevalidation ifneeded. Sourceanchors and limitation in [report](research/performance-investigation-20261122.md).
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: builtin genericGBuffer texturearray32;world bindingprefix;retained earlywarning. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-570 — Private metadata staging helper assumes unavailable Python xattr functions
 
 - Status: investigating
@@ -13392,8 +14079,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: This fork and its staging tools run on macOS ARM64; extended-attribute preservation must use an available Darwin interface rather than assuming Linux-only os functions.
 - Evidence: [Current investigation](work/active/performance-investigation-20261122.md); metadata-stage-01.log and private stage receipt20261122T020705Z-748223a8 record AttributeError for os.listxattr before any clone/sign action.
-- Next action: Retain corrected private helper/native fixture and both failed receipts. Stage03 and independent signature/app checks pass; no production integration or owner closure is implied.
-- Verification: First actual root execution exits1 during accepted-app inventory; source/executable and app remain untouched. AST-only author/review checks did not establish runtime platform support.
+- Next action: Preserve the corrected private reader, finite/race guards and Stage03receipts. No production or owner-performance repair follows.
+- Verification: Bounded Darwin xattr reader passes actual native binary/empty/nofollow symlink comparisons. Guarded Stage03then completes immutable inventory/signing/CPU-byte proof, with independent deep/strict and346ARM64checks0; initial Python platform-API failure remains retained.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13405,6 +14092,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-22 corrected bounded Darwin reader passes an actual native xattr comparison for binary/empty attributes and no-follow symlink behavior. Stage03 then completes immutable bundle inventory/signing/CPU-byte proof; independent deep/strict and346ARM64 checks both0. This verifies the private diagnostic guard path, not a production change or owner acceptance.
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD570 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-571 — Private staging assumes an explicit designated requirement on an ad-hoc app
 
 - Status: investigating
@@ -13413,8 +14103,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: codesign reports a derived commented cdhash requirement for an ad-hoc app with zero stored requirements. Re-signing changes that derived hash while preserving CPU bytes, identifier, entitlements and runtime flags. It must not be treated as a stored expression that remains identical.
 - Evidence: [Current investigation](work/active/performance-investigation-20261122.md); metadata-stage-02 exits1 at Incomplete signing metadata, stage receipt20261122T021154Z-37e7776b and original codesign outputs.
-- Next action: Retain corrected implicit/explicit parser and actual stage03/native signature proofs. Keep original failed receipt and unchanged CPU/inventory guards; no production integration or owner closure is implied.
-- Verification: Accepted app has Internal requirements count0 and a commented derived requirement; the helper only parses an uncommented expression. Failure occurs before clone/sign. Native xattr fixture already passes; original accepted app remains untouched.
+- Next action: Retain stored-requirement/CPU-byte/UUID/entitlement guards and original failures. Do not mistake new derived signature data for changed CPU behavior.
+- Verification: Corrected explicit/implicit ad-hoc requirement parser passes actual zero-count12byte stored-blob proof and guarded Stage03signing/ARM64verification0. Derived CDHash changes legitimately while all non-signature CPU bytes/UUID and six typed entitlements remain equal.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13425,6 +14115,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 corrected implicit/explicit requirement parser passes the actual zero-count/12-byte stored-blob proof, then guarded stage03 and final signature/ARM64 verification0. New root CDHash is recorded as derived signing data while all CPU non-signature bytes/UUID and six entitlements remain equal. Original app immutable; no production patch, commit or push.
 
 
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: PPD571 finalhistory. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
 ## PPD-572 — Private exclusive CPU reducer assumes every stack sentinel has an ID
 
 - Status: investigating
@@ -13433,8 +14126,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: Instrument exports may retain a no-ID stack sentinel. Every selected target sample weight must remain in the non-overlapping budget, even if the stack cannot be classified.
 - Evidence: [PPD567 execution ledger](work/active/ppd567-performance-20261122.md); private artifacts/metal/ppd567-20261122/analysis-cpu-queues first reducer stops before publishing a result on a no-ID stack.
-- Next action: Preserve failed helper/error; treat missing-stack samples explicitly as unclassified and reconcile every selected weight before reporting a budget. No viewer change.
-- Verification: Initial private reducer assertion failed; no partition or corrected runtime result yet. This is an analysis-schema assumption defect, not a viewer performance defect.
+- Next action: Retain the corrected reconciled partition and original failure; apply the same no-ID-stack weight accounting to future CPU reductions. No viewer change or owner closure is implied.
+- Verification: Original no-ID-stack assertion failure is retained. Corrected offline reduction accounts for all43,429 main samples/43.429CPU-s in21 exclusive categories, leaving0.992s explicitly unclassified; no-ID sentinels occur on generic background threads, not main, and their weights remain included. This validates offline analysis, not a viewer repair or owner closure.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13452,8 +14145,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: Current MSL includes forward declarations. A source extractor must distinguish a semicolon before an opening brace from a function definition; unmodified helper bodies must not be replaced with unrelated following structures.
 - Evidence: [PPD567 ledger](work/active/ppd567-performance-20261122.md); private census generator/draft and initial Metal compile error under artifacts/metal/ppd567-20261122/census.
-- Next action: Preserve failed generator/source/compiler output; reject declarations and qualify exact extracted bodies before compiling/running the census. No production shader change.
-- Verification: Offline diagnostic compile reports duplicate/missing definitions; no GPU execution or census result yet. Explicit private module cache resolves a separate child default-cache permission issue.
+- Next action: Preserve corrected extractor/restoration and actual GPU census results alongside original failures; do not reuse census counts as timing or full-lighting parity. No production shader change.
+- Verification: Initial duplicate/missing-definition compile failure and cache-path issue are retained. Corrected extractor rejects semicolon-before-brace declarations and passes exact helper/traversal restoration plus offline compile/link. Actual root run02 on M1 Max with API/Shader Validation writes1,024 records/966 covered receivers with0invalid/nonfinite ambient outputs and0ambient bit mismatches; diagnostic ambient correctness does not establish full-lighting parity or timing.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13471,8 +14164,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-22
 - Original reference: RGBA32Uint exports use an integer KTX base-format enum. The diagnostic validator must match the actual source format, not accept a normalized RGBA assumption.
 - Evidence: [PPD567 ledger](work/active/ppd567-performance-20261122.md); private preparer draft expects RGBA6408 while retained actual Xcode integer KTX header is RGBA_INTEGER36249.
-- Next action: Preserve the draft and correct the explicit format table; verify new actual55-pack input headers and byte lengths before executing the census.
-- Verification: Source-check discovery before input acceptance or GPU execution; no fabricated input or viewer change.
+- Next action: Retain actual export identities, explicit integer base formats and original draft. Do not substitute old resources for the55pack or use counts as GPU timing.
+- Verification: Explicit integer KTX format table passes six private tests and actual exports including RGBA32UI4x130,RGBA16UNORMand FLOATdepth32. Actual1024recordcensusrun02passes API/Shader Validation with0ambient bit mismatches; this is diagnostic ambient correctness, not full lighting parity/timing.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -13481,6 +14174,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 registered before correcting the private format checker. Old capture inputs may guide file-format validation but cannot substitute for the current55-pack resources.
 
 - 2026-11-22 retest: Corrected explicit integer KTX table passes six private format tests and actual root exports, including RGBA32UI4x130, RGBA16UNORM and FLOATdepth32 rather than stencil. Actual1024-record censusrun02 passes API/Shader Validation with0ambient bit mismatches; original format draft retained.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: census inputs actual-export-manifest/run02;PPD574 retest. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
 
 ## PPD-575 — Private comparison reducer requests the wrong GPU variant column
 
@@ -13624,3 +14320,270 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22 retest: Root final comparer rejects the actual unqualified B03 as required; private analysis-comparison/ppd581-actual-negative-gate.json preserves the passing rejection proof. Original root/review error, result01/result02 and the whole excluded A03/B03 pair remain retained. A new whole-pair A04/B04 collection is in progress without qualifier changes; no completed final comparison, speedup or owner closure is claimed.
 
 - 2026-11-22 final gated comparison: actual negative B03 rejection proof remains; the entire A03/B03 pair stays retained/excluded. Recollected A04/B04 qualifies under unchanged window/view/controls/rules,815/803native periods with0gaps. Final gate actual0 requires all ten selected arms explicitly true/reasons[]; final preservation audit02 also passes. CPU/GPU/FRAME values of original result01/result02 remain invariant. Original early all-ten statement and root/review error remain; mixed cadence/adverse p95 and owner verification are not waived.
+
+## PPD-582 — Forward-probe pending-view fixture claims an unexercised water binding slot
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Native water/alpha regression coverage
+- Discovered: 2026-11-22
+- Original reference: The pending-view fixture uses shiny and simple-alpha consumers, both fragment buffer1. Real above-water probes use buffer3; renderer restoration to alpha must preserve buffer1. Original Alchemy1eb44bbd1b water setup/sampleReflectionProbesWater retains ordered surface/depth/glow behavior.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain the real above-water/alpha fixture and owner visual gate; component coverage is complete.
+- Verification: Actual real-water pending matrix passes3805assertions/1case; final integrated transparency suite passes1,829,148assertions/13cases with Metal API+Shader Validation. It exercises real slot3 and1→3→1 restoration with differing pending packs. The initial invalid alpha-only water reference remains retained. This repairs coverage, not a demonstrated production water defect.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before corrective edits after the owner requested grounded review follow-through. The published CPU cleanup has no established sustained FPS gain; Home GPU limitation and adverse Club p95 remain unresolved.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: artifacts/metal/ppd567-review-20261122/water-test-02.*; first01 preserved. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner now authorizes this retained production correction and documentation on the usual codex/apple-silicon-metal branch. Added native diagnostics, HTTP age measurement and one-off analysis tools remain review-only; earlier review-specific publication approval/history is preserved. Owner visual/behavior acceptance remains pending, and clean production build/test receipts belong to the current canonical handoff.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-583 — Corrected performance qualification and reductions are not reusable from a fresh checkout
+
+- Status: deferred
+- Confirmation: source_confirmed
+- Owner: Performance evidence tooling
+- Discovered: 2026-11-22
+- Original reference: Private final_compare.py and reduce_run_corrected.py implement PPD575/578/579/581 corrections, but no corresponding tool changes are tracked at d191bb062f. Raw recordings must remain private while reusable semantics can be tested with synthetic inputs.
+- Evidence: [Immutable review-branch tooling/results](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md) and [review tool source](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/tools/metal/performance_analysis.py).
+- Next action: Keep the study-specific tools/tests on the immutable review branch under the owner production-only scope decision; do not install them on the usual branch or start another collection. Use that branch when reproducing the retained analysis.
+- Verification: Review checkpoint a608 preserves qualification/attribution/histogram, closed Home and numeric memory helpers with74new sanitized cases; its whole259test suite/1optional skip passes. Actual A02 reductions and250sample memory checks are review-branch evidence. All new tools and associated tests are excluded from the usual branch; their availability there is not claimed.
+- Owner verification: pending
+- Push approval: granted
+- Resolution: Owner explicitly confines new study-specific tools/tests and added diagnostics to the review branch. Production-only integration excludes this tooling; review publication approval remains historical and does not mean usual-branch installation or product acceptance.
+
+### History
+
+- 2026-11-22 registered before corrective edits after the owner requested grounded review follow-through. The published CPU cleanup has no established sustained FPS gain; Home GPU limitation and adverse Club p95 remain unresolved.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: current follow-up ledger/PPD583. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
+- 2026-11-22 Integrated frozen performance_analysis.py and sanitized test_performance_analysis.py; focused22tests0 and full207test suite0/1optional skip (tools-tests-01). Process exit0 alone remains insufficient qualification; original failed03 comparison is still excluded.
+
+- 2026-11-22 Added sanitized HTTP histogram reduction and14negative/corrective cases under existing helper-maintenance scope. Full tools-tests-02 passes221tests in10.023s/1optional skip; independent bounded review clean.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 reproducibility follow-through: Integrated the independently reviewed three-file closed admission analysis port. Root tools-tests-public-home-01 exits0 (251tests/1skip). Public actual-A02 reduction and private-public-equivalence-01 preserve the negative gates, all measured values/types and exact raw/context hashes. The earlier private originals and child full-suite environment failures remain retained.
+
+- 2026-11-22 independent fixed-window memory postprocessing exposed a private convenience assertion requiring global missed-sample count zero. One global miss caused a false failure even though all250 selected numeric observations had valid full brackets; the corrected scope retains the global miss, actual observed gaps and sampled-only limitations. Original failure and corrective receipt are preserved under home-group3-final-l02. Before edits, assign a small public numeric memory-window qualifier and sanitized fixtures under583 so this reusable correction is versioned. Existing public251-test qualification remains valid for its previous files; new extension and final suite follow. No native gate is weakened or continuous coverage claimed.
+
+- 2026-11-22 Minimal two-file memory summary integrated with8focused boundary tests. Full final04 exits0 after the retained default-Python missingPyYAML and QA-venv missingNumPy attempts; dependencies already exist in requirements.txt and qualified command is recorded privately. Actual global-miss window is retained, not vetoed or called continuous coverage. Original exact-equality draft assertion differs only by1ULP quantile interpolation and is documented; source values/counts/extrema/mean agree.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner explicitly excludes all new study-specific Python tools/tests and added native diagnostics from the usual branch. Status is deferred for that owner scope decision; review source/results remain accessible at immutable a608. Earlier successful review tests and failed attempts remain unchanged, and are not usual-branch installation claims.
+
+## PPD-584 — Current analysis verification fields contradict retained corrective history
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Defect register maintenance
+- Discovered: 2026-11-22
+- Original reference: PPD572 and573 Verification/Next action fields still describe pre-correction failures; their dated histories and private results already retain corrected partition/GPU census evidence. Current fields must reflect observed results while history remains intact.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain the211current-field corrections,44accepted-removal closures and74specific proof boundaries. The canonical register/work ledger govern production; detailed measurements and study-specific tooling remain accessible from the immutable review branch.
+- Verification: The source/history audit corrected211current fields and closed44scoped accepted-removal records without fabricating owner gates. Original587record histories and later588/589IDs remain preserved. Production consolidation excludes added review diagnostics/tools and links their immutable evidence rather than claiming those files are installed on the usual branch.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before corrective edits after the owner requested grounded review follow-through. The published CPU cleanup has no established sustained FPS gain; Home GPU limitation and adverse Club p95 remain unresolved.
+
+
+- 2026-11-22 current-truth reconciliation: The first private updater preflight stopped at multiline proposed PPD161 metadata before any canonical write. Original helper, error and byte-identical before.md are retained. Proposed metadata whitespace alone is normalized to the required single-line form; every existing History byte is preserved, with only dated audit entries appended. Current-source and later corrective evidence now replace stale implementation/test instructions; exact accepted retirement scopes and all unresolved owner/runtime limits remain separate. Root independent review and final harness qualification follow.
+
+
+- 2026-11-22 corrective register validation: After normalizing proposed metadata whitespace, the private updater preserves all587existing History byte strings and all IDs, leaves572/573/587byte-identical and marker588unchanged, and changes status/owner fields only for the44reviewed accepted-retirement scopes. Ordinary validate_harness.py exits0 (33required files) and scoped git diff --check exits0. Root independent review remains pending; no viewer/GPU/build or owner verification was performed by this documentation retest.
+
+- 2026-11-22 recovery snapshot/main-ledger refresh first failed the existing harness structural/invariant wording checks after the rewrite; no source/register mutation was made by that attempt. Required checkpoint headings, M-ID table and retained renderer/release invariants were restored. Retest passes0/33required files and scoped diff0; the failed receipt is preserved in recovery-doc-refresh/first-harness-failure.json. Root later harness-interim-01 also passes after current583/587 evidence and588 registration.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 runtime-state refresh corrected stale pending native/capture joins and source/symbol boundaries. First refreshed CURRENT draft omitted the required independent build/review evidence phrase; harness-current-refresh-02 exits1. Restored the invariant text and reran the same harness. This is documentation qualification under584; original draft/failure receipt is retained and no runtime result is inferred.
+
+- 2026-11-22 Final handoff consolidates numerical performance disposition into one report instead of duplicating competing current tables. The repeated policy collection is ended with actual counts/exclusions, all four HTTP checks are complete, public tool suite259/1skip0 and current code/test boundaries are explicit. Old historical experiment plans remain labelled history.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner authorizes production-only publication and contradiction consolidation on codex/apple-silicon-metal. All589IDs and original History byte strings are retained;211/44/74audit facts and accepted removal closures remain. Added diagnostics/tools stay on the review branch; this publication grant does not fabricate owner visual/performance acceptance.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-585 — Camera event API description omits request-time and infinite-plane semantics
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Read-only camera observation contract
+- Discovered: 2026-11-22
+- Original reference: LLAgent.getCamera returns current request-time camera values. It is not an atomic captured-frame record; reverse-Z projection_far_clip may be infinite. The report states these limits, while the event API description does not.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain the precise description-only camera API contract and owner review gate.
+- Verification: getCamera API description now states request-time read-only values, non-atomic/non-frame snapshot, radians and possible infinite projection_far_clip. Behavior and fields are unchanged; integrated whole-app build and exact staged application verification pass.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before corrective edits after the owner requested grounded review follow-through. The published CPU cleanup has no established sustained FPS gain; Home GPU limitation and adverse Club p95 remain unresolved.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: current follow-up ledger/PPD585. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner now authorizes this retained production correction and documentation on the usual codex/apple-silicon-metal branch. Added native diagnostics, HTTP age measurement and one-off analysis tools remain review-only; earlier review-specific publication approval/history is preserved. Owner visual/behavior acceptance remains pending, and clean production build/test receipts belong to the current canonical handoff.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-586 — Dormant octree diagnostic calls a container member on a C array
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Octree diagnostic maintenance
+- Discovered: 2026-11-22
+- Original reference: Current lloctree.h584 calls mChild.size() under LL_OCTREE_PARANOIA_CHECK although mChild is oct_node*[8] at678. Original1eb44bbd1b/upstream408fd6c014 inherit this typo from6dd3840b44 replacing the populated vector with a fixed array; getChildCount now represents live occupancy. The warning-only overflow branch would also continue into mChild[8]. PPD034 covers a different element-capacity defect.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain normal and enabled-diagnostic ownership/overflow controls; integration is complete and owner review remains pending.
+- Verification: Original enabled-diagnostic header fails compilation. Fixed header passes normal/diagnostic compilation, dedicated ASan/UBSan8331assertions/8cases (including67/1targeted controls), root normal octree8264/7 and full integrated application build. Live-child validation rejects a ninth child before mutation. No normal Home FPS effect is inferred.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before corrective edits during the owner-authorized maintenance audit. No FPS gain or production incident cause inferred.
+
+
+- 2026-11-22 current-truth reconciliation: Current Verification/Next action now distinguish the implemented or completed scoped result from retained failures and unexecuted owner/runtime gates. Source/history proof: Root observed original diagnostic compile failure, normal/diagnostic0 and actual standalone ASan/UBSan8331/8(including67/1); integration pending.. No new build, viewer run, GPU measurement, owner acceptance or push scope is inferred by this documentation correction.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner now authorizes this retained production correction and documentation on the usual codex/apple-silicon-metal branch. Added native diagnostics, HTTP age measurement and one-off analysis tools remain review-only; earlier review-specific publication approval/history is preserved. Owner visual/behavior acceptance remains pending, and clean production build/test receipts belong to the current canonical handoff.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-587 — Texture HTTP completion service depends on a main-frame housekeeping trigger
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Texture fetch completion progress
+- Discovered: 2026-11-22
+- Original reference: Owner reports updateTextureThreads requests fetch housekeeping after display/end-of-frame, and commonUpdate delivers HTTP completions. Existing accepted requests/retries may also progress independently; the entire asset pipeline is not assumed stopped.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Owner-test the clean production candidate for loading/appearance/cancellation. Retain independent bounded fetch-owner service, synchronized teardown and exception safety; queue-age timestamps/histograms and one-off analysis are review-only. No repeat collection is selected.
+- Verification: The retained functional fix wakes the existing fetch owner, bounds each turn to16callbacks/1000us between complete callbacks and rearms remaining work. Review-source core/lifecycle fixtures and four Home/Club runs passed; Club p95reply-age bounds were32.768–65.536ms control versus2.048–4.096ms candidate with unequal populations. That instrumented evidence is preserved on the review branch; all queue-age timestamp/histogram implementation and age-only tests are excluded from production. No loading/FPS gain or owner acceptance is inferred.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before corrective edits during the owner-authorized maintenance audit. No FPS gain or production incident cause inferred.
+
+- 2026-11-22 PPD587 frozen12-file implementation integrated after exact source-hash/base preconditions. Central consistent rebuild and direct network-free fixtures pass (private ppd567-review-20261122/build-core-tests-01, queuedthread-test-01 and http-wake-test-01). Prior isolated PCH/source-root mixing failure remains in ppd587/syntax-01; corrected syntax-02 passes. Live viewer, complete downstream latency and owner acceptance remain to execute.
+
+- 2026-11-22 Revised14-file source-freeze-02 integrated with exacthash/oldcanonical preconditions. Actual updated fixtures pass and preserve prior fixtures. New synthetic withheld-poll ages25.019666ms versus13.791us are component observations only. The first full-app old-freeze build was intentionally interrupted130 after~500TUs to avoid redundant shared-PCH rebuild; interruption receipt retained and no compiler defect inferred. Full integrated application build now running after reviewed Home diagnostics freeze.
+
+- 2026-11-22 Actual source-pinned ABBA-scene comparison completed: Home frame-trigger PID88525, Home fixed88618, Club fixed88740, Club frame-trigger88938, native full screen, actual OpenHTJ2K/66controls/camera verified and normal shutdown. Four bounded100s+10s fixed phases preserve ordinary caches; histograms include full fetch lifetime. Source metrics and final HTTP table are in review-home-admission-20261122.md. Fix stays local awaiting owner testing/push approval.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner now authorizes this retained production correction and documentation on the usual codex/apple-silicon-metal branch. Added native diagnostics, HTTP age measurement and one-off analysis tools remain review-only; earlier review-specific publication approval/history is preserved. Owner visual/behavior acceptance remains pending, and clean production build/test receipts belong to the current canonical handoff.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-588 — Nonthreaded texture fetch runs housekeeping twice per owner update
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Texture fetch owner service
+- Discovered: 2026-11-22
+- Original reference: LLTextureFetch::update calls LLWorkerThread::update, whose LLQueuedThread::updateQueue invokes virtual threadedUpdate in nonthreaded mode; fetch threadedUpdate calls commonUpdate. The derived update then explicitly calls commonUpdate again. The original single owner/update housekeeping contract must not duplicate delivery/command service. Normal application fetch configuration is threaded; no Home cost is attributed.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain the exact-once base-owner regression and normal integrated application; owner testing remains pending.
+- Verification: The derived duplicate commonUpdate is removed; base nonthreaded update remains the single virtual housekeeping source. Functional exact-once regression coverage is retained. Review checkpoint core fixtures and integrated build passed; removed review-only age cases are not claimed as production tests. No threaded Home cost is inferred from this nonthreaded repair.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before repair after HTTP service review identified this adjacent duplicate. Keep it separate from587's frame-triggered threaded reply dependency and from current Home FPS attribution.
+
+- 2026-11-22 Minimal duplicate-call removal integrated from frozen587/588/589 source, with exact-once base-owner regression. Normal threaded Home cost is not inferred from this nonthreaded contract repair.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+
+- 2026-11-22 production-only consolidation: The owner now authorizes this retained production correction and documentation on the usual codex/apple-silicon-metal branch. Added native diagnostics, HTTP age measurement and one-off analysis tools remain review-only; earlier review-specific publication approval/history is preserved. Owner visual/behavior acceptance remains pending, and clean production build/test receipts belong to the current canonical handoff.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-589 — HTTP notifier exception leaks its borrowed response reference
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: HTTP response lifetime
+- Discovered: 2026-11-22
+- Original reference: HttpOperation::visitNotifier and HttpOpRequest::visitNotifier allocate/ref a borrowed HttpResponse, then release it after handler/log processing without a scope guard. A throwing handler bypasses that unref. Preserve existing borrowed response ownership across both normal and exceptional callback exit.
+- Evidence: [Production correction scope](research/production-maintenance-20261122.md) and [retained immutable review evidence](https://github.com/levdarkheart-lgtm/AlchemyFork/blob/a6089d691c113b9e6bc66a09f6b65b020e70960f/docs/metal/research/review-home-admission-20261122.md).
+- Next action: Retain the actual throwing-handler/borrowed-response lifetime fixture and integrated application; owner review remains pending.
+- Verification: Both notifier bodies scope-release the initial borrowed HttpResponse reference on normal and exceptional exit. Throwing-handler and retained-response lifetime fixtures are retained in production. Review checkpoint HTTP180assertions/11cases and integrated build passed; age-only instrumentation/tests are excluded from the usual branch. No ordinary live throwing-handler leak or owner acceptance is alleged.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22 registered before repair when implementing the meaningful bounded-HTTP exception fixture. Do not mask the leak in test cleanup or infer that ordinary handlers throw in current Home sessions.
+
+- 2026-11-22 Scoped borrowed-reference guards integrated without changing ordinary handler ownership; actual exception fixture passes after consistent rebuild. Failure is not hidden by test cleanup.
+
+- 2026-11-22 integrated review checkpoint: Current fields now include actual root integration/validation and distinguish completed engineering from pending owner review. Original failed attempts and histories remain. New scope stays local; no push approval or whole-viewer FPS acceptance is inferred.
+
+- 2026-11-22 owner publication decision: Owner explicitly requests pushing checkpoint38fb245fc1 to a separate GitHub branch so other AI can access it. Approval is granted for review-branch publication on `codex/review-home-admission-20261122`; this does not supply owner visual/performance acceptance, merge/default-branch approval or release approval. The owner subsequently requested viewer closure while away; normal UI Quit completed and PID98258 is absent.
+
+- 2026-11-22 production-only consolidation: The owner now authorizes this retained production correction and documentation on the usual codex/apple-silicon-metal branch. Added native diagnostics, HTTP age measurement and one-off analysis tools remain review-only; earlier review-specific publication approval/history is preserved. Owner visual/behavior acceptance remains pending, and clean production build/test receipts belong to the current canonical handoff.
+
+- 2026-11-22 clean production qualification: Retained repair/reconciliation passes the current full build, six focused native tests,188tool tests and app/strict/harness checks. [Production record](research/production-maintenance-20261122.md) owns exact scope, identity and limits. Experiments remain review-only; viewer closed; owner acceptance pending.
+
+## PPD-590 — Harness mistakes external GitHub evidence paths for local files and commands
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Existing harness reference validation
+- Discovered: 2026-11-22
+- Original reference: tools/metal/validate_harness.py validate_live_references skips external URLs in Markdown-link checks, then scans the same content again with REPO_PATH_RE and SCRIPT_PATH_RE. A GitHub evidence URL containing docs/metal or tools/metal is treated as a local checkout path/command.
+- Evidence: [Production maintenance scope and corrective verification](research/production-maintenance-20261122.md).
+- Next action: Retain external-evidence exclusions and regression coverage in the existing harness; production integration tests pass. Owner acceptance remains separate from publication.
+- Verification: Original source/worktree failures are retained. The corrected validator excludes HTTP(S) URL spans from local path/command scans, including angle-bracketed evidence links. Three new existing-suite tests cover remote documents/scripts, retained local labels/adjacent links and retained local executable validation. Full tools suite passes188tests/1optional skip; combined documentation harness passes33required files. No external URL fetch or viewer runtime claim is inferred.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-22: Production-only documentation consolidation exposes the existing double scan: external Markdown links are exempted once, then their embedded repository-shaped paths are scanned as local files/scripts. Actual worktree harness exits1 with those false errors. Owner-authorized production maintenance includes a focused repair to the existing validator/tests; root owns implementation and corrective tests. Record registered before that repair. No viewer defect or new analysis tool is implied.
+
+- 2026-11-22 corrective verification: The pre-repair reproducer reports a false stale-local error. After the focused existing-validator repair and complete documentation integration, combined harness exits0 and the complete188-test tool suite exits0 with1optional skip. The first focused run occurred before the audit note was integrated and failed that real missing-document check; its log is retained. No gate was weakened or new standalone tool introduced.

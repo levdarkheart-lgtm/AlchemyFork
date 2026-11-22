@@ -93,6 +93,23 @@ void LLQueuedThread::notifyWork() noexcept
     if (!mWakePending.exchange(true, std::memory_order_acq_rel)) mWakeEvent.release();
 }
 
+bool LLQueuedThread::requestThreadedUpdate() noexcept
+{
+    if (!mThreaded) return false;
+    U32 state = mThreadedUpdateState.load(std::memory_order_acquire);
+    for (;;)
+    {
+        if (state & UPDATE_CLOSED) return false;
+        if (state & UPDATE_PENDING) return true;
+        if (mThreadedUpdateState.compare_exchange_weak(state, state | UPDATE_PENDING,
+                std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            notifyWork();
+            return true;
+        }
+    }
+}
+
 void LLQueuedThread::consumeNotification() noexcept
 {
     if (mWakeEvent.try_acquire()) mWakePending.store(false, std::memory_order_release);
@@ -135,8 +152,8 @@ void LLQueuedThread::beginShutdown()
 {
     {
         LLMutexLock lock(mRunCondition);
+        mThreadedUpdateState.store(UPDATE_CLOSED, std::memory_order_release);
         mShutdownStarted.store(true, std::memory_order_release);
-        mThreadedUpdatePending = false;
     }
     setQuitting();
     unpause();
@@ -199,17 +216,14 @@ size_t LLQueuedThread::updateQueue(F32 max_time_ms)
     LL_PROFILE_ZONE_SCOPED;
     if (mThreaded)
     {
-        bool notify = false;
         if (!isAdmissionClosed() && hasThreadedUpdate())
         {
             LLMutexLock lock(mRunCondition);
-            if (!mShutdownStarted && !mThreadedUpdatePending && !mHousekeepingActive)
+            if (!mShutdownStarted && !mHousekeepingActive)
             {
-                mThreadedUpdatePending = true;
-                notify = true;
+                requestThreadedUpdate();
             }
         }
-        if (notify) notifyWork();
         if (getPending()) unpause();
     }
     else
@@ -239,7 +253,8 @@ void LLQueuedThread::incQueue()
 size_t LLQueuedThread::getPending()
 {
     LLMutexLock lock(mRunCondition);
-    return mActiveRequests + mRequestQueue.size() + size_t(mThreadedUpdatePending) + size_t(mServiceActive);
+    return mActiveRequests + mRequestQueue.size() +
+        size_t(bool(mThreadedUpdateState.load(std::memory_order_acquire) & UPDATE_PENDING)) + size_t(mServiceActive);
 }
 
 // MAIN thread
@@ -548,13 +563,13 @@ bool LLQueuedThread::processOne()
         }
         const bool ready = position != mSchedule.end() && (stopping || position->first.first <= now);
         const bool callbacks = mRequestQueue.size() != 0;
-        const bool update = mThreadedUpdatePending && !stopping;
+        const bool update = (mThreadedUpdateState.load(std::memory_order_acquire) & UPDATE_PENDING) && !stopping;
         if ((callbacks || update) && (mPreferService || !ready))
         {
             housekeeping = update && (mPreferHousekeeping || !callbacks);
             if (housekeeping)
             {
-                mThreadedUpdatePending = false;
+                mThreadedUpdateState.fetch_and(~UPDATE_PENDING, std::memory_order_acq_rel);
                 mHousekeepingActive = true;
             }
             mPreferHousekeeping = !housekeeping;
@@ -640,7 +655,8 @@ LLQueuedThread::TimePoint LLQueuedThread::nextDeadline()
     LLMutexLock lock(mRunCondition);
     // Recheck after the last failed pump. A producer also leaves a semaphore
     // token, so work published between this snapshot and wait cannot be lost.
-    if (mShutdownStarted || mRequestQueue.size() || mThreadedUpdatePending)
+    if (mShutdownStarted || mRequestQueue.size() ||
+        (mThreadedUpdateState.load(std::memory_order_acquire) & UPDATE_PENDING))
         return TimePoint::clock::now();
     return mSchedule.empty() ? TimePoint::max() : mSchedule.begin()->first.first;
 }

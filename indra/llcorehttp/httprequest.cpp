@@ -25,6 +25,7 @@
  */
 
 #include "httprequest.h"
+#include <chrono>
 
 #include "_httprequestqueue.h"
 #include "_httpreplyqueue.h"
@@ -68,6 +69,7 @@ HttpRequest::HttpRequest()
 
 HttpRequest::~HttpRequest()
 {
+    setReplyNotification({});
     if (mRequestQueue)
     {
         mRequestQueue->release();
@@ -77,6 +79,10 @@ HttpRequest::~HttpRequest()
     mReplyQueue.reset();
 }
 
+void HttpRequest::setReplyNotification(std::function<void()> notification)
+{
+    mReplyQueue->setReplyNotification(std::move(notification));
+}
 
 // ====================================
 // Policy Methods
@@ -449,6 +455,31 @@ HttpStatus HttpRequest::update(long usecs)
         }
     }
 
+    return HttpStatus();
+}
+
+HttpStatus HttpRequest::update(long usecs, size_t max_replies)
+{
+    if (!max_replies) return update(usecs);
+    using Clock = std::chrono::steady_clock;
+    const auto deadline = usecs > 0 ? Clock::now() + std::chrono::microseconds(usecs) : Clock::time_point::max();
+    size_t dispatched = 0;
+    try
+    {
+        while (dispatched < max_replies && (dispatched == 0 || Clock::now() < deadline))
+        {
+            auto op = mReplyQueue->fetchOp();
+            if (!op) break;
+            ++dispatched;
+            op->visitNotifier(this);
+        }
+    }
+    catch (...)
+    {
+        mReplyQueue->notifyIfPending();
+        throw;
+    }
+    mReplyQueue->notifyIfPending();
     return HttpStatus();
 }
 

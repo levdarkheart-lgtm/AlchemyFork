@@ -259,7 +259,8 @@ void HttpOpRequest::visitNotifier(HttpRequest * request)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_NETWORK;
     if (mUserHandler)
     {
-        HttpResponse * response = new HttpResponse();
+        const auto release_response = [](HttpResponse* response) { response->release(); };
+        std::unique_ptr<HttpResponse, decltype(release_response)> response(new HttpResponse(), release_response);
         response->setStatus(mStatus);
         response->setBody(mReplyBody);
         response->setHeaders(mReplyHeaders);
@@ -284,9 +285,8 @@ void HttpOpRequest::visitNotifier(HttpRequest * request)
 
         response->setTransferStats(stats);
 
-        mUserHandler->onCompleted(this->getHandle(), response);
-        if (sMessageLogFunc != nullptr) sMessageLogFunc(response);
-        response->release();
+        mUserHandler->onCompleted(this->getHandle(), response.get());
+        if (sMessageLogFunc != nullptr) sMessageLogFunc(response.get());
     }
 }
 

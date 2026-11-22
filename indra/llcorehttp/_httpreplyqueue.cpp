@@ -55,7 +55,21 @@ void HttpReplyQueue::addOp(const HttpReplyQueue::opPtr_t &op)
         HttpScopedLock lock(mQueueMutex);
 
         mQueue.push_back(op);
+        if (mReplyNotification) mReplyNotification();
     }
+}
+
+void HttpReplyQueue::setReplyNotification(std::function<void()> notification)
+{
+    HttpScopedLock lock(mQueueMutex);
+    mReplyNotification = std::move(notification);
+    if (mReplyNotification && !mQueue.empty()) mReplyNotification();
+}
+
+void HttpReplyQueue::notifyIfPending()
+{
+    HttpScopedLock lock(mQueueMutex);
+    if (mReplyNotification && !mQueue.empty()) mReplyNotification();
 }
 
 

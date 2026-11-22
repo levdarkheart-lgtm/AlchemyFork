@@ -33,6 +33,7 @@
 
 #include "httpheaders.h"
 #include "httpoptions.h"
+#include <functional>
 
 namespace LLCore
 {
@@ -88,6 +89,19 @@ class HttpRequest
 public:
     HttpRequest();
     virtual ~HttpRequest();
+
+    // Consumer-owner setup/teardown only. This optional transport-side signal
+    // must only wake the consumer: nonblocking, noexcept, no queue reentry or
+    // cross-owner data locks. Clearing it waits for any notification in flight;
+    // clear before destroying the target. HttpHandlers still run only in update().
+    void setReplyNotification(std::function<void()> notification);
+
+    // Bounded reply-dispatch turn. At most max_replies handlers; usecs>0 also
+    // checks a wall deadline between callbacks. A callback runs to completion,
+    // and one is allowed for progress even if the deadline already elapsed.
+    // Ready replies re-arm the wake on normal/exceptional exit, without polling.
+    // max_replies==0 delegates to the unchanged one-argument update semantics.
+    HttpStatus update(long usecs, size_t max_replies);
 
 private:
     HttpRequest(const HttpRequest &);           // Disallowed

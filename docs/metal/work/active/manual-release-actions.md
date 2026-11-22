@@ -1,5 +1,8 @@
 # Manual Apple Silicon release workflow correction
 
+> Current disposition — 2026-11-22: Historical release/build authorization scope, not a standing publication grant. Valid unresolved release checklists and owner gates remain; use the canonical register/work ledger and actual current approval before any release or push.
+> Navigation: [current work](metal-port.md), [observed state](../../state/CURRENT.md), [defect register](../../POST_PORT_DEFECTS.md). Dated history/results below are retained unchanged.
+
 2026-11-12. PPD-014. Owner requests stopping unrequested Actions, investigating
 prior failures, fixing a manual release from current codex/apple-silicon-metal,
 and triggering/following the corrected GitHub workflow. This authorizes the
