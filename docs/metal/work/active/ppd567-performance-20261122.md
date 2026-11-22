@@ -227,3 +227,10 @@ at Club, with **My last location** selected as instructed, and the actual region
 visually verified. No recorder, LEAP helper or automatic GPU capture is active.
 Private `owner-review-02` records the exact executable and normal launch; the
 preceding `owner-review-01` remains retained.
+
+Publication: reviewed source/tests/reports commit `ec696aa615` is pushed to
+`origin/codex/apple-silicon-metal` (push exit0, prior `d219d538ab`). Normal candidate
+PID17951 remains full screen at Club; private actual-argv/environment verification
+confirms its exact tested binary, no LEAP helper and disabled heavy diagnostics.
+Owner visual/performance acceptance and the outstanding engineering work remain
+separate. No private recordings or unrelated worktrees were included.

@@ -1,8 +1,8 @@
 # Active Metal work — PPD-567 measured publication
 
 Current local scope is [PPD567 and measured follow-through](ppd567-performance-20261122.md).
-Candidate69452 is built and tested. Owner now explicitly says "Commit and push
-all the changes": current-scope normal commit/push is approved. Owner visual/runtime
+Candidate69452 is built and tested. Owner explicitly requested "Commit and push
+all the changes"; source/tests/reports are pushed at `ec696aa615`. Owner visual/runtime
 verification remains pending; publication permission is not an FPS acceptance claim.
 The [results report](../../research/ppd567-performance-20261122.md) establishes lower
 hash CPU cost, mixed whole-frame results and the completed census stop decision.

@@ -6,6 +6,7 @@ explicitly approved committing and pushing this scope on 2026-11-22; visual and
 performance acceptance remain pending. This report does not declare the
 product release gates met. The measured redundant CPU cost is removed; an isolated
 sustained FPS improvement is **not established** by these changing live scenes.
+The reviewed source, tests and reports are published as `ec696aa615`.
 
 ## Implementation and ownership
 

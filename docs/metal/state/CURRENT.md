@@ -3,6 +3,7 @@
 Build observed2026-11-21; owner acceptance2026-11-22.
 Apple M1 Max /64GiB /macOS26.5.2 /Xcode26.6.
 Branch: codex/apple-silicon-metal, canonical checkout.
+Current implementation/report checkpoint: `ec696aa615` (pushed2026-11-22).
 **Renderer code checkpoint:** `960bd3644a` (accepted baseline).
 Ancestor indra tree: `7d8c095d360bd3f77ac64d1b69e23c21840e0011`;
 new local PPD567/common-observer source is explicitly hashed in both arm manifests.
@@ -17,7 +18,7 @@ Owner now authorizes PPD567 implementation, repeated controlled Club comparisons
 Home regression checks, bounded Home census, exclusive Club CPU budget and worker/
 queue table. [Current execution ledger](../work/active/ppd567-performance-20261122.md)
 owns the complete five-part goal. Owner now says "Commit and push all the changes."
-Current-scope commit/push is approved; owner visual/performance verification is pending.
+Current-scope implementation/report publication is complete; owner visual/performance verification is pending.
 
 Local invocation-owned lazy forward-pack slice and independent pending-view tests
 are integrated. Actual baseline fails eight duplicate-pack byte checks; fixed test
@@ -152,7 +153,7 @@ launch do not establish whole-viewer runtime/performance or visual acceptance.
 
 Owner reviews Publication69452 for visual/loading/behavior and retained mixed cadence/
 adverse p95. Five goal parts/audit02/Home checks are complete; Club handoff is ready.
-Owner explicitly authorizes committing/pushing all current-scope source/docs changes;
-publication is not visual acceptance, an FPS claim or permission to upload private evidence.
-Prior publication reached d219d538ab. Existing asset/geometry/slack/General/streaming/
+Owner-authorized source/tests/reports reached origin at ec696aa615; publication is
+not visual acceptance, an FPS claim or permission to upload private evidence.
+Existing asset/geometry/slack/General/streaming/
 compiler/product work remains in the canonical active priorities.
