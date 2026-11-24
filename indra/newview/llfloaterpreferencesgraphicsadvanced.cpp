@@ -70,6 +70,9 @@ LLFloaterPreferenceGraphicsAdvanced::~LLFloaterPreferenceGraphicsAdvanced()
 
 bool LLFloaterPreferenceGraphicsAdvanced::postBuild()
 {
+    mMainResolutionStatus = getChild<LLTextBox>("main resolution status");
+    refreshMainResolutionStatus();
+
     mComplexityChangedSignal = gSavedSettings.getControl("RenderAvatarMaxComplexity")->getCommitSignal()->connect(
         [this](LLControlVariable* control, const LLSD& new_val, const LLSD& old_val)
         {
@@ -91,6 +94,57 @@ bool LLFloaterPreferenceGraphicsAdvanced::postBuild()
             updateIndirectMaxNonImpostors(new_val);
         });
     return true;
+}
+
+void LLFloaterPreferenceGraphicsAdvanced::draw()
+{
+    refreshMainResolutionStatus();
+    LLFloater::draw();
+}
+
+void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()
+{
+    // Rendering publishes the last successfully committed ordinary world view.
+    // Reading this status must never prepare a scaler or alter saved settings.
+    const auto& status = gPipeline.getMetalMainResolutionStatus();
+    const S32 requested = llclamp(gSavedSettings.getS32("RenderMetalMainResolutionMode"), 0, 2);
+    std::string text;
+    if (!status.known || status.requested != requested)
+    {
+        text = getString("main_resolution_pending");
+    }
+    else
+    {
+        LLStringUtil::format_map_t args;
+        switch (status.effective)
+        {
+            case 0: args["[MODE]"] = getString("main_resolution_standard"); break;
+            case 1: args["[MODE]"] = getString("main_resolution_linear"); break;
+            case 2: args["[MODE]"] = getString("main_resolution_metalfx"); break;
+            default:
+                // An unrecognized producer state cannot establish an active mode.
+                text = getString("main_resolution_pending");
+                break;
+        }
+        if (text.empty())
+        {
+            if (status.effective != requested)
+            {
+                args["[REASON]"] = status.reason.empty()
+                    ? getString("main_resolution_unavailable") : status.reason;
+                text = getString("main_resolution_fallback", args);
+            }
+            else
+            {
+                text = getString("main_resolution_active", args);
+            }
+        }
+    }
+    if (text != mMainResolutionStatus->getText())
+    {
+        mMainResolutionStatus->setText(text);
+        mMainResolutionStatus->setToolTip(text);
+    }
 }
 
 void LLFloaterPreferenceGraphicsAdvanced::onOpen(const LLSD& key)
@@ -121,6 +175,8 @@ void LLFloaterPreferenceGraphicsAdvanced::onRenderOptionEnable()
 
 void LLFloaterPreferenceGraphicsAdvanced::refresh()
 {
+    refreshMainResolutionStatus();
+
     LLSliderCtrl* draw_distance = getChild<LLSliderCtrl>("DrawDistance");
     cap_draw_distance_control(draw_distance, draw_distance);
 

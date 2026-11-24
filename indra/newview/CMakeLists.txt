@@ -2984,7 +2984,7 @@ if(AL_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_graphics_preferences_test.py"
         --emit-source "${native_graphics_preferences_source}"
       DEPENDS llfeaturemanager.cpp llfeaturemanager.h app_settings/cmd_line.xml
-        llfloaterpreferencesgraphicsadvanced.cpp llfloaterpreference.cpp
+        llfloaterpreferencesgraphicsadvanced.cpp llfloaterpreferencesgraphicsadvanced.h pipeline.h llfloaterpreference.cpp
         llfloaterperformance.cpp llpresetsmanager.cpp app_settings/settings.xml
         app_settings/settings_alchemy.xml featuretable.txt featuretable_mac.txt featuretable_linux.txt
         skins/default/xui/en/panel_preferences_graphics1.xml
@@ -2998,7 +2998,20 @@ if(AL_BUILD_TESTS)
     target_link_libraries(alnative_graphics_preferences_tests PRIVATE al::flags llcommon)
     add_test(NAME newview/native_graphics_preferences COMMAND alnative_graphics_preferences_tests)
     set_tests_properties(newview/native_graphics_preferences PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
-    foreach(contract_target altexture_scheduling_tests alnative_graphics_preferences_tests alasset_admission_tests)
+    set(graphics_preset_roundtrip_source "${CMAKE_CURRENT_BINARY_DIR}/graphics_preset_roundtrip_generated.cpp")
+    add_custom_command(OUTPUT "${graphics_preset_roundtrip_source}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/graphics_preset_roundtrip_test.py"
+        --emit-source "${graphics_preset_roundtrip_source}"
+      DEPENDS llpresetsmanager.cpp llpresetsmanager.h llagentcamera.h tests/graphics_preset_roundtrip_test.py
+        tests/graphics_preset_roundtrip_fixture.cpp
+      VERBATIM)
+    add_executable(algraphics_preset_roundtrip_tests "${graphics_preset_roundtrip_source}")
+    target_link_libraries(algraphics_preset_roundtrip_tests PRIVATE al::flags llxml)
+    add_test(NAME newview/graphics_preset_roundtrip COMMAND algraphics_preset_roundtrip_tests)
+    set_tests_properties(newview/graphics_preset_roundtrip PROPERTIES TIMEOUT 60 LABELS "alchemy-bin")
+
+    foreach(contract_target altexture_scheduling_tests alnative_graphics_preferences_tests alasset_admission_tests algraphics_preset_roundtrip_tests)
       target_compile_options(${contract_target} PRIVATE
         -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
       target_link_options(${contract_target} PRIVATE -fsanitize=address,undefined)

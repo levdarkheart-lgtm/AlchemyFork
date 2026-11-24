@@ -188,6 +188,17 @@ public:
     const ALRenderResourceInputs& resourceInputs() const { return mResourceInputs; }
     const ALRenderResourcePlan& resourcePlan() const { return mResourcePlan; }
 
+    // Last committed ordinary main-view reconstruction. Alternate/snapshot views cannot replace it, and render
+    // input reapplication invalidates it until a complete new transaction commits. Reading never prepares a scaler.
+    struct MetalMainResolutionStatus
+    {
+        S32 requested = 0;
+        S32 effective = 0;
+        bool known = false;
+        std::string reason;
+    };
+    const MetalMainResolutionStatus& getMetalMainResolutionStatus() const { return mMetalMainResolutionStatus; }
+
     /// The auto-exposure's adapted state and the lens flare's history, as a first frame finds them.
     void resetExposureHistory();
     void setupGradingLUT();
@@ -202,6 +213,8 @@ public:
     static void scaleToRenderResolution(U32& resX, U32& resY);
 
 private:
+    MetalMainResolutionStatus mMetalMainResolutionStatus;
+
     // The one application, which applyRenderInputs and loadRenderInputs run.
     void applyRenderInputs(const ALRenderInputRequests::Application& taken);
 

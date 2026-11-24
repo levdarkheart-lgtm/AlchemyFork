@@ -492,6 +492,50 @@ namespace
         }
     }
 
+    TEST_CASE("alrenderresourceplan: ordinary snapshots capture native scene detail without changing the live plan",
+              "[alrenderresourceplan]")
+    {
+        for (Mode mode : { Mode::Native, Mode::Half, Mode::MetalFX, static_cast<Mode>(99) })
+        {
+            for (U32 divisor : { 1u, 2u, 4u })
+            {
+                Inputs in = defaults();
+                in.mWidth = 3457; in.mHeight = 2169;
+                in.mResolutionDivisor = divisor;
+                in.mResolutionMultiplier = 1.5f;
+                in.mMainResolutionMode = mode;
+                const Inputs before = in;
+                const auto live_plan = Plan::make(in);
+                const auto live = live_plan.mainViewDimensions();
+                const auto snapshot = in.ordinarySnapshotDimensions();
+                if (mode == Mode::Half || mode == Mode::MetalFX)
+                {
+                    CHECK(snapshot.mSceneWidth == 3457);
+                    CHECK(snapshot.mSceneHeight == 2169);
+                    CHECK(live.mSceneWidth == 1729);
+                    CHECK(live.mSceneHeight == 1085);
+                }
+                else
+                {
+                    // Native (including an unknown-mode fallback) retains legacy snapshot scaling.
+                    CHECK(snapshot == live);
+                }
+                CHECK(snapshot.mOutputWidth == live.mOutputWidth);
+                CHECK(snapshot.mOutputHeight == live.mOutputHeight);
+                CHECK(snapshot.mShadowReferenceWidth == live.mShadowReferenceWidth);
+                CHECK(snapshot.mShadowReferenceHeight == live.mShadowReferenceHeight);
+                CHECK(in == before);
+                CHECK(names(Plan::changed(live_plan, Plan::make(in))) == "nothing");
+                // Explicit/cutout overrides still use renderSize, not the ordinary snapshot policy.
+                U32 width, height;
+                in.renderSize(width, height);
+                CHECK(width == (divisor > 1 ? in.mWidth / divisor : 5185u));
+                CHECK(height == (divisor > 1 ? in.mHeight / divisor : 3253u));
+                CHECK(in.ordinarySnapshotDimensions() == snapshot);
+            }
+        }
+    }
+
     TEST_CASE("alrenderresourceplan: both half modes retain full-reference shadows and identical allocations",
               "[alrenderresourceplan]")
     {

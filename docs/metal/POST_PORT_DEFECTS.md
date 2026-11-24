@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-593 -->
+<!-- next-defect-id: PPD-596 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14591,13 +14591,13 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-591 — Optional native spatial upscaling lacks explicit scene/output/shadow dimensions
 
-- Status: ready_for_owner
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: MetalFX spatial integration
 - Discovered: 2026-11-24
 - Original reference: Native MetalFX is a new optional performance feature. Existing original1eb44 finalization preserves tone mapping, antialiasing, lens/print ordering and native UI; existing resolution controls couple main image and shadow sizing. Preserve those old semantics in Native mode. New fixed-half modes explicitly retain output-sized shadow reference and native UI.
 - Evidence: Owner accepts the same-session image/shadow split: R36.646587 worlds/s versus15.265305/15.298375 native controls, with source-derived original shadows. These private Review69454 results are supporting evidence, not measurements of the new implementation. [Implementation record](research/metalfx-spatial-20261124.md).
-- Next action: Owner reviews candidate69457/source68e59fc, saved still/moving comparisons and the optional graphics selector. Keep Native default and combined lighting OFF. Broader temporal quality, special-view coverage and stability remain open; no push.
+- Next action: Complete owner-requested preset integration (PPD593), visible effective fallback (PPD594), ordinary snapshot policy (PPD595), and borrowed-main-batch failure coverage. Keep Native default/combined lighting OFF and existing sizing/completion ownership. Do not repeat the broad FPS investigation or infer precise overhead from the ordered comparison.
 - Verification: Clean matched control69456/f384e2c220 and candidate69457/68e59fc build/app checks pass; CPU2/2 and GPU11/11 with API+Shader Validation plus11979 display-post assertions pass. One quiet Home cohort observes Native15.135/Half-linear35.570/MetalFX35.026 successful joined worlds/s. FX executes, original shadow reference/native UI are retained, and resize/scaler reuse plus same-size Snapshot Half-linear fallback are exercised. One lost FX lifecycle event and no timed restored control limit performance qualification; fine scene detail is reduced versus Native. Original controls/CAS/camera/mode restored; normal shutdown verified. Owner quality acceptance remains pending.
 - Owner verification: pending
 - Push approval: not_granted
@@ -14611,6 +14611,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-24 corrective qualification: The actual-reader regressions and retained join fixtures pass; corrected same-raw reductions preserve rates and the real source-frame10081 exclusion. Final-target acquisition and lazy-PSO reload corrections are included in clean68e59fc. Builds, native fixtures, runtime scaler activation, verified stills, camera-sweep recordings, resize/cache reuse and Snapshot fallback are retained in the linked record. Stale older69454 macOS notices are excluded from stills and outside the exported video crops; they are not candidate crash evidence. Original controls restored and candidate quits normally at16:00:12 UTC. Ready for owner review, not closed or approved for push.
 
 - 2026-11-24 owner requests the exact viewer package for testing on another Mac. Private DMG69457 preserves every application file byte, mode and symlink; mounted deep/strict signing and346 ARM64 checks pass. Apple Silicon/macOS26+ is required; the existing ad-hoc signature is retained, not notarized. DMG checksum and iCloud Desktop copy match. No external-machine launch or owner acceptance is claimed. PPD592 retains the separate inherited optional-VLC dependency finding. No source/default change or push.
+
+- 2026-11-24 owner retains the prototype and Native default and requests four focused integration repairs. Register PPD593–595 before implementation. Existing spatial tests omit a successful MetalFX encode followed by final-presentation rejection inside a borrowed main batch; add that exact negative transaction case without implying an already-demonstrated production failure. Reopen this parent for implementation/testing; broader FPS investigation remains suspended.
 
 ## PPD-592 — Bundled optional VLC plugins reference absent frameworks
 
@@ -14628,3 +14630,54 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ### History
 
 - 2026-11-24: Read-only portability inspection during owner-requested private DMG packaging finds the two inherited optional plugin references. Register before any repair. All346 Mach-O components are ARM64; main executable requires macOS26.0 and has no developer-machine absolute dependency. No viewer launch or media deletion is part of packaging.
+
+## PPD-593 — Graphics presets omit the main resolution mode
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Graphics preset integration
+- Discovered: 2026-11-24
+- Original reference: Original1eb44 LLPresetsManager graphics control list owns saved quality controls and preset-change tracking; the Metal resolution selector is new.
+- Evidence: [MetalFX integration record](research/metalfx-spatial-20261124.md). At6da3e6, getGraphicsControlNames omits RenderMetalMainResolutionMode although its selector is persistent.
+- Next action: Add the setting through the existing graphics-preset list, define older-preset compatibility and verify real save2/change0/load2 plus a missing-key preset.
+- Verification: Source omission confirmed; corrective behavior not tested yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24: Owner reports the integration gap; register before repair. Native default and Looks/camera preset boundaries must remain unchanged.
+
+## PPD-594 — Requested MetalFX mode hides its effective linear fallback
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Native resolution status
+- Discovered: 2026-11-24
+- Original reference: Original1eb44 advanced graphics floater owns settings display; native MetalFX readiness/fallback has no original equivalent.
+- Evidence: [MetalFX integration record](research/metalfx-spatial-20261124.md). At6da3e6 pipeline logs requested/effective mode and preparation error, while the selector only exposes the requested value.
+- Next action: Publish ordinary live-view effective status at the existing render owner and display its reason beside the selector. Keep GPU preparation out of the UI and avoid snapshot/probe overwrites or stale status after setting changes.
+- Verification: Hidden-fallback contract confirmed by source; corrective UI/runtime checks pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24: Register before implementation. AA-off and unavailable scaler preparation are explicit linear fallback cases; an encoding/publication failure must not be mislabeled a successful linear fallback.
+
+## PPD-595 — Ordinary same-size snapshots silently change MetalFX reconstruction
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Snapshot reconstruction integration
+- Discovered: 2026-11-24
+- Original reference: Original1eb44 rawSnapshot follows the display AA/final-copy boundary; explicit-size overrides and cutout carry independent contracts. MetalFX is new.
+- Evidence: [MetalFX integration record](research/metalfx-spatial-20261124.md). Retained69457 runtime shows requested2/effective1 during same-size snapshot then effective2 restored; pipeline excludes gSnapshot/world_ui_chain_snapshot from MetalFX without changing the half scene.
+- Next action: Choose and implement an explicit ordinary snapshot policy using the existing size/capture and ownership boundaries. Preserve cutout, explicit-size and special-view behavior and test the selected reconstruction.
+- Verification: Existing half-linear same-size behavior is source/runtime-confirmed; new policy and corrective checks pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24: Owner requests an explicit supported reconstruction or independent native capture. Register before repair; do not compensate global settings or change scheduling/admission.

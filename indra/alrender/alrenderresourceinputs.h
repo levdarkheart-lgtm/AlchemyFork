@@ -43,8 +43,9 @@ struct ALRenderResourceInputs
 
     /// Main-view resource policy. Half and MetalFX share fixed-half geometry and a full-output shadow reference,
     /// overriding the legacy divisor/multiplier for the main scene and shadows. Only ordinary main views use
-    /// MetalFX; debug/special main views retain half geometry with linear reconstruction. Snapshot captures keep
-    /// their independent legacy size override, and probe/hero packs do not consume this policy.
+    /// MetalFX; debug/special main views retain half geometry with linear reconstruction. Ordinary snapshots use
+    /// independent full-size scene capture in either half mode; explicit-size/cutout overrides retain their legacy
+    /// contract. Probe/hero packs do not consume this policy.
     enum class MainResolutionMode : U32 { Native = 0, Half = 1, MetalFX = 2 };
     MainResolutionMode mMainResolutionMode = MainResolutionMode::Native;
 
@@ -166,6 +167,20 @@ struct ALRenderResourceInputs
             size.mSceneHeight = std::max(size.mSceneHeight, 1u);
             size.mShadowReferenceWidth = size.mSceneWidth;
             size.mShadowReferenceHeight = size.mSceneHeight;
+        }
+        return size;
+    }
+
+    /// Ordinary snapshots do not silently substitute linear reconstruction for the live MetalFX image. The two
+    /// half modes instead capture an independent full-output-size scene. Native keeps its existing divisor/
+    /// multiplier semantics. An explicit snapshot size override bypasses this policy entirely.
+    constexpr MainViewDimensions ordinarySnapshotDimensions() const
+    {
+        auto size = mainViewDimensions();
+        if (mMainResolutionMode == MainResolutionMode::Half || mMainResolutionMode == MainResolutionMode::MetalFX)
+        {
+            size.mSceneWidth = size.mOutputWidth;
+            size.mSceneHeight = size.mOutputHeight;
         }
         return size;
     }

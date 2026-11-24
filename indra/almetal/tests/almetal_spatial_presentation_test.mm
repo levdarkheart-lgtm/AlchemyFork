@@ -435,3 +435,112 @@ TEST_CASE("Spatial post chains retain pending resized images and recover after c
         fixture.expectConstant(*recovered_output, {96, 160, 224, 255});
     }
 }
+
+TEST_CASE("Spatial final presentation failure poisons an encoded main batch",
+          "[metal][spatial-presentation]")
+{
+    @autoreleasepool
+    {
+        Fixture fixture;
+        const auto invalid_case = GENERATE(0u, 1u);
+        CAPTURE(invalid_case);
+        auto previous_source = fixture.constant(32, 24, {32, 96, 160, 85});
+        auto next_source = fixture.constant(32, 24, {192, 128, 64, 170});
+        auto previous_scaled = fixture.renderer->renderSpatialUpscale(
+            *previous_source, 64, 48, &fixture.error);
+        INFO(fixture.error); REQUIRE(previous_scaled);
+        auto previous = fixture.present(*previous_source, previous_scaled);
+        fixture.expectConstant(*previous, {32, 96, 160, 255});
+        const auto previous_backing = previous->colorTexture(0)->nativeHandle();
+        const auto before = fixture.renderer->mainFrameStats();
+        const auto encoded_before = fixture.renderer->spatialUpscaleStats().encoded_calls;
+        const auto submissions = ALMetalDevice::committedCommandBufferCount();
+
+        fixture.frame_data->beginFrame(2);
+        REQUIRE(fixture.renderer->beginMainFrameBatch(
+            1, "Spatial main post with rejected final presentation", &fixture.error));
+        struct Settlement
+        {
+            unsigned publication_permissions = 0, rejected = 0;
+        };
+        auto settlement = std::make_shared<Settlement>();
+        REQUIRE(fixture.renderer->observeCommandBatchSettlement(
+            [settlement](bool committed)
+            {
+                if (committed) ++settlement->publication_permissions;
+                else ++settlement->rejected;
+            }, &fixture.error));
+        auto completion = fixture.renderer->commandBatchCompletion();
+        REQUIRE(completion);
+        auto scaled = fixture.renderer->renderSpatialUpscale(
+            *next_source, 64, 48, &fixture.error);
+        INFO(fixture.error); REQUIRE(scaled);
+        // This is a successfully encoded native MetalFX prefix, not merely
+        // a failed descriptor/preflight or explicit caller cancellation.
+        CHECK(fixture.renderer->spatialUpscaleStats().encoded_calls == encoded_before + 1);
+        const auto unsubmitted_status = completion->status();
+        CHECK((unsubmitted_status == ALMetalCommandStatus::not_enqueued ||
+               unsubmitted_status == ALMetalCommandStatus::enqueued));
+        CHECK(ALMetalDevice::committedCommandBufferCount() == submissions);
+
+        ALMetalWorldPresentationScene scene;
+        scene.source = next_source.get();
+        scene.upscaled_color = scaled.color->colorTexture(0);
+        scene.output_width = 64; scene.output_height = 48;
+        auto destination = std::move(scaled.presentation);
+        if (invalid_case == 0)
+            scene.lens_distortion_amount = -1.f;
+        else
+            destination = fixture.target(64, 48, ALMetalPixelFormat::rgba8_unorm);
+        fixture.error.clear();
+        auto rejected = fixture.renderer->renderPresentationPost(
+            scene, &fixture.error, std::move(destination));
+        CHECK_FALSE(rejected);
+        CHECK_FALSE(fixture.error.empty());
+        CHECK(fixture.renderer->commandBatchActive());
+        CHECK(settlement->publication_permissions == 0);
+        fixture.error.clear();
+        CHECK_FALSE(fixture.renderer->commitCommandBatch(&fixture.error));
+        CHECK_FALSE(fixture.error.empty());
+        CHECK_FALSE(fixture.renderer->commandBatchActive());
+        CHECK(ALMetalDevice::committedCommandBufferCount() == submissions);
+        const auto after = fixture.renderer->mainFrameStats();
+        CHECK(after.committed == before.committed);
+        CHECK(after.pending_commands == before.pending_commands);
+        CHECK(after.pending_groups == before.pending_groups);
+        CHECK(after.reservations == 0);
+        CHECK(settlement->publication_permissions == 0);
+        CHECK(settlement->rejected == 1);
+        CHECK(completion->isComplete());
+        CHECK(completion->status() == ALMetalCommandStatus::unknown);
+        ALMetalCommandGPUTime timing;
+        CHECK(completion->gpuTime(timing) == ALMetalCommandTimingStatus::failed);
+        CHECK(previous->colorTexture(0)->nativeHandle() == previous_backing);
+        fixture.expectConstant(*previous, {32, 96, 160, 255});
+
+        // The old committed owner remains usable. The rejected logical group
+        // can be retried; only this new successful commit grants publication
+        // permission. Actual pipeline/UI publication is a separate caller gate.
+        scaled = {};
+        const auto before_retry = ALMetalDevice::committedCommandBufferCount();
+        fixture.frame_data->beginFrame(3);
+        REQUIRE(fixture.renderer->beginMainFrameBatch(
+            1, "Spatial main post retry after final validation failure", &fixture.error));
+        REQUIRE(fixture.renderer->observeCommandBatchSettlement(
+            [settlement](bool committed)
+            {
+                if (committed) ++settlement->publication_permissions;
+                else ++settlement->rejected;
+            }, &fixture.error));
+        auto recovered = fixture.renderer->renderSpatialUpscale(
+            *next_source, 64, 48, &fixture.error);
+        INFO(fixture.error); REQUIRE(recovered);
+        auto output = fixture.present(*next_source, recovered);
+        REQUIRE(fixture.renderer->commitCommandBatch(&fixture.error)); INFO(fixture.error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() == before_retry + 1);
+        CHECK(fixture.renderer->mainFrameStats().committed == before.committed + 1);
+        CHECK(settlement->publication_permissions == 1);
+        CHECK(settlement->rejected == 1);
+        fixture.expectConstant(*output, {192, 128, 64, 255});
+    }
+}

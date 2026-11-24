@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater
-  height="472"
+  height="508"
   layout="topleft"
   name="prefs_graphics_advanced"
   help_topic="Preferences_Graphics_Advanced"
@@ -8,6 +8,14 @@
   save_rect="true"
   title="ADVANCED GRAPHICS PREFERENCES"
   width="800">
+
+  <string name="main_resolution_pending">Pending next world frame</string>
+  <string name="main_resolution_standard">Standard</string>
+  <string name="main_resolution_linear">50% Linear</string>
+  <string name="main_resolution_metalfx">50% MetalFX Spatial</string>
+  <string name="main_resolution_active">Active: [MODE]</string>
+  <string name="main_resolution_fallback">Active: [MODE] — [REASON]</string>
+  <string name="main_resolution_unavailable">MetalFX is unavailable for this view</string>
 
 <!-- This block shows Advanced Settings -->
 
@@ -511,7 +519,7 @@
     name="main resolution mode"
     top_delta="0"
     width="175"
-    tool_tip="Standard follows the existing resolution controls. The 50% modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. MetalFX requires FXAA or SMAA and supplies its own sharpening instead of CAS; your CAS setting is preserved. With antialiasing off or MetalFX unavailable, 50% linear scaling and normal CAS are used.">
+    tool_tip="Standard follows the existing resolution controls. The 50% modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. MetalFX requires FXAA or SMAA and supplies its own sharpening instead of CAS; your CAS setting is preserved. With antialiasing off or MetalFX unavailable, 50% linear scaling and normal CAS are used. Ordinary snapshots in the 50% modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
     <combo_box.item
       label="Standard"
       name="MainResolutionStandard"
@@ -526,13 +534,25 @@
       value="2" />
   </combo_box>
   <text
+    follows="left|top"
+    font="SansSerifSmall"
+    height="32"
+    layout="topleft"
+    left="30"
+    name="main resolution status"
+    top_delta="20"
+    width="345"
+    wrap="true">
+      Pending next world frame
+  </text>
+  <text
     type="string"
     length="1"
     follows="left|top"
     height="16"
     layout="topleft"
     name="MeshText"
-    top_delta="16"
+    top_delta="32"
     left="10"
     width="128">
     Mesh
@@ -667,7 +687,7 @@
   </text>
    <view_border
       bevel_style="in"
-      height="397"
+      height="433"
       layout="topleft"
       left="385"
       name="vert_border"
@@ -1163,7 +1183,7 @@
       layout="topleft"
       left="13"
       name="horiz_border"
-      top="435"
+      top="471"
       top_delta="5"
       width="774"/>
   <button

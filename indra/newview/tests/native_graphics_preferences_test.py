@@ -77,6 +77,14 @@ def verify_packaging(read, advanced):
                  "ReflectionDetail", "ReflectionLevel", "ProbeCount", "Mirrors", "MirrorResolution"):
         assert name in controls, f"native quality control lost: {name}"
     assert {node.get("value") for node in controls["fsaa"]} == {"0", "1", "2"}, "native AA choices lost"
+    if "main resolution status" in controls:
+        status = controls["main resolution status"]
+        children = list(advanced)
+        selector_index = children.index(controls["main resolution mode"])
+        assert children[selector_index + 1] is status, "effective mode status must stay beside the selector"
+        assert not status.get("control_name"), "rendered status must not edit a saved setting"
+        assert status.get("wrap") == "true" and int(status.get("height")) >= 32, "fallback reason needs two lines"
+        assert int(status.get("left")) + int(status.get("width")) < int(controls["vert_border"].get("left")), "status overlaps the other column"
     for language in ROOT.joinpath("indra/newview/skins/default/xui").iterdir():
         name = f"indra/newview/skins/default/xui/{language.name}/floater_preferences_graphics_advanced.xml"
         if not ROOT.joinpath(name).is_file():
@@ -119,6 +127,10 @@ def main():
         verify_packaging(read, advanced)
     methods = block(source, "void LLFloaterPreferenceGraphicsAdvanced::refreshEnabledState()")
     methods += "\n" + block(source, "LLFloaterPreferenceGraphicsAdvanced::~LLFloaterPreferenceGraphicsAdvanced()")
+    has_resolution_status = "void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()" in source
+    if has_resolution_status:
+        methods += "\n" + block(source, "void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()")
+        methods += "\n" + block(source, "void LLFloaterPreferenceGraphicsAdvanced::draw()")
     if "void LLFloaterPreferenceGraphicsAdvanced::disableUnavailableSettings()" in source:
         methods += "\n" + block(source, "void LLFloaterPreferenceGraphicsAdvanced::disableUnavailableSettings()")
     feature = read("indra/newview/llfeaturemanager.cpp")
@@ -132,6 +144,11 @@ def main():
     literals = ",\n".join("{" + json.dumps(name) + ", {}}" for name in names)
     generated = (HERE.joinpath("native_graphics_preferences_fixture.cpp").read_text()
                  .replace("// @PACKAGED_NAMES@", literals).replace("// @PRODUCTION_METHODS@", methods))
+    strings = {node.get("name"): (node.text or "").strip() for node in advanced.findall("string")}
+    generated = generated.replace("// @STATUS_STRINGS@", ",\n".join(
+        "{" + json.dumps(key) + ", " + json.dumps(value) + "}" for key, value in strings.items()))
+    generated = generated.replace("// @RESOLUTION_STATUS_TESTS@", "checkResolutionStatus();" if has_resolution_status else "")
+    generated = "#define HAS_RESOLUTION_STATUS " + str(int(has_resolution_status)) + "\n" + generated
     hookups = "\n".join(statement(source, name + " =") for name in
                          ("mImpostorsChangedSignal", "mNumImpostorsChangedSignal"))
     generated = generated.replace("// @PRODUCTION_HOOKUPS@", hookups)

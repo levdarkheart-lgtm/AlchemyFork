@@ -2972,6 +2972,7 @@ void LLPipeline::prewarmMetalWorldRenderer()
 
 void LLPipeline::resetMetalStartupWorld()
 {
+    mMetalMainResolutionStatus.known = false;
     finishMetalShadowEncoding();
     ++mMetalStartupWorldEpoch;
     mMetalStartupWorldStartFrame = gFrameCount;
@@ -3125,12 +3126,22 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             renderPack(), ALRenderResourcePlan::Slot::GBuffer));
     const bool native_size_override = snapshot_request &&
         main_world_capture && mMetalSizeOverrideActive;
-    const U32 capture_width = native_size_override
+    // Ordinary snapshots in either fixed-half mode own a native-size scene, rather than silently replacing
+    // live MetalFX with half-scene linear scaling. Explicit-size and cutout capture keep the existing override.
+    U32 capture_width = native_size_override
         ? mMetalSizeOverrideWidth
         : descriptor ? descriptor->width : 0;
-    const U32 capture_height = native_size_override
+    U32 capture_height = native_size_override
         ? mMetalSizeOverrideHeight
         : descriptor ? descriptor->height : 0;
+    if (snapshot_request && main_world_capture && !native_size_override &&
+        (mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::Half ||
+         mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::MetalFX))
+    {
+        const auto size = mResourceInputs.ordinarySnapshotDimensions();
+        capture_width = size.mSceneWidth;
+        capture_height = size.mSceneHeight;
+    }
     if (main_world_capture && sReflectionProbesEnabled)
     {
         LL_INFOS_ONCE("Metal")
@@ -8832,6 +8843,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             !mMetalHeroWorldCaptureActive &&
             !mMetalReflectionWorldCaptureActive && !sCutoutRender;
         bool opaque_post_batch_active = false;
+        std::optional<MetalMainResolutionStatus> pending_resolution_status;
         if (batch_main_post)
         {
             std::string post_batch_error;
@@ -9935,7 +9947,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             dimensions.mOutputWidth, dimensions.mOutputHeight,
                             &spatial_fallback);
                     if (wants_metalfx && !metalfx_ready && spatial_fallback.empty())
-                        spatial_fallback = "MetalFX spatial requires an antialiased display source";
+                        spatial_fallback = !wants_native_fxaa && !wants_native_smaa
+                            ? "Antialiasing is off"
+                            : "Antialiasing did not produce a complete image";
+                    if (requested_resolution == ALRenderResourceInputs::MainResolutionMode::MetalFX &&
+                        !ordinary_scaled_view)
+                        spatial_fallback = "This view does not support MetalFX reconstruction";
                     capture.presentation_resolution_mode = fixed_half_scene ? 1u : 0u;
 
                     // MetalFX owns reconstruction sharpening. Keep the configured
@@ -10171,6 +10188,16 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 << ", shadow_reference=" << dimensions.mShadowReferenceWidth << 'x'
                                 << dimensions.mShadowReferenceHeight << ", scaler_creations=" << stats.creation_successes
                                 << ", fallback=" << spatial_fallback << LL_ENDL;
+                        }
+                        if (exact_spatial && isMainWorldPass() && mRT == &mMainRT &&
+                            !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
+                            !gSnapshot && !gCubeSnapshot && !sRenderingHUDs && !cutout_snapshot &&
+                            !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
+                            RenderBufferVisualization < 0 && !no_post)
+                        {
+                            pending_resolution_status = MetalMainResolutionStatus{
+                                static_cast<S32>(requested_resolution),
+                                static_cast<S32>(capture.presentation_resolution_mode), true, std::move(spatial_fallback)};
                         }
                         ALMetalWorldPresentationScene presentation;
                         presentation.source = capture.display_post_target.get();
@@ -10479,6 +10506,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 publishReferenceStill(std::move(pending_reference_still));
                 if (final_presentation_available)
                 {
+                    if (pending_resolution_status)
+                        mMetalMainResolutionStatus = std::move(*pending_resolution_status);
                     LL_INFOS_ONCE("Metal")
                         << "Native world final BGRA8 presentation is "
                            "available for ordered UI composition"
@@ -18360,6 +18389,7 @@ void LLPipeline::applyRenderInputs(const ALRenderInputRequests::Application& tak
     using Programs = ALRenderApplication::Programs;
 
     latchRenderInputs();
+    mMetalMainResolutionStatus.known = false;
 
     LLViewerShaderMgr* shaders = LLViewerShaderMgr::instance();
     const ALRenderApplication steps = ALRenderApplication::make(

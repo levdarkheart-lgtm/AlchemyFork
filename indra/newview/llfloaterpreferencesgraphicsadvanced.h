@@ -40,6 +40,7 @@ public:
     LLFloaterPreferenceGraphicsAdvanced(const LLSD& key);
     ~LLFloaterPreferenceGraphicsAdvanced();
     /*virtual*/ bool postBuild() override;
+    void draw() override;
     void onOpen(const LLSD& key) override;
     void onClickCloseBtn(bool app_quitting) override;
     void refreshEnabledGraphics();
@@ -58,6 +59,8 @@ public:
     LOG_CLASS(LLFloaterPreferenceGraphicsAdvanced);
 
 protected:
+    void refreshMainResolutionStatus();
+
     void        onBtnOK(const LLSD& userdata);
     void        onBtnCancel(const LLSD& userdata);
 
@@ -66,6 +69,7 @@ protected:
     boost::signals2::connection mComplexityModeChangedSignal;
     boost::signals2::connection mLODFactorChangedSignal;
     boost::signals2::connection mNumImpostorsChangedSignal;
+    LLTextBox* mMainResolutionStatus = nullptr;
 };
 
 #endif //LLFLOATERPREFERENCEGRAPHICSADVANCED_H

@@ -1,6 +1,7 @@
 // Real native classification, availability, signal hookups and destruction bodies.
 #include <boost/bind/bind.hpp>
 #include <boost/signals2.hpp>
+#include <algorithm>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -10,7 +11,10 @@
 #include <string>
 #include <utility>
 using F32 = float;
+using S32 = int;
 using LLSD = int;
+template<typename T> T llclamp(T value, T low, T high) { return std::clamp(value, low, high); }
+namespace LLStringUtil { using format_map_t = std::map<std::string, std::string>; }
 using boost::placeholders::_2;
 #define LL_INFOS(...) std::ostringstream()
 #define LL_WARNS(...) std::ostringstream()
@@ -25,10 +29,15 @@ struct Control
     bool enabled = true, visible = true;
     int value = 1;
     std::set<std::string> items{"2x", "4x", "8x", "16x"};
+    std::string text, tooltip;
+    unsigned text_writes = 0;
     void setEnabled(bool state) { enabled = state; }
     void setVisible(bool state) { visible = state; }
     void setValue(int state) { value = state; }
     void remove(const std::string& name) { items.erase(name); }
+    const std::string& getText() const { return text; }
+    void setText(const std::string& value) { text = value; ++text_writes; }
+    void setToolTip(const std::string& value) { tooltip = value; }
 };
 using LLCheckBoxCtrl = Control;
 using LLComboBox = Control;
@@ -39,7 +48,14 @@ struct Settings
     std::map<std::string, bool> values;
     LLControlVariable impostors;
     mutable unsigned reads = 0;
+    S32 resolution_mode = 0;
     bool getBOOL(const std::string& name) const { ++reads; return values.at(name); }
+    S32 getS32(const std::string& name) const
+    {
+        ++reads;
+        if (name != "RenderMetalMainResolutionMode") throw std::runtime_error("unexpected integer setting");
+        return resolution_mode;
+    }
     LLControlVariable* getControl(const std::string& name)
     {
         ++reads;
@@ -81,7 +97,18 @@ struct Capabilities
     F32 maxAnisotropy() const { return max_anisotropy; }
 } gRenderCapabilities;
 struct { F32 mMaxAnisotropy = 16.f; } gGLManager;
-class LLFloaterPreferenceGraphicsAdvanced
+struct
+{
+    struct Status { S32 requested = 0, effective = 0; bool known = false; std::string reason; } status;
+    const Status& getMetalMainResolutionStatus() const { return status; }
+} gPipeline;
+class LLFloater
+{
+public:
+    unsigned draws = 0;
+    void draw() { ++draws; }
+};
+class LLFloaterPreferenceGraphicsAdvanced : public LLFloater
 {
 public:
     std::map<std::string, Control> controls{
@@ -92,6 +119,20 @@ public:
     boost::signals2::connection mImpostorsChangedSignal, mComplexityChangedSignal,
         mComplexityModeChangedSignal, mLODFactorChangedSignal, mNumImpostorsChangedSignal;
     unsigned callbacks = 0;
+    LLTextBox* mMainResolutionStatus = nullptr;
+    std::string getString(const std::string& name, const LLStringUtil::format_map_t& args = {}) const
+    {
+        const std::map<std::string, std::string> strings{
+            // @STATUS_STRINGS@
+        };
+        auto result = strings.at(name);
+        for (const auto& [key, value] : args)
+        {
+            for (auto at = result.find(key); at != std::string::npos; at = result.find(key, at + value.size()))
+                result.replace(at, key.size(), value);
+        }
+        return result;
+    }
     void updateIndirectMaxNonImpostors(const LLSD&) { ++callbacks; }
     void connectNativeCallbacks()
     {
@@ -99,6 +140,8 @@ public:
     }
     ~LLFloaterPreferenceGraphicsAdvanced();
     void refreshEnabledState();
+    void refreshMainResolutionStatus();
+    void draw();
     void disableUnavailableSettings(); // Used only by historical discrimination controls.
 };
 class LLFloaterPerformance
@@ -112,8 +155,59 @@ public:
 // @PRODUCTION_METHODS@
 unsigned checks = 0, failures = 0;
 #define CHECK(condition) do { ++checks; if (!(condition)) { ++failures; std::cerr << __LINE__ << ": " #condition "\n"; } } while (false)
+#if HAS_RESOLUTION_STATUS
+void checkResolutionStatus()
+{
+    LLFloaterPreferenceGraphicsAdvanced floater;
+    auto& text = floater.controls.at("main resolution status");
+    floater.mMainResolutionStatus = &text;
+    const auto saved = gSavedSettings.values;
+    gSavedSettings.resolution_mode = 2;
+    gPipeline.status = {2, 0, false, ""};
+    floater.draw();
+    CHECK(text.text == "Pending next world frame");
+    CHECK(floater.draws == 1);
+    const auto writes = text.text_writes;
+    floater.draw();
+    CHECK(text.text_writes == writes);
+    CHECK(floater.draws == 2);
+    gPipeline.status = {0, 0, true, ""};
+    floater.draw(); // A newly selected mode must not show the previous mode as active.
+    CHECK(text.text == "Pending next world frame");
+    for (const auto& [mode, expected] : std::map<S32, std::string>{
+        {0, "Active: Standard"}, {1, "Active: 50% Linear"}, {2, "Active: 50% MetalFX Spatial"}})
+    {
+        gSavedSettings.resolution_mode = mode;
+        gPipeline.status = {mode, mode, true, "Old fallback reason"};
+        floater.draw();
+        CHECK(text.text == expected);
+        CHECK(text.tooltip == expected);
+    }
+    gSavedSettings.resolution_mode = 2;
+    for (const auto& reason : {"Antialiasing is off", "MetalFX preparation failed", "This view uses linear scaling"})
+    {
+        gPipeline.status = {2, 1, true, reason};
+        floater.draw();
+        CHECK(text.text == std::string("Active: 50% Linear — ") + reason);
+        CHECK(text.tooltip == text.text);
+    }
+    gPipeline.status = {2, 1, true, ""};
+    floater.draw();
+    CHECK(text.text == "Active: 50% Linear — MetalFX is unavailable for this view");
+    gPipeline.status = {2, 9, true, ""};
+    floater.draw();
+    CHECK(text.text == "Pending next world frame");
+    gPipeline.status = {2, 2, true, ""};
+    floater.draw();
+    CHECK(text.text == "Active: 50% MetalFX Spatial");
+    CHECK(text.tooltip == text.text);
+    CHECK(gSavedSettings.resolution_mode == 2);
+    CHECK(gSavedSettings.values == saved);
+}
+#endif
 int main()
 {
+    // @RESOLUTION_STATUS_TESTS@
     // Startup classification uses the initialized native identity, not an
     // automatic bandwidth workload or saved benchmark/workaround state.
     auto& manager = LLFeatureManager::instance();

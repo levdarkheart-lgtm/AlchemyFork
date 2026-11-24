@@ -547,6 +547,7 @@ void LLPresetsManager::getGraphicsControlNames(std::vector<std::string>& names)
         "RenderReflectionProbeLevel",
         "RenderMirrors",
         "RenderCASSharpness",
+        "RenderMetalMainResolutionMode",
         "RenderHeroProbeResolution",
         "RenderHeroProbeUpdateRate",
     };
@@ -840,7 +841,11 @@ bool LLPresetsManager::savePreset(const std::string& subdirectory, std::string n
             {
                 std::string comment = ctrl->getComment();
                 std::string type = LLControlGroup::typeEnumToString(ctrl->type());
-                LLSD value = ctrl->getValue();
+                // The generated hardware Default must not capture an active
+                // optional half-resolution mode. Other dynamic controls keep
+                // their established current-value behavior.
+                LLSD value = ctrl_name == "RenderMetalMainResolutionMode"
+                    ? ctrl->getDefault() : ctrl->getValue();
 
                 paramsData[ctrl_name]["Comment"] = comment;
                 paramsData[ctrl_name]["Persist"] = 1;
@@ -915,7 +920,15 @@ bool LLPresetsManager::savePreset(const std::string& subdirectory, std::string n
 
             if (IS_GRAPHIC)
             {
-                gSavedSettings.setString("PresetGraphicActive", name);
+                // Creating a Standard Default while an optional mode is
+                // active creates a file, not a change to the current preset.
+                const bool preserve_active_mode = createDefault && name == PRESETS_DEFAULT &&
+                    paramsData["RenderMetalMainResolutionMode"]["Value"].asInteger() !=
+                        gSavedSettings.getS32("RenderMetalMainResolutionMode");
+                if (!preserve_active_mode)
+                {
+                    gSavedSettings.setString("PresetGraphicActive", name);
+                }
                 // signal interested parties
                 triggerChangeSignal();
             }
@@ -989,8 +1002,18 @@ void LLPresetsManager::loadPreset(const std::string& subdirectory, std::string n
 
     bool appearance_camera_movement = gSavedSettings.getBOOL("AppearanceCameraMovement");
     bool edit_camera_movement = gSavedSettings.getBOOL("EditCameraMovement");
+    const bool graphics_preset = PRESETS_GRAPHIC == subdirectory;
+    const S32 previous_resolution_mode = graphics_preset
+        ? gSavedSettings.getS32("RenderMetalMainResolutionMode") : 0;
 
     mIgnoreChangedSignal = true;
+    if (graphics_preset)
+    {
+        // Presets saved before this optional mode existed mean Standard.
+        // Stage that baseline before the normal loader so explicit values,
+        // including those supplied by an Include, retain normal precedence.
+        gSavedSettings.setS32("RenderMetalMainResolutionMode", 0);
+    }
     if(gSavedSettings.loadFromFile(full_path, false, true) > 0)
     {
         mIgnoreChangedSignal = false;
@@ -1023,6 +1046,11 @@ void LLPresetsManager::loadPreset(const std::string& subdirectory, std::string n
     }
     else
     {
+        if (graphics_preset)
+        {
+            // A missing or invalid preset must not change the current mode.
+            gSavedSettings.setS32("RenderMetalMainResolutionMode", previous_resolution_mode);
+        }
         mIgnoreChangedSignal = false;
         LL_WARNS("Presets") << "failed to load preset '"<<name<<"' from '"<<full_path<<"'" << LL_ENDL;
     }
