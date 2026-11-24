@@ -519,7 +519,7 @@
     name="main resolution mode"
     top_delta="0"
     width="175"
-    tool_tip="Standard follows the existing resolution controls. The 50% modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. MetalFX requires FXAA or SMAA and supplies its own sharpening instead of CAS; your CAS setting is preserved. With antialiasing off or MetalFX unavailable, 50% linear scaling and normal CAS are used. Ordinary snapshots in the 50% modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
+    tool_tip="Standard follows the existing resolution controls. The 50% modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. MetalFX requires FXAA or SMAA and supplies its own sharpening instead of CAS; your CAS setting is preserved. With antialiasing off or MetalFX unavailable, 50% linear scaling and normal CAS are used. Same-size ordinary snapshots in the 50% modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
     <combo_box.item
       label="Standard"
       name="MainResolutionStandard"

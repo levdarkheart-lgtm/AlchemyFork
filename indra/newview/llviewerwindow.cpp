@@ -5980,8 +5980,10 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     }
 
     std::string snapshot_request_error;
+    const bool ordinary_snapshot = ALRenderResourceInputs::isOrdinarySnapshotRequest(
+        image_width, image_height, window_width, window_height, cutout != nullptr, reset_deferred);
     metal_snapshot_requested =
-        gPipeline.requestMetalWorldSnapshotCapture(&snapshot_request_error);
+        gPipeline.requestMetalWorldSnapshotCapture(&snapshot_request_error, ordinary_snapshot);
     if (!metal_snapshot_requested)
     {
         LL_WARNS("Snapshot")

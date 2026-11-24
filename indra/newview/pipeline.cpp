@@ -3134,7 +3134,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     U32 capture_height = native_size_override
         ? mMetalSizeOverrideHeight
         : descriptor ? descriptor->height : 0;
-    if (snapshot_request && main_world_capture && descriptor && !native_size_override &&
+    if (snapshot_request && mMetalWorldSnapshotOrdinary && main_world_capture && descriptor && !native_size_override &&
         (mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::Half ||
          mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::MetalFX))
     {
@@ -10811,7 +10811,7 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.world_alpha_uses_shadows = false;
 }
 
-bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
+bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error, bool ordinary_snapshot)
 {
     finishMetalShadowEncoding();
     const auto fail = [error](const char* message)
@@ -10840,6 +10840,7 @@ bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
         mMetalWorldSnapshotRequested = false;
         return false;
     }
+    mMetalWorldSnapshotOrdinary = ordinary_snapshot;
     return true;
 }
 
@@ -11000,6 +11001,7 @@ bool LLPipeline::readMetalWorldSnapshotDepth(
 void LLPipeline::cancelMetalWorldSnapshotCapture()
 {
     mMetalWorldSnapshotRequested = false;
+    mMetalWorldSnapshotOrdinary = false;
     if (mMetalWorldSimpleCapture)
         mMetalWorldSimpleCapture->ui_frame_background.reset();
 }

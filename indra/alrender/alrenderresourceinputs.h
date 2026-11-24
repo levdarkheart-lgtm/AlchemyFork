@@ -171,6 +171,15 @@ struct ALRenderResourceInputs
         return size;
     }
 
+    /// The window-sized request follows ordinary snapshot policy. Other sizes, cutouts and applied explicit
+    /// overrides keep their existing contract, including a larger request's tiled allocation-failure fallback.
+    static constexpr bool isOrdinarySnapshotRequest(U32 width, U32 height, U32 window_width, U32 window_height,
+                                                    bool cutout, bool explicit_size_override)
+    {
+        return !cutout && !explicit_size_override && width != 0 && height != 0 &&
+            width == window_width && height == window_height;
+    }
+
     /// Ordinary snapshots do not silently substitute linear reconstruction for the live MetalFX image. The two
     /// half modes instead capture an independent full-output-size scene. Native keeps its existing divisor/
     /// multiplier semantics. An explicit snapshot size override bypasses this policy entirely.

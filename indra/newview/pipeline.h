@@ -335,6 +335,7 @@ private:
     // transaction without consuming the bounded presentation probe or
     // publishing its differently sized target to the live drawable.
     bool mMetalWorldSnapshotRequested = false;
+    bool mMetalWorldSnapshotOrdinary = false;
 #endif
 
     // The changes marked since the last application, and how many the one running applies, for the log line.
@@ -573,7 +574,8 @@ public:
     // subfield render; it remains responsible for rejecting the aggregate if
     // any tile fails. The request must be cancelled on every exit after any
     // read method below.
-    bool requestMetalWorldSnapshotCapture(std::string* error = nullptr);
+    // Only the caller's same-size ordinary request opts into native scene detail in fixed-half modes.
+    bool requestMetalWorldSnapshotCapture(std::string* error = nullptr, bool ordinary_snapshot = false);
     bool readMetalWorldSnapshot(U32 x, U32 y, U32 width, U32 height,
                                 U8* pixels, std::size_t bytes_per_row,
                                 std::string* error = nullptr) const;

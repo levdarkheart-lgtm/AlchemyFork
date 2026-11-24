@@ -492,6 +492,19 @@ namespace
         }
     }
 
+    TEST_CASE("alrenderresourceplan: only same-size ordinary snapshots select native scene capture",
+              "[alrenderresourceplan]")
+    {
+        CHECK(Inputs::isOrdinarySnapshotRequest(3456, 2168, 3456, 2168, false, false));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(3456, 2168, 3456, 2168, true, false));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(3456, 2168, 3456, 2168, false, true));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(1728, 1084, 3456, 2168, false, false));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(6912, 4336, 3456, 2168, false, false));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(3456, 2000, 3456, 2168, false, false));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(0, 2168, 0, 2168, false, false));
+        CHECK_FALSE(Inputs::isOrdinarySnapshotRequest(3456, 0, 3456, 0, false, false));
+    }
+
     TEST_CASE("alrenderresourceplan: ordinary snapshots capture native scene detail without changing the live plan",
               "[alrenderresourceplan]")
     {
