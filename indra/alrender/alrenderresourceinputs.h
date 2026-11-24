@@ -41,6 +41,22 @@ struct ALRenderResourceInputs
     U32 mResolutionDivisor = 1;
     F32 mResolutionMultiplier = 1.f;
 
+    /// Main-view resource policy. Half and MetalFX share fixed-half geometry and a full-output shadow reference,
+    /// overriding the legacy divisor/multiplier for the main scene and shadows. Only ordinary main views use
+    /// MetalFX; debug/special main views retain half geometry with linear reconstruction. Snapshot captures keep
+    /// their independent legacy size override, and probe/hero packs do not consume this policy.
+    enum class MainResolutionMode : U32 { Native = 0, Half = 1, MetalFX = 2 };
+    MainResolutionMode mMainResolutionMode = MainResolutionMode::Native;
+
+    struct MainViewDimensions
+    {
+        U32 mSceneWidth = 0, mSceneHeight = 0;
+        U32 mOutputWidth = 0, mOutputHeight = 0;
+        U32 mShadowReferenceWidth = 0, mShadowReferenceHeight = 0;
+
+        friend bool operator==(const MainViewDimensions&, const MainViewDimensions&) = default;
+    };
+
     bool mHDR = true;            ///< RenderHDREnabled
     bool mEmissive = true;       ///< RenderEnableEmissiveBuffer
     bool mGBufferNormHDR = true; ///< the G-buffer normal layout the programs compile for (LLRender::sGBufferNormHDR)
@@ -118,12 +134,40 @@ struct ALRenderResourceInputs
         }
     }
 
-    /// The size the main view renders at.
+    /// The legacy main-view size. Deliberately independent of MainResolutionMode.
     constexpr void renderSize(U32& width, U32& height) const
     {
         width = mWidth;
         height = mHeight;
         scaleToRenderResolution(width, height, mResolutionDivisor, mResolutionMultiplier);
+    }
+
+    /// Scene, final output and shadow-sizing reference. Output always names the unscaled viewport. Native retains
+    /// the old divisor/multiplier behavior for both scene and shadows. The two fixed-half modes instead render at
+    /// ceil(output/2) and preserve output-sized shadow detail. Allocation minima match the existing plan; an unknown
+    /// mode takes Native semantics. Probe and hero packs have independent sizes and do not consume this contract.
+    constexpr MainViewDimensions mainViewDimensions() const
+    {
+        MainViewDimensions size;
+        size.mOutputWidth = std::max(mWidth, 1u);
+        size.mOutputHeight = std::max(mHeight, 1u);
+        if (mMainResolutionMode == MainResolutionMode::Half || mMainResolutionMode == MainResolutionMode::MetalFX)
+        {
+            // Avoid overflow for an odd U32 maximum.
+            size.mSceneWidth = size.mOutputWidth / 2u + size.mOutputWidth % 2u;
+            size.mSceneHeight = size.mOutputHeight / 2u + size.mOutputHeight % 2u;
+            size.mShadowReferenceWidth = size.mOutputWidth;
+            size.mShadowReferenceHeight = size.mOutputHeight;
+        }
+        else
+        {
+            renderSize(size.mSceneWidth, size.mSceneHeight);
+            size.mSceneWidth = std::max(size.mSceneWidth, 1u);
+            size.mSceneHeight = std::max(size.mSceneHeight, 1u);
+            size.mShadowReferenceWidth = size.mSceneWidth;
+            size.mShadowReferenceHeight = size.mSceneHeight;
+        }
+        return size;
     }
 
     /// RenderReflectionProbeResolution as the probes take it: a power of two from 64 to 512.

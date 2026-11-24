@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater
-  height="452"
+  height="472"
   layout="topleft"
   name="prefs_graphics_advanced"
   help_topic="Preferences_Graphics_Advanced"
@@ -492,6 +492,43 @@
     type="string"
     length="1"
     follows="left|top"
+    height="20"
+    layout="topleft"
+    left="30"
+    name="main resolution label"
+    top_delta="20"
+    width="130">
+      World resolution:
+  </text>
+  <combo_box
+    control_name="RenderMetalMainResolutionMode"
+    follows="left|top"
+    height="20"
+    initial_value="0"
+    label="World resolution"
+    layout="topleft"
+    left_pad="40"
+    name="main resolution mode"
+    top_delta="0"
+    width="175"
+    tool_tip="Standard follows the existing resolution controls. The 50% modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. MetalFX requires FXAA or SMAA and supplies its own sharpening instead of CAS; your CAS setting is preserved. With antialiasing off or MetalFX unavailable, 50% linear scaling and normal CAS are used.">
+    <combo_box.item
+      label="Standard"
+      name="MainResolutionStandard"
+      value="0" />
+    <combo_box.item
+      label="50% (Linear)"
+      name="MainResolutionHalf"
+      value="1" />
+    <combo_box.item
+      label="50% (MetalFX Spatial)"
+      name="MainResolutionMetalFX"
+      value="2" />
+  </combo_box>
+  <text
+    type="string"
+    length="1"
+    follows="left|top"
     height="16"
     layout="topleft"
     name="MeshText"
@@ -630,7 +667,7 @@
   </text>
    <view_border
       bevel_style="in"
-      height="377"
+      height="397"
       layout="topleft"
       left="385"
       name="vert_border"
@@ -1126,7 +1163,7 @@
       layout="topleft"
       left="13"
       name="horiz_border"
-      top="415"
+      top="435"
       top_delta="5"
       width="774"/>
   <button

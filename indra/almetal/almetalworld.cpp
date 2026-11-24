@@ -2382,6 +2382,18 @@ struct ALMetalWorldGBufferRenderer::Impl
     };
 
     const ALMetalDevice* device = nullptr;
+    std::unique_ptr<ALMetalSpatialScaler> spatial_scaler;
+    bool spatial_scaler_attempted = false;
+    std::string spatial_initialization_error;
+    struct SpatialUpscalePlan
+    {
+        ALMetalSpatialScalerDescriptor descriptor;
+        ALMetalSpatialScalerRequirements requirements;
+        bool convert_input = false;
+    };
+    std::optional<SpatialUpscalePlan> spatial_upscale_plan;
+    std::unique_ptr<ALMetalRenderPipeline> spatial_input_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> spatial_presentation_pipeline;
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
     // Standalone owners use the same completion-aware pages as viewer frames.
     // A command token, never a recycled native pointer, defines each epoch.
@@ -3911,6 +3923,10 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
             return true;
         }
     };
+    if (!rebuild_optional(rebuild_optional, mImpl->spatial_input_pipeline,
+                          next.spatial_input_pipeline) ||
+        !rebuild_optional(rebuild_optional, mImpl->spatial_presentation_pipeline,
+                          next.spatial_presentation_pipeline)) return {};
     // These experimental/blend-specialized PSOs are created lazily rather
     // than by create(). Rebuild already-used variants before committing too.
     if (!rebuild_optional(rebuild_optional, mImpl->probe_above_water_flat_pipelines,
@@ -3965,6 +3981,12 @@ void ALMetalWorldGBufferRenderer::commitShaderReload(
     auto& next = *replacement->mImpl;
     next.frame_data = mImpl->frame_data;
     next.render_target_pool = mImpl->render_target_pool;
+    // MetalFX's system executable/cache is independent of the viewer library.
+    // Its commands retain exact entries; successful shader reload need not
+    // recreate already-qualified descriptors or lose negative-cache decisions.
+    next.spatial_scaler = std::move(mImpl->spatial_scaler);
+    next.spatial_scaler_attempted = mImpl->spatial_scaler_attempted;
+    next.spatial_initialization_error = std::move(mImpl->spatial_initialization_error);
     next.pending_command_batches.swap(mImpl->pending_command_batches);
     next.main_admission = std::move(mImpl->main_admission);
     next.main_stats = mImpl->main_stats;
@@ -14642,11 +14664,176 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     return output;
 }
 
+bool ALMetalWorldGBufferRenderer::prepareSpatialUpscale(
+    const ALMetalRenderTarget& source, std::uint32_t output_width,
+    std::uint32_t output_height, std::string* error)
+{
+    if (!mImpl || !mImpl->device) return false;
+    mImpl->spatial_upscale_plan.reset();
+    const auto& input = source.descriptor();
+    const auto* color = source.colorTexture(0);
+    if (!color || input.sample_count != 1 || input.color_attachment_count != 1 ||
+        !input.width || !input.height || output_width < input.width ||
+        output_height < input.height ||
+        (input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm &&
+         input.colors[0].format != ALMetalPixelFormat::rgba8_unorm) ||
+        !sampleableTexture(color))
+    {
+        setError(error, "MetalFX needs a single-sample perceptual display source");
+        return false;
+    }
+    if (!mImpl->spatial_scaler_attempted)
+    {
+        mImpl->spatial_scaler_attempted = true;
+        mImpl->spatial_scaler = ALMetalSpatialScaler::create(
+            *mImpl->device, &mImpl->spatial_initialization_error);
+    }
+    if (!mImpl->spatial_scaler)
+    {
+        setError(error, mImpl->spatial_initialization_error);
+        return false;
+    }
+    Impl::SpatialUpscalePlan plan;
+    plan.descriptor = {input.width, input.height, output_width, output_height,
+        input.colors[0].format, ALMetalPixelFormat::rgba16_float};
+    // Prefer the actual display texture. If its format/usages are not accepted
+    // by MetalFX, retain the exact perceptual RGB through a float copy. Float
+    // storage here is NOT linear light and no sRGB view/conversion is applied.
+    const bool direct = mImpl->spatial_scaler->prepare(
+        plan.descriptor, plan.requirements, error) &&
+        (color->descriptor().usage & plan.requirements.input_usage) ==
+            plan.requirements.input_usage;
+    if (!direct)
+    {
+        plan.convert_input = true;
+        plan.descriptor.input_format = ALMetalPixelFormat::rgba16_float;
+        if (!mImpl->spatial_scaler->prepare(
+                plan.descriptor, plan.requirements, error)) return false;
+        if (!mImpl->spatial_input_pipeline)
+        {
+            ALMetalRenderPipelineDescriptor desc;
+            desc.library = mImpl->library.get();
+            desc.vertex_function = "almetal_resample_vertex";
+            desc.fragment_function = "almetal_resample_fragment";
+            desc.colors[0].format = ALMetalPixelFormat::rgba16_float;
+            desc.label = "Alchemy perceptual MetalFX input copy";
+            mImpl->spatial_input_pipeline = ALMetalRenderPipeline::create(
+                *mImpl->device, desc, error);
+            if (!mImpl->spatial_input_pipeline) return false;
+        }
+    }
+    if (!mImpl->spatial_presentation_pipeline)
+    {
+        ALMetalRenderPipelineDescriptor desc;
+        desc.library = mImpl->library.get();
+        desc.vertex_function = "almetal_resample_vertex";
+        desc.fragment_function = "almetal_world_presentation_fragment";
+        desc.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+        desc.colors[0].write_mask = ALMetalColorWriteMask::rgb;
+        desc.label = "Alchemy opaque MetalFX final presentation";
+        mImpl->spatial_presentation_pipeline = ALMetalRenderPipeline::create(
+            *mImpl->device, desc, error);
+        if (!mImpl->spatial_presentation_pipeline) return false;
+    }
+    mImpl->spatial_upscale_plan = plan;
+    if (error) error->clear();
+    return true;
+}
+
+ALMetalWorldSpatialUpscaleResult
+ALMetalWorldGBufferRenderer::renderSpatialUpscale(
+    const ALMetalRenderTarget& source, std::uint32_t output_width,
+    std::uint32_t output_height, std::string* error)
+{
+    Impl::GBufferFailureScope transaction(mImpl.get(), error);
+    if (!prepareSpatialUpscale(source, output_width, output_height, error))
+        return {};
+    const auto plan = *mImpl->spatial_upscale_plan;
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = output_width;
+    descriptor.height = output_height;
+    descriptor.colors[0].format = plan.descriptor.output_format;
+    descriptor.colors[0].shader_write = alMetalHasUsage(
+        plan.requirements.output_usage, ALMetalTextureUsage::shader_write);
+    descriptor.label = "Alchemy native MetalFX spatial output";
+    auto output = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+    if (!output) return {};
+    // The final BGRA pass must not acquire from the pool after MetalFX's
+    // hidden scratch marks the borrowed command opaque: exact-generation
+    // reuse is deliberately forbidden at that point. Acquire both owners now.
+    ALMetalRenderTargetDescriptor presentation_descriptor;
+    presentation_descriptor.width = output_width;
+    presentation_descriptor.height = output_height;
+    presentation_descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+    presentation_descriptor.label = "Alchemy native world final-presentation target";
+    auto presentation = mImpl->makeRenderTarget(
+        *mImpl->device, presentation_descriptor, error);
+    if (!presentation) return {};
+    std::unique_ptr<ALMetalRenderTarget> converted;
+    if (plan.convert_input)
+    {
+        auto desc = descriptor;
+        desc.width = plan.descriptor.input_width;
+        desc.height = plan.descriptor.input_height;
+        desc.colors[0].shader_write = alMetalHasUsage(
+            plan.requirements.input_usage, ALMetalTextureUsage::shader_write);
+        desc.label = "Alchemy perceptual MetalFX input";
+        converted = mImpl->makeRenderTarget(*mImpl->device, desc, error);
+        if (!converted) return {};
+    }
+    std::unique_ptr<ALMetalCommandBuffer> owned;
+    auto* command = mImpl->acquireCommandBuffer(
+        "Alchemy native MetalFX spatial upscale", owned, error);
+    if (!command) return {};
+    if (converted)
+    {
+        ALMetalRenderPassConfig config;
+        config.colors[0].load = ALMetalLoadAction::dont_care;
+        auto pass = converted->makeRenderPass(config, error);
+        auto encoder = pass ? ALMetalRenderEncoder::begin(*command, *pass,
+            "Alchemy perceptual MetalFX input copy", error) : nullptr;
+        const ALMetalViewport viewport{0., 0.,
+            static_cast<double>(plan.descriptor.input_width),
+            static_cast<double>(plan.descriptor.input_height), 0., 1.};
+        const ALMetalScissorRect scissor{0, 0, plan.descriptor.input_width,
+            plan.descriptor.input_height};
+        const bool copied = encoder && encoder->setViewport(viewport, error) &&
+            encoder->setScissor(scissor, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(*mImpl->spatial_input_pipeline, error) &&
+            encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+            encoder->setFragmentSampler(0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        const bool ended = encoder && encoder->end(error);
+        if (!copied || !ended)
+        {
+            mImpl->finishCommandBuffer(owned, false, error);
+            return {};
+        }
+    }
+    const auto* input = converted ? converted->colorTexture(0) : source.colorTexture(0);
+    const bool encoded = mImpl->spatial_scaler->encode(
+        *command, plan.descriptor, *input, *output->colorTexture(0), error);
+    if (!mImpl->finishCommandBuffer(owned, encoded, error)) return {};
+    transaction.succeeded = true;
+    return {std::move(output), std::move(presentation)};
+}
+
+ALMetalSpatialScalerStats ALMetalWorldGBufferRenderer::spatialUpscaleStats() const noexcept
+{
+    return mImpl && mImpl->spatial_scaler ? mImpl->spatial_scaler->stats()
+        : ALMetalSpatialScalerStats{};
+}
+
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderPresentationPost(
     const ALMetalWorldPresentationScene& scene,
-    std::string* error)
+    std::string* error, std::unique_ptr<ALMetalRenderTarget> prepared_output)
 {
+    // New spatial chains are one transaction, including invalid handoff
+    // targets. Preserve ordinary Native/cutout preflight behavior unchanged.
+    Impl::GBufferFailureScope transaction(
+        scene.upscaled_color || prepared_output ? mImpl.get() : nullptr, error);
     const auto finite = [](const float* values, std::size_t count)
     {
         for (std::size_t index = 0; index < count; ++index)
@@ -14842,6 +15029,26 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     constants.noise[3] = scene.dither_animated ? 1u : 0u;
     const auto output_width = scene.output_width ? scene.output_width : source.width;
     const auto output_height = scene.output_height ? scene.output_height : source.height;
+    if (scene.upscaled_color)
+    {
+        const auto& scaled = scene.upscaled_color->descriptor();
+        if (scene.cutout_coverage_texture || !scene.output_width ||
+            !scene.output_height || !mImpl->spatial_presentation_pipeline ||
+            scaled.type != ALMetalTextureType::texture_2d ||
+            scaled.width != output_width || scaled.height != output_height ||
+            scaled.format != ALMetalPixelFormat::rgba16_float ||
+            scaled.array_length != 1 || scaled.mipmap_level_count != 1 ||
+            scaled.sample_count != 1 || !sampleableTexture(scene.upscaled_color))
+        {
+            setError(error, "MetalFX presentation input is incompatible");
+            return nullptr;
+        }
+        if (mImpl->command_batch && !prepared_output)
+        {
+            setError(error, "A borrowed MetalFX presentation requires its pre-acquired output owner");
+            return nullptr;
+        }
+    }
     constants.viewport[0] = static_cast<float>(output_width);
     constants.viewport[1] = static_cast<float>(output_height);
     constants.viewport[2] = scene.viewport_origin[0];
@@ -14855,8 +15062,29 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         "Alchemy final BGRA8 presentation color";
     output_descriptor.label =
         "Alchemy native world final-presentation target";
-    auto output = mImpl->makeRenderTarget(
-        *mImpl->device, output_descriptor, error);
+    if (prepared_output)
+    {
+        const auto& supplied = prepared_output->descriptor();
+        const auto* color = prepared_output->colorTexture(0);
+        if (!scene.upscaled_color || supplied.width != output_width ||
+            supplied.height != output_height || supplied.color_attachment_count != 1 ||
+            supplied.colors[0].format != ALMetalPixelFormat::bgra8_unorm ||
+            supplied.colors[0].texture ||
+            supplied.sample_count != 1 ||
+            supplied.depth_stencil_format != ALMetalPixelFormat::invalid ||
+            !color || color->descriptor().type != ALMetalTextureType::texture_2d ||
+            color->descriptor().storage != ALMetalStorageMode::private_gpu ||
+            color->descriptor().mipmap_level_count != 1 ||
+            color->descriptor().array_length != 1 ||
+            !sampleableTexture(color) ||
+            !alMetalHasUsage(color->descriptor().usage, ALMetalTextureUsage::render_target))
+        {
+            setError(error, "Pre-acquired MetalFX presentation output is incompatible");
+            return nullptr;
+        }
+    }
+    auto output = prepared_output ? std::move(prepared_output)
+        : mImpl->makeRenderTarget(*mImpl->device, output_descriptor, error);
     if (!output)
     {
         return nullptr;
@@ -14869,7 +15097,11 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         return nullptr;
     }
     ALMetalRenderPassConfig pass_config;
-    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].load = scene.upscaled_color
+        ? ALMetalLoadAction::clear : ALMetalLoadAction::dont_care;
+    // MetalFX does not promise coverage alpha. Normal world composition is
+    // opaque; preserve that explicitly, without changing Native/cutout alpha.
+    if (scene.upscaled_color) pass_config.colors[0].clear = {0., 0., 0., 1.};
     pass_config.colors[0].store = ALMetalStoreAction::store;
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
@@ -14884,16 +15116,20 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         static_cast<double>(output_height), 0.0, 1.0};
     const ALMetalScissorRect scissor{
         0, 0, output_width, output_height};
+    const auto* display_color = scene.upscaled_color
+        ? scene.upscaled_color : scene.source->colorTexture(0);
     const ALMetalTexture* reference = scene.reference_mode != 0
-        ? scene.reference_texture : scene.source->colorTexture(0);
+        ? scene.reference_texture : display_color;
     bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->presentation_post_pipelines[
-            scene.cutout_coverage_texture ? 1u : 0u], error) &&
+        encoder->setPipeline(scene.upscaled_color
+            ? *mImpl->spatial_presentation_pipeline
+            : *mImpl->presentation_post_pipelines[
+                scene.cutout_coverage_texture ? 1u : 0u], error) &&
         encoder->setFragmentTexture(
-            0, scene.source->colorTexture(0), error) &&
+            0, display_color, error) &&
         encoder->setFragmentTexture(1, reference, error) &&
         encoder->setFragmentSampler(
             0, mImpl->linear_mirror_sampler.get(), error) &&
@@ -14912,6 +15148,7 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     {
         return nullptr;
     }
+    transaction.succeeded = true;
     return output;
 }
 

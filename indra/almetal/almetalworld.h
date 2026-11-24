@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "almetalspatialscaler.h"
+
 #include "almetalworlddiagnostics.h"
 #include "almetalprobeworkload.h"
 #include "almetalworldresources.h"
@@ -1905,6 +1907,16 @@ struct ALMetalWorldRlvSphereScene
     bool reverse_z = false;
 };
 
+// Both owners are acquired before MetalFX makes the command resource scope
+// opaque. The caller keeps color alive while passing presentation to the final
+// display pass; no pending target is hidden in mutable renderer state.
+struct ALMetalWorldSpatialUpscaleResult
+{
+    std::unique_ptr<ALMetalRenderTarget> color;
+    std::unique_ptr<ALMetalRenderTarget> presentation;
+    explicit operator bool() const noexcept { return color && presentation; }
+};
+
 // Final display-space print treatment. The source is the completed RGB10_A2
 // or RGBA8 display target after AA/CAS. The result uses the window surface's
 // linear BGRA8 storage and is deliberately offscreen until native world UI
@@ -1912,6 +1924,12 @@ struct ALMetalWorldRlvSphereScene
 struct ALMetalWorldPresentationScene
 {
     const ALMetalRenderTarget* source = nullptr;
+    // Optional perceptually encoded MetalFX result. The original internal
+    // source remains authoritative for scopes/reference capture. Final lens,
+    // print and dither still run at output resolution, before native UI.
+    // This texture must match the explicit output extent; cutout alpha is
+    // unsupported here. Its alpha is ignored and presentation writes opaque.
+    const ALMetalTexture* upscaled_color = nullptr;
     // Same-sized normalized RGBA8 or RGB10_A2, independently of source format.
     const ALMetalTexture* reference_texture = nullptr;
     std::uint32_t reference_mode = 0;
@@ -3009,7 +3027,19 @@ public:
     // an extra sharpen transaction or changes the scope measurement boundary.
     std::unique_ptr<ALMetalRenderTarget> renderPresentationPost(
         const ALMetalWorldPresentationScene& scene,
+        std::string* error = nullptr,
+        std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
+
+    // Fallible cached preflight, before choosing the sharpening path. A false
+    // result permits existing linear presentation scaling. Once encoding has
+    // begun, failure invalidates the existing enclosing transaction instead.
+    bool prepareSpatialUpscale(const ALMetalRenderTarget& source,
+        std::uint32_t output_width, std::uint32_t output_height,
         std::string* error = nullptr);
+    ALMetalWorldSpatialUpscaleResult renderSpatialUpscale(
+        const ALMetalRenderTarget& source, std::uint32_t output_width,
+        std::uint32_t output_height, std::string* error = nullptr);
+    ALMetalSpatialScalerStats spatialUpscaleStats() const noexcept;
 
     // Measure the HDR sun disc through final world depth and advance the
     // flare's bounded 2x1 temporal state entirely on the Metal queue.

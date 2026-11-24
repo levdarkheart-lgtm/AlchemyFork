@@ -68,6 +68,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
 {
     ALRenderResourcePlan plan;
     plan.mUsesScreenSpaceReflections = in.mSSR && in.mProbes;
+    plan.mMainViewDimensions = in.mainViewDimensions();
 
     const bool hdr = in.mHDR;
 
@@ -121,15 +122,13 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         }
     };
 
-    // The main view, at the render size, with shadows scaled by RenderShadowResolutionScale.
-    U32 width  = 0;
-    U32 height = 0;
-    in.renderSize(width, height);
-    width  = std::max(width, 1u);
-    height = std::max(height, 1u);
+    // Native retains the legacy scene/shadow coupling. Fixed-half reconstruction instead keeps shadows at the
+    // output reference size, with exactly the same policy for linear reconstruction and MetalFX.
+    const auto& main_size = plan.mMainViewDimensions;
     const F32 shadow_scale = std::max(0.f, in.mShadowScale);
-    plan_pack(Pack::Main, { width, height, blur_happy_size(width, shadow_scale), blur_happy_size(height, shadow_scale),
-                            SUN_CASCADES });
+    plan_pack(Pack::Main, { main_size.mSceneWidth, main_size.mSceneHeight,
+                           blur_happy_size(main_size.mShadowReferenceWidth, shadow_scale),
+                           blur_happy_size(main_size.mShadowReferenceHeight, shadow_scale), SUN_CASCADES });
 
     // A probe face renders at the probe resolution times its supersample, which the manager downsamples to its probe,
     // and its shadow maps at the size the full supersample of four gave them: a coarser capture is no reason for coarser
@@ -163,14 +162,14 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         plan.mHeroProbes = ProbeManager{ .mResolution = hero_size, .mSuperSample = 1, .mHDR = hdr };
     }
 
-    // The spot lights' shadows are the main view's alone, square at its width times the shadow scale, no larger than
+    // The spot lights' shadows are the main view's alone, square at its shadow-reference width times the scale, no larger than
     // their largest edge, and a texel at the least: a scale near 0 takes the shadows' detail, not the maps. A map covers
     // its light's frustum whatever the window's shape, so the edge bounds what a wide window or a snapshot costs them.
     if (in.mShadowDetail > 1)
     {
         // Bounded before it is made a U32, which a scale past that range would overflow.
         const U32 largest = in.mSpotShadowMaxResolution > 0 ? in.mSpotShadowMaxResolution : std::numeric_limits<U32>::max();
-        const U32 spot    = std::max((U32)std::min((F64)width * shadow_scale, (F64)largest), 1u);
+        const U32 spot    = std::max((U32)std::min((F64)main_size.mShadowReferenceWidth * shadow_scale, (F64)largest), 1u);
         for (Id id : { Id::SpotShadow0, Id::SpotShadow1 })
         {
             plan.at(id).mDesc = ALRenderTargetDesc{ .width = spot, .height = spot, .depth = shadow_depth };

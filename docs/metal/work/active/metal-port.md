@@ -1,19 +1,24 @@
-# Active Metal work — production maintenance
+# Active Metal work — optional MetalFX spatial prototype
 
-Commit `ec696aa615` is the unchanged renderer checkpoint. The production maintenance
-scope repairs HTTP ownership/progress, water regression coverage and octree bounds,
-and consolidates contradictory current tasks. The owner authorized its usual-branch
-commit/push. [CURRENT](../../state/CURRENT.md) records actual build/runtime identity;
-the [maintenance record](../../research/production-maintenance-20261122.md) owns the
-scope and checks. The viewer is closed; no owner-driven testing is requested now.
+Commit `3df7055a9d` is the clean implementation base; feature changes pending.
+PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
+pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
+3df7055a9d have identical gated quiet-output observations. Earlier research stays
+separate. Native remains default; combined lighting OFF; no push authorized.
 
 ## Immediate executable action
 
-Production maintenance is implemented, independently reviewed and validated for
-the owner-requested usual-branch publication: full Release build/app checks0,
-focused native CTest6/6, tool tests188/1optional skip and harness0. No further
-implementation or experiment collection remains in this scope. The next engineering
-item is PPD319 below. Keep the viewer closed and the review branch separate.
+Explicit fixed-half scene/output/shadow-reference planning is implemented and its
+CPU coverage passes1942assertions/28cases. Native MetalFX integration and source
+review are underway. Correct final presentation acquisition before opaque MetalFX
+encoding and include both used lazy PSOs in staged reload. Finish clean candidate
+build and focused GPU tests, then qualify actual Native/Half-linear/MetalFX output,
+net world throughput, still/motion quality, UI, resize/native return and existing
+snapshot paths. Preserve original global controls/shadow budget and restore settings.
+
+The [implementation record](../../research/metalfx-spatial-20261124.md) owns concise
+results; [CURRENT](../../state/CURRENT.md) records observations. No new live result is
+claimed. Previous maintenance below is retained history, not this feature's proof.
 
 ## Remaining engineering
 

@@ -100,6 +100,7 @@ enum class ALMetalColorWriteMask : std::uint8_t
     green = 1u << 1,
     blue = 1u << 2,
     alpha = 1u << 3,
+    rgb = red | green | blue,
     all = red | green | blue | alpha,
 };
 

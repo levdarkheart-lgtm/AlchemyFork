@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <set>
 #include <string>
 #include <string_view>
@@ -48,6 +49,7 @@ namespace
     using Pack   = Plan::Pack;
     using Slot   = Plan::Slot;
     using Depth  = ALRenderTargetDesc::Depth;
+    using Mode   = Inputs::MainResolutionMode;
 
     // The reference configuration: HDR, reverse-Z, the emissive buffer, bloom at full scale with five mips, shadow
     // detail 2, SSAO, transparent water, reflection probes; SSR, FSAA and DoF off. Mirrors on, so the hero pack is there
@@ -155,6 +157,14 @@ namespace
         };
 
         return {
+            { "ordinary main fixed-half mode", no_change, [](Inputs& in) { in.mMainResolutionMode = Mode::Half; },
+              [](const Plan&) { return of({ Id::MainGBuffer, Id::MainScreen }); } },
+            { "linear half to MetalFX half", [](Inputs& in) { in.mMainResolutionMode = Mode::Half; },
+              [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; }, nothing },
+            { "fixed-half overrides legacy divisor", [](Inputs& in) { in.mMainResolutionMode = Mode::Half; },
+              [](Inputs& in) { in.mResolutionDivisor = 3; }, nothing },
+            { "fixed-half overrides legacy multiplier", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; },
+              [](Inputs& in) { in.mResolutionMultiplier = 1.5f; }, nothing },
             { "RenderFSAAType to FXAA", no_change, [](Inputs& in) { in.mFSAAType = 1; }, nothing },
             { "RenderFSAAType to SMAA", no_change, [](Inputs& in) { in.mFSAAType = 2; },
               nothing },
@@ -273,6 +283,8 @@ namespace
     std::vector<std::pair<const char*, std::function<void(Inputs&)>>> not_the_probes()
     {
         return {
+            { "ordinary main linear-half mode", [](Inputs& in) { in.mMainResolutionMode = Mode::Half; } },
+            { "ordinary main MetalFX-half mode", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; } },
             { "the window's size", [](Inputs& in) { in.mWidth = 3840; in.mHeight = 2160; } },
             { "RenderResolutionDivisor", [](Inputs& in) { in.mResolutionDivisor = 2; } },
             { "RenderResolutionMultiplier", [](Inputs& in) { in.mResolutionMultiplier = 0.5f; } },
@@ -423,6 +435,107 @@ namespace
             REQUIRE(plan.desc(Id::HeroSun0));
             CHECK(plan.desc(Id::HeroSun0)->width == blur_happy(in.mHeroResolution, 1.f));
         }
+    }
+
+    TEST_CASE("alrenderresourceplan: native dimensions preserve legacy scaling and unscaled output", "[alrenderresourceplan]")
+    {
+        struct Case { U32 width, height, divisor; F32 multiplier; U32 scene_width, scene_height; };
+        const Case cases[] = {
+            { 3456, 2168, 1, 1.f, 3456, 2168 },
+            { 3457, 2169, 2, 1.5f, 1728, 1084 }, // Usable divisor suppresses the multiplier.
+            { 9, 7, 9, 0.5f, 4, 3 }, // Unusable divisor leaves the multiplier active.
+            { 1, 1, 1, 0.5f, 1, 1 }, // Existing allocation minimum follows legacy truncation.
+            { 0, 0, 1, 1.f, 1, 1 },
+        };
+        for (const auto& c : cases)
+        {
+            Inputs in = defaults();
+            in.mWidth = c.width; in.mHeight = c.height;
+            in.mResolutionDivisor = c.divisor; in.mResolutionMultiplier = c.multiplier;
+            CHECK(in.mMainResolutionMode == Mode::Native);
+            const auto size = in.mainViewDimensions();
+            CHECK(size.mOutputWidth == std::max(c.width, 1u));
+            CHECK(size.mOutputHeight == std::max(c.height, 1u));
+            CHECK(size.mSceneWidth == c.scene_width);
+            CHECK(size.mSceneHeight == c.scene_height);
+            CHECK(size.mShadowReferenceWidth == c.scene_width);
+            CHECK(size.mShadowReferenceHeight == c.scene_height);
+            const auto plan = Plan::make(in);
+            CHECK(plan.mainViewDimensions() == size);
+            REQUIRE(plan.desc(Id::MainGBuffer));
+            CHECK(plan.desc(Id::MainGBuffer)->width == c.scene_width);
+            CHECK(plan.desc(Id::MainGBuffer)->height == c.scene_height);
+        }
+    }
+
+    TEST_CASE("alrenderresourceplan: fixed-half dimensions round up without overflow and override legacy scaling",
+              "[alrenderresourceplan]")
+    {
+        for (Mode mode : { Mode::Half, Mode::MetalFX })
+        {
+            for (const auto& [width, height] : {
+                     std::pair{ 3456u, 2168u }, std::pair{ 3457u, 2169u }, std::pair{ 1u, 7u },
+                     std::pair{ 1u, 1u }, std::pair{ 0u, 0u },
+                     std::pair{ std::numeric_limits<U32>::max(), std::numeric_limits<U32>::max() } })
+            {
+                Inputs in;
+                in.mWidth = width; in.mHeight = height; in.mMainResolutionMode = mode;
+                in.mResolutionDivisor = 3; in.mResolutionMultiplier = 0.75f;
+                const auto size = in.mainViewDimensions();
+                CHECK(size.mOutputWidth == std::max(width, 1u));
+                CHECK(size.mOutputHeight == std::max(height, 1u));
+                CHECK(size.mSceneWidth == U32((U64(std::max(width, 1u)) + 1u) / 2u));
+                CHECK(size.mSceneHeight == U32((U64(std::max(height, 1u)) + 1u) / 2u));
+                CHECK(size.mShadowReferenceWidth == size.mOutputWidth);
+                CHECK(size.mShadowReferenceHeight == size.mOutputHeight);
+            }
+        }
+    }
+
+    TEST_CASE("alrenderresourceplan: both half modes retain full-reference shadows and identical allocations",
+              "[alrenderresourceplan]")
+    {
+        for (F32 scale : { 0.f, 0.5f, 1.f, 2.f })
+        {
+            Inputs native = defaults();
+            native.mWidth = 3457; native.mHeight = 2169; native.mShadowScale = scale;
+            const auto reference = Plan::make(native);
+            Inputs half = native; half.mMainResolutionMode = Mode::Half;
+            // These old controls are intentionally overridden by either fixed-half mode.
+            half.mResolutionDivisor = 3; half.mResolutionMultiplier = 1.5f;
+            Inputs metalfx = half; metalfx.mMainResolutionMode = Mode::MetalFX;
+            const auto linear_plan = Plan::make(half);
+            const auto metalfx_plan = Plan::make(metalfx);
+            CHECK(names(Plan::changed(reference, linear_plan)) == names(of({ Id::MainGBuffer, Id::MainScreen })));
+            CHECK(names(Plan::changed(linear_plan, metalfx_plan)) == "nothing");
+            CHECK(linear_plan.mainViewDimensions() == metalfx_plan.mainViewDimensions());
+            REQUIRE(linear_plan.desc(Id::MainGBuffer));
+            CHECK(linear_plan.desc(Id::MainGBuffer)->width == 1729);
+            CHECK(linear_plan.desc(Id::MainGBuffer)->height == 1085);
+            CHECK(linear_plan[Id::MainSun0] == reference[Id::MainSun0]);
+            CHECK(linear_plan[Id::SpotShadow0] == reference[Id::SpotShadow0]);
+            for (auto pack : { Pack::Probe, Pack::Hero })
+            {
+                for (U32 slot = 0; slot < U32(Slot::COUNT); ++slot)
+                {
+                    const auto id = Plan::inPack(pack, Slot(slot));
+                    CHECK(linear_plan[id] == reference[id]);
+                }
+            }
+            CHECK(linear_plan.reflectionProbes() == reference.reflectionProbes());
+            CHECK(linear_plan.heroProbes() == reference.heroProbes());
+        }
+    }
+
+    TEST_CASE("alrenderresourceplan: invalid main modes retain native policy",
+              "[alrenderresourceplan]")
+    {
+        Inputs native = defaults();
+        native.mWidth = 6000; native.mHeight = 4000; native.mResolutionDivisor = 2;
+        const auto reference = Plan::make(native);
+        Inputs invalid = native; invalid.mMainResolutionMode = static_cast<Mode>(99);
+        CHECK(invalid.mainViewDimensions() == native.mainViewDimensions());
+        CHECK(names(Plan::changed(reference, Plan::make(invalid))) == "nothing");
     }
 
     TEST_CASE("alrenderresourceplan: the spot shadows stop at their largest edge", "[alrenderresourceplan]")

@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-591 -->
+<!-- next-defect-id: PPD-592 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14587,3 +14587,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-22: Production-only documentation consolidation exposes the existing double scan: external Markdown links are exempted once, then their embedded repository-shaped paths are scanned as local files/scripts. Actual worktree harness exits1 with those false errors. Owner-authorized production maintenance includes a focused repair to the existing validator/tests; root owns implementation and corrective tests. Record registered before that repair. No viewer defect or new analysis tool is implied.
 
 - 2026-11-22 corrective verification: The pre-repair reproducer reports a false stale-local error. After the focused existing-validator repair and complete documentation integration, combined harness exits0 and the complete188-test tool suite exits0 with1optional skip. The first focused run occurred before the audit note was integrated and failed that real missing-document check; its log is retained. No gate was weakened or new standalone tool introduced.
+
+
+## PPD-591 — Optional native spatial upscaling lacks explicit scene/output/shadow dimensions
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: MetalFX spatial integration
+- Discovered: 2026-11-24
+- Original reference: Native MetalFX is a new optional performance feature. Existing original1eb44 finalization preserves tone mapping, antialiasing, lens/print ordering and native UI; existing resolution controls couple main image and shadow sizing. Preserve those old semantics in Native mode. New fixed-half modes explicitly retain output-sized shadow reference and native UI.
+- Evidence: Owner accepts the same-session image/shadow split: R36.646587 worlds/s versus15.265305/15.298375 native controls, with source-derived original shadows. These private Review69454 results are supporting evidence, not measurements of the new implementation. [Implementation record](research/metalfx-spatial-20261124.md).
+- Next action: Implement and qualify optional classic MTLFXSpatialScaler with device/creation fallback, cached descriptors, existing command/completion ownership, explicit color/AA/sharpen/final-effects contract and special-view behavior. Build matched clean-source controls and compare Native/Half/MetalFX on the new executable; qualify still/moving quality and resizing. Keep defaults and combined pass OFF; no push.
+- Verification: Clean source base7911e382ce pinned in separate control/implementation worktrees. Implementation and runtime qualification are in progress; no new build/performance/quality result yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24 owner requests a reviewable optional Apple-native spatial-upscaling mode after accepting the main-image/shadow split. One fixed half-width/height scale, original shadow budget and native UI are required. Quality is a trade-off requiring qualification, not an exact native-resolution fix. Earlier probe/SSR/shadow/combined-pass experiments stay closed and defaults unchanged.

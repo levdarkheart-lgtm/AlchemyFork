@@ -5,6 +5,7 @@ if(NOT DARWIN OR NOT ARCH STREQUAL "arm64")
 endif()
 
 find_library(AL_METAL_FRAMEWORK Metal REQUIRED)
+find_library(AL_METALFX_FRAMEWORK MetalFX REQUIRED)
 find_library(AL_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 find_library(AL_IOSURFACE_FRAMEWORK IOSurface REQUIRED)
 set(AL_METAL_BUILTIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_builtin.metal")
@@ -95,6 +96,7 @@ target_sources(
   almetal
   PRIVATE
     almetaldevice.mm
+    almetalspatialscaler.mm
     almetalresourceplan.cpp
     almetalresourceplan.h
     almetaldiagnostictelemetry.mm
@@ -138,6 +140,7 @@ target_sources(
     FILE_SET HEADERS
     FILES
       almetaldevice.h
+      almetalspatialscaler.h
       almetaldiagnostictelemetry.h
       almetalavatarresources.h
       almetalframe.h
@@ -195,6 +198,7 @@ target_link_libraries(
   PRIVATE
     al::flags
     ${AL_METAL_FRAMEWORK}
+    ${AL_METALFX_FRAMEWORK}
     ${AL_QUARTZCORE_FRAMEWORK}
     ${AL_IOSURFACE_FRAMEWORK}
   PUBLIC
@@ -208,6 +212,7 @@ endif()
 # explicit even though this small backend deliberately has no PCH of its own.
 set_source_files_properties(
   almetaldevice.mm
+  almetalspatialscaler.mm
   almetalframe.mm
   almetalpipeline.mm
   almetalpipelinecache.mm
@@ -241,7 +246,9 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     almetal_tests
     PROJECT almetal
-    SOURCES tests/almetal_command_timing_test.mm
+    SOURCES tests/almetal_spatial_scaler_test.mm
+            tests/almetal_spatial_presentation_test.mm
+            tests/almetal_command_timing_test.mm
             tests/almetal_resource_plan_test.cpp
             tests/almetal_resource_plan_native_test.mm
 
@@ -339,6 +346,9 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_spatial_scaler_test.mm
+                              tests/almetal_spatial_presentation_test.mm
+                              PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_retained_background_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_scene_monitor_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_render_info_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

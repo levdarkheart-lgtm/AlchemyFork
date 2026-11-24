@@ -38,7 +38,7 @@
 /// Native shadow generation consumes their descriptions directly. Native post, preview and bake transactions own
 /// their short-lived resources independently of this plan.
 ///
-/// Three packs of targets render a view each (LLPipeline::RenderTargetPack): Main, the world view at the render size;
+/// Three packs of targets render a view each (LLPipeline::RenderTargetPack): Main, the world view at the scene size;
 /// Probe, a reflection probe's face at the probe resolution times its supersample; Hero, a mirror's face at the hero
 /// resolution. Each pack is planned from its own inputs, so what changes one leaves the others alone. The main view
 /// has targets of its own beside its pack, and the rest are fixed in size. The two probe managers' own resources are
@@ -86,7 +86,7 @@ public:
         HeroGBuffer, HeroScreen,
         HeroSun0, HeroSun1, HeroSun2, HeroSun3,
 
-        // The main view's own, at its render size.
+        // The main view's own shadow maps, sized from its shadow reference.
         SpotShadow0, SpotShadow1,
 
         // Standalone textures of the pipeline's own rather than render targets.
@@ -135,6 +135,10 @@ public:
     /// This is logical render intent, independent of retained target allocations.
     bool usesScreenSpaceReflections() const { return mUsesScreenSpaceReflections; }
 
+    /// Requested ordinary-main dimensions, independent of allocation readiness. Native post owns reconstruction and
+    /// its final output texture; only scene targets and shadow maps are retained in this plan.
+    const ALRenderResourceInputs::MainViewDimensions& mainViewDimensions() const { return mMainViewDimensions; }
+
     /// The sun cascades @a pack renders, which are those it has maps for, from the first: SUN_CASCADES in the main view,
     /// CAPTURE_SUN_CASCADES in a capture unless a probe's renders them all, none without sun shadows.
     U32 sunCascades(Pack pack) const
@@ -177,8 +181,8 @@ public:
     static Slot slotOf(Id id);
     /// What debuggers call it: main.gbuffer, probe.shadow.sun1, shadow.spot0, noise.
     static std::string_view name(Id id);
-    /// Whether it is sized from the main view's render size, so that a resize, a snapshot and a retry at a lower size
-    /// rebuild it, and its failing to build halves that size.
+    /// Whether it is sized from the main view's scene or shadow reference, so a resize, snapshot or lower-size retry
+    /// rebuilds it, and its failing to build halves that size.
     static bool followsRenderSize(Id id);
     /// The retained main-view targets whose allocation failure drives a render-size retry, excluding shadow maps.
     static bool drivesRenderSize(Id id);
@@ -204,6 +208,7 @@ private:
     Resource& at(Id id) { return mResources[(size_t)id]; }
 
     std::array<Resource, ID_COUNT> mResources{};
+    ALRenderResourceInputs::MainViewDimensions mMainViewDimensions;
     bool mUsesScreenSpaceReflections = false;
     std::optional<ProbeManager>    mReflectionProbes;
     std::optional<ProbeManager>    mHeroProbes;
