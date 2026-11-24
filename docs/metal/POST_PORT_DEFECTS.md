@@ -14591,17 +14591,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-591 — Optional native spatial upscaling lacks explicit scene/output/shadow dimensions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: MetalFX spatial integration
 - Discovered: 2026-11-24
 - Original reference: Native MetalFX is a new optional performance feature. Existing original1eb44 finalization preserves tone mapping, antialiasing, lens/print ordering and native UI; existing resolution controls couple main image and shadow sizing. Preserve those old semantics in Native mode. New fixed-half modes explicitly retain output-sized shadow reference and native UI.
 - Evidence: Owner accepts the same-session image/shadow split: R36.646587 worlds/s versus15.265305/15.298375 native controls, with source-derived original shadows. These private Review69454 results are supporting evidence, not measurements of the new implementation. [Implementation record](research/metalfx-spatial-20261124.md).
-- Next action: Implement and qualify optional classic MTLFXSpatialScaler with device/creation fallback, cached descriptors, existing command/completion ownership, explicit color/AA/sharpen/final-effects contract and special-view behavior. Build matched clean-source controls and compare Native/Half/MetalFX on the new executable; qualify still/moving quality and resizing. Keep defaults and combined pass OFF; no push.
-- Verification: Clean source base7911e382ce pinned in separate control/implementation worktrees. Implementation and runtime qualification are in progress; no new build/performance/quality result yet.
+- Next action: Owner reviews candidate69457/source68e59fc, saved still/moving comparisons and the optional graphics selector. Keep Native default and combined lighting OFF. Broader temporal quality, special-view coverage and stability remain open; no push.
+- Verification: Clean matched control69456/f384e2c220 and candidate69457/68e59fc build/app checks pass; CPU2/2 and GPU11/11 with API+Shader Validation plus11979 display-post assertions pass. One quiet Home cohort observes Native15.135/Half-linear35.570/MetalFX35.026 successful joined worlds/s. FX executes, original shadow reference/native UI are retained, and resize/scaler reuse plus same-size Snapshot Half-linear fallback are exercised. One lost FX lifecycle event and no timed restored control limit performance qualification; fine scene detail is reduced versus Native. Original controls/CAS/camera/mode restored; normal shutdown verified. Owner quality acceptance remains pending.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-24 owner requests a reviewable optional Apple-native spatial-upscaling mode after accepting the main-image/shadow split. One fixed half-width/height scale, original shadow budget and native UI are required. Quality is a trade-off requiring qualification, not an exact native-resolution fix. Earlier probe/SSR/shadow/combined-pass experiments stay closed and defaults unchanged.
+
+- 2026-11-24 qualification correction (PPD591): The private imported metric allowlist omitted existing `base_lighting_features`, causing false missing-scene-dimension gates in the first offline reductions. Preserve those outputs; correct the exact schema and test the real reader before rerunning the same evidence. This does not change the viewer or justify weakening the real FX missing-`command_create_end` exclusion or global-loss limits. Three requested live windows completed; visual/resize/snapshot review remains pending.
+
+- 2026-11-24 corrective qualification: The actual-reader regressions and retained join fixtures pass; corrected same-raw reductions preserve rates and the real source-frame10081 exclusion. Final-target acquisition and lazy-PSO reload corrections are included in clean68e59fc. Builds, native fixtures, runtime scaler activation, verified stills, camera-sweep recordings, resize/cache reuse and Snapshot fallback are retained in the linked record. Stale older69454 macOS notices are excluded from stills and outside the exported video crops; they are not candidate crash evidence. Original controls restored and candidate quits normally at16:00:12 UTC. Ready for owner review, not closed or approved for push.

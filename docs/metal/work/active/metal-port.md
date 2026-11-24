@@ -1,6 +1,6 @@
 # Active Metal work — optional MetalFX spatial prototype
 
-Commit `3df7055a9d` is the clean implementation base; feature changes pending.
+Commit `68e59fc7b6a538f092d03f1869e06395ecae16c7` is the actual candidate69457 code pin.
 PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
 pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
 3df7055a9d have identical gated quiet-output observations. Earlier research stays
@@ -8,23 +8,25 @@ separate. Native remains default; combined lighting OFF; no push authorized.
 
 ## Immediate executable action
 
-Explicit fixed-half scene/output/shadow-reference planning is implemented and its
-CPU coverage passes1942assertions/28cases. Native MetalFX integration and source
-review are underway. Correct final presentation acquisition before opaque MetalFX
-encoding and include both used lazy PSOs in staged reload. Finish clean candidate
-build and focused GPU tests, then qualify actual Native/Half-linear/MetalFX output,
-net world throughput, still/motion quality, UI, resize/native return and existing
-snapshot paths. Preserve original global controls/shadow budget and restore settings.
+Implementation, source-review corrections, clean control/candidate builds and
+focused CPU/GPU correctness checks are complete. One quiet Home sequence observes
+Native15.135, Half-linear35.570 and MetalFX35.026 successful joined worlds/s.
+One FX lifecycle row is lost; no timed restoration or repeated-pair claim is made.
+Original shadows/native UI are preserved; actual scaler encoding is observed.
+Verified stills and camera-sweep review videos are retained privately. Resize/cache
+reuse and same-size Snapshot fallback were exercised. Original controls/CAS/camera
+and Native mode were restored, then the viewer shut down normally.
 
 The [implementation record](../../research/metalfx-spatial-20261124.md) owns concise
-results; [CURRENT](../../state/CURRENT.md) records observations. No new live result is
-claimed. Previous maintenance below is retained history, not this feature's proof.
+results; [CURRENT](../../state/CURRENT.md) records observations. PPD591 is ready for
+owner quality/selector review; broader moving-quality and stability acceptance
+remain open. Previous maintenance below is history, not this feature's proof.
 
 ## Remaining engineering
 
 | Priority | Requirement | Concrete next boundary |
 | --- | --- | --- |
-|1 | PPD319 required GPU shading | Optimize measured main lighting/forward-alpha cost while preserving output. Include preparation/upload and complete pass/frame cost. Queue-depth and tiny adoption trials are closed. |
+|1 | PPD591 optional scaling / PPD319 Home | Review the implemented quality/performance trade-off. Native exact-quality Home improvement remains unresolved; prior probe, BASE-SSR, combined-pass, queue-depth and tiny-adoption experiments stay closed. |
 |2 | General service | Measure category queue age and establish ownership before separating file/audio/CPU work. Invalid widths are already repaired. |
 |3 | Geometry/scene preparation | Separate immutable preparation from required lifecycle work before imposing a combined deadline. API renaming did not enforce one. |
 |4 | Safe main replies | Correlate queue age with required-main and end-pacing waits; consume at a safe owner boundary. A live setting did not unify wait accounting. |
