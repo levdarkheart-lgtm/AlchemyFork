@@ -3134,7 +3134,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     U32 capture_height = native_size_override
         ? mMetalSizeOverrideHeight
         : descriptor ? descriptor->height : 0;
-    if (snapshot_request && main_world_capture && !native_size_override &&
+    if (snapshot_request && main_world_capture && descriptor && !native_size_override &&
         (mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::Half ||
          mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::MetalFX))
     {
@@ -9948,7 +9948,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             &spatial_fallback);
                     if (wants_metalfx && !metalfx_ready && spatial_fallback.empty())
                         spatial_fallback = !wants_native_fxaa && !wants_native_smaa
-                            ? "Antialiasing is off"
+                            ? (mResourceInputs.mFSAAType == 0
+                                ? "Antialiasing is off" : "FXAA or SMAA is required")
                             : "Antialiasing did not produce a complete image";
                     if (requested_resolution == ALRenderResourceInputs::MainResolutionMode::MetalFX &&
                         !ordinary_scaled_view)
