@@ -128,7 +128,28 @@ struct AlphaPixels
     bool operator==(const AlphaPixels&) const = default;
 };
 
-AlphaPixels sampleAlpha(Fixture& f, unsigned family, const ALMetalTexture* texture, float bias)
+const ALMetalTexture* materialSamplingEnvironment(Fixture& f)
+{
+    // Material/PBR forward owners require exactly one real environment source.
+    // A black legacy cube isolates material sampling without a probe traversal.
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_cube;
+    descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    std::shared_ptr<ALMetalTexture> texture = ALMetalTexture::create(*f.device, descriptor, &f.error);
+    INFO(f.error); REQUIRE(texture);
+    auto command = f.device->makeCommandBuffer("Material sampling authored legacy environment", &f.error);
+    REQUIRE(command);
+    const RGBA black{0, 0, 0, 255};
+    for (unsigned face = 0; face < 6; ++face)
+        REQUIRE(texture->upload(*command, 0, face, {}, black.data(), sizeof(black), &f.error));
+    REQUIRE(command->commitAndWait(&f.error));
+    f.resources->textures.push_back(texture);
+    return texture.get();
+}
+
+AlphaPixels sampleAlpha(Fixture& f, unsigned family, const ALMetalTexture* texture, float bias,
+    const ALMetalTexture* legacy_environment)
 {
     auto gbuffer = samplingSeed(f, true), composed = samplingSeed(f, false);
     auto color = samplingBatch(f, family, MaterialMap::diffuse, texture);
@@ -151,10 +172,18 @@ AlphaPixels sampleAlpha(Fixture& f, unsigned family, const ALMetalTexture* textu
     ALMetalWorldAlphaEnvironment environment;
     environment.water_plane[2] = 1.f; environment.water_plane[3] = -100.f;
     environment.water_fog[0] = 1.f; environment.water_fog[2] = 1.f;
+    environment.glow_max_y[0] = 1.f; environment.glow_max_y[2] = -1.f; environment.glow_max_y[3] = 1.f;
     environment.light_direction[2] = 1.f;
-    environment.atmospheric[3] = 1.f;
+    environment.atmospheric[1] = environment.atmospheric[2] = environment.atmospheric[3] = 1.f;
     environment.atmos_sunlit[3] = environment.atmos_sunlit_linear[3] = 1.f;
-    for (unsigned axis = 0; axis < 3; ++axis) environment.eye_to_sky[axis][axis] = 1.f;
+    environment.environment[0] = 1.f;
+    for (unsigned axis = 0; axis < 3; ++axis)
+    {
+        environment.eye_to_sky[axis][axis] = 1.f;
+        environment.atmos_sunlit[axis] = .25f;
+        environment.atmos_sunlit_linear[axis] = .2f + .05f * axis;
+        environment.atmos_amblit[axis] = .1f;
+    }
     ALMetalWorldLegacyAlphaLighting lighting;
     lighting.sun_direction[2] = 1.f;
     lighting.parameters[0] = 128.f; lighting.parameters[1] = .004f; lighting.parameters[2] = 1.f;
@@ -162,6 +191,7 @@ AlphaPixels sampleAlpha(Fixture& f, unsigned family, const ALMetalTexture* textu
     scene.gbuffer = gbuffer.get(); scene.composed_lighting = composed.get();
     scene.width = scene.height = side; scene.batches = batches.data(); scene.batch_count = batches.size();
     scene.alpha_environment = &environment; scene.alpha_lighting = &lighting;
+    scene.legacy_environment = legacy_environment;
     scene.material_mip_bias = bias;
     auto target = f.renderer->renderOpaquePostDeferred(scene, &f.error);
     INFO(f.error); REQUIRE(target);
@@ -213,18 +243,19 @@ TEST_CASE("almetal: alpha color and depth consume the same per-view material mip
         const auto* chain = materialMipChain(f, opaque, transparent);
         const auto* selected_opaque = materialMipChain(f, opaque, opaque);
         const auto* selected_transparent = materialMipChain(f, transparent, transparent);
+        const auto* environment = materialSamplingEnvironment(f);
         for (unsigned family : {0u, 1u, 2u})
         {
             CAPTURE(family);
-            const auto zero = sampleAlpha(f, family, chain, 0.f);
-            const auto negative = sampleAlpha(f, family, chain, -1.f);
+            const auto zero = sampleAlpha(f, family, chain, 0.f, environment);
+            const auto negative = sampleAlpha(f, family, chain, -1.f, environment);
             const auto far = std::bit_cast<std::uint32_t>(1.f);
             CHECK(std::all_of(zero.depth.begin(), zero.depth.end(), [far](auto value) { return value == far; }));
             CHECK(std::any_of(negative.depth.begin(), negative.depth.end(), [far](auto value) { return value != far; }));
             CHECK(zero.color != negative.color);
-            CHECK(bool(zero == sampleAlpha(f, family, selected_transparent, 0.f)));
-            CHECK(bool(negative == sampleAlpha(f, family, selected_opaque, 0.f)));
-            CHECK(bool(zero == sampleAlpha(f, family, chain, 0.f)));
+            CHECK(bool(zero == sampleAlpha(f, family, selected_transparent, 0.f, environment)));
+            CHECK(bool(negative == sampleAlpha(f, family, selected_opaque, 0.f, environment)));
+            CHECK(bool(zero == sampleAlpha(f, family, chain, 0.f, environment)));
         }
     }
 }

@@ -14,22 +14,27 @@ image equivalence. No owner acceptance or push approval is inferred from builds 
 
 ## Active quality expansion — PPD596
 
-Owner requests exact2/3 and3/4 Spatial choices and scale-aware material mip sampling, starting at091243d236
-(code12fb05f/build69462). Intervening preset/fallback/native-snapshot repairs are preserved. New stable IDs3/4
-map centrally to exact rational dimensions with upward rounding, native UI/output shadow references, and the
-existing scaler cache. Per-view material bias is frozen before main material draws from actual rounded widths;
-late linear fallback retains and reports the already-used policy. Native, saved linear50, shadows, probes,
-impostors, snapshots and debug views remain unbiased. Shader sample bias is used because M1 Max Apple7 ignores
-sampler-descriptor bias; the private colored-mip oracle verifies the shader route under API/GPU validation.
+The owner requests exact 2/3 and 3/4 Spatial choices and scale-aware material mip sampling, starting at
+091243d236 (code 12fb05f, build 69462). The preset, fallback and native snapshot repairs are preserved.
+Stable choices 3/4 map centrally to rational dimensions with upward rounding, native UI and output-based
+shadow budgets. Material bias is frozen before main draws from actual rounded widths; late linear fallback
+retains and reports that policy. Native, saved linear 50%, shadows, probes, impostors, snapshots and debug
+views remain unbiased. Shader sample bias is used because the validated M1 Max colored-mip check confirms
+that sampler-descriptor bias has no effect on this Apple7 GPU.
 
-New source and targeted tests are in progress locally; no new build/runtime/quality result is claimed yet.
-Private evidence: `artifacts/metal/metalfx-quality-20261124/`. Next: complete focused build/GPU correctness,
-pin/rebuild review app, then one owner-requested N/A0/B/C/D/A1 Home session and lossless visual/motion checks.
-Do not log in over the owner's other-machine session without arranging the switch. No push authorized.
+Build **69464**, code **a5142ae5c2**, passes the full Release build, deep/strict signing, 346 ARM64 inspections,
+three CPU planning/UI/preset suites and fourteen relevant Metal suites with API/GPU Validation. New material,
+alpha coverage, terrain gradient, owned-input and zero-bias recovery cases pass after correcting the new
+fixture's omitted environment source. The older hidden probe-accumulator suite requires external source
+inputs and is excluded; it supplies no new probe experiment or performance result.
+
+Private evidence: `artifacts/metal/metalfx-quality-20261124/`. Next: arrange account availability, then one
+N/A0/B/C/D/A1 Home comparison and lossless still/motion inspection. No new live quality/performance result is
+claimed yet. No Temporal implementation or push is authorized.
 
 ## Observed implementation and verification
 
-Current integration build69462/source12fb05f compiles and passes14 selected CTest
+Previous integration build69462/source12fb05f compiles and passes14 selected CTest
 suites:3CPU and11Metal with API+GPU Validation. Deep/strict signing and346 ARM64
 checks pass. PPD593 presets round-trip2→0→2 through real manager/XML I/O; older
 presets lacking the key select Standard, failed loads preserve the mode, generated
@@ -86,7 +91,7 @@ retains previously accepted repairs, register reconciliation and their validatio
 The earlier review branch preserves research-only evidence separately. Those facts
 are historical, not current claims that this new feature is already qualified.
 
-**Renderer code checkpoint:** `12fb05f43e7a8d7ad41913d3ce1a65110cb53221` (actual69462 build; later documentation does not change its identity).
+**Renderer code checkpoint:** `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` (actual build 69464; later test-fixture/documentation edits do not change its application identity).
 
 | ID | State | Remaining boundary |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Active Metal work — optional MetalFX spatial prototype
 
-Commit `12fb05f43e7a8d7ad41913d3ce1a65110cb53221` is the actual candidate69462 code pin.
+Commit `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` is the actual candidate 69464 code pin.
 PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
 pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
 3df7055a9d have identical gated quiet-output observations. Earlier research stays
@@ -8,20 +8,24 @@ separate. Native remains default; combined lighting OFF; no push authorized.
 
 ## Active quality work — PPD596
 
-Doing: preserve091243d236/69462 integration and add exact2/3,3/4 scales plus one scoped per-view Spatial material
-mip policy. Native default and IDs0/1/2 retained; output-based shadows/native UI/independent captures unchanged.
-A dedicated fragment uniform keeps cached material packet ownership intact. Alpha depth/color share the policy;
-explicit environment LODs, shadow rendering and UI are unchanged. Linear fallback retains preselected material
-bias, exposed with committed dimensions/effective method. A quiet-session-only nonpersistent override supports
-owner-requested fixed-resolution mip-policy comparison; no tuning preference collection is introduced.
+Implemented locally: exact 2/3 and 3/4 scales plus scoped per-view Spatial material sampling. Native default
+and IDs 0/1/2 remain. Output-based shadows, native UI and independent captures are preserved. A dedicated
+fragment uniform keeps cached material packets immutable. Main alpha depth/color draws share the policy;
+explicit environment LODs, shadows and UI are unchanged. Linear fallback retains the policy selected before
+drawing and reports its effective method, dimensions and bias. A nonpersistent quiet-session override permits
+the requested fixed-resolution mip comparison without adding a graphics preference.
 
-Verification in progress: policy/UI/preset fixtures, actual M1 GPU mip/alpha/terrain/scaler/presentation tests,
-then pinned review build, one six-arm quiet Home comparison and lossless still/motion inspection. Current69462
-is preserved privately before reconfiguration. Early configure failure while the new fixture was still being
-written and missing UI-fixture include path are retained in private logs; neither is a runtime renderer failure.
-No new viewer performance or image-quality outcome is established yet. No Temporal implementation or push.
+Verified: three CPU suites and fourteen relevant Metal suites, including material/alpha/terrain sampling,
+scaler reuse, presentation failure, cutout, AA and owned-input paths. Release build 69464/source a5142ae5c2,
+deep/strict signing and 346 ARM64 checks pass. The new alpha fixture initially omitted its required environment;
+the fixture was corrected without weakening production validation or assertions, and the passing retest is
+retained alongside that failure. The older hidden probe suite requires external source inputs and is excluded.
 
-## Immediate executable action
+Next: account availability, one quiet Home comparison and lossless still/motion inspection. Current 69462 is
+preserved privately. Early configuration/include failures remain in private logs; neither was a live renderer
+failure. No Temporal implementation, owner performance acceptance or push is inferred.
+
+## Previous integration checkpoint
 
 The focused integration follow-up (PPD593–595) is implemented: real graphics-preset
 round trip/older-preset Standard compatibility, visible effective fallback reason,
