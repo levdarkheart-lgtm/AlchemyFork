@@ -38,6 +38,12 @@ the test viewer shut down normally at16:00:12 UTC. Exact receipts are under
 [implementation record](../research/metalfx-spatial-20261124.md) owns this scope.
 Actual runtime OpenHTJ2K0.27 was verified as the sole texture pixel decoder.
 
+Owner-requested private DMG69457 is on iCloud Desktop. Mounted bytes/modes/symlinks,
+signing and346 ARM64 checks pass; exact68e59fc app retained. Apple Silicon/macOS26+
+is required; ad-hoc signing is not notarization. External-machine test is pending.
+PPD592 records inherited optional-VLC missing framework references; actual plugin
+selection/media impact remain unproved. No speculative package changes were made.
+
 The accepted earlier Review69454 resolution split justifies this feature attempt;
 it is not a measurement of the new executable. Probe/SSR/combined-pass experiments
 are closed and are not this task. Do not change admission or reopen those variants.

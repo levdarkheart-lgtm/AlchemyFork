@@ -137,3 +137,21 @@ stability and still/moving-quality acceptance remain open. The implementation is
 suitable to keep developing as an optional performance/quality choice. Keep
 Standard default and all prior negative shader/queue experiments closed. No push
 or production-default selection is implied.
+
+## Private package for owner testing
+
+`Alchemy-MetalFX-Review-69457-AppleSilicon.dmg` is copied to the owner's iCloud
+Desktop (374018189bytes; SHA256
+`d6cda92f4fe01e338a68a15210aca38fb975cc781beac15f6187d123045e6c6a`).
+It includes the exact tested app, an Applications link and mode-selection guidance.
+Mounted file bytes/modes/symlinks match all7841 source entries; deep/strict signing,
+346 ARM64 checks and disk-image checksums pass. Main Mach-O minimum is macOS26.0.
+The existing ad-hoc signature is unchanged; this is not notarized or a release.
+`package-69457-receipt.json` records verified iCloud-copy hashes and Foundation's
+uploaded=true/uploading=false/no-error metadata. Download and external-machine
+execution remain unverified. Native default and source remain unchanged.
+
+PPD592 separately records two inherited VLC plugins referencing unbundled Growl/
+Sparkle frameworks. Both have identical hashes in the native control and candidate;
+actual selection and media impact are unknown. No speculative package removal or
+MetalFX attribution is made. This remains a production media-packaging follow-up.

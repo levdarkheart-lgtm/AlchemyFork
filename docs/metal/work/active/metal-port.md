@@ -22,6 +22,11 @@ results; [CURRENT](../../state/CURRENT.md) records observations. PPD591 is ready
 owner quality/selector review; broader moving-quality and stability acceptance
 remain open. Previous maintenance below is history, not this feature's proof.
 
+The exact69457 app is privately packaged on iCloud Desktop for the owner's other
+Apple Silicon/macOS26+ Mac; image/signature/full-content checks pass. External
+execution remains unverified. PPD592 retains inherited optional VLC dependency
+references for a separate media-packaging follow-up; no app bytes were changed.
+
 ## Remaining engineering
 
 | Priority | Requirement | Concrete next boundary |

@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-592 -->
+<!-- next-defect-id: PPD-593 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14609,3 +14609,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-24 qualification correction (PPD591): The private imported metric allowlist omitted existing `base_lighting_features`, causing false missing-scene-dimension gates in the first offline reductions. Preserve those outputs; correct the exact schema and test the real reader before rerunning the same evidence. This does not change the viewer or justify weakening the real FX missing-`command_create_end` exclusion or global-loss limits. Three requested live windows completed; visual/resize/snapshot review remains pending.
 
 - 2026-11-24 corrective qualification: The actual-reader regressions and retained join fixtures pass; corrected same-raw reductions preserve rates and the real source-frame10081 exclusion. Final-target acquisition and lazy-PSO reload corrections are included in clean68e59fc. Builds, native fixtures, runtime scaler activation, verified stills, camera-sweep recordings, resize/cache reuse and Snapshot fallback are retained in the linked record. Stale older69454 macOS notices are excluded from stills and outside the exported video crops; they are not candidate crash evidence. Original controls restored and candidate quits normally at16:00:12 UTC. Ready for owner review, not closed or approved for push.
+
+- 2026-11-24 owner requests the exact viewer package for testing on another Mac. Private DMG69457 preserves every application file byte, mode and symlink; mounted deep/strict signing and346 ARM64 checks pass. Apple Silicon/macOS26+ is required; the existing ad-hoc signature is retained, not notarized. DMG checksum and iCloud Desktop copy match. No external-machine launch or owner acceptance is claimed. PPD592 retains the separate inherited optional-VLC dependency finding. No source/default change or push.
+
+## PPD-592 — Bundled optional VLC plugins reference absent frameworks
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Native media packaging
+- Discovered: 2026-11-24
+- Original reference: Matched control69456/f384e2c220 and candidate69457/68e59fc bundle identical libosx_notifications_plugin.dylib and libmacosx_plugin.dylib bytes.
+- Evidence: [Packaging observations](research/metalfx-spatial-20261124.md). Private package-vlc-dependency-check-01.json records actual Mach-O LC_LOAD_DYLIB names and matching control/candidate hashes: Growl.framework and Sparkle.framework are absent from both bundles.
+- Next action: Establish whether the viewer's libVLC media path selects either plugin; then resolve the actual dependency or exclude an unused plugin through the existing packaging policy while preserving media functionality. Do not attribute a viewer or MetalFX failure without runtime evidence.
+- Verification: Static missing dependencies are confirmed in both identical plugin pairs. The main viewer does not link them. Plugin selection, media impact and external-machine runtime failure are unproved. Exact review packaging preserves the tested application; no repair attempted.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24: Read-only portability inspection during owner-requested private DMG packaging finds the two inherited optional plugin references. Register before any repair. All346 Mach-O components are ARM64; main executable requires macOS26.0 and has no developer-machine absolute dependency. No viewer launch or media deletion is part of packaging.
