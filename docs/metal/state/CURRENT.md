@@ -10,17 +10,33 @@ PPD591 owns the optional fixed-half scene modes: linear presentation and classic
 MetalFX spatial, retaining output-sized shadow references and native UI. Native
 remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
-image equivalence. No commit/push approval is inferred from builds or measurements.
+image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
 ## Observed implementation and verification
 
-Clean candidate69457/source68e59fc and matched native control69456/f384e2c220 build
+Current integration build69462/source12fb05f compiles and passes14 selected CTest
+suites:3CPU and11Metal with API+GPU Validation. Deep/strict signing and346 ARM64
+checks pass. PPD593 presets round-trip2→0→2 through real manager/XML I/O; older
+presets lacking the key select Standard, failed loads preserve the mode, generated
+Default stays Native. PPD594 shows committed effective mode/fallback reason beside
+the selector. PPD595 same-size ordinary snapshots explicitly request native scene
+detail in50% modes; custom/explicit/cutout/360 paths stay independent. The new
+borrowed-main failure case rejects final validation after real MetalFX encoding,
+denies commit/publication permission and retains the previous BGRA image.
+
+No new login, live UI/snapshot smoke test or FPS comparison. Owner review remains
+pending; precise overhead and zero Native regression are not established. Focused
+receipts are under `artifacts/metal/metalfx-integration-20261124/`.
+The verified69462 review DMG is separately named on iCloud Desktop; the69457
+package is retained unchanged. Neither packaging nor fixtures log in the owner.
+
+Initial candidate69457/source68e59fc and matched native control69456/f384e2c220 build
 and app verification pass. Each bundle contains346 ARM64 Mach-O components.
 CPU planning/preferences pass2/2; API+Shader Validation GPU scopes pass11/11,
 plus11979 assertions across6 display-post cases. Source-review corrections to
 target acquisition and staged shader reload are included in the pinned build.
 
-One quiet Home sequence observes15.135/35.570/35.026 successful joined worlds/s
+The69457 quiet Home sequence observes15.135/35.570/35.026 successful joined worlds/s
 for Native/Half-linear/MetalFX, respectively. Actual main scene sizes are3456×2168
 and1728×1084, output/shadow reference3456×2168; the scaler actually executes.
 One lost FX lifecycle event prevents full-population qualification. There is no
@@ -30,8 +46,8 @@ These are new-world GPU completions, not scanout FPS or native-image equivalence
 Verified stills show sharper reconstruction than linear, reduced fine scene detail
 versus Native and sharp native UI. Matched small camera sweeps are retained as
 review videos; temporal quality remains for owner review. Resize/return reuses two
-scaler descriptors. Same-size Snapshot preview reads back through Half-linear,
-then resumes MetalFX; explicit size overrides retain legacy resolution semantics.
+scaler descriptors. Initial69457 same-size Snapshot preview used Half-linear;
+the current policy is corrected above. Explicit overrides retain legacy semantics.
 Mode0, all original66 controls, CAS and the fixed camera were verified restored;
 the test viewer shut down normally at16:00:12 UTC. Exact receipts are under
 `artifacts/metal/metalfx-spatial-20261124`; the compact
@@ -55,7 +71,7 @@ retains previously accepted repairs, register reconciliation and their validatio
 The earlier review branch preserves research-only evidence separately. Those facts
 are historical, not current claims that this new feature is already qualified.
 
-**Renderer code checkpoint:** `68e59fc7b6a538f092d03f1869e06395ecae16c7` (actual candidate build; later documentation does not change its identity).
+**Renderer code checkpoint:** `12fb05f43e7a8d7ad41913d3ce1a65110cb53221` (actual69462 build; later documentation does not change its identity).
 
 | ID | State | Remaining boundary |
 | --- | --- | --- |
@@ -70,7 +86,8 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Owner reviews candidate69457, still/moving image quality and the graphics selector.
-Keep Native default and combined lighting OFF. Retain PPD591 pending owner quality
-acceptance and broader stability/special-view coverage. Do not pool earlier private
-measurements or reopen rejected shader/queue variants. No push is authorized.
+Owner reviews the focused69462 integration diff and then its preset/fallback/
+snapshot behavior. Keep Native default and combined lighting OFF. Retain PPD591
+and PPD593–595 pending owner acceptance/live smoke checks; broader stability and
+PPD592 media packaging remain open. Do not pool earlier measurements or reopen
+rejected shader/queue variants. No push is authorized.

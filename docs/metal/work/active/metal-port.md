@@ -1,6 +1,6 @@
 # Active Metal work — optional MetalFX spatial prototype
 
-Commit `68e59fc7b6a538f092d03f1869e06395ecae16c7` is the actual candidate69457 code pin.
+Commit `12fb05f43e7a8d7ad41913d3ce1a65110cb53221` is the actual candidate69462 code pin.
 PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
 pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
 3df7055a9d have identical gated quiet-output observations. Earlier research stays
@@ -8,6 +8,17 @@ separate. Native remains default; combined lighting OFF; no push authorized.
 
 ## Immediate executable action
 
+The focused integration follow-up (PPD593–595) is implemented: real graphics-preset
+round trip/older-preset Standard compatibility, visible effective fallback reason,
+independent native same-size ordinary snapshots, and a borrowed-main late-failure
+test after real MetalFX encoding. Release build,14 selected CTest suites (3CPU+
+11Metal with API/GPU Validation),346 ARM64 checks and signing pass. No new live
+login/UI/snapshot smoke test or timing run; owner is testing on another machine.
+Review this focused diff and current candidate next; do not restart broad FPS work.
+The separate69462 review DMG and focused diff/verification bundle are on iCloud
+Desktop for review;69457 remains unchanged. No push is authorized.
+
+Initial69457 evidence follows; it does not measure the69462 changes.
 Implementation, source-review corrections, clean control/candidate builds and
 focused CPU/GPU correctness checks are complete. One quiet Home sequence observes
 Native15.135, Half-linear35.570 and MetalFX35.026 successful joined worlds/s.

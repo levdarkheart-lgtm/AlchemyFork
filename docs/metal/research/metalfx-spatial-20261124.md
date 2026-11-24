@@ -1,20 +1,22 @@
 # Optional MetalFX spatial mode — 2026-11-24
 
 Implemented locally from usual-branch7911e382ce; PPD591 owns qualification.
-Candidate source is68e59fc7b6a538f092d03f1869e06395ecae16c7, version69457.
+The initial measured prototype is68e59fc7b6a538f092d03f1869e06395ecae16c7, version69457.
 Matched source control isf384e2c220c68518bf74da7fb8e6fabe9d6a86d3.
 No source push or production-default change is authorized. Standard remains0.
+The focused integration follow-up below is12fb05f43e7a8d7ad41913d3ce1a65110cb53221,
+version69462. Its functional verification is separate from the69457 performance cohort.
 
-Candidate executable SHA256:
+Initial69457 executable SHA256:
 `e3b544d3dafa334e000ec5fcd300d02fd0871f1c6bebdc0652c48528cbb31562`.
-Control executable SHA256:
+Matched69456 control executable SHA256:
 `7d9af496904e77854261173d1114259d436d8d7968b69b91aa7dc11a68973bdd`.
 Both bundled libraries are
 `6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793`.
 These are new builds; earlier private Review69454 measurements supported the
 choice of image/shadow policy but do not substitute for this cohort.
 
-## Implemented behavior
+## Initial69457 behavior
 
 The saved graphics selector has Standard0, 50% Linear1 and 50% MetalFX Spatial2.
 Standard preserves legacy divisor/multiplier/shadow coupling. Fixed modes use
@@ -38,7 +40,7 @@ The original1eb44 finalization order is the reference; MetalFX itself is new.
 Apple guidance: [spatial scaling](https://developer.apple.com/videos/play/wwdc2022/10103/),
 [perceptual mode](https://developer.apple.com/documentation/metalfx/mtlfxspatialscalercolorprocessingmode/perceptual).
 
-## Build and correctness evidence
+## Initial69457 build and correctness evidence
 
 Both clean Release builds and app checks exit0;346bundled Mach-O components are
 ARM64. Selected actual core recipes match after path normalization: `-O3`, C++23,
@@ -69,7 +71,7 @@ Tests: `cpu-tests-01.log`, `gpu-tests-01.log`, `gpu-tests-01.xml`,
 `gpu-core-tests-01.log`. Launch identities and source-pin receipts are separate.
 These fixtures do not establish whole-scene image-quality parity or release status.
 
-## Corrected closed-run observations
+## Corrected69457 closed-run observations
 
 `analysis03-corrected01/{summary.json,qualification-receipt.json,REPORT.txt}` owns
 one ordered Native/Linear/FX sequence on the candidate, with10s settling and25s
@@ -105,7 +107,7 @@ The first parser omitted an existing BASE schema entry. Registered correction an
 two actual reader regressions plus18join tests pass; original `analysis03` remains.
 Raw hash, positive counts/rates/quantiles and the genuine FX exclusion are unchanged.
 
-## Visual and remaining acceptance
+## Initial visual evidence and remaining acceptance
 
 Verified clean04 source JPEGs and `quality/*comparison.png` retain Native/Linear/FX
 left-to-right crops. Root inspection finds FX sharper than Linear, with less fine
@@ -138,7 +140,7 @@ suitable to keep developing as an optional performance/quality choice. Keep
 Standard default and all prior negative shader/queue experiments closed. No push
 or production-default selection is implied.
 
-## Private package for owner testing
+## Initial69457 private package for owner testing
 
 `Alchemy-MetalFX-Review-69457-AppleSilicon.dmg` is copied to the owner's iCloud
 Desktop (374018189bytes; SHA256
@@ -155,3 +157,54 @@ PPD592 separately records two inherited VLC plugins referencing unbundled Growl/
 Sparkle frameworks. Both have identical hashes in the native control and candidate;
 actual selection and media impact are unknown. No speculative package removal or
 MetalFX attribution is made. This remains a production media-packaging follow-up.
+
+## Focused integration follow-up — PPD593–595
+
+Graphics presets now save/watch RenderMetalMainResolutionMode. The actual manager
+save/load methods, real LLControlGroup and XML I/O verify save2→select0→load2.
+Older graphics presets lacking the key select Standard0; explicit values through
+Include keep the normal loader's precedence. A failed load restores the prior mode.
+Generated Default serializes the declared Native default without changing the
+current optional mode or falsely marking Default active. Looks/camera behavior is
+unchanged. Original1eb44 whitelist/save and merge/load boundaries are retained.
+
+Advanced Graphics now shows the last committed ordinary main-view effective mode
+beside the selector. AA-off and unavailable scaler preparation report Linear with
+the relevant reason. Input application/startup invalidates stale status; snapshots,
+probes, HUD and debug/special views cannot overwrite it. The UI reads cached status
+and never prepares a scaler. A failed encode or enclosing commit cannot publish a
+false successful fallback. Actual refresh/draw bodies pass the ASan/UBSan UI fixture.
+
+Same-size ordinary snapshots explicitly request independent native-size scene
+capture in either50% mode. They follow normal native AA/CAS/final effects, rather
+than attempting pixel identity with live MetalFX. Native/Standard keeps legacy
+divisor/multiplier semantics. Custom sizes, explicit overrides, cutouts,360 faces
+and a larger request's tiled allocation-failure fallback retain their existing
+paths. Request intent lives only in the existing snapshot transaction and is cleared
+on cancellation; no global setting, admission limit or scheduler changes. The input
+policy tests cover classification/dimensions and unchanged live plans/shadow references.
+
+One new spatial transaction case first encodes real MetalFX inside a borrowed main
+batch, then rejects invalid final lens values or an incompatible prepared target.
+Both branches reject outer commit, grant no settlement/publication permission,
+release the reservation, retain the previous BGRA image and permit a valid retry.
+Actual drawable/UI publication remains the existing caller gate, not a new test hook.
+
+Final69462/source12fb05f Release build passes. All14selected CTest suites pass:
+3CPU(settings/presets/dimensions) and11Metal suites with API+GPU Validation,
+including the new failure case and retained/cutout/SMAA/reference/reload coverage.
+Deep/strict signature and346 ARM64 components pass. CPU SHA256 is
+`85d4b87227a39fb61e42cb439c92d908c71228d406e1ae76ccc03cbdc3208829`;
+the baseline metallib remains byte-identical. Exact receipts/logs are under
+`artifacts/metal/metalfx-integration-20261124/` (final-tests-01.xml/log,
+viewer-build-03.log, verify-app-03.log, codesign-03.log, candidate-69462-identity.json).
+
+No viewer login, live snapshot/UI smoke check or new timing comparison was run in
+this follow-up. The owner is testing on another machine; these results are source,
+real settings-I/O and native component verification. The ordered69457 comparison
+does not establish precise MetalFX overhead or zero Native regression for69462.
+Native default and combined lighting OFF are preserved; no push is authorized.
+The separate69462 DMG on iCloud Desktop preserves every application byte/mode/
+symlink and passes mounted signature/image checks. The69457 package is unchanged.
+The focused integration review bundle carries the final diff, selected source,
+test receipts and these verification limits; neither package is a release claim.

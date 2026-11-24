@@ -14591,14 +14591,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-591 — Optional native spatial upscaling lacks explicit scene/output/shadow dimensions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: MetalFX spatial integration
 - Discovered: 2026-11-24
 - Original reference: Native MetalFX is a new optional performance feature. Existing original1eb44 finalization preserves tone mapping, antialiasing, lens/print ordering and native UI; existing resolution controls couple main image and shadow sizing. Preserve those old semantics in Native mode. New fixed-half modes explicitly retain output-sized shadow reference and native UI.
 - Evidence: Owner accepts the same-session image/shadow split: R36.646587 worlds/s versus15.265305/15.298375 native controls, with source-derived original shadows. These private Review69454 results are supporting evidence, not measurements of the new implementation. [Implementation record](research/metalfx-spatial-20261124.md).
-- Next action: Complete owner-requested preset integration (PPD593), visible effective fallback (PPD594), ordinary snapshot policy (PPD595), and borrowed-main-batch failure coverage. Keep Native default/combined lighting OFF and existing sizing/completion ownership. Do not repeat the broad FPS investigation or infer precise overhead from the ordered comparison.
-- Verification: Clean matched control69456/f384e2c220 and candidate69457/68e59fc build/app checks pass; CPU2/2 and GPU11/11 with API+Shader Validation plus11979 display-post assertions pass. One quiet Home cohort observes Native15.135/Half-linear35.570/MetalFX35.026 successful joined worlds/s. FX executes, original shadow reference/native UI are retained, and resize/scaler reuse plus same-size Snapshot Half-linear fallback are exercised. One lost FX lifecycle event and no timed restored control limit performance qualification; fine scene detail is reduced versus Native. Original controls/CAS/camera/mode restored; normal shutdown verified. Owner quality acceptance remains pending.
+- Next action: Owner reviews focused69462/source12fb05f integration and live preset/fallback/native-snapshot behavior. Keep Native default and combined lighting OFF; broader quality/stability and PPD592 remain open. No broad FPS investigation or push.
+- Verification: Current69462/source12fb05f Release build, deep/strict signing and346 ARM64 checks pass. All14 selected suites pass:3CPU and11Metal with API/GPU Validation, including real preset XML roundtrip, actual UI refresh fixture, snapshot request/dimension policy and successful-MetalFX-prefix late failure. No new viewer login/live UI/snapshot smoke test or FPS comparison; owner acceptance pending. Earlier15.135/35.570/35.026 observations belong only to69457 with its retained loss/control limitations.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -14613,6 +14613,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-24 owner requests the exact viewer package for testing on another Mac. Private DMG69457 preserves every application file byte, mode and symlink; mounted deep/strict signing and346 ARM64 checks pass. Apple Silicon/macOS26+ is required; the existing ad-hoc signature is retained, not notarized. DMG checksum and iCloud Desktop copy match. No external-machine launch or owner acceptance is claimed. PPD592 retains the separate inherited optional-VLC dependency finding. No source/default change or push.
 
 - 2026-11-24 owner retains the prototype and Native default and requests four focused integration repairs. Register PPD593–595 before implementation. Existing spatial tests omit a successful MetalFX encode followed by final-presentation rejection inside a borrowed main batch; add that exact negative transaction case without implying an already-demonstrated production failure. Reopen this parent for implementation/testing; broader FPS investigation remains suspended.
+
+- 2026-11-24 corrective verification: Focused integration source12fb05f builds as69462. Final14-suite functional validation passes with API/GPU Validation for Metal components; exact receipts are in the linked implementation record. Snapshot source review explicitly scopes native reconstruction to same-size ordinary requests, preserving custom/tiled/cutout paths. No new timing or owner acceptance is inferred.
 
 ## PPD-592 — Bundled optional VLC plugins reference absent frameworks
 
@@ -14633,14 +14635,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-593 — Graphics presets omit the main resolution mode
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Graphics preset integration
 - Discovered: 2026-11-24
 - Original reference: Original1eb44 LLPresetsManager graphics control list owns saved quality controls and preset-change tracking; the Metal resolution selector is new.
 - Evidence: [MetalFX integration record](research/metalfx-spatial-20261124.md). At6da3e6, getGraphicsControlNames omits RenderMetalMainResolutionMode although its selector is persistent.
-- Next action: Add the setting through the existing graphics-preset list, define older-preset compatibility and verify real save2/change0/load2 plus a missing-key preset.
-- Verification: Source omission confirmed; corrective behavior not tested yet.
+- Next action: Owner reviews saving/loading graphics presets in69462. Missing-key older presets deliberately choose Standard0; explicit Include values retain normal precedence. No push.
+- Verification: Real manager save/load/watch bodies with actual LLControlGroup/LLSD I/O pass under the contained ASan/UBSan fixture: save2/select0/load2, Standard/Half serialization, older presets from1/2 to0, Include override, failed-load rollback and watcher behavior. Generated Default serializes declared0 without changing current2 or falsely replacing the active preset name. Final viewer build and3CPU suite set pass; live frontend smoke remains pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -14648,16 +14650,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-24: Owner reports the integration gap; register before repair. Native default and Looks/camera preset boundaries must remain unchanged.
 
+- 2026-11-24 corrective verification: Focused integration source12fb05f builds as69462. Final14-suite functional validation passes with API/GPU Validation for Metal components; exact receipts are in the linked implementation record. Snapshot source review explicitly scopes native reconstruction to same-size ordinary requests, preserving custom/tiled/cutout paths. No new timing or owner acceptance is inferred.
+
 ## PPD-594 — Requested MetalFX mode hides its effective linear fallback
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Native resolution status
 - Discovered: 2026-11-24
 - Original reference: Original1eb44 advanced graphics floater owns settings display; native MetalFX readiness/fallback has no original equivalent.
 - Evidence: [MetalFX integration record](research/metalfx-spatial-20261124.md). At6da3e6 pipeline logs requested/effective mode and preparation error, while the selector only exposes the requested value.
-- Next action: Publish ordinary live-view effective status at the existing render owner and display its reason beside the selector. Keep GPU preparation out of the UI and avoid snapshot/probe overwrites or stale status after setting changes.
-- Verification: Hidden-fallback contract confirmed by source; corrective UI/runtime checks pending.
+- Next action: Owner inspects the effective-status line beside the selector in69462, including AA-off fallback and recovery. Scaler-unavailable reasons pass through the existing preparation result. No push.
+- Verification: Actual advanced-floater refresh/draw bodies pass367 contained ASan/UBSan checks covering pending/stale selection, active modes, AA-off/unavailable fallback reason, recovery and unchanged-text behavior. Producer status is invalidated on input/startup changes and published only after complete ordinary-main presentation commit; alternate views and failed transactions cannot overwrite it. Full viewer build passes; live in-world UI smoke remains pending.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -14665,19 +14669,23 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-24: Register before implementation. AA-off and unavailable scaler preparation are explicit linear fallback cases; an encoding/publication failure must not be mislabeled a successful linear fallback.
 
+- 2026-11-24 corrective verification: Focused integration source12fb05f builds as69462. Final14-suite functional validation passes with API/GPU Validation for Metal components; exact receipts are in the linked implementation record. Snapshot source review explicitly scopes native reconstruction to same-size ordinary requests, preserving custom/tiled/cutout paths. No new timing or owner acceptance is inferred.
+
 ## PPD-595 — Ordinary same-size snapshots silently change MetalFX reconstruction
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Snapshot reconstruction integration
 - Discovered: 2026-11-24
 - Original reference: Original1eb44 rawSnapshot follows the display AA/final-copy boundary; explicit-size overrides and cutout carry independent contracts. MetalFX is new.
 - Evidence: [MetalFX integration record](research/metalfx-spatial-20261124.md). Retained69457 runtime shows requested2/effective1 during same-size snapshot then effective2 restored; pipeline excludes gSnapshot/world_ui_chain_snapshot from MetalFX without changing the half scene.
-- Next action: Choose and implement an explicit ordinary snapshot policy using the existing size/capture and ownership boundaries. Preserve cutout, explicit-size and special-view behavior and test the selected reconstruction.
-- Verification: Existing half-linear same-size behavior is source/runtime-confirmed; new policy and corrective checks pending.
+- Next action: Owner checks same-size ordinary color/depth snapshot output in69462 while using either50% mode. Those requests deliberately capture independent native scene detail; custom sizes, explicit overrides, cutouts and360 faces keep existing behavior. No push.
+- Verification: Production request-classification and dimension-policy tests pass for same-size/cutout/custom/zero requests, all modes and legacy scales, with unchanged live/shadow plans. Request intent is scoped through the existing snapshot owner and cleared on cancel; applied override and descriptor admission retain priority. Final build and11 Metal regression files (including cutout/depth retention/post chains) pass. New in-world native snapshot output has not been captured.
 - Owner verification: pending
 - Push approval: not_granted
 
 ### History
 
 - 2026-11-24: Owner requests an explicit supported reconstruction or independent native capture. Register before repair; do not compensate global settings or change scheduling/admission.
+
+- 2026-11-24 corrective verification: Focused integration source12fb05f builds as69462. Final14-suite functional validation passes with API/GPU Validation for Metal components; exact receipts are in the linked implementation record. Snapshot source review explicitly scopes native reconstruction to same-size ordinary requests, preserving custom/tiled/cutout paths. No new timing or owner acceptance is inferred.
