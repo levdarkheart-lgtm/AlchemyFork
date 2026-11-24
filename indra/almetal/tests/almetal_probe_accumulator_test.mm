@@ -590,6 +590,8 @@ struct Fixture
             [encoder setFragmentBuffer:environment_buffer offset:0 atIndex:0];
             [encoder setFragmentBuffer:probes_buffer offset:0 atIndex:1];
             [encoder setFragmentBuffer:lighting_buffer offset:0 atIndex:2];
+            const float material_sampling[4]{0.f,1.f,0.f,0.f};
+            [encoder setFragmentBytes:material_sampling length:sizeof(material_sampling) atIndex:10];
             for (unsigned slot = 0; slot != 32; ++slot) [encoder setFragmentTexture:shadowed ? alpha_diffuse : base_textures[0] atIndex:slot];
             [encoder setFragmentTexture:radiance atIndex:32]; [encoder setFragmentTexture:irradiance atIndex:37];
             [encoder setFragmentTexture:sky atIndex:39];

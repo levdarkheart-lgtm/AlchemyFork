@@ -8003,7 +8003,7 @@
   <key>RenderMetalMainResolutionMode</key>
   <map>
     <key>Comment</key>
-    <string>Main-world resolution: 0 = Standard (existing resolution controls), 1 = fixed 50% dimensions with linear scaling, 2 = fixed 50% dimensions with MetalFX spatial scaling when available. Fixed modes retain native UI and window-sized shadow budgets. Unavailable MetalFX uses the 50% linear path.</string>
+    <string>Main-world resolution: 0 = Standard (existing resolution controls), 1 = 50% linear, 2 = 50% MetalFX Spatial, 3 = 67% MetalFX Spatial (exactly two-thirds per dimension), 4 = 75% MetalFX Spatial. Scaled modes round scene dimensions up and retain native UI and window-sized shadow budgets. Unavailable MetalFX uses linear scaling at the selected scene size.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

@@ -2508,6 +2508,19 @@ struct ALMetalWorldGBufferRenderer::Impl
             encoder.setFragmentBuffer(index, *slice.buffer, slice.offset, error);
     }
 
+    bool setMaterialSampling(ALMetalRenderEncoder& encoder, float mip_bias, std::string* error)
+    {
+        // Shader per-sample bias is available on M1; the newer sampler-descriptor LOD bias requires Apple10.
+        // Dedicated view bytes keep immutable cached material packets and all explicit environment LODs intact.
+        if (!std::isfinite(mip_bias) || mip_bias < -16.f || mip_bias > 0.f)
+        {
+            setError(error, "Metal material mip policy is invalid");
+            return false;
+        }
+        const std::array<float, 4> sampling{mip_bias, std::exp2(mip_bias), 0.f, 0.f};
+        return encoder.setFragmentBytes(10, sampling.data(), sizeof(sampling), error);
+    }
+
     bool setVertexAndFragmentData(
         ALMetalRenderEncoder& encoder, ALMetalCommandBuffer& command,
         std::uint32_t vertex_index, std::uint32_t fragment_index,
@@ -11472,6 +11485,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
     };
     const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
     bool encoded =
+        mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
@@ -20778,6 +20792,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         ? ALMetalTriangleFillMode::lines
         : ALMetalTriangleFillMode::fill;
     bool encoded =
+        mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error) &&
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
@@ -20808,7 +20823,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             const ALMetalTexture* probe_radiance = scene.reflection_probes
                 ? scene.reflection_probes->radiance_texture
                 : mImpl->inactive_probe_radiance.get();
-            bound =
+            bound = bound &&
             active.setFragmentSampler(
                 1, mImpl->probe_sampler.get(), error) &&
             active.setFragmentTexture(
@@ -21012,7 +21027,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!encoder) return fail_command();
             mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
                 lighting_raster_tile_size, *encoder);
-            encoded = encoder->setViewport(viewport, error) &&
+            encoded = mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error) &&
+                encoder->setViewport(viewport, error) &&
                 encoder->setScissor(scissor, error) &&
                 encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
                 encoder->setTriangleFillMode(ALMetalTriangleFillMode::fill, error) &&
@@ -21044,7 +21060,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder = haze_pass ? ALMetalRenderEncoder::begin(
                 *command, *haze_pass,
                 "Alchemy world water-haze encoder", error) : nullptr;
-            if (!encoder)
+            if (!encoder || !mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error))
             {
                 return fail_command();
             }
@@ -21163,7 +21179,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 *command, *haze_pass,
                 "Alchemy world atmospheric-haze encoder", error)
                 : nullptr;
-            if (!encoder)
+            if (!encoder || !mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error))
             {
                 return fail_command();
             }
@@ -21391,7 +21407,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     : "Alchemy world above-water surface encoder",
                 error)
                 : nullptr;
-            if (!encoder)
+            if (!encoder || !mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error))
             {
                 return fail_command();
             }
@@ -26820,6 +26836,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     };
     const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
     bool encoded =
+        mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error) &&
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&

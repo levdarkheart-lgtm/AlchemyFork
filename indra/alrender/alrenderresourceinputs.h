@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 
 /// Everything that decides what the pipeline's render resources are (ALRenderResourcePlan::make), as values. The
 /// viewer builds one in one place from its settings and the latches set from them, so every resource is planned from
@@ -41,13 +42,53 @@ struct ALRenderResourceInputs
     U32 mResolutionDivisor = 1;
     F32 mResolutionMultiplier = 1.f;
 
-    /// Main-view resource policy. Half and MetalFX share fixed-half geometry and a full-output shadow reference,
-    /// overriding the legacy divisor/multiplier for the main scene and shadows. Only ordinary main views use
-    /// MetalFX; debug/special main views retain half geometry with linear reconstruction. Ordinary snapshots use
-    /// independent full-size scene capture in either half mode; explicit-size/cutout overrides retain their legacy
-    /// contract. Probe/hero packs do not consume this policy.
-    enum class MainResolutionMode : U32 { Native = 0, Half = 1, MetalFX = 2 };
+    /// Stable saved choices. Every scaled choice keeps a full-output shadow reference and overrides the legacy
+    /// divisor/multiplier for main geometry. Only ordinary main views use MetalFX; special views use the selected
+    /// scene scale with linear reconstruction. Ordinary snapshots own independent full-size scene capture;
+    /// explicit-size/cutout overrides and probe/hero packs retain their existing contracts.
+    enum class MainResolutionMode : U32 { Native = 0, Half = 1, MetalFX = 2, MetalFX67 = 3, MetalFX75 = 4 };
     MainResolutionMode mMainResolutionMode = MainResolutionMode::Native;
+
+    /// Reconstruction method is distinct from the saved scale choice. Effective status keeps these three values.
+    enum class MainResolutionMethod : U32 { Native = 0, Linear = 1, MetalFX = 2 };
+    struct MainResolutionPolicy
+    {
+        MainResolutionMethod method = MainResolutionMethod::Native;
+        U32 numerator = 1, denominator = 1;
+
+        constexpr bool isScaled() const { return method != MainResolutionMethod::Native; }
+        constexpr bool usesMetalFX() const { return method == MainResolutionMethod::MetalFX; }
+        /// The UI rounds two thirds to 67%; geometry always uses the exact rational scale below.
+        constexpr U32 percentage() const { return (100u * numerator + denominator / 2u) / denominator; }
+    };
+
+    static constexpr MainResolutionMode mainResolutionModeFromSetting(S32 choice)
+    {
+        return choice >= 0 && choice <= 4 ? static_cast<MainResolutionMode>(choice) : MainResolutionMode::Native;
+    }
+
+    static constexpr MainResolutionPolicy mainResolutionPolicy(MainResolutionMode mode)
+    {
+        switch (mode)
+        {
+            case MainResolutionMode::Half: return {MainResolutionMethod::Linear, 1, 2};
+            case MainResolutionMode::MetalFX: return {MainResolutionMethod::MetalFX, 1, 2};
+            case MainResolutionMode::MetalFX67: return {MainResolutionMethod::MetalFX, 2, 3};
+            case MainResolutionMode::MetalFX75: return {MainResolutionMethod::MetalFX, 3, 4};
+            default: return {};
+        }
+    }
+
+    constexpr MainResolutionPolicy mainResolutionPolicy() const { return mainResolutionPolicy(mMainResolutionMode); }
+
+    /// Defined before main material encoding from actual rounded descriptor widths. A requested Spatial view
+    /// retains this detail policy if reconstruction later falls back to linear; other views remain unbiased.
+    static F32 spatialMaterialMipBias(MainResolutionMode mode, U32 scene_width, U32 output_width,
+                                     bool ordinary_main_view)
+    {
+        return ordinary_main_view && mainResolutionPolicy(mode).usesMetalFX() && scene_width && output_width
+            ? std::log2(static_cast<F32>(scene_width) / static_cast<F32>(output_width)) : 0.f;
+    }
 
     struct MainViewDimensions
     {
@@ -144,19 +185,20 @@ struct ALRenderResourceInputs
     }
 
     /// Scene, final output and shadow-sizing reference. Output always names the unscaled viewport. Native retains
-    /// the old divisor/multiplier behavior for both scene and shadows. The two fixed-half modes instead render at
-    /// ceil(output/2) and preserve output-sized shadow detail. Allocation minima match the existing plan; an unknown
+    /// the old divisor/multiplier behavior for both scene and shadows. Scaled choices instead round their exact
+    /// rational scene size up and preserve output-sized shadow detail. Allocation minima match the existing plan; an unknown
     /// mode takes Native semantics. Probe and hero packs have independent sizes and do not consume this contract.
     constexpr MainViewDimensions mainViewDimensions() const
     {
         MainViewDimensions size;
         size.mOutputWidth = std::max(mWidth, 1u);
         size.mOutputHeight = std::max(mHeight, 1u);
-        if (mMainResolutionMode == MainResolutionMode::Half || mMainResolutionMode == MainResolutionMode::MetalFX)
+        const auto policy = mainResolutionPolicy();
+        if (policy.isScaled())
         {
-            // Avoid overflow for an odd U32 maximum.
-            size.mSceneWidth = size.mOutputWidth / 2u + size.mOutputWidth % 2u;
-            size.mSceneHeight = size.mOutputHeight / 2u + size.mOutputHeight % 2u;
+            // U64 arithmetic preserves ceil rounding even at U32's maximum extent.
+            size.mSceneWidth = static_cast<U32>((U64(size.mOutputWidth) * policy.numerator + policy.denominator - 1u) / policy.denominator);
+            size.mSceneHeight = static_cast<U32>((U64(size.mOutputHeight) * policy.numerator + policy.denominator - 1u) / policy.denominator);
             size.mShadowReferenceWidth = size.mOutputWidth;
             size.mShadowReferenceHeight = size.mOutputHeight;
         }
@@ -180,13 +222,13 @@ struct ALRenderResourceInputs
             width == window_width && height == window_height;
     }
 
-    /// Ordinary snapshots do not silently substitute linear reconstruction for the live MetalFX image. The two
-    /// half modes instead capture an independent full-output-size scene. Native keeps its existing divisor/
+    /// Ordinary snapshots do not silently substitute linear reconstruction for the live MetalFX image. Scaled
+    /// modes instead capture an independent full-output-size scene. Native keeps its existing divisor/
     /// multiplier semantics. An explicit snapshot size override bypasses this policy entirely.
     constexpr MainViewDimensions ordinarySnapshotDimensions() const
     {
         auto size = mainViewDimensions();
-        if (mMainResolutionMode == MainResolutionMode::Half || mMainResolutionMode == MainResolutionMode::MetalFX)
+        if (mainResolutionPolicy().isScaled())
         {
             size.mSceneWidth = size.mOutputWidth;
             size.mSceneHeight = size.mOutputHeight;

@@ -292,6 +292,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_material_source_test.mm
             tests/almetal_world_resources_test.mm
             tests/almetal_world_source_owner_test.mm
+            tests/almetal_material_sampling_test.mm
             tests/almetal_world_inputs_test.mm
             tests/almetal_world_draws_test.mm
             tests/almetal_world_cohort_test.mm
@@ -382,7 +383,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_completion_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_world_data_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_submission_owner_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-  set_source_files_properties(tests/almetal_world_inputs_test.mm tests/almetal_world_draws_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  set_source_files_properties(tests/almetal_material_sampling_test.mm tests/almetal_world_inputs_test.mm tests/almetal_world_draws_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_shadow_cache_test.mm
                               tests/almetal_shadow_prepare_test.mm
                               tests/almetal_shadow_publication_test.mm

@@ -196,6 +196,8 @@ public:
         S32 effective = 0;
         bool known = false;
         std::string reason;
+        U32 scene_width = 0, scene_height = 0, output_width = 0, output_height = 0;
+        F32 material_mip_bias = 0.f;
     };
     const MetalMainResolutionStatus& getMetalMainResolutionStatus() const { return mMetalMainResolutionStatus; }
 

@@ -12,6 +12,21 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
+## Active quality expansion — PPD596
+
+Owner requests exact2/3 and3/4 Spatial choices and scale-aware material mip sampling, starting at091243d236
+(code12fb05f/build69462). Intervening preset/fallback/native-snapshot repairs are preserved. New stable IDs3/4
+map centrally to exact rational dimensions with upward rounding, native UI/output shadow references, and the
+existing scaler cache. Per-view material bias is frozen before main material draws from actual rounded widths;
+late linear fallback retains and reports the already-used policy. Native, saved linear50, shadows, probes,
+impostors, snapshots and debug views remain unbiased. Shader sample bias is used because M1 Max Apple7 ignores
+sampler-descriptor bias; the private colored-mip oracle verifies the shader route under API/GPU validation.
+
+New source and targeted tests are in progress locally; no new build/runtime/quality result is claimed yet.
+Private evidence: `artifacts/metal/metalfx-quality-20261124/`. Next: complete focused build/GPU correctness,
+pin/rebuild review app, then one owner-requested N/A0/B/C/D/A1 Home session and lossless visual/motion checks.
+Do not log in over the owner's other-machine session without arranging the switch. No push authorized.
+
 ## Observed implementation and verification
 
 Current integration build69462/source12fb05f compiles and passes14 selected CTest

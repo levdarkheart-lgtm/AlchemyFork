@@ -184,8 +184,8 @@ void run()
         CHECK(!manager.mIgnoreChangedSignal);
     }
 
-    // Explicit Standard and Half values are saved rather than omitted as defaults.
-    for (S32 mode : {0, 1})
+    // Explicit Standard, Half, and higher-resolution MetalFX modes round-trip.
+    for (S32 mode : {0, 1, 3, 4})
     {
         gSavedSettings.setS32(MODE, mode);
         const auto name = "Explicit mode " + std::to_string(mode);

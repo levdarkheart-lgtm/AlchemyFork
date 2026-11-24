@@ -85,6 +85,13 @@ def verify_packaging(read, advanced):
         assert not status.get("control_name"), "rendered status must not edit a saved setting"
         assert status.get("wrap") == "true" and int(status.get("height")) >= 32, "fallback reason needs two lines"
         assert int(status.get("left")) + int(status.get("width")) < int(controls["vert_border"].get("left")), "status overlaps the other column"
+        if "MainResolutionMetalFX75" in controls:
+            assert {node.get("name"): node.get("value") for node in controls["main resolution mode"]} == {
+                "MainResolutionStandard": "0", "MainResolutionHalf": "1", "MainResolutionMetalFX": "2",
+                "MainResolutionMetalFX67": "3", "MainResolutionMetalFX75": "4"}, "saved resolution choice IDs changed"
+            mode = llsd_map(settings["RenderMetalMainResolutionMode"])
+            assert mode["Type"].text == "S32" and mode["Persist"].text == "1" and mode["Value"].text == "0", "Standard must stay the persistent default"
+            assert int(status.get("height")) >= 48, "effective scale and dimensions need room beside a fallback reason"
     for language in ROOT.joinpath("indra/newview/skins/default/xui").iterdir():
         name = f"indra/newview/skins/default/xui/{language.name}/floater_preferences_graphics_advanced.xml"
         if not ROOT.joinpath(name).is_file():
@@ -149,6 +156,7 @@ def main():
         "{" + json.dumps(key) + ", " + json.dumps(value) + "}" for key, value in strings.items()))
     generated = generated.replace("// @RESOLUTION_STATUS_TESTS@", "checkResolutionStatus();" if has_resolution_status else "")
     generated = "#define HAS_RESOLUTION_STATUS " + str(int(has_resolution_status)) + "\n" + generated
+    generated = "#define HAS_SCALED_RESOLUTION " + str(int("ALRenderResourceInputs::mainResolutionPolicy(choice)" in source)) + "\n" + generated
     hookups = "\n".join(statement(source, name + " =") for name in
                          ("mImpostorsChangedSignal", "mNumImpostorsChangedSignal"))
     generated = generated.replace("// @PRODUCTION_HOOKUPS@", hookups)
@@ -169,6 +177,7 @@ def main():
                    "source_sha256": hashlib.sha256(generated.encode()).hexdigest(), "runs": []}
         code = 0
         includes = [flag for path in args.include_dir for flag in ("-isystem", str(path))]
+        includes += ["-I", str(ROOT / "indra/alrender"), "-I", str(ROOT / "indra/llcommon")]
         for name, argv in [("compile", ["clang++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                                         "-Wno-unused-parameter", *includes,
                                         "-fsanitize=address,undefined",

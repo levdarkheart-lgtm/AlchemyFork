@@ -6,6 +6,21 @@ pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
 3df7055a9d have identical gated quiet-output observations. Earlier research stays
 separate. Native remains default; combined lighting OFF; no push authorized.
 
+## Active quality work — PPD596
+
+Doing: preserve091243d236/69462 integration and add exact2/3,3/4 scales plus one scoped per-view Spatial material
+mip policy. Native default and IDs0/1/2 retained; output-based shadows/native UI/independent captures unchanged.
+A dedicated fragment uniform keeps cached material packet ownership intact. Alpha depth/color share the policy;
+explicit environment LODs, shadow rendering and UI are unchanged. Linear fallback retains preselected material
+bias, exposed with committed dimensions/effective method. A quiet-session-only nonpersistent override supports
+owner-requested fixed-resolution mip-policy comparison; no tuning preference collection is introduced.
+
+Verification in progress: policy/UI/preset fixtures, actual M1 GPU mip/alpha/terrain/scaler/presentation tests,
+then pinned review build, one six-arm quiet Home comparison and lossless still/motion inspection. Current69462
+is preserved privately before reconfiguration. Early configure failure while the new fixture was still being
+written and missing UI-fixture include path are retained in private logs; neither is a runtime renderer failure.
+No new viewer performance or image-quality outcome is established yet. No Temporal implementation or push.
+
 ## Immediate executable action
 
 The focused integration follow-up (PPD593–595) is implemented: real graphics-preset

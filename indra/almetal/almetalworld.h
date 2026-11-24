@@ -1264,6 +1264,9 @@ struct alignas(16) ALMetalWorldVisibilityQuery
 
 struct ALMetalWorldGBufferScene
 {
+    // Per-view material sampling only; cached material/source packets remain immutable. Zero for independent
+    // probe/shadow/capture views. Main alpha color and depth-only draws consume this same policy.
+    float material_mip_bias = 0.f;
     // Production scalar/coarse CPU routing over published source facts.
     bool source_routing = false;
     // Immutable producer-generation leases for borrowed batch resources.
@@ -1613,6 +1616,9 @@ struct alignas(16) ALMetalWorldAtmosphericHaze
 // Post-water alpha and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
+    // Per-view material sampling only; cached material/source packets remain immutable. Zero for independent
+    // probe/shadow/capture views. Main alpha color and depth-only draws consume this same policy.
+    float material_mip_bias = 0.f;
     // Same producer-generation lease contract as the G-buffer scene; forward
     // commands must preserve backing bytes after capture storage is recycled.
     std::shared_ptr<const void> source_owner;

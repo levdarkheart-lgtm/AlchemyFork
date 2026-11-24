@@ -484,6 +484,8 @@ struct Fixture
         [encoder setFragmentBuffer:environment_buffer offset:0 atIndex:0];
         [encoder setFragmentBuffer:probes_buffer offset:0 atIndex:1];
         [encoder setFragmentBuffer:hero_buffer offset:0 atIndex:4];
+        const float material_sampling[4]{0.f,1.f,0.f,0.f};
+        [encoder setFragmentBytes:material_sampling length:sizeof(material_sampling) atIndex:10];
         if (!census)
         {
             for (unsigned i=0;i<32;++i) [encoder setFragmentTexture:diffuse atIndex:i];

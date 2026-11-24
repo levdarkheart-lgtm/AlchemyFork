@@ -714,6 +714,7 @@ struct LLPipeline::MetalWorldSimpleCapture
         F64 seconds = 0.0;
     };
 
+    F32 material_mip_bias = 0.f;
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
@@ -734,7 +735,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::shared_ptr<ALMetalRenderTarget> presentation_target;
     U32 presentation_frame = std::numeric_limits<U32>::max();
     U32 presentation_resolution_mode = 0;
-    std::optional<std::array<U32, 6>> reported_resolution_state;
+    std::optional<std::array<U32, 7>> reported_resolution_state;
     // Optional diagnostic policy facts, stamped where the actual owners
     // decide them. They never participate in rendering or admission.
     U32 retention_inputs_exposure_policy_frame = std::numeric_limits<U32>::max();
@@ -3126,7 +3127,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             renderPack(), ALRenderResourcePlan::Slot::GBuffer));
     const bool native_size_override = snapshot_request &&
         main_world_capture && mMetalSizeOverrideActive;
-    // Ordinary snapshots in either fixed-half mode own a native-size scene, rather than silently replacing
+    // Ordinary snapshots in explicit scaled modes own a native-size scene, rather than silently replacing
     // live MetalFX with half-scene linear scaling. Explicit-size and cutout capture keep the existing override.
     U32 capture_width = native_size_override
         ? mMetalSizeOverrideWidth
@@ -3135,8 +3136,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         ? mMetalSizeOverrideHeight
         : descriptor ? descriptor->height : 0;
     if (snapshot_request && mMetalWorldSnapshotOrdinary && main_world_capture && descriptor && !native_size_override &&
-        (mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::Half ||
-         mResourceInputs.mMainResolutionMode == ALRenderResourceInputs::MainResolutionMode::MetalFX))
+        mResourceInputs.mainResolutionPolicy().isScaled())
     {
         const auto size = mResourceInputs.ordinarySnapshotDimensions();
         capture_width = size.mSceneWidth;
@@ -4094,6 +4094,21 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.avatar_palettes.clear();
     capture.width = capture_width;
     capture.height = capture_height;
+    // Freeze sampling before any material draws. Late scaler/AA failure may select linear reconstruction,
+    // but cannot retroactively change material mips. Snapshots and independent views have their own policy.
+    capture.material_mip_bias = ALRenderResourceInputs::spatialMaterialMipBias(
+        mResourceInputs.mMainResolutionMode, capture_width, mResourcePlan.mainViewDimensions().mOutputWidth,
+        main_world_capture && !snapshot_request && !gSnapshot && !gCubeSnapshot && !sRenderingHUDs &&
+        !sCutoutRender && !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
+        RenderBufferVisualization < 0);
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        // Review-only A/B override, never persisted or exposed as a graphics preference. It exists only in
+        // an explicitly enabled quiet diagnostic session; normal rendering always uses the automatic policy.
+        static const auto* disable_bias = gSavedSettings.declareBOOL("RenderMetalSpatialMipBiasDisabledForReview",
+            false, "Temporary quiet-session control for Spatial mip-policy qualification", LLControlVariable::PERSIST_NO);
+        if (disable_bias->getValue().asBoolean()) capture.material_mip_bias = 0.f;
+    }
     if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
         capture.hdr != hdrEnabled())
         capture.avatar_resources->discardIncompatible(
@@ -4557,6 +4572,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.world_resources = std::make_shared<MetalWorldSimpleCapture::WorldResourceLease>();
     capture.width = width;
     capture.height = height;
+    capture.material_mip_bias = 0.f;
     if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
         capture.hdr != hdrEnabled())
         capture.avatar_resources->discardIncompatible(
@@ -8796,6 +8812,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.alpha_directional_shadows =
             capture.world_alpha_uses_shadows
                 ? &capture.impostor_directional_shadows : nullptr;
+        scene.material_mip_bias = capture.material_mip_bias;
         scene.width = capture.width;
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
@@ -9924,21 +9941,21 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     const auto requested_resolution = mResourceInputs.mMainResolutionMode;
                     const auto& display_desc = display_target->descriptor();
                     const auto& raw_view = gViewerWindow->getWorldViewRectRaw();
-                    const bool fixed_half_scene =
+                    const bool fixed_scaled_scene =
                         isMainWorldPass() && mRT == &mMainRT &&
                         requested_resolution != ALRenderResourceInputs::MainResolutionMode::Native &&
                         display_desc.width == dimensions.mSceneWidth &&
                         display_desc.height == dimensions.mSceneHeight &&
                         dimensions.mOutputWidth == static_cast<U32>(llmax(raw_view.getWidth(), 0)) &&
                         dimensions.mOutputHeight == static_cast<U32>(llmax(raw_view.getHeight(), 0));
-                    const bool ordinary_scaled_view = fixed_half_scene &&
+                    const bool ordinary_scaled_view = fixed_scaled_scene &&
                         !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
                         !gSnapshot && !gCubeSnapshot && !sRenderingHUDs && !cutout_snapshot &&
                         !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
                         RenderBufferVisualization < 0 && !no_post;
                     std::string spatial_fallback;
                     const bool wants_metalfx = ordinary_scaled_view &&
-                        requested_resolution == ALRenderResourceInputs::MainResolutionMode::MetalFX;
+                        ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesMetalFX();
                     // Classic spatial upscaling consumes the completed antialiased,
                     // tone-mapped perceptual scene. AA-off retains linear scaling.
                     const bool metalfx_ready = wants_metalfx && exact_antialiasing &&
@@ -9951,10 +9968,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             ? (mResourceInputs.mFSAAType == 0
                                 ? "Antialiasing is off" : "FXAA or SMAA is required")
                             : "Antialiasing did not produce a complete image";
-                    if (requested_resolution == ALRenderResourceInputs::MainResolutionMode::MetalFX &&
+                    if (ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesMetalFX() &&
                         !ordinary_scaled_view)
                         spatial_fallback = "This view does not support MetalFX reconstruction";
-                    capture.presentation_resolution_mode = fixed_half_scene ? 1u : 0u;
+                    capture.presentation_resolution_mode = fixed_scaled_scene ? 1u : 0u;
 
                     // MetalFX owns reconstruction sharpening. Keep the configured
                     // CAS value for Standard/linear modes and creation fallback,
@@ -10175,9 +10192,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             else LL_WARNS("Metal") << "MetalFX encoding failed; canceling the native post transaction: "
                                 << display_error << LL_ENDL;
                         }
-                        const std::array<U32, 6> resolution_state{
+                        const std::array<U32, 7> resolution_state{
                             static_cast<U32>(requested_resolution), capture.presentation_resolution_mode,
-                            capture.width, capture.height, dimensions.mOutputWidth, dimensions.mOutputHeight};
+                            capture.width, capture.height, dimensions.mOutputWidth, dimensions.mOutputHeight,
+                            static_cast<U32>(std::llround(-capture.material_mip_bias * 1'000'000.0))};
                         if (isMainWorldPass() && (!capture.reported_resolution_state ||
                             *capture.reported_resolution_state != resolution_state))
                         {
@@ -10188,6 +10206,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 << ", output=" << dimensions.mOutputWidth << 'x' << dimensions.mOutputHeight
                                 << ", shadow_reference=" << dimensions.mShadowReferenceWidth << 'x'
                                 << dimensions.mShadowReferenceHeight << ", scaler_creations=" << stats.creation_successes
+                                << ", material_mip_bias=" << capture.material_mip_bias
                                 << ", fallback=" << spatial_fallback << LL_ENDL;
                         }
                         if (exact_spatial && isMainWorldPass() && mRT == &mMainRT &&
@@ -10198,7 +10217,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         {
                             pending_resolution_status = MetalMainResolutionStatus{
                                 static_cast<S32>(requested_resolution),
-                                static_cast<S32>(capture.presentation_resolution_mode), true, std::move(spatial_fallback)};
+                                static_cast<S32>(capture.presentation_resolution_mode), true, std::move(spatial_fallback),
+                                capture.width, capture.height, dimensions.mOutputWidth, dimensions.mOutputHeight,
+                                capture.material_mip_bias};
                         }
                         ALMetalWorldPresentationScene presentation;
                         presentation.source = capture.display_post_target.get();
@@ -10497,6 +10518,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 capture.presentation_resolution_mode, capture.width, capture.height,
                                 dimensions.mOutputWidth, dimensions.mOutputHeight,
                                 scaling.creation_attempts, scaling.encoded_calls});
+                        // Negative bias encoded as positive millionths of a mip level; width/height are actual
+                        // scene descriptors. This is the policy used before material draws, including fallback.
+                        ALMetalDiagnosticTelemetry::recordMetrics(
+                            {gFrameCount, ALMetalDiagnosticTelemetry::ViewKind::main, -1},
+                            "main_material_sampling",
+                            {static_cast<U32>(mResourceInputs.mMainResolutionMode), capture.presentation_resolution_mode,
+                                capture.width, capture.height, dimensions.mOutputWidth, dimensions.mOutputHeight,
+                                static_cast<U64>(std::llround(-capture.material_mip_bias * 1'000'000.0)), 0});
                     }
                     post_batch_active = false;
                     opaque_post_batch_active = false;
@@ -11481,6 +11510,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
     scene.source_owner = capture.world_resources;
         scene.batches = capture.batches.data();
         scene.batch_count = capture.batches.size();
+        scene.material_mip_bias = capture.material_mip_bias;
         scene.width = capture.width;
         scene.height = capture.height;
         scene.normal_hdr = capture.normal_hdr;
@@ -11617,6 +11647,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     scene.source_owner = capture.world_resources;
     scene.batches = capture.batches.data();
     scene.batch_count = capture.batches.size();
+    scene.material_mip_bias = capture.material_mip_bias;
     scene.width = capture.width;
     scene.height = capture.height;
     scene.normal_hdr = capture.normal_hdr;
@@ -16114,6 +16145,7 @@ void LLPipeline::stampMetalImpostorCoverage(const LLUUID& avatar_id, const LLCol
     }
     ALMetalWorldGBufferScene scene;
     scene.source_owner = capture.world_resources;
+    scene.material_mip_bias = capture.material_mip_bias;
     scene.width = capture.width;
     scene.height = capture.height;
     scene.hdr = capture.hdr;
@@ -16994,6 +17026,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.batch_count = capture.batches.size();
     scene.visibility_queries = capture.visibility_queries.data();
     scene.visibility_query_count = capture.visibility_queries.size();
+    scene.material_mip_bias = capture.material_mip_bias;
     scene.width = capture.width;
     scene.height = capture.height;
     scene.normal_hdr = capture.normal_hdr;
@@ -18786,8 +18819,8 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
     // The optional modes own one fixed scene scale and an output-sized shadow
     // reference. Standard mode retains the historical divisor/multiplier policy.
-    in.mMainResolutionMode = static_cast<ALRenderResourceInputs::MainResolutionMode>(
-        llclamp(gSavedSettings.getS32("RenderMetalMainResolutionMode"), 0, 2));
+    in.mMainResolutionMode = ALRenderResourceInputs::mainResolutionModeFromSetting(
+        gSavedSettings.getS32("RenderMetalMainResolutionMode"));
 
     in.mHDR      = gSavedSettings.getBOOL("RenderHDREnabled");
     in.mEmissive = gSavedSettings.getBOOL("RenderEnableEmissiveBuffer");

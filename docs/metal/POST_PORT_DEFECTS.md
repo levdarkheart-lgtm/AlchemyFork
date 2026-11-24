@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-596 -->
+<!-- next-defect-id: PPD-597 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14689,3 +14689,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-24: Owner requests an explicit supported reconstruction or independent native capture. Register before repair; do not compensate global settings or change scheduling/admission.
 
 - 2026-11-24 corrective verification: Focused integration source12fb05f builds as69462. Final14-suite functional validation passes with API/GPU Validation for Metal components; exact receipts are in the linked implementation record. Snapshot source review explicitly scopes native reconstruction to same-size ordinary requests, preserving custom/tiled/cutout paths. No new timing or owner acceptance is inferred.
+
+## PPD-596 — Spatial reconstruction has only one scale and no scoped material mip policy
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: MetalFX spatial quality
+- Discovered: 2026-11-24
+- Original reference: The091243d236 integration checkout includes69462 fixes. Original Alchemy material sampler/LOD and streaming behavior is the reference; MetalFX's additional spatial bias is new Apple guidance.
+- Evidence: [Spatial implementation record](research/metalfx-spatial-20261124.md). ALRenderResourceInputs centrally offers Native0/Linear50%1/Spatial50%2, and existing material samplers carry no per-view spatial bias. Owner requests2/3 and3/4 scales plus log2(actual input/output width), keeping explicit-LOD/environment and alpha depth/color contracts.
+- Next action: Generalize the central choice mapping while preserving0/1/2; trace samplers and residency before a scoped per-view material policy, define pre-draw fallback semantics, qualify correctness and one N/A0/B/C/D/A1 comparison plus lossless still/motion quality. Keep Native default and all work local. Do not implement Temporal in this task.
+- Verification: Starting worktree is clean091243d236; actual retained app69462 CPU85d4b87227a39fb61e42cb439c92d908c71228d406e1ae76ccc03cbdc3208829 and baseline library6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793 verified. New scales, sampling policy and results are not implemented/measured yet.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24: Owner retains optional Spatial/Native default and requests this bounded quality/performance comparison, including a same-resolution bias control and restored control. Register before implementation. Existing69457 ordered throughput does not establish performance of67%/75% or the bias change. Apple Spatial guidance uses log2(input/output), without Temporal's extra minus one.
+
+- 2026-11-24 PPD596 implementation underway: centralized stable choices0–4 and exactceil ratios; per-view fragment sampling uniform10 covers legacy/PBR/terrain/alpha without modifying cached material ABIs. M1 Max validated colored-mip oracle proves shader bias−1 selects LOD1 while sampler-descriptor bias−1 leaves LOD2 unchanged (Apple7 versus Apple10 feature requirement). Early fixture-source configure/include integration failures retained privately and corrected; full viewer/GPU/live qualification still pending. Native default and prior69462 repairs preserved; no push.

@@ -161,6 +161,12 @@ namespace
               [](const Plan&) { return of({ Id::MainGBuffer, Id::MainScreen }); } },
             { "linear half to MetalFX half", [](Inputs& in) { in.mMainResolutionMode = Mode::Half; },
               [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; }, nothing },
+            { "MetalFX half to two thirds", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; },
+              [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX67; },
+              [](const Plan&) { return of({ Id::MainGBuffer, Id::MainScreen }); } },
+            { "MetalFX two thirds to three quarters", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX67; },
+              [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX75; },
+              [](const Plan&) { return of({ Id::MainGBuffer, Id::MainScreen }); } },
             { "fixed-half overrides legacy divisor", [](Inputs& in) { in.mMainResolutionMode = Mode::Half; },
               [](Inputs& in) { in.mResolutionDivisor = 3; }, nothing },
             { "fixed-half overrides legacy multiplier", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; },
@@ -285,6 +291,8 @@ namespace
         return {
             { "ordinary main linear-half mode", [](Inputs& in) { in.mMainResolutionMode = Mode::Half; } },
             { "ordinary main MetalFX-half mode", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; } },
+            { "ordinary main MetalFX two-thirds mode", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX67; } },
+            { "ordinary main MetalFX three-quarters mode", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX75; } },
             { "the window's size", [](Inputs& in) { in.mWidth = 3840; in.mHeight = 2160; } },
             { "RenderResolutionDivisor", [](Inputs& in) { in.mResolutionDivisor = 2; } },
             { "RenderResolutionMultiplier", [](Inputs& in) { in.mResolutionMultiplier = 0.5f; } },
@@ -468,24 +476,73 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: fixed-half dimensions round up without overflow and override legacy scaling",
+    TEST_CASE("alrenderresourceplan: main resolution choices have stable method and exact rational scale",
               "[alrenderresourceplan]")
     {
-        for (Mode mode : { Mode::Half, Mode::MetalFX })
+        using Method = Inputs::MainResolutionMethod;
+        struct Case { S32 choice; Method method; U32 numerator, denominator, percentage; };
+        for (const auto& c : { Case{0, Method::Native, 1, 1, 100}, Case{1, Method::Linear, 1, 2, 50},
+                              Case{2, Method::MetalFX, 1, 2, 50}, Case{3, Method::MetalFX, 2, 3, 67},
+                              Case{4, Method::MetalFX, 3, 4, 75} })
         {
-            for (const auto& [width, height] : {
-                     std::pair{ 3456u, 2168u }, std::pair{ 3457u, 2169u }, std::pair{ 1u, 7u },
-                     std::pair{ 1u, 1u }, std::pair{ 0u, 0u },
-                     std::pair{ std::numeric_limits<U32>::max(), std::numeric_limits<U32>::max() } })
+            const auto mode = Inputs::mainResolutionModeFromSetting(c.choice);
+            CHECK(static_cast<S32>(mode) == c.choice);
+            const auto policy = Inputs::mainResolutionPolicy(mode);
+            CHECK(policy.method == c.method);
+            CHECK(policy.numerator == c.numerator);
+            CHECK(policy.denominator == c.denominator);
+            CHECK(policy.percentage() == c.percentage);
+            CHECK(policy.isScaled() == (c.choice != 0));
+            CHECK(policy.usesMetalFX() == (c.choice >= 2));
+        }
+        for (S32 invalid : {-1, 5, 99, std::numeric_limits<S32>::min(), std::numeric_limits<S32>::max()})
+            CHECK(Inputs::mainResolutionModeFromSetting(invalid) == Mode::Native);
+    }
+
+    TEST_CASE("alrenderresourceplan: Spatial material bias uses actual widths and remains view-scoped",
+              "[alrenderresourceplan]")
+    {
+        for (Mode mode : {Mode::Native, Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75})
+        {
+            Inputs in = defaults(); in.mMainResolutionMode = mode; in.mWidth = 3457; in.mHeight = 2169;
+            const auto d = in.mainViewDimensions();
+            const auto bias = Inputs::spatialMaterialMipBias(mode, d.mSceneWidth, d.mOutputWidth, true);
+            CHECK(bias == (in.mainResolutionPolicy().usesMetalFX()
+                ? std::log2(static_cast<F32>(d.mSceneWidth) / d.mOutputWidth) : 0.f));
+            CHECK(Inputs::spatialMaterialMipBias(mode, d.mSceneWidth, d.mOutputWidth, false) == 0.f);
+            CHECK(Inputs::spatialMaterialMipBias(mode, 0, d.mOutputWidth, true) == 0.f);
+            CHECK(Inputs::spatialMaterialMipBias(mode, d.mSceneWidth, 0, true) == 0.f);
+        }
+        CHECK(Inputs::spatialMaterialMipBias(Mode::MetalFX, 1728, 3456, true) == -1.f);
+        CHECK(Inputs::spatialMaterialMipBias(Mode::MetalFX75, 2592, 3456, true) == std::log2(.75f));
+    }
+
+    TEST_CASE("alrenderresourceplan: scaled dimensions round up without overflow and override legacy scaling",
+              "[alrenderresourceplan]")
+    {
+        struct Case { U32 width, height, half_width, half_height, two_thirds_width, two_thirds_height,
+                            three_quarters_width, three_quarters_height; };
+        const Case cases[] = {
+            {3456, 2168, 1728, 1084, 2304, 1446, 2592, 1626},
+            {3457, 2169, 1729, 1085, 2305, 1446, 2593, 1627},
+            {1, 7, 1, 4, 1, 5, 1, 6}, {1, 1, 1, 1, 1, 1, 1, 1}, {0, 0, 1, 1, 1, 1, 1, 1},
+            {4294967295u, 4294967295u, 2147483648u, 2147483648u,
+                2863311530u, 2863311530u, 3221225472u, 3221225472u}
+        };
+        for (Mode mode : { Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75 })
+        {
+            for (const auto& c : cases)
             {
                 Inputs in;
-                in.mWidth = width; in.mHeight = height; in.mMainResolutionMode = mode;
+                in.mWidth = c.width; in.mHeight = c.height; in.mMainResolutionMode = mode;
                 in.mResolutionDivisor = 3; in.mResolutionMultiplier = 0.75f;
                 const auto size = in.mainViewDimensions();
-                CHECK(size.mOutputWidth == std::max(width, 1u));
-                CHECK(size.mOutputHeight == std::max(height, 1u));
-                CHECK(size.mSceneWidth == U32((U64(std::max(width, 1u)) + 1u) / 2u));
-                CHECK(size.mSceneHeight == U32((U64(std::max(height, 1u)) + 1u) / 2u));
+                CHECK(size.mOutputWidth == std::max(c.width, 1u));
+                CHECK(size.mOutputHeight == std::max(c.height, 1u));
+                CHECK(size.mSceneWidth == (mode == Mode::MetalFX67 ? c.two_thirds_width :
+                    mode == Mode::MetalFX75 ? c.three_quarters_width : c.half_width));
+                CHECK(size.mSceneHeight == (mode == Mode::MetalFX67 ? c.two_thirds_height :
+                    mode == Mode::MetalFX75 ? c.three_quarters_height : c.half_height));
                 CHECK(size.mShadowReferenceWidth == size.mOutputWidth);
                 CHECK(size.mShadowReferenceHeight == size.mOutputHeight);
             }
@@ -508,7 +565,7 @@ namespace
     TEST_CASE("alrenderresourceplan: ordinary snapshots capture native scene detail without changing the live plan",
               "[alrenderresourceplan]")
     {
-        for (Mode mode : { Mode::Native, Mode::Half, Mode::MetalFX, static_cast<Mode>(99) })
+        for (Mode mode : { Mode::Native, Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, static_cast<Mode>(99) })
         {
             for (U32 divisor : { 1u, 2u, 4u })
             {
@@ -521,12 +578,12 @@ namespace
                 const auto live_plan = Plan::make(in);
                 const auto live = live_plan.mainViewDimensions();
                 const auto snapshot = in.ordinarySnapshotDimensions();
-                if (mode == Mode::Half || mode == Mode::MetalFX)
+                if (mode == Mode::Half || mode == Mode::MetalFX || mode == Mode::MetalFX67 || mode == Mode::MetalFX75)
                 {
                     CHECK(snapshot.mSceneWidth == 3457);
                     CHECK(snapshot.mSceneHeight == 2169);
-                    CHECK(live.mSceneWidth == 1729);
-                    CHECK(live.mSceneHeight == 1085);
+                    CHECK(live.mSceneWidth == (mode == Mode::MetalFX67 ? 2305u : mode == Mode::MetalFX75 ? 2593u : 1729u));
+                    CHECK(live.mSceneHeight == (mode == Mode::MetalFX67 ? 1446u : mode == Mode::MetalFX75 ? 1627u : 1085u));
                 }
                 else
                 {
@@ -581,6 +638,43 @@ namespace
             }
             CHECK(linear_plan.reflectionProbes() == reference.reflectionProbes());
             CHECK(linear_plan.heroProbes() == reference.heroProbes());
+        }
+    }
+
+    TEST_CASE("alrenderresourceplan: all scales isolate scene resize from full-reference shadows and probe packs",
+              "[alrenderresourceplan]")
+    {
+        for (F32 shadow_scale : {0.f, 0.5f, 1.f, 2.f})
+        {
+            Inputs native = defaults();
+            native.mWidth = 3457; native.mHeight = 2169; native.mShadowScale = shadow_scale;
+            const auto reference = Plan::make(native);
+            for (Mode mode : {Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75})
+            {
+                Inputs scaled = native;
+                scaled.mMainResolutionMode = mode;
+                scaled.mResolutionDivisor = 3; scaled.mResolutionMultiplier = 1.5f;
+                const auto plan = Plan::make(scaled);
+                CHECK(names(Plan::changed(reference, plan)) == names(of({Id::MainGBuffer, Id::MainScreen})));
+                CHECK(plan[Id::MainSun0] == reference[Id::MainSun0]);
+                CHECK(plan[Id::SpotShadow0] == reference[Id::SpotShadow0]);
+                REQUIRE(plan.desc(Id::MainGBuffer));
+                CHECK(plan.desc(Id::MainGBuffer)->width == plan.mainViewDimensions().mSceneWidth);
+                CHECK(plan.desc(Id::MainGBuffer)->height == plan.mainViewDimensions().mSceneHeight);
+                for (auto pack : {Pack::Probe, Pack::Hero})
+                    for (U32 slot = 0; slot < U32(Slot::COUNT); ++slot)
+                        CHECK(plan[Plan::inPack(pack, Slot(slot))] == reference[Plan::inPack(pack, Slot(slot))]);
+                CHECK(plan.reflectionProbes() == reference.reflectionProbes());
+                CHECK(plan.heroProbes() == reference.heroProbes());
+
+                scaled.mWidth = 3456; scaled.mHeight = 2168;
+                const auto resized = Plan::make(scaled);
+                CHECK(names(Plan::changed(plan, resized)) == names(of({Id::MainGBuffer, Id::MainScreen})));
+                CHECK(resized.mainViewDimensions().mShadowReferenceWidth == 3456);
+                CHECK(resized.mainViewDimensions().mShadowReferenceHeight == 2168);
+                CHECK(resized[Id::MainSun0] == reference[Id::MainSun0]);
+                CHECK(resized[Id::SpotShadow0] == reference[Id::SpotShadow0]);
+            }
         }
     }
 

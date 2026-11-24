@@ -1,7 +1,9 @@
 // Real native classification, availability, signal hookups and destruction bodies.
+#include "alrenderresourceinputs.h"
 #include <boost/bind/bind.hpp>
 #include <boost/signals2.hpp>
 #include <algorithm>
+#include <cstdio>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -15,6 +17,12 @@ using S32 = int;
 using LLSD = int;
 template<typename T> T llclamp(T value, T low, T high) { return std::clamp(value, low, high); }
 namespace LLStringUtil { using format_map_t = std::map<std::string, std::string>; }
+std::string llformat(const char* format, double value)
+{
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), format, value);
+    return buffer;
+}
 using boost::placeholders::_2;
 #define LL_INFOS(...) std::ostringstream()
 #define LL_WARNS(...) std::ostringstream()
@@ -38,6 +46,7 @@ struct Control
     const std::string& getText() const { return text; }
     void setText(const std::string& value) { text = value; ++text_writes; }
     void setToolTip(const std::string& value) { tooltip = value; }
+    const std::string& getToolTip() const { return tooltip; }
 };
 using LLCheckBoxCtrl = Control;
 using LLComboBox = Control;
@@ -99,7 +108,14 @@ struct Capabilities
 struct { F32 mMaxAnisotropy = 16.f; } gGLManager;
 struct
 {
-    struct Status { S32 requested = 0, effective = 0; bool known = false; std::string reason; } status;
+    struct Status
+    {
+        S32 requested = 0, effective = 0;
+        bool known = false;
+        std::string reason;
+        U32 scene_width = 0, scene_height = 0, output_width = 0, output_height = 0;
+        float material_mip_bias = 0.f;
+    } status;
     const Status& getMetalMainResolutionStatus() const { return status; }
 } gPipeline;
 class LLFloater
@@ -201,6 +217,43 @@ void checkResolutionStatus()
     floater.draw();
     CHECK(text.text == "Active: 50% MetalFX Spatial");
     CHECK(text.tooltip == text.text);
+#if HAS_SCALED_RESOLUTION
+    for (const auto& [choice, percentage] : std::map<S32, std::string>{{3, "67"}, {4, "75"}})
+    {
+        gSavedSettings.resolution_mode = choice;
+        floater.draw();
+        CHECK(text.text == "Pending next world frame");
+        gPipeline.status = {choice, 2, true, ""};
+        floater.draw();
+        CHECK(text.text == "Active: " + percentage + "% MetalFX Spatial");
+        gPipeline.status = {choice, 1, true, "Antialiasing is off"};
+        floater.draw();
+        CHECK(text.text == "Active: " + percentage + "% Linear — Antialiasing is off");
+    }
+    gSavedSettings.resolution_mode = 3;
+    gPipeline.status = {3, 2, true, "", 2305, 1446, 3457, 2169, -0.58f};
+    floater.draw();
+    CHECK(text.text == "Active: 67% MetalFX Spatial\nScene 2305×1446 → 3457×2169");
+    CHECK(text.tooltip == text.text + "\nWorld material mip adjustment: -0.58");
+    const auto dimension_writes = text.text_writes;
+    gPipeline.status.material_mip_bias = -0.42f;
+    floater.draw();
+    CHECK(text.text_writes == dimension_writes);
+    CHECK(text.tooltip == text.text + "\nWorld material mip adjustment: -0.42");
+    gSavedSettings.resolution_mode = 4;
+    gPipeline.status = {4, 2, true, "", 2593, 1627, 3457, 2169};
+    floater.draw();
+    CHECK(text.text == "Active: 75% MetalFX Spatial\nScene 2593×1627 → 3457×2169");
+    for (S32 invalid : {-1, 5, 99})
+    {
+        gSavedSettings.resolution_mode = invalid;
+        gPipeline.status = {0, 0, true, ""};
+        floater.draw();
+        CHECK(text.text == "Active: Standard");
+        CHECK(text.tooltip == text.text);
+    }
+    gSavedSettings.resolution_mode = 2;
+#endif
     CHECK(gSavedSettings.resolution_mode == 2);
     CHECK(gSavedSettings.values == saved);
 }

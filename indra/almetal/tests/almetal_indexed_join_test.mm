@@ -146,6 +146,8 @@ TEST_CASE("almetal: indexed triangle joining respects native barriers and owns p
             auto material_pass=materials->prepare(*command,requests,&error); REQUIRE(material_pass);
             const auto before=ALMetalDevice::encodedDrawCallCount();
             auto encoder=ALMetalRenderEncoder::begin(*command,*pass,"Indexed join test encoder",&error); REQUIRE(encoder);
+            const std::array<float,4> material_sampling{0.f,1.f,0.f,0.f};
+            REQUIRE(encoder->setFragmentBytes(10,material_sampling.data(),sizeof(material_sampling),&error));
             const auto bind = [&]
             {
                 REQUIRE(encoder->setPipeline(*pipeline,&error));

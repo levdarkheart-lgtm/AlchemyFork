@@ -484,6 +484,12 @@ vertex float4 almetal_world_visibility_vertex(
     return constants.config.y != 0u ? clip : almetal_clip_from_gl(clip);
 }
 
+// Material-bearing fragment entry points use per-view float4 buffer(10):
+// x = material mip LOD bias; y = exp2(x); zw = reserved zero. The owner binds
+// (0, 1, 0, 0) for unscaled and special views. Keep this separate from cached
+// material constants, and share it between alpha color and depth-only passes.
+// Environment/probe explicit LODs and non-material sampling are independent.
+
 struct ALMetalWorldSimpleConstants
 {
     float4x4 modelview_projection;
@@ -4735,7 +4741,8 @@ fragment float4 almetal_world_pre_water_fullbright_fragment(
     ALMetalWorldShinyVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     sampler diffuse_sampler [[sampler(0)]],
-    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]])
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float water_side =
         dot(input.eye_position, environment.water_plane.xyz) +
@@ -4748,7 +4755,7 @@ fragment float4 almetal_world_pre_water_fullbright_fragment(
 
     float4 color = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord) * input.color
+              diffuse_sampler, input.texcoord, bias(material_sampling.x)) * input.color
         : float4(1.0, 0.0, 1.0, 1.0);
     const float minimum_alpha = environment.water_fog.w;
     if (color.a < minimum_alpha)
@@ -4826,11 +4833,12 @@ almetal_world_legacy_glow_skinned_vertex(
 fragment float4 almetal_world_legacy_glow_fragment(
     ALMetalWorldLegacyGlowVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
-    sampler diffuse_sampler [[sampler(0)]])
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float alpha = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord).a * input.emissive_alpha
+              diffuse_sampler, input.texcoord, bias(material_sampling.x)).a * input.emissive_alpha
         : 0.0;
     return float4(0.0, 0.0, 0.0, max(alpha, 0.0));
 }
@@ -5305,14 +5313,15 @@ fragment float4 almetal_world_pbr_glow_fragment(
     array<texture2d<float>, 8> base_color_textures [[texture(0)]],
     array<texture2d<float>, 8> emissive_textures [[texture(8)]],
     sampler material_sampler [[sampler(0)]],
-    constant ALMetalWorldPBRConstants& constants [[buffer(0)]])
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const uint material_index = min(input.material_index, 7u);
     const ALMetalWorldPBRSlotConstants material =
         constants.slots[material_index];
     const float coverage =
         base_color_textures[material_index].sample(
-            material_sampler, input.base_color_texcoord).a *
+            material_sampler, input.base_color_texcoord, bias(material_sampling.x)).a *
         material.properties.w;
     const bool coverage_weights_glow = constants.config.y != 0u;
     const float quantization_bias = coverage_weights_glow
@@ -5323,7 +5332,7 @@ fragment float4 almetal_world_pbr_glow_fragment(
     }
     const float3 emissive = material.emissive_color.rgb *
         emissive_textures[material_index].sample(
-            material_sampler, input.emissive_texcoord).rgb;
+            material_sampler, input.emissive_texcoord, bias(material_sampling.x)).rgb;
     const float luminosity = max(max(emissive.r, emissive.g), emissive.b) *
                              input.emissive_alpha *
                              (coverage_weights_glow ? coverage : 1.0);
@@ -5542,14 +5551,15 @@ static ALMetalWorldGBufferOutput almetal_world_pbr_shade(
     array<texture2d<float>, 8> emissive_textures,
     sampler material_sampler,
     constant ALMetalWorldPBRConstants& constants,
-    bool front_facing)
+    bool front_facing,
+    constant float4& material_sampling)
 {
     const uint material_index = min(input.material_index, 7u);
     const ALMetalWorldPBRSlotConstants material =
         constants.slots[material_index];
     const float4 base_color =
         base_color_textures[material_index].sample(
-            material_sampler, input.base_color_texcoord) * input.color;
+            material_sampler, input.base_color_texcoord, bias(material_sampling.x)) * input.color;
     constexpr float quantization_bias = 1.0 / 512.0;
     if (constants.config.y != 0 &&
         base_color.a < material.properties.z - quantization_bias)
@@ -5559,7 +5569,7 @@ static ALMetalWorldGBufferOutput almetal_world_pbr_shade(
 
     const float3 tangent_normal =
         normal_textures[material_index].sample(
-            material_sampler, input.normal_texcoord).rgb * 2.0 - 1.0;
+            material_sampler, input.normal_texcoord, bias(material_sampling.x)).rgb * 2.0 - 1.0;
     float3 normal = normalize(
         tangent_normal.x * input.tangent +
         tangent_normal.y * input.bitangent +
@@ -5572,7 +5582,7 @@ static ALMetalWorldGBufferOutput almetal_world_pbr_shade(
     }
 
     float3 orm = orm_textures[material_index].sample(
-        material_sampler, input.orm_texcoord).rgb;
+        material_sampler, input.orm_texcoord, bias(material_sampling.x)).rgb;
     orm.g *= material.properties.x;
     orm.b *= material.properties.y;
     const float3 du = dfdx(normal);
@@ -5585,7 +5595,7 @@ static ALMetalWorldGBufferOutput almetal_world_pbr_shade(
 
     const float3 emissive = material.emissive_color.rgb *
         emissive_textures[material_index].sample(
-            material_sampler, input.emissive_texcoord).rgb;
+            material_sampler, input.emissive_texcoord, bias(material_sampling.x)).rgb;
     const float roughness_high = floor(clamp(orm.g, 0.0, 1.0) * 255.0) /
                                  255.0;
     const float roughness_low = (orm.g - roughness_high) * 255.0;
@@ -5617,9 +5627,10 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
     array<texture2d<float>, 8> emissive_textures [[texture(24)]],
     sampler material_sampler [[sampler(0)]],
     constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
-    bool front_facing [[front_facing]])
+    bool front_facing [[front_facing]],
+    constant float4& material_sampling [[buffer(10)]])
 {
-    return almetal_world_pbr_shade(input, base_color_textures, normal_textures, orm_textures, emissive_textures, material_sampler, constants, front_facing);
+    return almetal_world_pbr_shade(input, base_color_textures, normal_textures, orm_textures, emissive_textures, material_sampler, constants, front_facing, material_sampling);
 }
 
 
@@ -5629,11 +5640,12 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
 fragment float4 almetal_world_fullbright_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
-    sampler diffuse_sampler [[sampler(0)]])
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord)
+              diffuse_sampler, input.texcoord, bias(material_sampling.x))
         : float4(1.0, 0.0, 1.0, 1.0);
     if (input.material_flags.z != 0u &&
         diffuse.a < input.alpha_cutoff - (1.0 / 512.0))
@@ -7086,11 +7098,12 @@ fragment float4 almetal_world_shiny_fragment(
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord)
+              diffuse_sampler, input.texcoord, bias(material_sampling.x))
         : float4(1.0, 0.0, 1.0, 1.0);
     float3 color = diffuse.rgb * input.color.rgb;
     const float3 normal = normalize(input.normal);
@@ -7200,23 +7213,25 @@ vertex ALMetalWorldEmbossVaryings almetal_world_emboss_skinned_vertex(
 fragment float4 almetal_world_emboss_fragment(
     ALMetalWorldEmbossVaryings input [[stage_in]],
     texture2d<float> bump_texture [[texture(0)]],
-    sampler bump_sampler [[sampler(0)]])
+    sampler bump_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float first = bump_texture.sample(
-        bump_sampler, input.texcoord0).a;
+        bump_sampler, input.texcoord0, bias(material_sampling.x)).a;
     const float second = bump_texture.sample(
-        bump_sampler, input.texcoord1).a;
+        bump_sampler, input.texcoord1, bias(material_sampling.x)).a;
     return max(float4(first + (1.0 - second) - 0.5), float4(0.0));
 }
 
 fragment float4 almetal_world_flat_alpha_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
-    sampler diffuse_sampler [[sampler(0)]])
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float4 color = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord) * input.color
+              diffuse_sampler, input.texcoord, bias(material_sampling.x)) * input.color
         : float4(1.0, 0.0, 1.0, 1.0);
     constexpr float minimum_alpha = 0.004;
     if (color.a < minimum_alpha)
@@ -7233,12 +7248,13 @@ fragment float4 almetal_world_pbr_alpha_fragment(
     ALMetalWorldPBRVaryings input [[stage_in]],
     array<texture2d<float>, 8> base_color_textures [[texture(0)]],
     sampler material_sampler [[sampler(0)]],
-    constant ALMetalWorldPBRConstants& constants [[buffer(0)]])
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const uint material_index = min(input.material_index, 7u);
     const float4 base_color =
         base_color_textures[material_index].sample(
-            material_sampler, input.base_color_texcoord) * input.color;
+            material_sampler, input.base_color_texcoord, bias(material_sampling.x)) * input.color;
     constexpr float minimum_alpha = 0.004;
     if (base_color.a < minimum_alpha)
     {
@@ -7254,11 +7270,12 @@ fragment float4 almetal_world_pbr_alpha_fragment(
 fragment ALMetalWorldGBufferOutput almetal_world_simple_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
-    sampler diffuse_sampler [[sampler(0)]])
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord)
+              diffuse_sampler, input.texcoord, bias(material_sampling.x))
         : float4(1.0, 0.0, 1.0, 1.0);
     const float3 color = input.color.rgb * diffuse.rgb;
     const float3 normal = normalize(input.normal);
@@ -7282,11 +7299,12 @@ fragment ALMetalWorldGBufferOutput almetal_world_simple_fragment(
 fragment ALMetalWorldGBufferOutput almetal_world_alpha_mask_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
-    sampler diffuse_sampler [[sampler(0)]])
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord)
+              diffuse_sampler, input.texcoord, bias(material_sampling.x))
         : float4(1.0, 0.0, 1.0, 1.0);
     const bool use_vertex_color = input.material_flags.x != 0;
     const float4 color = use_vertex_color ? input.color * diffuse : diffuse;
@@ -7335,14 +7353,15 @@ static ALMetalWorldGBufferOutput almetal_world_material_shade(
     array<texture2d<float>, 8> normal_textures,
     array<texture2d<float>, 8> specular_textures,
     sampler diffuse_sampler,
-    constant ALMetalWorldMaterialConstants& constants)
+    constant ALMetalWorldMaterialConstants& constants,
+    constant float4& material_sampling)
 {
     const uint slot_count = max(constants.config.x, 1u);
     const uint material_index = min(input.texture_index, slot_count - 1u);
     const ALMetalWorldMaterialSlotConstants material =
         constants.slots[min(material_index, 7u)];
     const float4 diffuse = diffuse_textures[min(material_index, 7u)].sample(
-        diffuse_sampler, input.texcoord);
+        diffuse_sampler, input.texcoord, bias(material_sampling.x));
 
     constexpr uint alpha_mode_mask = 2u;
     constexpr uint alpha_mode_emissive = 3u;
@@ -7360,7 +7379,7 @@ static ALMetalWorldGBufferOutput almetal_world_material_shade(
     {
         const float4 tangent_sample =
             normal_textures[min(material_index, 7u)].sample(
-                diffuse_sampler, input.texcoord1);
+                diffuse_sampler, input.texcoord1, bias(material_sampling.x));
         glossiness *= tangent_sample.a;
         const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
         normal = normalize(
@@ -7375,7 +7394,7 @@ static ALMetalWorldGBufferOutput almetal_world_material_shade(
     {
         const float4 specular_sample =
             specular_textures[min(material_index, 7u)].sample(
-                diffuse_sampler, input.texcoord2);
+                diffuse_sampler, input.texcoord2, bias(material_sampling.x));
         specular = float4(
             specular_sample.rgb * specular.rgb, specular_sample.a);
     }
@@ -7422,9 +7441,10 @@ fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
     array<texture2d<float>, 8> normal_textures [[texture(8)]],
     array<texture2d<float>, 8> specular_textures [[texture(16)]],
     sampler diffuse_sampler [[sampler(0)]],
-    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]])
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
-    return almetal_world_material_shade(input, diffuse_textures, normal_textures, specular_textures, diffuse_sampler, constants);
+    return almetal_world_material_shade(input, diffuse_textures, normal_textures, specular_textures, diffuse_sampler, constants, material_sampling);
 }
 
 
@@ -8495,7 +8515,8 @@ static void almetal_world_pre_water_simple_surface(
     sampler diffuse_sampler,
     constant ALMetalWorldAlphaEnvironment& environment,
     thread float4& diffuse,
-    thread float3& normal)
+    thread float3& normal,
+    constant float4& material_sampling)
 {
     const float water_side =
         dot(input.eye_position, environment.water_plane.xyz) +
@@ -8516,7 +8537,7 @@ static void almetal_world_pre_water_simple_surface(
             texture2d<float> selected_diffuse = input.texture_index == 0u
                 ? diffuse_textures[0] : diffuse_textures[1];
             diffuse = selected_diffuse.sample(
-                diffuse_sampler, input.texcoord) * input.color;
+                diffuse_sampler, input.texcoord, bias(material_sampling.x)) * input.color;
         }
         else
         {
@@ -8527,7 +8548,7 @@ static void almetal_world_pre_water_simple_surface(
     {
         diffuse = input.texture_index < input.texture_count
             ? diffuse_textures[min(input.texture_index, 31u)].sample(
-                  diffuse_sampler, input.texcoord) * input.color
+                  diffuse_sampler, input.texcoord, bias(material_sampling.x)) * input.color
             : float4(1.0, 0.0, 1.0, 1.0);
     }
     if (diffuse.a < environment.water_fog.w)
@@ -8634,13 +8655,14 @@ fragment float4 almetal_world_pre_water_simple_fragment(
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]])
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     float4 diffuse;
     float3 normal;
     almetal_world_pre_water_simple_surface(
         input, diffuse_textures, diffuse_sampler,
-        environment, diffuse, normal);
+        environment, diffuse, normal, material_sampling);
     return almetal_world_pre_water_simple_lighting(
         input, diffuse, normal, 1.0,
         reflection_radiance, reflection_irradiance,
@@ -8660,7 +8682,8 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
     constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
-    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]])
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float3 position_dx = dfdx(input.eye_position);
     const float3 position_dy = dfdy(input.eye_position);
@@ -8668,7 +8691,7 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
     float3 normal;
     almetal_world_pre_water_simple_surface(
         input, diffuse_textures, diffuse_sampler,
-        environment, diffuse, normal);
+        environment, diffuse, normal, material_sampling);
     const float2 gl_fragment_position = float2(
         input.position.x, shadows.parameters.w - input.position.y);
     const float directional_visibility = almetal_directional_shadow(
@@ -8697,13 +8720,14 @@ fragment float4 almetal_world_pre_water_simple_candidates_fragment(
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
     constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
     constant ALMetalProbeEyeProjection& candidate_view [[buffer(8)]],
-    const device uint* candidate_masks [[buffer(9)]])
+    const device uint* candidate_masks [[buffer(9)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     float4 diffuse;
     float3 normal;
     almetal_world_pre_water_simple_surface(
         input, diffuse_textures, diffuse_sampler,
-        environment, diffuse, normal);
+        environment, diffuse, normal, material_sampling);
     size_t candidate_word_offset = 0;
     const device uint* selected_masks = almetal_probe_eye_mask_offset(
         input.eye_position, candidate_view, candidate_word_offset) ? candidate_masks : nullptr;
@@ -8728,7 +8752,8 @@ fragment float4 almetal_world_pre_water_simple_shadow_candidates_fragment(
     constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
     constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
     constant ALMetalProbeEyeProjection& candidate_view [[buffer(8)]],
-    const device uint* candidate_masks [[buffer(9)]])
+    const device uint* candidate_masks [[buffer(9)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float3 position_dx = dfdx(input.eye_position);
     const float3 position_dy = dfdy(input.eye_position);
@@ -8736,7 +8761,7 @@ fragment float4 almetal_world_pre_water_simple_shadow_candidates_fragment(
     float3 normal;
     almetal_world_pre_water_simple_surface(
         input, diffuse_textures, diffuse_sampler,
-        environment, diffuse, normal);
+        environment, diffuse, normal, material_sampling);
     const float2 gl_fragment_position = float2(
         input.position.x, shadows.parameters.w - input.position.y);
     const float directional_visibility = almetal_directional_shadow(
@@ -8778,7 +8803,8 @@ fragment float4 almetal_world_pre_water_material_fragment(
     constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
     constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
-    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]])
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     // Receiver and normal derivatives must remain outside all non-uniform
     // alpha and water discards, matching materialF.glsl's shadow and
@@ -8800,7 +8826,7 @@ fragment float4 almetal_world_pre_water_material_fragment(
     const ALMetalWorldMaterialSlotConstants material =
         constants.slots[slot];
     float4 diffuse = diffuse_textures[slot].sample(
-        material_sampler, input.texcoord);
+        material_sampler, input.texcoord, bias(material_sampling.x));
     diffuse.rgb *= input.color.rgb;
 
     float glossiness = material.specular_color.a;
@@ -8808,7 +8834,7 @@ fragment float4 almetal_world_pre_water_material_fragment(
     if (constants.config.z != 0u)
     {
         const float4 tangent_sample = normal_textures[slot].sample(
-            material_sampler, input.texcoord1);
+            material_sampler, input.texcoord1, bias(material_sampling.x));
         glossiness *= tangent_sample.a;
         const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
         normal = normalize(
@@ -8822,7 +8848,7 @@ fragment float4 almetal_world_pre_water_material_fragment(
     if (constants.config.w != 0u)
     {
         const float4 specular_sample = specular_textures[slot].sample(
-            material_sampler, input.texcoord2);
+            material_sampler, input.texcoord2, bias(material_sampling.x));
         specular = float4(
             specular_sample.rgb * specular.rgb, specular_sample.a);
     }
@@ -9081,7 +9107,8 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     texture2d_array<float> shadow_maps [[texture(33)]],
     constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
     constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
-    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]])
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     // Keep the receiver derivatives in uniform control flow, before the
     // material cutoffs below can discard only part of a quad.
@@ -9093,14 +9120,14 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     const ALMetalWorldMaterialSlotConstants material =
         constants.slots[slot];
     const float4 diffuse = diffuse_textures[slot].sample(
-        material_sampler, input.texcoord);
+        material_sampler, input.texcoord, bias(material_sampling.x));
 
     float3 normal = normalize(input.normal);
     float glossiness = material.specular_color.a;
     if (constants.config.z != 0u)
     {
         const float4 tangent_sample = normal_textures[slot].sample(
-            material_sampler, input.texcoord1);
+            material_sampler, input.texcoord1, bias(material_sampling.x));
         glossiness *= tangent_sample.a;
         const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
         normal = normalize(
@@ -9114,7 +9141,7 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     if (constants.config.w != 0u)
     {
         const float4 specular_sample = specular_textures[slot].sample(
-            material_sampler, input.texcoord2);
+            material_sampler, input.texcoord2, bias(material_sampling.x));
         specular = float4(
             specular_sample.rgb * specular.rgb, specular_sample.a);
     }
@@ -9236,11 +9263,12 @@ fragment ALMetalWorldGBufferOutput almetal_world_bump_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     texture2d<float> normal_texture [[texture(32)]],
-    sampler diffuse_sampler [[sampler(0)]])
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
-              diffuse_sampler, input.texcoord)
+              diffuse_sampler, input.texcoord, bias(material_sampling.x))
         : float4(1.0, 0.0, 1.0, 1.0);
     const float quantization_bias = input.material_flags.y != 0
         ? 1.0 / 512.0 : 0.0;
@@ -9251,7 +9279,7 @@ fragment ALMetalWorldGBufferOutput almetal_world_bump_fragment(
     }
     const float4 color = input.color * diffuse;
     const float3 tangent_normal =
-        normal_texture.sample(diffuse_sampler, input.texcoord).rgb * 2.0 - 1.0;
+        normal_texture.sample(diffuse_sampler, input.texcoord, bias(material_sampling.x)).rgb * 2.0 - 1.0;
     const float3 normal = normalize(
         tangent_normal.x * input.tangent +
         tangent_normal.y * input.bitangent +
@@ -9797,8 +9825,12 @@ static float4 almetal_world_terrain_detail_fetch(
     texture2d<float> detail_texture, sampler detail_sampler,
     float2 texcoord, float2 texcoord_dx, float2 texcoord_dy,
     uint projection, float side,
-    constant ALMetalWorldTerrainConstants& constants)
+    constant ALMetalWorldTerrainConstants& constants,
+    constant float4& material_sampling)
 {
+    // Scale the explicit material footprint without changing its UVs or anisotropy.
+    texcoord_dx *= material_sampling.y;
+    texcoord_dy *= material_sampling.y;
     if (constants.config.z == 0)
     {
         return detail_texture.sample(
@@ -9839,7 +9871,8 @@ static float4 almetal_world_terrain_detail_sample(
     sampler detail_sampler,
     ALMetalWorldTerrainVaryings input,
     ALMetalWorldTerrainProjection projection,
-    constant ALMetalWorldTerrainConstants& constants)
+    constant ALMetalWorldTerrainConstants& constants,
+    constant float4& material_sampling)
 {
     float4 color = 0.0;
     if (projection.usage.x != 0.0)
@@ -9850,7 +9883,7 @@ static float4 almetal_world_terrain_detail_sample(
             flip * input.side_texcoord.xy,
             flip * projection.side_dx.xy,
             flip * projection.side_dy.xy,
-            1, projection.sx, constants) * projection.weight.x;
+            1, projection.sx, constants, material_sampling) * projection.weight.x;
     }
     if (projection.usage.y != 0.0)
     {
@@ -9860,14 +9893,14 @@ static float4 almetal_world_terrain_detail_sample(
             flip * input.side_texcoord.zw,
             flip * projection.side_dx.zw,
             flip * projection.side_dy.zw,
-            2, -projection.sy, constants) * projection.weight.y;
+            2, -projection.sy, constants, material_sampling) * projection.weight.y;
     }
     if (projection.usage.z != 0.0)
     {
         color += almetal_world_terrain_detail_fetch(
             detail_texture, detail_sampler, input.detail_texcoord,
             projection.top_dx, projection.top_dy,
-            0, 1.0, constants) * projection.weight.z;
+            0, 1.0, constants, material_sampling) * projection.weight.z;
     }
     return color;
 }
@@ -9881,7 +9914,8 @@ fragment ALMetalWorldGBufferOutput almetal_world_terrain_fragment(
     sampler detail_sampler [[sampler(0)]],
     sampler parcel_sampler [[sampler(1)]],
     sampler ramp_sampler [[sampler(3)]],
-    constant ALMetalWorldTerrainConstants& constants [[buffer(0)]])
+    constant ALMetalWorldTerrainConstants& constants [[buffer(0)]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float alpha1 = alpha_ramp.sample(
         ramp_sampler, input.composition).a;
@@ -9908,7 +9942,7 @@ fragment ALMetalWorldGBufferOutput almetal_world_terrain_fragment(
         {
             color += almetal_world_terrain_detail_sample(
                 detail_textures[detail], detail_sampler, input,
-                projection, constants) * weight[detail];
+                projection, constants, material_sampling) * weight[detail];
         }
     }
     if (constants.config.y != 0)
@@ -9963,8 +9997,12 @@ static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_fetch(
     texture2d<float> orm_texture,
     texture2d<float> emissive_texture,
     sampler material_sampler, float2 texcoord,
-    float2 texcoord_dx, float2 texcoord_dy, uint detail)
+    float2 texcoord_dx, float2 texcoord_dy, uint detail,
+    constant float4& material_sampling)
 {
+    // Scale the explicit material footprint without changing its UVs or anisotropy.
+    texcoord_dx *= material_sampling.y;
+    texcoord_dy *= material_sampling.y;
     ALMetalWorldTerrainPBRMix result;
     result.color = base_color_texture.sample(
         material_sampler, texcoord,
@@ -10004,7 +10042,8 @@ static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_sample(
     sampler material_sampler, float2 texcoord,
     float2 texcoord_dx, float2 texcoord_dy,
     uint material, uint projection, float side,
-    constant ALMetalWorldTerrainConstants& constants)
+    constant ALMetalWorldTerrainConstants& constants,
+    constant float4& material_sampling)
 {
     const uint detail = constants.pbr_config.x;
     if (constants.config.z == 0)
@@ -10012,7 +10051,7 @@ static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_sample(
         return almetal_world_terrain_pbr_fetch(
             base_color_texture, normal_texture, orm_texture,
             emissive_texture, material_sampler, texcoord,
-            texcoord_dx, texcoord_dy, detail);
+            texcoord_dx, texcoord_dy, detail, material_sampling);
     }
 
     const ALMetalWorldTerrainHexTile tile =
@@ -10035,7 +10074,7 @@ static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_sample(
             cells[cell] = almetal_world_terrain_pbr_fetch(
                 base_color_texture, normal_texture, orm_texture,
                 emissive_texture, material_sampler, cell_texcoord,
-                rotation * texcoord_dx, rotation * texcoord_dy, detail);
+                rotation * texcoord_dx, rotation * texcoord_dy, detail, material_sampling);
             luma[cell] = dot(cells[cell].color.rgb,
                              float3(0.299, 0.587, 0.114));
             if (detail >= 2)
@@ -10082,7 +10121,8 @@ almetal_world_terrain_pbr_sample_material(
     texture2d<float> orm_texture,
     texture2d<float> emissive_texture,
     sampler material_sampler, uint material,
-    constant ALMetalWorldTerrainConstants& constants)
+    constant ALMetalWorldTerrainConstants& constants,
+    constant float4& material_sampling)
 {
     const ALMetalWorldTerrainPBRSlot slot = constants.pbr_slots[material];
     const float2x2 transform = float2x2(
@@ -10101,7 +10141,7 @@ almetal_world_terrain_pbr_sample_material(
             emissive_texture, material_sampler,
             transform * input.region_position.xy + offset,
             transform * point_dx.xy, transform * point_dy.xy,
-            material, 0, 1.0, constants);
+            material, 0, 1.0, constants, material_sampling);
         if (detail >= 2)
         {
             result.normal = almetal_world_terrain_pbr_compose_normal(
@@ -10122,7 +10162,7 @@ almetal_world_terrain_pbr_sample_material(
                         input.region_position.z) + offset,
                     transform * float2(sx * point_dx.y, point_dx.z),
                     transform * float2(sx * point_dy.y, point_dy.z),
-                    material, 1, sx, constants);
+                    material, 1, sx, constants, material_sampling);
             if (detail >= 2)
             {
                 const float3 frame_normal = float3(
@@ -10150,7 +10190,7 @@ almetal_world_terrain_pbr_sample_material(
                         input.region_position.z) + offset,
                     transform * float2(-sy * point_dx.x, point_dx.z),
                     transform * float2(-sy * point_dy.x, point_dy.z),
-                    material, 2, -sy, constants);
+                    material, 2, -sy, constants, material_sampling);
             if (detail >= 2)
             {
                 const float3 frame_normal = float3(
@@ -10174,7 +10214,7 @@ almetal_world_terrain_pbr_sample_material(
                     emissive_texture, material_sampler,
                     transform * input.region_position.xy + offset,
                     transform * point_dx.xy, transform * point_dy.xy,
-                    material, 0, 1.0, constants);
+                    material, 0, 1.0, constants, material_sampling);
             if (detail >= 2)
             {
                 sample.normal =
@@ -10217,7 +10257,8 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_terrain_fragment(
     sampler parcel_sampler [[sampler(1)]],
     sampler blend_sampler [[sampler(3)]],
     constant ALMetalWorldTerrainConstants& constants [[buffer(0)]],
-    bool front_facing [[front_facing]])
+    bool front_facing [[front_facing]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     const float3 point_dx = dfdx(input.region_position);
     const float3 point_dy = dfdy(input.region_position);
@@ -10285,7 +10326,7 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_terrain_fragment(
                     base_color_textures[material],
                     normal_textures[material], orm_textures[material],
                     emissive_textures[material], material_sampler,
-                    material, constants);
+                    material, constants, material_sampling);
             mixed = almetal_world_terrain_pbr_add(
                 mixed, sample, material_weight[material]);
             const float cutoff =
@@ -12322,7 +12363,8 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
     constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
-    bool front_facing [[front_facing]])
+    bool front_facing [[front_facing]],
+    constant float4& material_sampling [[buffer(10)]])
 {
     // Keep receiver and normal derivatives in uniform control flow before
     // water or coverage can discard only part of a quad.
@@ -12342,9 +12384,9 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
                           min(slot_count - 1u, 7u));
     const ALMetalWorldPBRSlotConstants material = constants.slots[slot];
     const float4 base_color = base_color_textures[slot].sample(
-        material_sampler, input.base_color_texcoord) * input.color;
+        material_sampler, input.base_color_texcoord, bias(material_sampling.x)) * input.color;
     const float3 tangent_normal = normal_textures[slot].sample(
-        material_sampler, input.normal_texcoord).rgb * 2.0 - 1.0;
+        material_sampler, input.normal_texcoord, bias(material_sampling.x)).rgb * 2.0 - 1.0;
     const float facing = front_facing ? 1.0 : -1.0;
     float3 normal = normalize(
         tangent_normal.x * input.tangent +
@@ -12352,7 +12394,7 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
         tangent_normal.z * input.normal) * facing;
     const float3 geometric_normal = normalize(input.normal) * facing;
     const float3 orm_sample = orm_textures[slot].sample(
-        material_sampler, input.orm_texcoord).rgb;
+        material_sampler, input.orm_texcoord, bias(material_sampling.x)).rgb;
     const float ao = orm_sample.r;
     float perceptual_roughness =
         orm_sample.g * material.properties.x;
@@ -12361,7 +12403,7 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
         perceptual_roughness, normal);
     const float3 emissive = material.emissive_color.rgb *
         emissive_textures[slot].sample(
-            material_sampler, input.emissive_texcoord).rgb;
+            material_sampler, input.emissive_texcoord, bias(material_sampling.x)).rgb;
 
     const float coverage = base_color.a;
     if (coverage < environment.water_fog.w)

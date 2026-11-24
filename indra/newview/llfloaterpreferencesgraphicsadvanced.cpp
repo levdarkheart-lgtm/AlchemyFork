@@ -28,6 +28,7 @@
 #include "llfloaterpreferencesgraphicsadvanced.h"
 
 #include "alrendercapabilities.h"
+#include "alrenderresourceinputs.h"
 #include "llcheckboxctrl.h"
 #include "llcombobox.h"
 #include "llfeaturemanager.h"
@@ -107,8 +108,12 @@ void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()
     // Rendering publishes the last successfully committed ordinary world view.
     // Reading this status must never prepare a scaler or alter saved settings.
     const auto& status = gPipeline.getMetalMainResolutionStatus();
-    const S32 requested = llclamp(gSavedSettings.getS32("RenderMetalMainResolutionMode"), 0, 2);
+    const auto choice = ALRenderResourceInputs::mainResolutionModeFromSetting(
+        gSavedSettings.getS32("RenderMetalMainResolutionMode"));
+    const S32 requested = static_cast<S32>(choice);
+    const auto policy = ALRenderResourceInputs::mainResolutionPolicy(choice);
     std::string text;
+    std::string tooltip;
     if (!status.known || status.requested != requested)
     {
         text = getString("main_resolution_pending");
@@ -116,11 +121,12 @@ void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()
     else
     {
         LLStringUtil::format_map_t args;
+        args["[SCALE]"] = std::to_string(policy.percentage());
         switch (status.effective)
         {
             case 0: args["[MODE]"] = getString("main_resolution_standard"); break;
-            case 1: args["[MODE]"] = getString("main_resolution_linear"); break;
-            case 2: args["[MODE]"] = getString("main_resolution_metalfx"); break;
+            case 1: args["[MODE]"] = getString("main_resolution_linear", args); break;
+            case 2: args["[MODE]"] = getString("main_resolution_metalfx", args); break;
             default:
                 // An unrecognized producer state cannot establish an active mode.
                 text = getString("main_resolution_pending");
@@ -128,7 +134,7 @@ void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()
         }
         if (text.empty())
         {
-            if (status.effective != requested)
+            if (status.effective != static_cast<S32>(policy.method))
             {
                 args["[REASON]"] = status.reason.empty()
                     ? getString("main_resolution_unavailable") : status.reason;
@@ -138,13 +144,23 @@ void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()
             {
                 text = getString("main_resolution_active", args);
             }
+            if (status.scene_width && status.scene_height && status.output_width && status.output_height)
+            {
+                args["[SCENE]"] = std::to_string(status.scene_width) + "×" + std::to_string(status.scene_height);
+                args["[OUTPUT]"] = std::to_string(status.output_width) + "×" + std::to_string(status.output_height);
+                text += "\n" + getString("main_resolution_dimensions", args);
+                args["[BIAS]"] = llformat("%.2f", status.material_mip_bias);
+                tooltip = text + "\n" + getString("main_resolution_mip_adjustment", args);
+            }
         }
     }
+    if (tooltip.empty()) tooltip = text;
     if (text != mMainResolutionStatus->getText())
     {
         mMainResolutionStatus->setText(text);
-        mMainResolutionStatus->setToolTip(text);
     }
+    if (tooltip != mMainResolutionStatus->getToolTip())
+        mMainResolutionStatus->setToolTip(tooltip);
 }
 
 void LLFloaterPreferenceGraphicsAdvanced::onOpen(const LLSD& key)
