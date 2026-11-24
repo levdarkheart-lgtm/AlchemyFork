@@ -10372,6 +10372,30 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                       "commit failure: ")
                             << display_error << LL_ENDL;
                     }
+                    else if (ALMetalDiagnosticTelemetry::enabled() &&
+                        committing_opaque_post && final_presentation_available &&
+                        capture.presentation_target && capture.target &&
+                        capture.presentation_frame == gFrameCount &&
+                        isMainWorldPass() && mRT == &mMainRT &&
+                        !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
+                        !gSnapshot && !gCubeSnapshot && !sRenderingHUDs && !sCutoutRender &&
+                        !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color)
+                    {
+                        // A successful enclosing post commit with a complete current
+                        // output, not GPU completion or UI presentation. Join its frame
+                        // to the existing unique main opaque/optical command lifecycle.
+                        // Values: source frame, color id/generation, world-depth
+                        // id/generation, output width/height, reserved zero.
+                        const auto* color = capture.presentation_target->colorTexture(0);
+                        const auto* depth = capture.target->depthStencilTexture();
+                        if (color && depth)
+                            ALMetalDiagnosticTelemetry::recordMetrics(
+                                {gFrameCount, ALMetalDiagnosticTelemetry::ViewKind::main, -1},
+                                "main_world_output",
+                                {gFrameCount, color->resourceView().identity(),
+                                    color->resourceView().generation(), depth->resourceView().identity(),
+                                    depth->resourceView().generation(), color->width(), color->height(), 0});
+                    }
                     post_batch_active = false;
                     opaque_post_batch_active = false;
                 }
@@ -11008,6 +11032,26 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     capture.world_ui_target.reset();
     capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.world_ui_capture_active = true;
+    if (ALMetalDiagnosticTelemetry::enabled() &&
+        !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
+        !gSnapshot && !gCubeSnapshot && !sRenderingHUDs &&
+        isMainWorldPass() && capture.ui_frame_background && background && depth)
+    {
+        // Observe the backing actually selected after native UI capture accepted it.
+        // Resampling for matching full-resolution HUD depth may issue different
+        // allocations than main_world_output; source_frame is the explicit producer
+        // join. A cleared backing uses UINT64_MAX and real-world=false. This row
+        // does not claim that the UI command committed or reached a drawable.
+        // Values: source frame, selected color id/generation, selected depth
+        // id/generation, full UI backing width/height, real-world flag.
+        const auto source_frame = capture.ui_frame_background->source_frame;
+        ALMetalDiagnosticTelemetry::recordMetrics(
+            {gFrameCount, ALMetalDiagnosticTelemetry::ViewKind::main, -1}, "ui_world_source",
+            {source_frame, background->resourceView().identity(),
+                background->resourceView().generation(), depth->resourceView().identity(),
+                depth->resourceView().generation(), background->width(), background->height(),
+                source_frame != std::numeric_limits<U64>::max()});
+    }
     if (!capture.world_ui_chain_snapshot &&
         metalWorldPresentationRequested())
     {
