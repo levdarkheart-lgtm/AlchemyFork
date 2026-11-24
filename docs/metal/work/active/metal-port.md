@@ -21,9 +21,18 @@ deep/strict signing and 346 ARM64 checks pass. The new alpha fixture initially o
 the fixture was corrected without weakening production validation or assertions, and the passing retest is
 retained alongside that failure. The older hidden probe suite requires external source inputs and is excluded.
 
-Next: account availability, one quiet Home comparison and lossless still/motion inspection. Current 69462 is
-preserved privately. Early configuration/include failures remain in private logs; neither was a live renderer
-failure. No Temporal implementation, owner performance acceptance or push is inferred.
+Completed runtime disposition: see the [quality review](../../research/metalfx-quality-20261124.md). Bounded
+observed53-probe rates are Native15.14/unbiased50 35.68/biased50 35.58/67%25.41/75%21.07/restored50 35.90 worlds/s.
+The restored row is a labelled20s prefix; warming controls and full invalid A12 remain excluded. Observer holes
+mean only B2 passes every local population gate; endpoint policy proof is positive for retained observations.
+Five lossless PNGs/1:1 crops and qualitative motion clips are retained. UI crops are byte-identical; mip bias
+modestly helps textures while missing raster detail persists.67% is the balanced recommendation,75% best scaled
+still. Continuous motion/scene acceptance remains limited, not silently closed.
+
+Final Native/original controls/CAS restored, review override false, screenshot mode restored and PID22729 closed.
+Review DMG/source/evidence bundle on iCloud Desktop; no push. PPD596 is ready for owner review. Separate PPD597
+records the existing hidden-only probe fixture's default CTest registration failure; do not count it as passing
+or restart probe work. Temporal is a subsequent owner decision; no implementation here.
 
 ## Previous integration checkpoint
 
@@ -31,8 +40,8 @@ The focused integration follow-up (PPD593–595) is implemented: real graphics-p
 round trip/older-preset Standard compatibility, visible effective fallback reason,
 independent native same-size ordinary snapshots, and a borrowed-main late-failure
 test after real MetalFX encoding. Release build,14 selected CTest suites (3CPU+
-11Metal with API/GPU Validation),346 ARM64 checks and signing pass. No new live
-login/UI/snapshot smoke test or timing run; owner is testing on another machine.
+11Metal with API/GPU Validation),346 ARM64 checks and signing pass. That checkpoint had no new live
+login/UI/snapshot smoke test or timing run; the later69464 review above supersedes that runtime boundary.
 Review this focused diff and current candidate next; do not restart broad FPS work.
 The separate69462 review DMG and focused diff/verification bundle are on iCloud
 Desktop for review;69457 remains unchanged. No push is authorized.
@@ -100,7 +109,7 @@ establish a viewer FPS benefit.
 | --- | --- | --- |
 | M-008 | doing | Broad feature/visual acceptance and representative performance. |
 | M-011 | doing | Runtime/foreign-process and reproducible release qualification. |
-| M-012 | complete | Maintained harness/build/verification tools. |
+| M-012 | doing | Maintained tools verified; PPD597 manual-suite registration open. |
 | M-013 | doing | Retained features and prolonged stability. |
 
 ## Non-negotiable open gates

@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-597 -->
+<!-- next-defect-id: PPD-598 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14692,14 +14692,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-596 — Spatial reconstruction has only one scale and no scoped material mip policy
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: MetalFX spatial quality
 - Discovered: 2026-11-24
 - Original reference: The091243d236 integration checkout includes69462 fixes. Original Alchemy material sampler/LOD and streaming behavior is the reference; MetalFX's additional spatial bias is new Apple guidance.
-- Evidence: [Spatial implementation record](research/metalfx-spatial-20261124.md). ALRenderResourceInputs centrally offers Native0/Linear50%1/Spatial50%2, and existing material samplers carry no per-view spatial bias. Owner requests2/3 and3/4 scales plus log2(actual input/output width), keeping explicit-LOD/environment and alpha depth/color contracts.
-- Next action: Generalize the central choice mapping while preserving0/1/2; trace samplers and residency before a scoped per-view material policy, define pre-draw fallback semantics, qualify correctness and one N/A0/B/C/D/A1 comparison plus lossless still/motion quality. Keep Native default and all work local. Do not implement Temporal in this task.
-- Verification: Starting worktree is clean091243d236; actual retained app69462 CPU85d4b87227a39fb61e42cb439c92d908c71228d406e1ae76ccc03cbdc3208829 and baseline library6fe71e2833331703acc4912f83f21c9e6ff0a14b7ef5fad70b1f75dccd688793 verified. New scales, sampling policy and results are not implemented/measured yet.
+- Evidence: [Spatial quality review](research/metalfx-quality-20261124.md), private `artifacts/metal/metalfx-quality-20261124/` source/build/test/results/PNG/movie receipts.
+- Next action: Owner reviews build 69464's 50/67/75 choices, preset/fallback/snapshot behavior and image/motion limitations. Keep Native default and combined lighting OFF. 67% is the balanced recommendation; Temporal is a separate next decision, not implemented. Retire the local review-only bias override before normal-branch production integration/rebuild. Do not infer precise overhead, zero Native regression or full-population timing qualification from these bounded observations. Keep all work local until authorized.
+- Verification: Application code a5142ae5c2/build69464 (CPU6c498099…; library087705e4…) passes full Release/app signing/346 ARM64 inspections, three CPU and fourteen relevant Metal suites with API/GPU Validation. Exact rational dimensions, scoped material bias, alpha depth/color, terrain gradients, zero recovery, presets, scaler reuse and presentation failure are covered. Bounded 53-probe observed rates: Native15.14, disabled50 control35.68, biased50 35.58, 67%25.41, 75%21.07, restored disabled50 35.90 worlds/s (last control explicit20s prefix). Original warming controls excluded; only B2 passes every local population gate, other retained endpoints have named observer holes. Five lossless PNGs/1:1 crops and motion clips retained; selected UI crops byte-identical. Continuous shimmer and broad scene/material acceptance remain limited. Final Native/original controls/CAS restored, review override false, viewer closed. No push.
 - Owner verification: pending
 - Push approval: not_granted
 
@@ -14710,3 +14710,22 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-24 PPD596 implementation underway: centralized stable choices0–4 and exactceil ratios; per-view fragment sampling uniform10 covers legacy/PBR/terrain/alpha without modifying cached material ABIs. M1 Max validated colored-mip oracle proves shader bias−1 selects LOD1 while sampler-descriptor bias−1 leaves LOD2 unchanged (Apple7 versus Apple10 feature requirement). Early fixture-source configure/include integration failures retained privately and corrected; full viewer/GPU/live qualification still pending. Native default and prior69462 repairs preserved; no push.
 
 - 2026-11-24 PPD596 sourcea5142ae5c2/build69464 passes fullRelease/appverification(346ARM64),3CPU and14runnable relevantMetal scopes underAPI/GPUValidation. Newalpha fixture environment omission corrected; productionvalidation/assertions unchanged and all3newGPUcases pass. Oldhiddenprobeaccumulator scope requires explicit externalsource inputs and was excluded; no shader-probe investigation was reopened. RuntimeHomecomparison/quality remains pending, no owneracceptance orpush.
+
+- 2026-11-24 completed bounded quality qualification: source/build/tests and positive GPU endpoint policy checks retained with observer losses, warming exclusions and invalid full A12 window. Exact20s restored prefix is labelled, never substituted as25s. No additional FPS windows after that disposition. Still/motion evidence distinguishes finer texture sampling from missing raster detail; 50% remains visibly compromised, 67/75 improve edges, Native remains best. A separate54-probe bias motion pair is qualitative only; sampled poses are not pixel matched and do not prove continuous stability. Starting controls restored and final PID22729 closed. Engineering ready for owner review, not production visual/performance acceptance.
+
+## PPD-597 — A hidden-only manual probe fixture is registered as an ordinary CTest suite
+
+- Status: open
+- Confirmation: source_confirmed
+- Owner: Metal test registration
+- Discovered: 2026-11-24
+- Original reference: `almetal_probe_accumulator_test.mm` contains hidden/manual cases requiring external baseline/candidate source inputs. Its ordinary file-level CTest filter excludes hidden cases, matching none.
+- Evidence: During PPD596 focused verification, `ctest -R almetal_tests/almetal_probe_accumulator_test` fails with “No test cases matched” and “No tests ran”. Direct hidden correctness invocation then fails before GPU work because `ALCHEMY_PROBE_TEST_BASELINE_SOURCE` is absent. Private `gpu-tests.log` and `explicit-probe-parity.log` retain both attempts. No new probe experiment ran.
+- Next action: Separate maintenance: remove hidden-only/manual source files from ordinary automatic CTest registration. If this research fixture remains useful, give it an explicit manual invocation with declared input requirements; otherwise archive/remove it according to the owner's dead-experiment policy. Do not reopen probe optimization. This task does not alter that independent harness path.
+- Verification: Observed registration failure and source/tag/input inspection establish a default-test disposition defect, not a rendering regression. PPD596's fourteen runnable relevant Metal suites pass separately; this excluded fixture is not counted as passing.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-24 registered from the actual focused verification failure before any repair. Current bounded Spatial task stops at its review deliverable; the test-registration issue is retained explicitly rather than silently classed as passing or forgotten.

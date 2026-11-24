@@ -28,9 +28,21 @@ alpha coverage, terrain gradient, owned-input and zero-bias recovery cases pass 
 fixture's omitted environment source. The older hidden probe-accumulator suite requires external source
 inputs and is excluded; it supplies no new probe experiment or performance result.
 
-Private evidence: `artifacts/metal/metalfx-quality-20261124/`. Next: arrange account availability, then one
-N/A0/B/C/D/A1 Home comparison and lossless still/motion inspection. No new live quality/performance result is
-claimed yet. No Temporal implementation or push is authorized.
+Private evidence: `artifacts/metal/metalfx-quality-20261124/`. The [quality review](../research/metalfx-quality-20261124.md)
+records bounded 53-probe observed rates: Native15.14, unbiased50 35.68, biased50 35.58, 67%25.41, 75%21.07,
+restored unbiased50 35.90 worlds/s. The last row is an explicit20s prefix, not its invalid full25s window.
+Warming controls are excluded; only B2 passes all local population gates. Named observer holes and separate
+process identities remain. This is useful review evidence, not a lossless release comparison or zero-cost proof.
+
+Five lossless PNGs/crops and motion clips are retained. UI crops are byte-identical. 67% is recommended for
+balance;75% is the best scaled still, while50% retains obvious thin-edge artifacts. Modest mip detail gain is
+separate from extra source pixels. Motion evidence is qualitative/stepped, with unmatched sampled poses;
+continuous shimmer and broader material acceptance remain owner review. Final Native mode/original controls/CAS
+are restored, override false, capture utility restored to stills, and PID22729 is closed. Review app/bundle are
+on iCloud Desktop. No Temporal implementation or push.
+
+PPD597 records an existing hidden/manual probe fixture's incorrect ordinary CTest registration. It was excluded,
+not passed; its coherent maintenance disposition is retained separately without reopening probe experiments.
 
 ## Observed implementation and verification
 
@@ -44,7 +56,7 @@ detail in50% modes; custom/explicit/cutout/360 paths stay independent. The new
 borrowed-main failure case rejects final validation after real MetalFX encoding,
 denies commit/publication permission and retains the previous BGRA image.
 
-No new login, live UI/snapshot smoke test or FPS comparison. Owner review remains
+That69462 integration checkpoint had no new login, live UI/snapshot smoke test or FPS comparison. Owner review remains
 pending; precise overhead and zero Native regression are not established. Focused
 receipts are under `artifacts/metal/metalfx-integration-20261124/`.
 The verified69462 review DMG is separately named on iCloud Desktop; the69457
@@ -97,7 +109,7 @@ are historical, not current claims that this new feature is already qualified.
 | --- | --- | --- |
 | M-008 | doing | Broad feature/visual acceptance and representative performance. |
 | M-011 | doing | Reproducible release and strict no-GL qualification. |
-| M-012 | complete | Maintained build/verification harness. |
+| M-012 | doing | Maintained scripts verified; PPD597 manual-suite CTest registration remains. |
 | M-013 | doing | Retained features and prolonged stability. |
 
 Required independent build/review evidence and release gates remain open.
@@ -106,8 +118,8 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Owner reviews the focused69462 integration diff and then its preset/fallback/
-snapshot behavior. Keep Native default and combined lighting OFF. Retain PPD591
-and PPD593–595 pending owner acceptance/live smoke checks; broader stability and
-PPD592 media packaging remain open. Do not pool earlier measurements or reopen
-rejected shader/queue variants. No push is authorized.
+Owner reviews69464's new scales, scoped mip policy and bounded quality/performance evidence. Keep Native default
+and combined lighting OFF. PPD596 is ready for owner review, not exact native-quality or release acceptance.
+PPD591/593–595 broader owner checks, PPD592 media packaging and PPD597 test registration remain recorded.
+The next major rendering candidate is a bounded Temporal evaluation after owner direction; no implementation
+starts in this task. Preserve existing evidence, do not reopen rejected shader/queue variants, and do not push.
