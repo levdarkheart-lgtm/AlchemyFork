@@ -802,6 +802,17 @@ struct LLPipeline::MetalWorldSimpleCapture
     U64 lens_flare_state_epoch = 0;
     std::unique_ptr<ALMetalRenderTarget> lens_dirt_target;
     LensDirtPlateParams lens_dirt_params;
+    bool prepareLensDirtPlate(const LensDirtPlateParams& params, std::string* error)
+    {
+        lens_dirt_params=params;
+        ALMetalWorldLensDirtScene dirt;
+        dirt.width=params.width; dirt.height=params.height; dirt.seed=params.seed;
+        dirt.grime=params.grime; dirt.mote_scale=params.mote_scale; dirt.smudge=params.smudge;
+        dirt.scratches=static_cast<U32>(params.scratches); dirt.toe=params.toe; dirt.gain=params.gain;
+        lens_dirt_target=renderer->renderLensDirt(dirt,error);
+        return static_cast<bool>(lens_dirt_target);
+    }
+
     ALSky::NativeView modern_sky;
     bool modern_sky_valid = false;
     bool modern_sky_drawn = false;
@@ -4083,6 +4094,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     if (isMainWorldPass() && mRT == &mMainRT &&
+        !mResourceInputs.mainResolutionPolicy().usesTemporal() &&
         native_dirt.requested &&
         capture.lens_dirt_params != native_dirt.plate &&
         !lens_dirt_drag_held)
@@ -4090,21 +4102,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // Record the attempted parameters before encoding. A failed plate is
         // retried when its description changes rather than warning every frame
         // while allocation remains unavailable.
-        capture.lens_dirt_params = native_dirt.plate;
-        ALMetalWorldLensDirtScene dirt;
-        dirt.width = native_dirt.plate.width;
-        dirt.height = native_dirt.plate.height;
-        dirt.seed = native_dirt.plate.seed;
-        dirt.grime = native_dirt.plate.grime;
-        dirt.mote_scale = native_dirt.plate.mote_scale;
-        dirt.smudge = native_dirt.plate.smudge;
-        dirt.scratches = static_cast<U32>(
-            native_dirt.plate.scratches);
-        dirt.toe = native_dirt.plate.toe;
-        dirt.gain = native_dirt.plate.gain;
         std::string dirt_error;
-        capture.lens_dirt_target = capture.renderer->renderLensDirt(
-            dirt, &dirt_error);
+        capture.prepareLensDirtPlate(native_dirt.plate,&dirt_error);
         if (!capture.lens_dirt_target)
         {
             LL_WARNS("Metal")
@@ -4471,12 +4470,12 @@ void LLPipeline::beginMetalImpostorBakeCapture(
                 mMetalProbeWorldSimpleCapture->avatar_resources;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    capture.temporal_effective=false; capture.temporal_jitter={};
 
     if (capture.frame_active)
     {
         return;
     }
+    capture.temporal_effective=false; capture.temporal_jitter={};
 
     ALMetalDevice* device = getViewerMetalDevice();
     if (!device)
@@ -9590,7 +9589,20 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                  capture.lens_flare_state_epoch ==
                      mMetalLensFlareHistoryEpoch &&
                  capture.lens_flare_state_frame == gFrameCount);
-            const LensDirtConfig dirt = lensDirtConfig(true);
+            LensDirtConfig dirt = lensDirtConfig(true);
+            if (mResourceInputs.mainResolutionPolicy().usesTemporal() && dirt.enabled && post_source)
+            {
+                // Temporal reconstructs before display transfer. Plates follow the actual successful post source,
+                // including early linear fallback, and never bounce through the reduced early-generation path.
+                dirt.plate.width=post_source->descriptor().width;
+                dirt.plate.height=post_source->descriptor().height;
+                if (capture.lens_dirt_params != dirt.plate || !capture.lens_dirt_target)
+                {
+                    std::string dirt_error;
+                    if (!capture.prepareLensDirtPlate(dirt.plate,&dirt_error))
+                        LL_WARNS("Metal") << "Temporal display-post lens dirt plate unavailable: " << dirt_error << LL_ENDL;
+                }
+            }
             const bool exact_lens_dirt = cutout_snapshot || !dirt.enabled ||
                 (capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
@@ -12715,6 +12727,8 @@ void LLPipeline::captureMetalWorldBumpBatch(
         ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
         capture.retainGeometry(*buffer);
         batch.vertices = buffer->getMetalVertexBuffer();
+        batch.temporal_instance_id=buffer->nativePublication().identity();
+        batch.temporal_generation=buffer->nativePublication().publishedRevision();
         batch.position_offset = buffer->getOffset(
             LLVertexBuffer::TYPE_VERTEX);
         batch.texcoord_offset = buffer->getOffset(
@@ -12840,6 +12854,8 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
+    batch.temporal_instance_id=buffer->nativePublication().identity();
+    batch.temporal_generation=buffer->nativePublication().publishedRevision();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
     batch.emissive_offset = buffer->getOffset(LLVertexBuffer::TYPE_EMISSIVE);
@@ -16033,6 +16049,8 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
+    batch.temporal_instance_id=buffer->nativePublication().identity();
+    batch.temporal_generation=buffer->nativePublication().publishedRevision();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
     batch.texcoord_offset = buffer->getOffset(
@@ -16524,6 +16542,8 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     batch.terrain = true;
     capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
+    batch.temporal_instance_id=buffer->nativePublication().identity();
+    batch.temporal_generation=buffer->nativePublication().publishedRevision();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
     batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
@@ -16798,6 +16818,8 @@ try
     batch.terrain_pbr = true;
     capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
+    batch.temporal_instance_id=buffer->nativePublication().identity();
+    batch.temporal_generation=buffer->nativePublication().publishedRevision();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
         static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
     batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;

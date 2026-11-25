@@ -108,6 +108,8 @@
     ALMetalWorldSimpleBatch& batch = capture.batches.emplace_back();
     capture.retainGeometry(*buffer);
     batch.vertices = buffer->getMetalVertexBuffer();
+    batch.temporal_instance_id=buffer->nativePublication().identity();
+    batch.temporal_generation=buffer->nativePublication().publishedRevision();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);

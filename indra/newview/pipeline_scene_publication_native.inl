@@ -414,6 +414,8 @@ inline bool buildWorld(const LLDrawInfo& info, const WorldFlavor& flavor,
         (flavor.rigged && (!info.mAvatar || !info.mSkinInfo || !has(LLVertexBuffer::TYPE_WEIGHT4))))
         return false;
     batch.vertices = value.vertices.get(); batch.indices = value.indices.get();
+    batch.temporal_instance_id=info.metalSourcePublication()->identity();
+    batch.temporal_generation=buffer->nativePublication().publishedRevision();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.normal_offset = has(LLVertexBuffer::TYPE_NORMAL) ? buffer->getOffset(LLVertexBuffer::TYPE_NORMAL) : 0;
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
