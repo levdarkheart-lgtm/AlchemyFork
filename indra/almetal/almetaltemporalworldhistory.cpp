@@ -215,7 +215,7 @@ struct ALMetalTemporalWorldHistory::Impl
     struct Frame
     {
         Input input;
-        std::uint32_t phase = 0;
+        std::uint32_t phase = 0, phase_count = 0;
         std::vector<Entry> entries;
         std::unordered_map<Key, std::size_t, Hash> lookup;
         std::size_t bytes = sizeof(Input);
@@ -257,7 +257,8 @@ bool ALMetalTemporalWorldHistory::beginFrame(const FrameInput& in, std::string* 
         auto pending = std::make_unique<Impl::Frame>();
         pending->input = in;
         state.reset = in.force_reset || !state.committed || !compatible(in, state.committed->input);
-        pending->phase = state.reset ? 0u : (state.committed->phase + 1u) % 16u;
+        pending->phase_count = recommendedJitterPhaseCount(in.input_width,in.input_height,in.output_width,in.output_height);
+        pending->phase = state.reset ? 0u : (state.committed->phase + 1u) % pending->phase_count;
         if (!state.reset && !previousClip(in.camera_mvp, state.committed->input.camera_mvp, clip))
             return fail(error, "Temporal current-to-previous camera projection could not be formed");
         state.clip_to_previous = state.reset ? identity() : clip;
@@ -391,6 +392,20 @@ std::uint64_t ALMetalTemporalWorldHistory::pendingWorld() const noexcept
 { return mImpl->pending ? mImpl->pending->input.world_id : 0; }
 std::uint64_t ALMetalTemporalWorldHistory::committedWorld() const noexcept
 { return mImpl->committed ? mImpl->committed->input.world_id : 0; }
+std::uint32_t ALMetalTemporalWorldHistory::recommendedJitterPhaseCount(std::uint32_t input_width,
+    std::uint32_t input_height, std::uint32_t output_width, std::uint32_t output_height) noexcept
+{
+    if (!input_width || !input_height || output_width < input_width || output_height < input_height) return 0;
+    const double factor = std::max(static_cast<double>(output_width) / input_width,
+                                   static_cast<double>(output_height) / input_height);
+    if (factor >= 4.) return 128;
+    return std::clamp(static_cast<std::uint32_t>(std::ceil(8. * factor * factor)), 8u, 128u);
+}
+std::uint32_t ALMetalTemporalWorldHistory::jitterPhaseCount() const noexcept
+{
+    const auto* frame = mImpl->pending ? mImpl->pending.get() : mImpl->committed.get();
+    return frame ? frame->phase_count : 0;
+}
 std::array<float,2> ALMetalTemporalWorldHistory::jitterPixels() const noexcept { return mImpl->jitter; }
 const std::array<float,16>& ALMetalTemporalWorldHistory::clipToPrevious() const noexcept
 { return mImpl->clip_to_previous; }
@@ -401,6 +416,8 @@ const std::vector<Pose>& ALMetalTemporalWorldHistory::previousForward() const no
 ALMetalTemporalWorldHistory::Stats ALMetalTemporalWorldHistory::stats() const noexcept
 {
     auto out = mImpl->counters;
+    const auto* phase_frame = mImpl->pending ? mImpl->pending.get() : mImpl->committed.get();
+    if (phase_frame) { out.jitter_phase = phase_frame->phase; out.jitter_phase_count = phase_frame->phase_count; }
     if (mImpl->committed)
     { out.committed_draws = mImpl->committed->entries.size(); out.committed_bytes = mImpl->committed->bytes; }
     if (mImpl->pending)

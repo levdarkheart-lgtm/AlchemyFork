@@ -59,6 +59,7 @@ public:
         std::size_t committed_draws = 0, pending_draws = 0;
         std::size_t committed_bytes = 0, pending_bytes = 0;
         std::size_t valid_previous_draws = 0, rejected_previous_draws = 0;
+        std::uint32_t jitter_phase = 0, jitter_phase_count = 0;
     };
 
     ALMetalTemporalWorldHistory();
@@ -89,6 +90,11 @@ public:
     bool resetRequired() const noexcept;
     std::uint64_t pendingWorld() const noexcept;
     std::uint64_t committedWorld() const noexcept;
+    // Apple's Temporal starting policy: ceil(8 * max(output/input)^2),
+    // calculated from the actual rounded extents and bounded to 128 phases.
+    static std::uint32_t recommendedJitterPhaseCount(std::uint32_t input_width,
+        std::uint32_t input_height, std::uint32_t output_width, std::uint32_t output_height) noexcept;
+    std::uint32_t jitterPhaseCount() const noexcept;
     std::array<float, 2> jitterPixels() const noexcept;
     const std::array<float, 16>& clipToPrevious() const noexcept;
     const std::vector<ALMetalWorldTemporalPreviousDraw>& previousOpaque() const noexcept;

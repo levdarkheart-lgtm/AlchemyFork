@@ -122,6 +122,55 @@ TEST_CASE("Temporal history advances jitter and poses only at successful world s
     CHECK(history.stats().abandoned_worlds == 1);
 }
 
+TEST_CASE("Temporal jitter cycle follows rounded upscale extents and only submitted worlds", "[temporal-history]")
+{
+    struct Case { std::uint32_t input_width,input_height,output_width,output_height,mode,phases; };
+    for (const auto& c : {Case{1728,1084,3456,2168,5,32},Case{2304,1446,3456,2168,6,18},
+         Case{2592,1626,3456,2168,7,15},Case{1729,1085,3457,2169,5,32},
+         Case{2305,1446,3457,2169,6,18},Case{2593,1627,3457,2169,7,15},
+         Case{1,4,1,7,5,25}})
+    {
+        History history;
+        auto in = input(1);
+        in.input_width=c.input_width;in.input_height=c.input_height;
+        in.output_width=c.output_width;in.output_height=c.output_height;in.mode=c.mode;
+        CHECK(History::recommendedJitterPhaseCount(c.input_width,c.input_height,c.output_width,c.output_height)==c.phases);
+        std::array<float,2> first{};
+        ALMetalWorldGBufferScene empty;
+        for (std::uint32_t phase=0;phase<c.phases;++phase)
+        {
+            in.world_id=phase+1;
+            REQUIRE(history.beginFrame(in));
+            CHECK(history.jitterPhaseCount()==c.phases);
+            CHECK(history.stats().jitter_phase==phase);
+            CHECK(history.stats().jitter_phase_count==c.phases);
+            if (!phase) first=history.jitterPixels();
+            REQUIRE(history.stage(empty,nullptr)); REQUIRE(history.commit(in.world_id));
+        }
+        CHECK(history.stats().submitted_worlds==c.phases);
+        in.world_id=c.phases+1;
+        REQUIRE(history.beginFrame(in));
+        CHECK(history.stats().jitter_phase==0);
+        CHECK(history.jitterPixels()==first);
+        history.abandon();
+        CHECK(history.stats().submitted_worlds==c.phases);
+        in.world_id=c.phases+2;
+        REQUIRE(history.beginFrame(in));
+        CHECK(history.stats().jitter_phase==0);
+        CHECK(history.jitterPixels()==first);
+        history.abandon();
+        // A different requested scale resets the sequence even when rounded
+        // extents happen to be identical at a very small viewport.
+        in.world_id=c.phases+3;in.mode=c.mode==5?6:5;
+        REQUIRE(history.beginFrame(in));
+        CHECK(history.resetRequired());CHECK(history.stats().jitter_phase==0);
+    }
+    CHECK(History::recommendedJitterPhaseCount(1,1,3,3)==72);
+    CHECK(History::recommendedJitterPhaseCount(1,1,100,100)==128);
+    CHECK(History::recommendedJitterPhaseCount(0,1,2,2)==0);
+    CHECK(History::recommendedJitterPhaseCount(2,1,1,2)==0);
+}
+
 TEST_CASE("Temporal camera reprojection has analytical sign and preserves independent object motion", "[temporal-history]")
 {
     History history;
