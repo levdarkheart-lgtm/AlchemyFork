@@ -111,7 +111,9 @@ TEST_CASE("Temporal alpha-tested legacy and PBR coverage agrees with production 
         f.geometry.uv[2][0] = .5f; f.geometry.uv[2][1] = 1;
         f.vertices = f.buffer(&f.geometry, sizeof(f.geometry));
         auto batch = f.batch(family); batch.diffuse_textures[0] = coverage;
-        batch.alpha_mask = true; batch.alpha_cutoff = .5f;
+        // Legacy material masks are selected by material_alpha_mode; the generic alpha_mask bit is illegal
+        // for that family. Keep the production validator and the per-family coverage assertions unchanged.
+        batch.alpha_mask = family != 1; batch.alpha_cutoff = .5f;
         if (family == 1) { batch.material_alpha_mode = 2; batch.materialSlots()[0].alpha_cutoff = .5f; }
         if (family == 2) batch.pbrSlots()[0].alpha_cutoff = .5f;
         auto previous = previousDraw(batch);
