@@ -12956,6 +12956,8 @@ ALMetalWorldGBufferRenderer::renderBloom(
     std::string* error,
     std::unique_ptr<ALMetalRenderTarget>* cross_filter)
 {
+    Impl::GBufferFailureScope temporal_transaction(
+        mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
     if (cross_filter)
     {
         cross_filter->reset();
@@ -13238,6 +13240,7 @@ ALMetalWorldGBufferRenderer::renderBloom(
     {
         *cross_filter = std::move(cross_targets[2]);
     }
+    temporal_transaction.succeeded = true;
     return std::move(targets[0]);
 }
 
@@ -14009,6 +14012,8 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     const ALMetalWorldDisplayPostScene& scene,
     std::string* error)
 {
+    Impl::GBufferFailureScope temporal_transaction(
+        mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
     if (!mImpl || !mImpl->device || !scene.source)
     {
         setError(error, "Metal world display-post scene is incomplete");
@@ -14456,6 +14461,7 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     {
         return nullptr;
     }
+    temporal_transaction.succeeded = true;
     return output;
 }
 
@@ -14464,6 +14470,8 @@ ALMetalWorldGBufferRenderer::renderRlvSphere(
     const ALMetalWorldRlvSphereScene& scene,
     std::string* error)
 {
+    Impl::GBufferFailureScope temporal_transaction(
+        mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
     if (!mImpl || !mImpl->device || !scene.source ||
         !scene.depth_texture)
     {
@@ -14614,6 +14622,7 @@ ALMetalWorldGBufferRenderer::renderRlvSphere(
     {
         return nullptr;
     }
+    temporal_transaction.succeeded = true;
     return output;
 }
 
@@ -14622,6 +14631,8 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     const ALMetalRenderTarget& source,
     std::string* error)
 {
+    Impl::GBufferFailureScope temporal_transaction(
+        mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
     if (!mImpl || !mImpl->device)
     {
         setError(error, "Metal world presentation-reference renderer is unavailable");
@@ -14699,6 +14710,7 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     {
         return nullptr;
     }
+    temporal_transaction.succeeded = true;
     return output;
 }
 
