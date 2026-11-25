@@ -266,6 +266,26 @@ TEST_CASE("Temporal accumulated jitter history changes reconstruction and reacti
     std::cout << "Temporal accumulated versus reset mean RGB absolute difference=" << difference << '\n';
     REQUIRE(difference > 1.e-5);
     REQUIRE(f.scaler->stats().reset_calls == 1);
+    // Independently authored continuous texture evaluates the expected
+    // unjittered image at output pixel centers. Compare its alignment with
+    // the known, deliberately shifted final input instead of vendor parity.
+    double aligned_error = 0., shifted_error = 0.;
+    for (unsigned y = 8; y + 8 < f.desc.output_height; ++y)
+        for (unsigned x = 8; x + 8 < f.desc.output_width; ++x)
+            for (unsigned c = 0; c < 3; ++c)
+            {
+                const auto field = [c](float sx, float sy)
+                { return .45f + .24f * std::sin(sx * (1.11f + .13f * c)) * std::cos(sy * .83f); };
+                const float sx = (float(x) + .5f) * float(f.desc.input_width) / float(f.desc.output_width);
+                const float sy = (float(y) + .5f) * float(f.desc.input_height) / float(f.desc.output_height);
+                const float actual = accumulated[std::size_t(y) * f.desc.output_width + x][c];
+                const float centered = actual - field(sx, sy);
+                const float shifted = actual - field(sx - jitter.back()[0], sy - jitter.back()[1]);
+                aligned_error += centered * centered; shifted_error += shifted * shifted;
+            }
+    std::cout << "Temporal analytic alignment squared error=" << aligned_error
+              << ", deliberately jittered reference=" << shifted_error << '\n';
+    REQUIRE(aligned_error < shifted_error);
     // The documented mask value one selects current content. Change every
     // pixel to a new constant; no stale colored checker may survive its interior.
     auto command = f.device->makeCommandBuffer("Reactive history rejection", &f.error);
