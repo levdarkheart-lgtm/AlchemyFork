@@ -156,6 +156,8 @@ try
         return;
     }
     auto& batch = capture.batches.emplace_back(*source.prototype);
+    batch.temporal_instance_id=params.metalSourcePublication()->identity();
+    batch.temporal_generation=params.metalSourceLayoutRevision();
     std::memcpy(batch.modelview_projection, view.modelview_projection, sizeof(batch.modelview_projection));
     std::memcpy(batch.modelview, view.modelview, sizeof(batch.modelview));
     std::memcpy(batch.normal_matrix, view.normal_matrix, sizeof(batch.normal_matrix));

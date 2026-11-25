@@ -91,6 +91,7 @@
 #include "../almetal/almetalshadowprepare.h"
 #include "../almetal/almetalshadowcache.h"
 #include "../almetal/almetalworldinputs.h"
+#include "../almetal/almetaltemporalworldhistory.h"
 #include "../almetal/almetalworldvisibility.h"
 #include "alnativeframebudget.h"
 #include "alnativeframeplan.h"
@@ -713,6 +714,8 @@ struct LLPipeline::MetalWorldSimpleCapture
         std::string error;
         F64 seconds = 0.0;
     };
+
+    #include "pipeline_temporal_state_native.inl"
 
     F32 material_mip_bias = 0.f;
     const ALMetalDevice* device = nullptr;
@@ -2193,6 +2196,22 @@ bool metalWorldAlphaUsesDirectionalShadows(const LLPipeline& pipeline)
 #include "light_screen_rect_native.inl"
 }
 
+LLMatrix4a LLPipeline::metalWorldProjection(const LLMatrix4a& projection) const
+{
+    LLMatrix4a raster=projection;
+    if (mMetalWorldSimpleCapture && mMetalWorldSimpleCapture->temporal_effective &&
+        !gSnapshot && !gCubeSnapshot && !sRenderingHUDs && !sCutoutRender && !sImpostorRender &&
+        !mMetalWorldSimpleCapture->impostor_bake && !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive)
+    {
+        auto values=std::array<F32,16>{};
+        std::copy_n(projection.getF32ptr(),16,values.begin());
+        alMetalApplyTemporalJitter(values.data(),mMetalWorldSimpleCapture->temporal_jitter[0],
+            mMetalWorldSimpleCapture->temporal_jitter[1],mMetalWorldSimpleCapture->width,mMetalWorldSimpleCapture->height);
+        raster.loadu(values.data());
+    }
+    return raster;
+}
+
 bool LLPipeline::beginMetalHeroProbeFaceCapture(
     const LLUUID& hero_id, U64 owner_epoch,
     U32 face, U32 max_probe_lod)
@@ -2674,6 +2693,11 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
 {
     if (capture.device != device)
     {
+        capture.abandonTemporalFrame(); capture.temporal_history.invalidate();
+        capture.temporal_scaler.reset(); capture.temporal_raw_output.reset();
+        capture.temporal_resolved_output.reset(); capture.temporal_motion.reset();
+        capture.temporal_effective=false; capture.temporal_previous_camera_valid=false;
+
         capture.finishShadowEncoding(false);
         capture.shadow_view_task.reset();
         capture.renderer.reset();
@@ -4094,13 +4118,32 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.avatar_palettes.clear();
     capture.width = capture_width;
     capture.height = capture_height;
-    // Freeze sampling before any material draws. Late scaler/AA failure may select linear reconstruction,
-    // but cannot retroactively change material mips. Snapshots and independent views have their own policy.
-    capture.material_mip_bias = ALRenderResourceInputs::spatialMaterialMipBias(
-        mResourceInputs.mMainResolutionMode, capture_width, mResourcePlan.mainViewDimensions().mOutputWidth,
-        main_world_capture && !snapshot_request && !gSnapshot && !gCubeSnapshot && !sRenderingHUDs &&
-        !sCutoutRender && !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
-        RenderBufferVisualization < 0);
+    const bool ordinary_material_view = main_world_capture && !snapshot_request && !gSnapshot &&
+        !gCubeSnapshot && !sRenderingHUDs && !sCutoutRender && !capture.world_ui_chain_snapshot &&
+        !capture.world_ui_chain_debug_color && RenderBufferVisualization < 0;
+    std::string temporal_ineligible;
+    if (mResourceInputs.mainResolutionPolicy().usesTemporal())
+    {
+        static LLCachedControl<bool> auto_adjust(gSavedSettings,"RenderSkyAutoAdjustLegacy",false);
+        static LLCachedControl<bool> no_post_setting(gSavedSettings,"RenderDisablePostProcessing",false);
+        const auto sky = LLEnvironment::instance().getCurrentSky();
+        if (!hdrEnabled() || !RenderDeferredAtmospheric) temporal_ineligible="Temporal requires the linear HDR main-world path";
+        else if (sUnderWaterRender) temporal_ineligible="Underwater rendering uses unjittered linear reconstruction";
+        else if (RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE)) temporal_ineligible="RLVa vision effects use the existing unjittered depth/color path";
+        else if (gUseWireframe) temporal_ineligible="Wireframe uses unjittered linear reconstruction";
+        else if (!sky || sky->getReflectionProbeAmbiance(auto_adjust()) == 0.f || gSnapshotNoPost ||
+                 (no_post_setting() && gFloaterTools && gFloaterTools->isAvailable()))
+            temporal_ineligible="No-post or legacy sky uses unjittered linear reconstruction";
+    }
+    std::string temporal_error;
+    capture.prepareTemporalFrame(mResourceInputs,mResourcePlan.mainViewDimensions(),ordinary_material_view,
+        temporal_ineligible,*LLViewerCamera::getInstance(),&temporal_error);
+    // Freeze one method-specific material policy BEFORE any world rasterization.
+    const auto sampling_method = capture.temporal_effective ? ALRenderResourceInputs::MainResolutionMethod::Temporal :
+        mResourceInputs.mainResolutionPolicy().usesTemporal() ? ALRenderResourceInputs::MainResolutionMethod::Linear :
+        mResourceInputs.mainResolutionPolicy().method;
+    capture.material_mip_bias = ALRenderResourceInputs::materialMipBias(sampling_method,capture_width,
+        mResourcePlan.mainViewDimensions().mOutputWidth,ordinary_material_view);
     if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
         capture.hdr != hdrEnabled())
         capture.avatar_resources->discardIncompatible(
@@ -4415,6 +4458,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
                 mMetalProbeWorldSimpleCapture->avatar_resources;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.temporal_effective=false; capture.temporal_jitter={};
+
     if (capture.frame_active)
     {
         return;
@@ -4427,6 +4472,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     }
     if (capture.device != device)
     {
+        capture.abandonTemporalFrame(); capture.temporal_history.invalidate();
+        capture.temporal_scaler.reset(); capture.temporal_raw_output.reset();
+        capture.temporal_resolved_output.reset(); capture.temporal_motion.reset();
+        capture.temporal_effective=false; capture.temporal_previous_camera_valid=false;
+
         capture.finishShadowEncoding(false);
         capture.shadow_view_task.reset();
         capture.renderer.reset();
@@ -8433,7 +8483,7 @@ void LLPipeline::captureMetalWorldAtmospherics()
     haze = {};
     LLViewerCamera& camera = *LLViewerCamera::getInstance();
     LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(camera.getProjection());
+    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
     std::memcpy(haze.inverse_projection,
                 inverse_projection.getF32ptr(),
                 sizeof(haze.inverse_projection));
@@ -8624,7 +8674,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         ALMetalWorldOpaquePostDeferredScene scene;
         // Owned forward-view projection; virtual lookup uses exact alpha eye
         // positions independently of every batch's rounded MV and MVP.
-        std::memcpy(scene.forward_probe_projection,LLViewerCamera::getCurrent().getProjection().getF32ptr(),
+        std::memcpy(scene.forward_probe_projection,metalWorldProjection(LLViewerCamera::getCurrent().getProjection()).getF32ptr(),
                     sizeof(scene.forward_probe_projection));
         scene.forward_probe_projection_valid=true;
         scene.source_owner = capture.world_resources;
@@ -8870,6 +8920,38 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     << post_batch_error << LL_ENDL;
             }
         }
+        std::string temporal_observer_error;
+        if (capture.temporal_effective)
+        {
+            if (!opaque_post_batch_active)
+            {
+                capture.abandonTemporalFrame(); capture.markIncomplete(__LINE__); return;
+            }
+            const auto world=capture.temporal_world_serial;
+            if (!capture.renderer->observeCommandBatchSettlement([&capture,world](bool committed)
+                {
+                    std::string error;
+                    if (committed && capture.temporal_encoded && capture.temporal_ticket &&
+                        capture.presentation_target && capture.presentation_frame==gFrameCount &&
+                        capture.temporal_scaler->submitted(capture.temporal_ticket,&error) &&
+                        capture.temporal_history.commit(world,&error))
+                    {
+                        capture.temporal_ticket=0;
+                        capture.temporal_previous_camera_position=capture.temporal_camera_position;
+                        capture.temporal_previous_camera_direction=capture.temporal_camera_direction;
+                        capture.temporal_previous_camera_valid=true;
+                    }
+                    else
+                    {
+                        capture.abandonTemporalFrame();
+                        if (committed) { capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate(); }
+                    }
+                },&temporal_observer_error))
+            {
+                capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
+                capture.markIncomplete(__LINE__); return;
+            }
+        }
         // This selected hero face alone omitted its enclosing face batch.
         // Earlier inputs have been committed; capture starts before the
         // renderer creates its owned forward command, never mid-command.
@@ -8905,8 +8987,48 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         std::string error;
         U32 encoded_water_draws = 0;
+        auto color_scene=scene;
+        std::vector<ALMetalWorldSimpleBatch> temporal_color_batches;
+        ALMetalWorldWaterSurface temporal_water;
+        ALMetalWorldWaterHaze temporal_water_haze;
+        if (capture.temporal_effective)
+        {
+            if (!capture.temporal_opaque_inputs ||
+                !capture.temporal_history.stage(capture.temporal_opaque_inputs->scene(),scene,&error))
+            {
+                capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
+                capture.markIncomplete(__LINE__); return;
+            }
+            try
+            {
+                if (scene.batch_count) temporal_color_batches.assign(scene.batches,scene.batches+scene.batch_count);
+                for (auto& batch:temporal_color_batches)
+                    alMetalApplyTemporalJitter(batch.modelview_projection,capture.temporal_jitter[0],
+                        capture.temporal_jitter[1],capture.width,capture.height);
+                color_scene.batches=temporal_color_batches.data();
+                if (scene.water_surface)
+                {
+                    temporal_water=*scene.water_surface;
+                    alMetalApplyTemporalJitter(temporal_water.field.modelview_projection,capture.temporal_jitter[0],
+                        capture.temporal_jitter[1],capture.width,capture.height);
+                    color_scene.water_surface=&temporal_water;
+                }
+                if (scene.water_haze)
+                {
+                    temporal_water_haze=*scene.water_haze;
+                    alMetalApplyTemporalJitter(temporal_water_haze.modelview_projection,capture.temporal_jitter[0],
+                        capture.temporal_jitter[1],capture.width,capture.height);
+                    color_scene.water_haze=&temporal_water_haze;
+                }
+            }
+            catch (const std::bad_alloc&)
+            {
+                capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
+                capture.markIncomplete(__LINE__); return;
+            }
+        }
         auto target = capture.renderer->renderOpaquePostDeferred(
-            scene, std::move(capture.composed_light_target), &error,
+            color_scene, std::move(capture.composed_light_target), &error,
             mCollectWaterDraws ? &encoded_water_draws : nullptr);
         if (hero_capture_end.started)
         {
@@ -9203,7 +9325,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? capture.target->depthStencilTexture() : nullptr;
                 LLMatrix4a inverse_projection;
                 inverse_projection.setInverse(
-                    LLViewerCamera::getInstance()->getProjection());
+                    metalWorldProjection(LLViewerCamera::getInstance()->getProjection()));
                 std::memcpy(native_dof.inverse_projection,
                             inverse_projection.getF32ptr(),
                             sizeof(native_dof.inverse_projection));
@@ -9256,6 +9378,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         << dof_error << LL_ENDL;
                 }
             }
+
+            #include "pipeline_temporal_reconstruction_native.inl"
 
             // Display transfer and bloom suppression follow the effective
             // EEP probe ambiance, independently of the surface-lighting
@@ -9846,10 +9970,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     const U32 native_aa_quality =
                         std::clamp(aa_quality(), 0U, 3U);
                     const bool wants_native_fxaa =
-                        !cutout_snapshot &&
+                        !cutout_snapshot && !capture.temporal_effective &&
                         mResourceInputs.mFSAAType == 1;
                     const bool wants_native_smaa =
-                        !cutout_snapshot &&
+                        !cutout_snapshot && !capture.temporal_effective &&
                         mResourceInputs.mFSAAType == 2;
                     bool exact_antialiasing = exact_legacy_glow;
                     if (exact_legacy_glow && wants_native_fxaa)
@@ -9936,8 +10060,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     const bool fixed_scaled_scene =
                         isMainWorldPass() && mRT == &mMainRT &&
                         requested_resolution != ALRenderResourceInputs::MainResolutionMode::Native &&
-                        display_desc.width == dimensions.mSceneWidth &&
-                        display_desc.height == dimensions.mSceneHeight &&
+                        ((display_desc.width == dimensions.mSceneWidth &&
+                          display_desc.height == dimensions.mSceneHeight) ||
+                         (capture.temporal_effective && display_desc.width == dimensions.mOutputWidth &&
+                          display_desc.height == dimensions.mOutputHeight)) &&
                         dimensions.mOutputWidth == static_cast<U32>(llmax(raw_view.getWidth(), 0)) &&
                         dimensions.mOutputHeight == static_cast<U32>(llmax(raw_view.getHeight(), 0));
                     const bool ordinary_scaled_view = fixed_scaled_scene &&
@@ -9945,9 +10071,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         !gSnapshot && !gCubeSnapshot && !sRenderingHUDs && !cutout_snapshot &&
                         !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
                         RenderBufferVisualization < 0 && !no_post;
-                    std::string spatial_fallback;
+                    std::string spatial_fallback=capture.temporal_fallback;
                     const bool wants_metalfx = ordinary_scaled_view &&
-                        ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesMetalFX();
+                        ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesSpatial();
                     // Classic spatial upscaling consumes the completed antialiased,
                     // tone-mapped perceptual scene. AA-off retains linear scaling.
                     const bool metalfx_ready = wants_metalfx && exact_antialiasing &&
@@ -9960,10 +10086,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             ? (mResourceInputs.mFSAAType == 0
                                 ? "Antialiasing is off" : "FXAA or SMAA is required")
                             : "Antialiasing did not produce a complete image";
-                    if (ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesMetalFX() &&
+                    if (ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesSpatial() &&
                         !ordinary_scaled_view)
                         spatial_fallback = "This view does not support MetalFX reconstruction";
-                    capture.presentation_resolution_mode = fixed_scaled_scene ? 1u : 0u;
+                    capture.presentation_resolution_mode = capture.temporal_effective && capture.temporal_encoded ? 3u : fixed_scaled_scene ? 1u : 0u;
 
                     // MetalFX owns reconstruction sharpening. Keep the configured
                     // CAS value for Standard/linear modes and creation fallback,
@@ -9975,7 +10101,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     static LLCachedControl<F32> cas_sharpness(
                         gSavedSettings, "RenderCASSharpness", 0.4f);
                     const bool wants_native_cas =
-                        !cutout_snapshot && !metalfx_ready && cas_sharpness() > 0.f;
+                        !cutout_snapshot && !metalfx_ready && !capture.temporal_effective && cas_sharpness() > 0.f;
                     bool exact_cas = exact_antialiasing;
                     if (exact_antialiasing && wants_native_cas)
                     {
@@ -10427,6 +10553,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         << "Native world display-post source is unavailable; "
                            "the current native transaction cannot publish: "
                         << display_error << LL_ENDL;
+                }
+                if (capture.temporal_effective && !final_presentation_available)
+                {
+                    capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
+                    capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate();
+                    post_batch_active=false; opaque_post_batch_active=false;
+                    target.reset(); display_post_available=false; capture.markIncomplete(__LINE__);
                 }
                 if (post_batch_active)
                 {
@@ -13048,9 +13181,9 @@ bool LLPipeline::fillMetalImpostorScreenSpaceReflections()
     ALMetalWorldScreenSpaceReflectionConstants constants;
     const LLCamera& camera = LLViewerCamera::getCurrent();
     LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(camera.getProjection());
+    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
     std::memcpy(constants.projection,
-                camera.getProjection().getF32ptr(),
+                metalWorldProjection(camera.getProjection()).getF32ptr(),
                 sizeof(constants.projection));
     std::memcpy(constants.inverse_projection,
                 inverse_projection.getF32ptr(),
@@ -16995,6 +17128,14 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.modern_sky_valid = mSky.captureNativeView(capture.modern_sky,
             capture.width, capture.height, mResourceInputs.mEmissive,
             capture.hdr, capture.reverse_z);
+        if (capture.temporal_effective && capture.modern_sky_valid)
+        {
+            LLMatrix4a inverse_projection;
+            inverse_projection.setInverse(metalWorldProjection(LLViewerCamera::getCurrent().getProjection()));
+            std::copy_n(inverse_projection.getF32ptr(),16,capture.modern_sky.scene.constants.inverse_projection);
+            alMetalApplyTemporalJitter(capture.modern_sky.stars.modelview_projection,
+                capture.temporal_jitter[0],capture.temporal_jitter[1],capture.width,capture.height);
+        }
         if (capture.modern_sky_drawn && !capture.modern_sky_valid)
         {
             capture.markIncomplete(__LINE__);
@@ -17007,7 +17148,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     ALMetalWorldGBufferScene scene;
     scene.source_owner = capture.world_resources;
     scene.cpu_source_owner = capture.cpu_sources;
-    scene.source_routing = nativeSourceRoutingEnabled() && !impostor_bake;
+    scene.source_routing = nativeSourceRoutingEnabled() && !impostor_bake && !capture.temporal_effective;
     scene.references = capture.source_references.data();
     scene.reference_count = capture.source_references.size();
     scene.draw_order = capture.draw_order.data();
@@ -17019,6 +17160,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.visibility_queries = capture.visibility_queries.data();
     scene.visibility_query_count = capture.visibility_queries.size();
     scene.material_mip_bias = capture.material_mip_bias;
+    if (capture.temporal_effective) std::copy(capture.temporal_jitter.begin(),capture.temporal_jitter.end(),scene.temporal_jitter_pixels);
     scene.width = capture.width;
     scene.height = capture.height;
     scene.normal_hdr = capture.normal_hdr;
@@ -17199,6 +17341,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.cpu_packets_reclaimed, capture.cpu_packets_retained};
     if (inputs)
     {
+        if (capture.temporal_effective) capture.temporal_opaque_inputs=inputs;
         scene = inputs->scene();
         scene.source_owner = inputs->resourceLease();
     }
@@ -17379,7 +17522,7 @@ void LLPipeline::renderMetalWorldLocalLights(
     scene.additive_pass_count = current_values.additive_pass_count;
     scene.bounded_light_count = bounded_light_count;
     LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(camera.getProjection());
+    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
     std::memcpy(scene.inverse_projection,
                 inverse_projection.getF32ptr(),
                 sizeof(scene.inverse_projection));
@@ -17658,7 +17801,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
     scene.projector_shadows = needs_projector_shadows
         ? &capture.projector_shadows : nullptr;
     LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(camera.getProjection());
+    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
     std::memcpy(scene.inverse_projection,
                 inverse_projection.getF32ptr(),
                 sizeof(scene.inverse_projection));
@@ -17910,7 +18053,7 @@ bool LLPipeline::renderMetalWorldLightMap(
         ? capture.base_noise_texture.get() : nullptr;
     ALMetalWorldLightMapConstants& constants = scene.constants;
     LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(camera.getProjection());
+    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
     std::memcpy(constants.inverse_projection,
                 inverse_projection.getF32ptr(),
                 sizeof(constants.inverse_projection));
@@ -18038,7 +18181,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     ALMetalWorldBaseLightingScene scene;
     // Production view input: candidate preparation must consume the exact
     // projection that produced this view, independently of private capture.
-    std::memcpy(scene.projection, camera.getProjection().getF32ptr(),
+    std::memcpy(scene.projection, metalWorldProjection(camera.getProjection()).getF32ptr(),
                 sizeof(scene.projection));
     scene.projection_valid = true;
     scene.diagnostic_view.frame_index = gFrameCount;
@@ -18078,7 +18221,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     ALMetalWorldBaseLightingConstants& constants = scene.constants;
     constants.environment_config[1] = mResourceInputs.mEmissive ? 0u : 1u;
     LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(camera.getProjection());
+    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
     std::memcpy(constants.inverse_projection,
                 inverse_projection.getF32ptr(),
                 sizeof(constants.inverse_projection));
@@ -20875,8 +21018,22 @@ void LLPipeline::updateReverseZ(bool reverse_z)
     }
 }
 
-void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result)
+void LLPipeline::updateCull(LLCamera& logical_camera, LLCullResult& result)
 {
+    LLCamera guarded_camera(logical_camera);
+    const bool temporal_guard=isMainWorldPass() && mRT==&mMainRT &&
+        mResourceInputs.mainResolutionPolicy().usesTemporal() && !gSnapshot && !gCubeSnapshot &&
+        !sRenderingHUDs && !sCutoutRender && !sImpostorRender;
+    if (temporal_guard)
+    {
+        auto matrix=std::array<F32,16>{};
+        std::copy_n(logical_camera.getProjection().getF32ptr(),16,matrix.begin());
+        const auto dimensions=mResourcePlan.mainViewDimensions();
+        alMetalExpandTemporalCullProjection(matrix.data(),dimensions.mSceneWidth,dimensions.mSceneHeight);
+        LLMatrix4a projection; projection.loadu(matrix.data()); guarded_camera.setProjection(projection);
+        LLViewerCamera::updateFrustumPlanes(guarded_camera);
+    }
+    LLCamera& camera=temporal_guard ? guarded_camera : logical_camera;
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("updateCull"); // should always be zero GPU time, but drop a timer to flush stuff out
 

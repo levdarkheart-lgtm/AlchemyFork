@@ -97,6 +97,8 @@ target_sources(
   PRIVATE
     almetaldevice.mm
     almetalspatialscaler.mm
+    almetaltemporalscaler.mm
+    almetaltemporalworldhistory.cpp
     almetalresourceplan.cpp
     almetalresourceplan.h
     almetaldiagnostictelemetry.mm
@@ -141,6 +143,8 @@ target_sources(
     FILES
       almetaldevice.h
       almetalspatialscaler.h
+      almetaltemporalscaler.h
+      almetaltemporalworldhistory.h
       almetaldiagnostictelemetry.h
       almetalavatarresources.h
       almetalframe.h
@@ -212,6 +216,8 @@ endif()
 # explicit even though this small backend deliberately has no PCH of its own.
 set_source_files_properties(
   almetaldevice.mm
+  almetaltemporalscaler.mm
+  almetaltemporalworldhistory.cpp
   almetalspatialscaler.mm
   almetalframe.mm
   almetalpipeline.mm
@@ -246,7 +252,11 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     almetal_tests
     PROJECT almetal
-    SOURCES tests/almetal_spatial_scaler_test.mm
+    SOURCES tests/almetal_temporal_presentation_test.mm
+            tests/almetal_temporal_scaler_test.mm
+            tests/almetal_temporal_motion_test.mm
+            tests/almetal_temporal_history_test.cpp
+            tests/almetal_spatial_scaler_test.mm
             tests/almetal_spatial_presentation_test.mm
             tests/almetal_command_timing_test.mm
             tests/almetal_resource_plan_test.cpp
@@ -349,7 +359,11 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-  set_source_files_properties(tests/almetal_spatial_scaler_test.mm
+  set_source_files_properties(tests/almetal_temporal_presentation_test.mm
+                              tests/almetal_temporal_scaler_test.mm
+                              tests/almetal_temporal_motion_test.mm
+                              tests/almetal_temporal_history_test.cpp
+                              tests/almetal_spatial_scaler_test.mm
                               tests/almetal_spatial_presentation_test.mm
                               PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_retained_background_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

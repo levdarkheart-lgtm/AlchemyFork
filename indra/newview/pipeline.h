@@ -216,6 +216,7 @@ public:
 
 private:
     MetalMainResolutionStatus mMetalMainResolutionStatus;
+    LLMatrix4a metalWorldProjection(const LLMatrix4a& projection) const;
 
     // The one application, which applyRenderInputs and loadRenderInputs run.
     void applyRenderInputs(const ALRenderInputRequests::Application& taken);
