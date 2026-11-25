@@ -1,4 +1,4 @@
-# Active Metal work — optional MetalFX spatial prototype
+# Active Metal work — optional MetalFX Temporal review
 
 Commit `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` is the actual candidate 69464 code pin.
 PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
@@ -9,9 +9,11 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Publish the owner-authorized `codex/metalfx-spatial-20261124` review branch after the documentation
-harness passes. Share its source/report links for independent review. Keep private evidence local,
-Native default and existing build69464 unchanged; do not merge the usual branch or start Temporal.
+Implement PPD598 in the separate Temporal worktree from41e90aaadb. Root owns pipeline/CMake/docs,
+independent agents own native scaler, native motion and settings policy. Complete focused PPD597/599/600
+repairs in separate commits, then production offscreen fixtures, full build, login-screen smoke, private
+iCloud package and authorized review-branch push. No production acceptance or live FPS claim.
+See [Temporal map](../../research/metalfx-temporal-20261125.md).
 
 ## Active quality work — PPD596
 

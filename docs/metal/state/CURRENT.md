@@ -1,6 +1,6 @@
-# Current engineering state — optional MetalFX spatial prototype
+# Current engineering state — Temporal implementation in progress
 
-Observed 2026-11-24 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
+Observed 2026-11-25 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
 Implementation branch `codex/metalfx-spatial-20261124` starts from usual-branch
 `7911e382ce17f8957cd335cabbd30f808bef6ac1`. Separate clean control `f384e2c220`
 and implementation base `3df7055a9d` carry the same small, gated quiet-output
@@ -11,6 +11,15 @@ MetalFX spatial, retaining output-sized shadow references and native UI. Native
 remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
+
+## Active Temporal work — PPD598
+
+Separate `worktrees/metalfx-temporal`/`codex/metalfx-temporal-20261125`, fetched parent41e90aaadb unchanged.
+Owner authorizes implementation, offline fixtures, build/private packaging, review push and login if needed.
+No usual-branch change. [Integration map](../research/metalfx-temporal-20261125.md) owns current contract.
+Native remains default; Spatial preserved. PPD597/599/600 are focused prerequisite repairs.
+Root owns pipeline/CMake/docs; agents own scaler, motion/shaders and settings independently.
+No Temporal build, fixture or quality result yet; next action is production implementation.
 
 ## Active quality expansion — PPD596
 

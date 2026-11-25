@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-598 -->
+<!-- next-defect-id: PPD-601 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14725,7 +14725,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-597 — A hidden-only manual probe fixture is registered as an ordinary CTest suite
 
-- Status: open
+- Status: investigating
 - Confirmation: source_confirmed
 - Owner: Metal test registration
 - Discovered: 2026-11-24
@@ -14734,8 +14734,65 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Separate maintenance: remove hidden-only/manual source files from ordinary automatic CTest registration. If this research fixture remains useful, give it an explicit manual invocation with declared input requirements; otherwise archive/remove it according to the owner's dead-experiment policy. Do not reopen probe optimization. This task does not alter that independent harness path.
 - Verification: Observed registration failure and source/tag/input inspection establish a default-test disposition defect, not a rendering regression. PPD596's fourteen runnable relevant Metal suites pass separately; this excluded fixture is not counted as passing.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-24 registered from the actual focused verification failure before any repair. Current bounded Spatial task stops at its review deliverable; the test-registration issue is retained explicitly rather than silently classed as passing or forgotten.
+
+
+
+- 2026-11-25: Owner includes the focused manual-fixture registration repair in Temporal scope. Keep compilation and explicit hidden invocations, remove the empty ordinary per-file CTest entry. Configuration/default-test enumeration verification pending; no probe experiment.
+
+## PPD-598 — Optional MetalFX Temporal reconstruction lacks world motion and transactional history
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: MetalFX Temporal integration
+- Discovered: 2026-11-25
+- Original reference: Owner requests an optional native Temporal renderer with rigid/attachment/skinned motion, main-world history and offline correctness before owner live review.
+- Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
+- Next action: Implement native HDR reconstruction, coherent jitter/motion/history, deterministic production fixtures and review package; do not substitute camera-only motion.
+- Verification: Parent source inspected; implementation and offline/runtime verification pending. No live quality or FPS claim.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before implementation. Owner explicitly authorizes the separate Temporal review branch, engineering/tests/build/private packaging and push; usual branch remains unchanged.
+
+
+## PPD-599 — Committed ordinary no-post views suppress effective scaling status
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: MetalFX Temporal integration
+- Discovered: 2026-11-25
+- Original reference: pipeline.cpp publishes pending_resolution_status only when !no_post, although ordinary no-post or legacy-sky views can commit linear scaling successfully.
+- Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
+- Next action: Publish truthful effective fallback only after a successful ordinary main transaction; preserve exclusion of independent views and failed transactions.
+- Verification: Parent source inspected; implementation and offline/runtime verification pending. No live quality or FPS claim.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before implementation. Owner explicitly authorizes the separate Temporal review branch, engineering/tests/build/private packaging and push; usual branch remains unchanged.
+
+
+## PPD-600 — Spatial qualification override remains in production source
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: MetalFX Temporal integration
+- Discovered: 2026-11-25
+- Original reference: pipeline.cpp declares RenderMetalSpatialMipBiasDisabledForReview in quiet telemetry sessions; exact review69464 and its private evidence are already preserved.
+- Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
+- Next action: Remove the temporary override from current production encoding; retain automatic method-specific sampling and old review app/evidence.
+- Verification: Parent source inspected; implementation and offline/runtime verification pending. No live quality or FPS claim.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before implementation. Owner explicitly authorizes the separate Temporal review branch, engineering/tests/build/private packaging and push; usual branch remains unchanged.
