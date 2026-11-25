@@ -1,7 +1,8 @@
 # Active Metal work — optional MetalFX Temporal review
 
-Commit `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` is the actual candidate 69464 code pin.
-PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
+Current review scope is PPD598 on `codex/metalfx-temporal-20261125`; the active checkpoint follows.
+Preserved Spatial candidate69464 uses `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5`.
+PPD591 is the historical owner-requested Spatial scope on `codex/metalfx-spatial-20261124`,
 pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
 3df7055a9d have identical gated quiet-output observations. Earlier research stays
 separate. Native remains default; combined lighting OFF. On 2026-11-25 the owner authorizes pushing this
@@ -9,11 +10,24 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Implement PPD598 in the separate Temporal worktree from41e90aaadb. Root owns pipeline/CMake/docs,
-independent agents own native scaler, native motion and settings policy. Complete focused PPD597/599/600
-repairs in separate commits, then production offscreen fixtures, full build, login-screen smoke, private
-iCloud package and authorized review-branch push. No production acceptance or live FPS claim.
-See [Temporal map](../../research/metalfx-temporal-20261125.md).
+Commit `663a591f2c543158d4e0bf5a68e4e7236f20a559` is the packaged Temporal application code.
+
+PPD598 implementation/offline qualification is complete for owner live review. The separate Temporal branch
+starts from41e90aaadb; review app69494 contains production663a591f2c (later841358a is test-only).
+Full Release build,346 ARM64 checks, deep/strict signing, mounted DMG identity and fullscreen login-only
+smoke pass. Original17 settings files are restored, viewer closed.18 new scaler/post/material and10 motion
+cases pass API/GPU validation;15 existing regression suites and focused CPU/UI/preset suites pass.
+[Temporal review](../../research/metalfx-temporal-20261125.md) owns exact identities, evidence and limitations.
+
+Private iCloud delivery and authorized Temporal-branch publication receipts accompany the review bundle. The next engineering decision
+is owner live review of Temporal67 detail, motion, transparency and mode changes. No live FPS/quality claim,
+usual-branch merge, release, second renderer project or renewed probe investigation. PPD597/599/600 and
+601–607 preserve their original failures/source proof and repaired verification boundaries.
+
+## Preserved Spatial parent checkpoint
+
+The following Spatial sections describe prior69464 evidence. Their review-only override and “no Temporal”
+statements are historical, superseded by the active Temporal state and PPD600 retirement above.
 
 ## Active quality work — PPD596
 

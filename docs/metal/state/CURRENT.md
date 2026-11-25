@@ -1,10 +1,10 @@
-# Current engineering state — Temporal implementation in progress
+# Current engineering state — Temporal ready for owner live review
 
 Observed 2026-11-25 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
-Implementation branch `codex/metalfx-spatial-20261124` starts from usual-branch
-`7911e382ce17f8957cd335cabbd30f808bef6ac1`. Separate clean control `f384e2c220`
-and implementation base `3df7055a9d` carry the same small, gated quiet-output
-observations. The earlier review worktree and private evidence remain separate.
+Current implementation branch is `codex/metalfx-temporal-20261125`, with the separate Spatial
+parent branch at41e90aaadb preserved. The Spatial foundation came from usual-branch
+`7911e382ce17f8957cd335cabbd30f808bef6ac1`; its control `f384e2c220` and implementation
+base `3df7055a9d` carry matched gated quiet observations. Those earlier worktrees/evidence remain separate.
 
 PPD591 owns the optional fixed-half scene modes: linear presentation and classic
 MetalFX spatial, retaining output-sized shadow references and native UI. Native
@@ -14,12 +14,36 @@ image equivalence. No owner acceptance or push approval is inferred from builds 
 
 ## Active Temporal work — PPD598
 
-Separate `worktrees/metalfx-temporal`/`codex/metalfx-temporal-20261125`, fetched parent41e90aaadb unchanged.
-Owner authorizes implementation, offline fixtures, build/private packaging, review push and login if needed.
-No usual-branch change. [Integration map](../research/metalfx-temporal-20261125.md) owns current contract.
-Native remains default; Spatial preserved. PPD597/599/600 are focused prerequisite repairs.
-Root owns pipeline/CMake/docs; agents own scaler, motion/shaders and settings independently.
-No Temporal build, fixture or quality result yet; next action is production implementation.
+**Renderer code checkpoint:** `663a591f2c543158d4e0bf5a68e4e7236f20a559` (actual app69494).
+
+Separate `worktrees/metalfx-temporal` / `codex/metalfx-temporal-20261125`, fetched parent
+`41e90aaadb938d77955f7c7e752362aab875fff6` unchanged. App **26.4.0.69494**, production source
+**663a591f2c543158d4e0bf5a68e4e7236f20a559**;841358a changes only new test-oracle code.
+Owner authorizes feature-branch publication and private iCloud package; usual/Spatial branches preserved.
+[Temporal review](../research/metalfx-temporal-20261125.md) is the authoritative implementation/evidence map.
+
+Native remains default; Temporal50/67/75, HDR reconstruction after reduced-depth DoF and before bloom/tonemap,
+output shadows/native UI, camera/rigid/body/attachment/cloth motion, finite reactive policies and submit-owned
+history are implemented. Early fallback stays unjittered; late failure cancels world publication. Saved AA/CAS
+remain available for other modes. Snapshots/captures do not advance main history. Live quality/FPS is unclaimed.
+
+Full Release build,346 ARM64 inspections, deep/strict signing and readonly-DMG hash verification pass.
+API/GPU validation passes18 scaler/post/material cases and10 motion cases, plus15 existing regression suites.
+CPU history13/resource-plan34 cases,398 UI and116 real preset checks pass. Login smoke reaches fullscreen
+with AutoLoginfalse, then quits;17 original settings files restored byte-exact. No live login performed.
+PPD597/599/600 inherited repairs and PPD601–607 corrections retain failed evidence and verification limits.
+Fractional mip tests use a calibrated native explicit-LOD oracle; no production formula/tolerance relaxation.
+
+Known review limits: reactive-only transparent/sky/water regions, terrain-edit and texture-content animation
+not explicitly classified, conservative native-closure allocation churn, and inherited third-party release gaps.
+Next action is the owner's live Temporal67 review: detail, moving avatars/camera, hair/foliage/transparency,
+water, resize/mode changes and snapshots. No additional Home FPS investigation or optimization is authorized
+by this handoff; the review branch and iCloud receipts record publication/delivery separately.
+
+## Preserved Spatial parent checkpoint
+
+The sections below are historical Spatial observations; statements that Temporal was not implemented refer
+to that parent checkpoint and are superseded by the active Temporal state above.
 
 ## Active quality expansion — PPD596
 
@@ -114,13 +138,13 @@ retains previously accepted repairs, register reconciliation and their validatio
 The earlier review branch preserves research-only evidence separately. Those facts
 are historical, not current claims that this new feature is already qualified.
 
-**Renderer code checkpoint:** `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` (actual build 69464; later test-fixture/documentation edits do not change its application identity).
+**Historical Spatial code checkpoint:** `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` (actual build 69464; later test-fixture/documentation edits do not change its application identity).
 
 | ID | State | Remaining boundary |
 | --- | --- | --- |
 | M-008 | doing | Broad feature/visual acceptance and representative performance. |
 | M-011 | doing | Reproducible release and strict no-GL qualification. |
-| M-012 | doing | Maintained scripts verified; PPD597 manual-suite CTest registration remains. |
+| M-012 | doing | Maintained scripts verified; PPD597 manual-suite classification repaired; broader coverage remains. |
 | M-013 | doing | Retained features and prolonged stability. |
 
 Required independent build/review evidence and release gates remain open.
