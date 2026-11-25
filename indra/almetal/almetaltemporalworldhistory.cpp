@@ -84,8 +84,9 @@ bool compatible(const Input& a, const Input& b) noexcept
         a.mode == b.mode && a.reverse_z == b.reverse_z && a.origin == b.origin;
 }
 
-// An explicit producer instance+generation wins over source pointer identity,
-// but exact geometry generations/layout/range always remain part of the key.
+// An explicit producer instance+generation supplements the exact native
+// geometry generation/layout/range key. Transient CPU capture addresses never
+// identify an instance; equivalent raw avatar captures move between vectors.
 // Reused slots and topology changes therefore cannot borrow an unrelated pose.
 struct Key
 {
@@ -111,8 +112,6 @@ Key key(const ALMetalWorldDraw& draw, bool forward)
     v[0] = forward;
     v[1] = b.temporal_instance_id;
     v[2] = b.temporal_generation;
-    if (!v[1])
-        v[3] = reinterpret_cast<std::uintptr_t>(&b);
     if (b.vertices)
     { v[4] = b.vertices->resourceView().identity(); v[5] = b.vertices->resourceView().generation(); }
     if (b.indices)
@@ -179,8 +178,7 @@ bool snapshot(const ALMetalWorldDraw& draw, Pose& pose, std::string* error)
     pose.valid = true;
     // Deforming/animated UVs cannot be represented by a position vector alone.
     // The renderer additionally marks blended/special content reactive.
-    pose.reactive = b.avatar_cloth || b.pre_water_particle || b.impostor ||
-        b.water_surface || b.water_haze;
+    pose.reactive = b.pre_water_particle || b.impostor || b.water_surface || b.water_haze;
     return true;
 }
 }

@@ -209,6 +209,41 @@ TEST_CASE("Temporal identity generation topology and duplicate ambiguity reject 
     }
 }
 
+TEST_CASE("Temporal raw avatar poses survive transient capture storage relocation", "[temporal-history][metal]")
+{
+    std::string error;
+    auto device = ALMetalDevice::create(&error);
+    REQUIRE(device);
+    ALMetalBufferDescriptor descriptor;
+    descriptor.length = 256;
+    auto vertices = ALMetalBuffer::create(*device, descriptor, &error);
+    REQUIRE(vertices);
+    History history;
+    auto first = std::make_unique<ALMetalWorldSimpleBatch>(batch(0));
+    first->vertices = vertices.get(); first->temporal_generation = 0; first->avatar_skinning = true;
+    std::array<float,180> palette{};
+    palette[0] = 1.f;
+    first->skin_palette = palette.data(); first->skin_palette_float_count = palette.size(); first->skin_joint_count = 15;
+    auto opaque = scene(first.get(),1);
+    REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque,nullptr)); REQUIRE(history.commit(1));
+    auto relocated = std::make_unique<ALMetalWorldSimpleBatch>(*first);
+    REQUIRE(relocated.get() != first.get());
+    relocated->modelview_projection[12] = .2f;
+    palette[0] = .75f;
+    opaque.batches = relocated.get();
+    REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque,nullptr));
+    REQUIRE(history.previousOpaque()[0].valid);
+    CHECK(history.previousOpaque()[0].modelview_projection[12] == 0.f);
+    CHECK(history.previousOpaque()[0].skin_palette[0] == 1.f);
+    REQUIRE(history.commit(2));
+    auto replacement_vertices = ALMetalBuffer::create(*device,descriptor,&error);
+    REQUIRE(replacement_vertices);
+    relocated->vertices = replacement_vertices.get();
+    REQUIRE(history.beginFrame(input(3))); REQUIRE(history.stage(opaque,nullptr));
+    CHECK_FALSE(history.previousOpaque()[0].valid);
+    CHECK(history.previousOpaque()[0].reactive);
+}
+
 TEST_CASE("Temporal descriptors cuts origin changes and recovery reset without an ordinary motion reset", "[temporal-history]")
 {
     for (unsigned change = 0; change != 8; ++change)
