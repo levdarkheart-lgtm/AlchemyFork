@@ -5,6 +5,7 @@
  */
 #include "../almetalworld.h"
 #include "../almetaltemporalworldhistory.h"
+#include "../almetalretainedbackground.h"
 #include "../../newview/pipeline_main_post_transaction_native.h"
 #import <Metal/Metal.h>
 #include <catch2/catch_test_macros.hpp>
@@ -37,7 +38,10 @@ struct Fixture
     ALMetalTemporalWorldHistory history;
     ALMetalTemporalScalerDescriptor descriptor{IW, IH, OW, OH};
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
-    std::unique_ptr<ALMetalRenderTarget> source, motion, raw, resolved, previous_presentation;
+    std::unique_ptr<ALMetalRenderTarget> source, motion, raw, resolved;
+    std::shared_ptr<const ALMetalRenderTarget> presentation, world_depth;
+    ALMetalRetainedBackground retained;
+    ALMetalRetainedBackground::Context context;
     ALMetalTemporalScaler::Ticket ticket = 0;
     ALMetalWorldSimpleBatch pose;
     ALMetalWorldGBufferScene opaque;
@@ -59,6 +63,11 @@ struct Fixture
         ALMetalRenderTargetDescriptor color;
         color.width = IW; color.height = IH; color.colors[0].format = ALMetalPixelFormat::rgba16_float;
         source = ALMetalRenderTarget::create(*device, color, &error); REQUIRE(source);
+        ALMetalRenderTargetDescriptor dd;
+        dd.width = IW; dd.height = IH; dd.color_attachment_count = 0;
+        dd.depth_stencil_format = ALMetalPixelFormat::depth32_float; dd.depth_stencil_shader_read = true;
+        world_depth = ALMetalRenderTarget::create(*device, dd, &error); REQUIRE(world_depth);
+        context = {device.get(), this, 1, OW, OH, true};
         ALMetalRenderTargetDescriptor pack;
         pack.width = IW; pack.height = IH; pack.color_attachment_count = 3;
         pack.colors[0].format = ALMetalPixelFormat::rg16_float;
@@ -80,6 +89,11 @@ struct Fixture
         REQUIRE(const_cast<ALMetalTexture*>(motion->colorTexture(0))->upload(*upload,0,0,{},vectors.data(),IW * 4,&error));
         REQUIRE(const_cast<ALMetalTexture*>(motion->colorTexture(1))->upload(*upload,0,0,{},reactive.data(),IW,&error));
         REQUIRE(const_cast<ALMetalTexture*>(motion->colorTexture(2))->upload(*upload,0,0,{},depth.data(),IW * 4,&error));
+        ALMetalRenderPassConfig clear;
+        clear.clear_depth = .5; clear.depth_store = ALMetalStoreAction::store;
+        auto pass = world_depth->makeRenderPass(clear, &error); REQUIRE(pass);
+        auto encoder = ALMetalRenderEncoder::begin(*upload, *pass, "Temporal retained-world reversed depth", &error);
+        REQUIRE(encoder); REQUIRE(encoder->end(&error));
         REQUIRE(upload->commitAndWait(&error));
         pose.temporal_instance_id = 71; pose.temporal_generation = 1;
         pose.vertex_count = pose.index_count = 3;
@@ -94,6 +108,7 @@ struct Fixture
     void begin(std::uint64_t id)
     {
         world = id; ticket = 0; current_presentation = false; temporal_submitted = false;
+        presentation.reset();
         successful_mode_published = false;
         ALMetalTemporalWorldHistory::FrameInput input;
         input.world_id = id; input.input_width = IW; input.input_height = IH;
@@ -148,7 +163,7 @@ struct Fixture
         ALMetalWorldPresentationScene final;
         final.source = displayed.get(); final.output_width = OW; final.output_height = OH;
         auto presented = renderer->renderPresentationPost(final, &error); REQUIRE(presented); INFO(error);
-        previous_presentation = std::move(presented);
+        presentation = std::move(presented);
         current_presentation = true;
     }
     void displayIfEligible(const ALMetalMainPostDisplayEligibility& inputs)
@@ -166,13 +181,20 @@ struct Fixture
             else renderer->cancelCommandBatch();
             post_active = opaque_active = false;
         }
-        if (current_presentation && temporal_submitted) successful_mode_published = true;
+        if (current_presentation && temporal_submitted)
+        {
+            successful_mode_published = true;
+            REQUIRE(retained.publish(context, world, presentation, world_depth, &error)); INFO(error);
+            // The viewer releases per-frame products between displays. The
+            // existing retained-world authority keeps the last valid image.
+            presentation.reset();
+        }
     }
     std::vector<Bytes> pixels()
     {
-        REQUIRE(previous_presentation);
+        const auto record = retained.find(context); REQUIRE(record); REQUIRE(record->colorTexture());
         std::vector<Bytes> data(OW * OH);
-        REQUIRE(previous_presentation->colorTexture(0)->readback(*device,0,0,{},data.data(),OW * 4,&error));
+        REQUIRE(record->colorTexture()->readback(*device,0,0,{},data.data(),OW * 4,&error));
         return data;
     }
 };
@@ -203,7 +225,11 @@ TEST_CASE("Viewer rejects an encoded Temporal world before display without submi
             f.begin(1); f.displayIfEligible(eligible()); f.genericCleanup();
             REQUIRE(f.successful_mode_published); REQUIRE(f.temporal_submitted);
             const auto previous = f.pixels();
-            const auto previous_backing = f.previous_presentation->colorTexture(0)->nativeHandle();
+            const auto previous_record = f.retained.find(f.context); REQUIRE(previous_record);
+            REQUIRE_FALSE(f.presentation);
+            REQUIRE(previous_record->source_frame == 1);
+            const auto previous_backing = previous_record->colorTexture()->nativeHandle();
+            const auto previous_generation = previous_record->colorTexture()->resourceView().generation();
             const auto submitted = ALMetalDevice::committedCommandBufferCount();
             const auto main_submitted = f.renderer->mainFrameStats().committed;
             const auto accepted_worlds = f.history.stats().submitted_worlds;
@@ -245,7 +271,12 @@ TEST_CASE("Viewer rejects an encoded Temporal world before display without submi
             REQUIRE(f.scaler->stats().abandoned_calls == 1);
             REQUIRE_FALSE(f.scaler->stats().history_valid);
             REQUIRE(completion->isComplete()); REQUIRE(completion->status() == ALMetalCommandStatus::unknown);
-            REQUIRE(f.previous_presentation->colorTexture(0)->nativeHandle() == previous_backing);
+            const auto retained_after_rejection = f.retained.find(f.context);
+            REQUIRE(retained_after_rejection == previous_record);
+            REQUIRE(retained_after_rejection->source_frame == 1);
+            REQUIRE(retained_after_rejection->colorTexture()->nativeHandle() == previous_backing);
+            REQUIRE(retained_after_rejection->colorTexture()->resourceView().generation() == previous_generation);
+            REQUIRE_FALSE(f.presentation);
             REQUIRE(f.pixels() == previous);
             f.begin(3);
             REQUIRE(f.history.resetRequired()); REQUIRE(f.history.stats().jitter_phase == 0);
@@ -257,6 +288,9 @@ TEST_CASE("Viewer rejects an encoded Temporal world before display without submi
             REQUIRE(f.history.stats().resets == accepted_resets + 1);
             REQUIRE(f.scaler->stats().submitted_calls == scaler_submitted + 1);
             REQUIRE(f.scaler->stats().reset_calls == reset_calls + 1);
+            REQUIRE(f.retained.find(f.context)->source_frame == 3);
+            REQUIRE(f.retained.find(f.context) != previous_record);
+            REQUIRE_FALSE(f.presentation);
             REQUIRE(f.pixels() == previous);
         }
     }
