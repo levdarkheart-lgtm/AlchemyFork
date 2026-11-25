@@ -394,3 +394,52 @@ TEST_CASE("Temporal glow alpha returns from jittered input to unjittered output 
         }
     }
 }
+
+TEST_CASE("Temporal display post requires an output-size dirt plate and executes its bloom response", "[metal][temporal-presentation]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        ALMetalWorldLensDirtScene plate; plate.width=IW; plate.height=IH;
+        auto stale=f.renderer->renderLensDirt(plate,&f.error); REQUIRE(stale); INFO(f.error);
+        plate.width=OW; plate.height=OH;
+        auto current=f.renderer->renderLensDirt(plate,&f.error); REQUIRE(current); INFO(f.error);
+        auto bloom=f.target(1,1,ALMetalPixelFormat::rgba16_float);
+        auto upload=f.device->makeCommandBuffer("Temporal auxiliary bloom input",&f.error); REQUIRE(upload);
+        const std::array<__fp16,4> bloom_value{.25f,.5f,.75f,0.f};
+        REQUIRE(const_cast<ALMetalTexture*>(bloom->colorTexture(0))->upload(*upload,0,0,{},bloom_value.data(),8,&f.error));
+        REQUIRE(upload->commitAndWait(&f.error));
+        const auto submitted=ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(f.renderer->beginMainFrameBatch(1,"Temporal stale auxiliary extent",&f.error));
+        auto ticket=f.temporal(*f.source);
+        auto settlement=f.observe(ticket);
+        ALMetalWorldDisplayPostScene display;
+        display.source=f.resolved.get(); display.hdr=true; display.adapted_exposure=.25f;
+        display.bloom_texture=bloom->colorTexture(0); display.bloom_strength=.5f;
+        display.lens_dirt_texture=stale->colorTexture(0); display.lens_dirt_strength=1.f;
+        REQUIRE_FALSE(f.renderer->renderDisplayPost(display,&f.error));
+        REQUIRE(f.error.find("dirt is incompatible") != std::string::npos);
+        REQUIRE_FALSE(f.renderer->commitCommandBatch(&f.error));
+        REQUIRE(ALMetalDevice::committedCommandBufferCount() == submitted);
+        REQUIRE(settlement->rejected == 1); REQUIRE(settlement->published == 0);
+        REQUIRE_FALSE(f.scaler->stats().history_valid);
+        f.frame_data->beginFrame(2);
+        REQUIRE(f.renderer->beginMainFrameBatch(1,"Temporal correctly sized auxiliary extent",&f.error));
+        ticket=f.temporal(*f.source); settlement=f.observe(ticket);
+        display.lens_dirt_texture=current->colorTexture(0);
+        auto dirty=f.renderer->renderDisplayPost(display,&f.error); REQUIRE(dirty); INFO(f.error);
+        display.lens_dirt_texture=nullptr; display.lens_dirt_strength=0.f;
+        auto clean=f.renderer->renderDisplayPost(display,&f.error); REQUIRE(clean); INFO(f.error);
+        REQUIRE(dirty->descriptor().width == OW); REQUIRE(dirty->descriptor().height == OH);
+        auto dirty_final=f.present(*dirty); REQUIRE(dirty_final); INFO(f.error);
+        auto clean_final=f.present(*clean); REQUIRE(clean_final); INFO(f.error);
+        REQUIRE(f.renderer->commitCommandBatch(&f.error)); REQUIRE(settlement->history_submitted);
+        const auto dirty_pixels=f.readBytes(*dirty_final), clean_pixels=f.readBytes(*clean_final);
+        unsigned changed=0;
+        for (std::size_t i=0;i<dirty_pixels.size();++i)
+            changed += dirty_pixels[i][0] != clean_pixels[i][0] || dirty_pixels[i][1] != clean_pixels[i][1] ||
+                       dirty_pixels[i][2] != clean_pixels[i][2];
+        REQUIRE(changed > 0);
+        REQUIRE(f.scaler->stats().submitted_calls == 1);
+    }
+}
