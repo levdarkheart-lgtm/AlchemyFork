@@ -260,3 +260,19 @@ TEST_CASE("Temporal reconstruction consumes production rigid and avatar motion w
         CHECK(scaler->stats().submitted_calls == 2);
     }
 }
+
+TEST_CASE("Temporal rejects behind-camera and half-float-overflow previous projections", "[almetal][temporal][motion][disocclusion]")
+{
+    for (unsigned invalid_kind : {0u, 1u})
+    {
+        CAPTURE(invalid_kind);
+        Fixture f; auto batch = f.batch(0); auto previous = previousDraw(batch);
+        if (invalid_kind == 0) previous.modelview_projection[15] = -1.f;
+        else previous.modelview_projection[12] = 1.e9f;
+        auto pixels = motionPixels(f, batch, previous);
+        CHECK(pixels.reactive[16 * side + 16] == 255);
+        CHECK(std::isfinite(pixels.x(16, 16)));
+        CHECK(std::isfinite(pixels.y(16, 16)));
+        CHECK(pixels.x(16, 16) == 0.f); CHECK(pixels.y(16, 16) == 0.f);
+    }
+}

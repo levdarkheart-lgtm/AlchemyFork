@@ -21092,10 +21092,12 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
     const float clip_depth = c.config.x != 0u ? depth : depth * 2.0 - 1.0;
     const float4 current_clip = float4(current_uv * 2.0 - 1.0, clip_depth, 1.0);
     const float4 previous_clip = c.current_to_previous * current_clip;
-    const bool valid = c.config.y == 0u && isfinite(previous_clip.w) && abs(previous_clip.w) > 1.e-7;
+    bool valid = c.config.y == 0u && previous_clip.w > 1.e-7 && all(isfinite(previous_clip));
     const float2 previous_uv = valid ? previous_clip.xy / previous_clip.w * .5 + .5 : current_uv;
+    const float2 motion = (previous_uv - current_uv) * extent;
+    valid = valid && all(isfinite(motion)) && all(abs(motion) <= 65504.0);
     ALMetalTemporalMotionOutput output;
-    output.motion = valid ? (previous_uv - current_uv) * extent : float2(0.0);
+    output.motion = valid ? motion : float2(0.0);
     // Sky/clouds have no single finite surface motion; retain camera vectors but reject their unstable history.
     const bool background = c.config.x != 0u ? depth <= 0.0 : depth >= 1.0;
     bool water = false;
@@ -21202,12 +21204,13 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     const float epsilon = 2.e-6;
     if (forward ? (c.config.w != 0u ? depth < reference_depth - epsilon : depth > reference_depth + epsilon)
                 : abs(depth - reference_depth) > epsilon) discard_fragment();
-    const bool valid = abs(input.current_clip.w) > 1.e-7 && abs(input.previous_clip.w) > 1.e-7 &&
+    bool valid = input.current_clip.w > 1.e-7 && input.previous_clip.w > 1.e-7 &&
         all(isfinite(input.current_clip)) && all(isfinite(input.previous_clip));
     const float2 motion = valid ? (input.previous_clip.xy / input.previous_clip.w -
         input.current_clip.xy / input.current_clip.w) * .5 * c.extent_bias.xy : float2(0.0);
+    valid = valid && all(isfinite(motion)) && all(abs(motion) <= 65504.0);
     ALMetalTemporalMotionOutput output;
-    output.motion = motion;
+    output.motion = valid ? motion : float2(0.0);
     output.reactive = max(c.extent_bias.w, valid ? 0.0 : 1.0);
     output.depth = reference_depth;
     return output;
