@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "almetaltemporalworldhistory.h"
+#include "alnativepublication.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <algorithm>
@@ -289,6 +290,41 @@ TEST_CASE("Temporal raw avatar poses survive transient capture storage relocatio
     REQUIRE(replacement_vertices);
     relocated->vertices = replacement_vertices.get();
     REQUIRE(history.beginFrame(input(3))); REQUIRE(history.stage(opaque,nullptr));
+    CHECK_FALSE(history.previousOpaque()[0].valid);
+    CHECK(history.previousOpaque()[0].reactive);
+}
+
+TEST_CASE("Temporal published vertex rewrites reject old poses even with unchanged native allocation generation", "[temporal-history][metal]")
+{
+    std::string error;
+    auto device=ALMetalDevice::create(&error); REQUIRE(device);
+    ALMetalBufferDescriptor descriptor;descriptor.length=256;
+    auto vertices=ALMetalBuffer::create(*device,descriptor,&error); REQUIRE(vertices);
+    ALNativePublication::Signal publication;
+    publication.didPublish();
+    auto b=batch(publication.identity());
+    b.vertices=vertices.get();b.temporal_generation=publication.publishedRevision();
+    const auto allocation_identity=vertices->resourceView().identity();
+    const auto allocation_generation=vertices->resourceView().generation();
+    const auto published_revision=publication.publishedRevision();
+    History history;auto opaque=scene(&b,1);
+    REQUIRE(history.beginFrame(input(1)));REQUIRE(history.stage(opaque,nullptr));REQUIRE(history.commit(1));
+    // The actual native buffer supports in-place writes after its prior use
+    // retires. Its allocation ticket is not a vertex-content publication.
+    publication.willWrite();
+    const std::array<float,4> changed_position{.25f,.5f,.75f,1.f};
+    REQUIRE(vertices->write(0,changed_position.data(),sizeof(changed_position),&error));
+    publication.didPublish();
+    CHECK(vertices->resourceView().identity()==allocation_identity);
+    CHECK(vertices->resourceView().generation()==allocation_generation);
+    REQUIRE(publication.publishedRevision()!=published_revision);
+    // Negative control: leaving the old producer stamp would still match.
+    REQUIRE(history.beginFrame(input(2)));REQUIRE(history.stage(opaque,nullptr));
+    CHECK(history.previousOpaque()[0].valid);
+    history.abandon();
+    // The production capture copies this existing producer publication stamp.
+    b.temporal_generation=publication.publishedRevision();
+    REQUIRE(history.beginFrame(input(3)));REQUIRE(history.stage(opaque,nullptr));
     CHECK_FALSE(history.previousOpaque()[0].valid);
     CHECK(history.previousOpaque()[0].reactive);
 }
