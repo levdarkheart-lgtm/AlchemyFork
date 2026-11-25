@@ -9,6 +9,7 @@
  */
 
 #include "almetalworld.h"
+#include "almetaltemporalworldhistory.h"
 #include "almetaldiagnostictelemetry.h"
 #include "almetalworldinputs.h"
 #include "almetalworldvisibility.h"
@@ -2998,6 +2999,9 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> temporal_resolve_pipeline;
+    std::shared_ptr<ALMetalRenderPipeline> temporal_motion_background, temporal_motion_reactive_background, temporal_motion_impostor;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> temporal_motion_geometry;
     ALMetalWorldAnimatedStats animated_stats;
     ALMetalWorldLightingTileStats lighting_tile_stats;
     void noteLightingTiles(bool base, ALMetalRasterTileSize requested,
@@ -10128,6 +10132,12 @@ bool ALMetalWorldGBufferRenderer::renderSpotShadow(
 
 namespace
 {
+void applyWorldTemporalJitter(float* matrix, const ALMetalWorldGBufferScene& scene)
+{
+    alMetalApplyTemporalJitter(matrix, scene.temporal_jitter_pixels[0], scene.temporal_jitter_pixels[1],
+        scene.width, scene.height);
+}
+
 WorldImpostorConstants buildWorldImpostorConstants(const ALMetalWorldGBufferScene& scene,
     const ALMetalWorldSimpleBatch& batch)
 {
@@ -10135,6 +10145,7 @@ WorldImpostorConstants buildWorldImpostorConstants(const ALMetalWorldGBufferScen
     std::memcpy(constants.modelview_projection,
                 batch.modelview_projection,
                 sizeof(constants.modelview_projection));
+    applyWorldTemporalJitter(constants.modelview_projection, scene);
     std::memcpy(constants.modelview, batch.modelview,
                 sizeof(constants.modelview));
     std::memcpy(constants.center, batch.impostor_center,
@@ -10167,6 +10178,7 @@ WorldTerrainConstants buildWorldTerrainConstants(const ALMetalWorldGBufferScene&
     std::memcpy(constants.modelview_projection,
                 batch.modelview_projection,
                 sizeof(constants.modelview_projection));
+    applyWorldTemporalJitter(constants.modelview_projection, scene);
     std::memcpy(constants.modelview, batch.terrain_modelview,
                 sizeof(constants.modelview));
     std::memcpy(constants.normal_matrix,
@@ -10237,6 +10249,7 @@ WorldSimpleConstants buildWorldSimpleConstants(const ALMetalWorldGBufferScene& s
     std::memcpy(constants.modelview_projection,
                 draw.modelviewProjection(),
                 sizeof(constants.modelview_projection));
+    applyWorldTemporalJitter(constants.modelview_projection, scene);
     std::memcpy(constants.modelview, draw.modelview(),
                 sizeof(constants.modelview));
     std::memcpy(constants.normal_matrix, draw.normalMatrix(),
@@ -11781,7 +11794,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderInternal
         }
         if (batch.terrain)
         {
-            const bool shared_terrain=batch.terrain_pass && batch.terrain_pass->matches(batch);
+            const bool shared_terrain=batch.terrain_pass && batch.terrain_pass->matches(batch) &&
+                scene.temporal_jitter_pixels[0] == 0.f && scene.temporal_jitter_pixels[1] == 0.f;
             // The matched private record supplies its own exact native tuple;
             // a replaceable public batch owner cannot weaken this lifetime.
             const auto terrain_owner=shared_terrain ? batch.terrain_pass->resourceLease() : batch.terrain_texture_owner;
@@ -27473,3 +27487,7 @@ std::unique_ptr<ALMetalTexture> ALMetalWorldGBufferRenderer::bakeModernSkyCube(
     if (!mImpl->finishCommandBuffer(owned, ok, error)) return nullptr;
     return cube;
 }
+
+#include "almetalworld_motion.inl"
+
+#include "almetalworld_temporal.inl"

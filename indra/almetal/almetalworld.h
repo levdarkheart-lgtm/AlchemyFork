@@ -11,6 +11,7 @@
 #pragma once
 
 #include "almetalspatialscaler.h"
+#include "almetaltemporalscaler.h"
 
 #include "almetalworlddiagnostics.h"
 #include "almetalprobeworkload.h"
@@ -623,6 +624,10 @@ public:
     std::shared_ptr<const ALMetalWorldMaterialSource> native_material_source;
     std::shared_ptr<const ALMetalWorldResourceSource> native_resource_source;
 
+    // Transient render-instance identity for Temporal history. Never part of immutable material publications.
+    // Zero asks the caller to use an exact resource-generation/index-range key; reused instances must change generation.
+    std::uint64_t temporal_instance_id = 0;
+    std::uint64_t temporal_generation = 0;
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
@@ -1264,6 +1269,8 @@ struct alignas(16) ALMetalWorldVisibilityQuery
 
 struct ALMetalWorldGBufferScene
 {
+    float temporal_jitter_pixels[2]{};
+
     // Per-view material sampling only; cached material/source packets remain immutable. Zero for independent
     // probe/shadow/capture views. Main alpha color and depth-only draws consume this same policy.
     float material_mip_bias = 0.f;
@@ -1616,6 +1623,8 @@ struct alignas(16) ALMetalWorldAtmosphericHaze
 // Post-water alpha and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
+    float temporal_jitter_pixels[2]{};
+
     // Per-view material sampling only; cached material/source packets remain immutable. Zero for independent
     // probe/shadow/capture views. Main alpha color and depth-only draws consume this same policy.
     float material_mip_bias = 0.f;
@@ -1911,6 +1920,40 @@ struct ALMetalWorldRlvSphereScene
     bool extend_min = false;
     bool extend_max = false;
     bool reverse_z = false;
+};
+
+// Previous successfully submitted main-world instance state, separate from cached geometry/material publication.
+// MVPs use the viewer's unjittered original clip convention. Palette bytes are deep snapshots, not simulation pointers.
+struct ALMetalWorldTemporalPreviousDraw
+{
+    float modelview_projection[16]{};
+    float texture_matrix[16]{};
+    std::vector<float> skin_palette;
+    std::uint32_t skin_joint_count = 0;
+    float avatar_wind[4]{}, avatar_sin_wave[4]{}, avatar_gravity[4]{}, avatar_cloth_depth[4]{};
+    bool valid = false;
+    bool reactive = false;
+};
+
+struct ALMetalWorldTemporalMotionScene
+{
+    const ALMetalWorldGBufferScene* opaque_scene = nullptr;
+    const ALMetalWorldOpaquePostDeferredScene* forward_scene = nullptr;
+    const ALMetalTexture* depth = nullptr;
+    const ALMetalWorldTemporalPreviousDraw* previous_opaque = nullptr;
+    std::size_t previous_opaque_count = 0;
+    const ALMetalWorldTemporalPreviousDraw* previous_forward = nullptr;
+    std::size_t previous_forward_count = 0;
+    // Maps an unjittered original clip point to the preceding world's original clip coordinates.
+    float clip_to_previous_clip[16]{};
+    float inverse_projection[16]{};
+    float eye_water_plane[4]{};
+    bool reject_water = false;
+    // Actual raster offsets in input-texture pixels. Positive Y follows texture storage (viewer emulates GL row zero).
+    float jitter_pixels[2]{};
+    std::uint32_t width = 0, height = 0;
+    bool reverse_z = true;
+    bool reset = true;
 };
 
 // Both owners are acquired before MetalFX makes the command resource scope
@@ -3035,6 +3078,24 @@ public:
         const ALMetalWorldPresentationScene& scene,
         std::string* error = nullptr,
         std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
+
+    // Temporal-only reduced-resolution motion/depth/rejection pack: RG16F current-to-previous input-pixel
+    // displacement, R8 normalized reactive mask, R32F device depth. Terrain/background use depth reprojection;
+    // rigid, attachment and skeletal geometry override motion, using previous submitted transforms/palettes.
+    // Blended/animated content rejects history conservatively without replacing opaque depth or motion.
+    bool encodeTemporalUpscale(ALMetalTemporalScaler& scaler,
+        const ALMetalTemporalScalerDescriptor& descriptor, const ALMetalTexture& color,
+        const ALMetalRenderTarget& motion_inputs, ALMetalRenderTarget& output,
+        const ALMetalTemporalScalerFrame& frame, ALMetalTemporalScaler::Ticket& ticket,
+        std::string* error = nullptr);
+    bool resolveTemporalColor(const ALMetalRenderTarget& original,
+        const ALMetalRenderTarget& reconstructed, ALMetalRenderTarget& preallocated_output,
+        std::string* error = nullptr);
+    std::unique_ptr<ALMetalRenderTarget> prepareTemporalTarget(std::uint32_t width,
+        std::uint32_t height, bool shader_write, std::string* error = nullptr);
+    bool prepareTemporalMotion(std::string* error = nullptr);
+    std::unique_ptr<ALMetalRenderTarget> renderTemporalMotion(
+        const ALMetalWorldTemporalMotionScene&, std::string* error = nullptr);
 
     // Fallible cached preflight, before choosing the sharpening path. A false
     // result permits existing linear presentation scaling. Once encoding has

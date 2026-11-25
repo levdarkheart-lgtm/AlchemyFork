@@ -21043,3 +21043,188 @@ kernel void almetal_world_modern_sky_layout_probe(
     result[17] = as_type<uint>(c.transfer.w);
     result[18] = c.config.w;
 }
+
+// Temporal-only input pass. Clip matrices remain unjittered; the same input-pixel jitter used by world
+// color is added solely for raster coverage. Motion excludes jitter and points from current to previous.
+struct ALMetalTemporalMotionConstants
+{
+    float4x4 current_mvp, previous_mvp, texture_matrix;
+    float4 current_wind, current_sin, current_gravity, current_cloth_depth;
+    float4 previous_wind, previous_sin, previous_gravity, previous_cloth_depth;
+    float4 extent_bias, raster;
+    uint4 config, coverage;
+    float4 thresholds[8];
+    float4 impostor_center, impostor_left, impostor_up;
+};
+struct ALMetalTemporalReprojectionConstants
+{
+    float4x4 current_to_previous, inverse_projection;
+    float4 eye_water_plane;
+    float4 extent_jitter;
+    uint4 config;
+};
+struct ALMetalTemporalMotionOutput
+{
+    float2 motion [[color(0)]];
+    float reactive [[color(1)]];
+    float depth [[color(2)]];
+};
+struct ALMetalTemporalMotionVaryings
+{
+    float4 position [[position, invariant]];
+    float4 current_clip;
+    float4 previous_clip;
+    float2 texcoord;
+    float vertex_alpha;
+    uint material_index [[flat]];
+};
+
+fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> depth_texture [[texture(32)]],
+    constant ALMetalTemporalReprojectionConstants& c [[buffer(0)]])
+{
+    const float2 extent = c.extent_jitter.xy;
+    const uint2 pixel = min(uint2(input.position.xy), uint2(extent) - 1u);
+    const float depth = depth_texture.read(pixel).x;
+    // Native world raster flips clip Y before the top-left Metal viewport, retaining original GL row-zero storage.
+    const float2 current_uv = (float2(pixel) + .5 - c.extent_jitter.zw) / extent;
+    const float clip_depth = c.config.x != 0u ? depth : depth * 2.0 - 1.0;
+    const float4 current_clip = float4(current_uv * 2.0 - 1.0, clip_depth, 1.0);
+    const float4 previous_clip = c.current_to_previous * current_clip;
+    const bool valid = c.config.y == 0u && isfinite(previous_clip.w) && abs(previous_clip.w) > 1.e-7;
+    const float2 previous_uv = valid ? previous_clip.xy / previous_clip.w * .5 + .5 : current_uv;
+    ALMetalTemporalMotionOutput output;
+    output.motion = valid ? (previous_uv - current_uv) * extent : float2(0.0);
+    // Sky/clouds have no single finite surface motion; retain camera vectors but reject their unstable history.
+    const bool background = c.config.x != 0u ? depth <= 0.0 : depth >= 1.0;
+    bool water = false;
+    if (c.config.z != 0u)
+    {
+        const float4 eye_h = c.inverse_projection * current_clip;
+        // Parameterize an eye ray by the opaque point. A positive plane intersection before t=1 is visible water.
+        const float3 eye = eye_h.xyz / (abs(eye_h.w) > 1.e-8 ? eye_h.w : 1.e-8);
+        const float denominator = dot(c.eye_water_plane.xyz, eye);
+        const float t = abs(denominator) > 1.e-8 ? -c.eye_water_plane.w / denominator : -1.0;
+        water = t > 0.0 && (background || t <= 1.00001);
+    }
+    output.reactive = valid && !background && !water ? 0.0 : 1.0;
+    output.depth = depth;
+    return output;
+}
+
+vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalTemporalMotionConstants& c [[buffer(4)]],
+    const device float4* current_palette [[buffer(5)]],
+    const device float4* weights [[buffer(6)]],
+    const device float4* previous_palette [[buffer(7)]],
+    const device float4* clothing [[buffer(8)]],
+    const device float* body_weights [[buffer(9)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = float4(positions[vertex_id].xyz, 1.0);
+    float4 current_clip, previous_clip;
+    if (c.config.x == 1u)
+    {
+        const auto current = almetal_object_skin_vertex(position, float4(0.0), weights[vertex_id], current_palette, c.config.y);
+        const auto previous = almetal_object_skin_vertex(position, float4(0.0), weights[vertex_id], previous_palette, c.config.z);
+        current_clip = almetal_object_skin_transform(c.current_mvp, current.position, current_palette[0].xyz);
+        previous_clip = almetal_object_skin_transform(c.previous_mvp, previous.position, previous_palette[0].xyz);
+    }
+    else if (c.config.x == 2u || c.config.x == 3u)
+    {
+        const auto current = c.config.x == 3u
+            ? almetal_avatar_cloth_vertex(position, normals[vertex_id], clothing[vertex_id], body_weights[vertex_id],
+                current_palette, c.current_wind, c.current_sin, c.current_gravity, c.current_cloth_depth)
+            : almetal_lit_preview_avatar_skin_vertex(position, normals[vertex_id], body_weights[vertex_id], current_palette);
+        const auto previous = c.config.x == 3u
+            ? almetal_avatar_cloth_vertex(position, normals[vertex_id], clothing[vertex_id], body_weights[vertex_id],
+                previous_palette, c.previous_wind, c.previous_sin, c.previous_gravity, c.previous_cloth_depth)
+            : almetal_lit_preview_avatar_skin_vertex(position, normals[vertex_id], body_weights[vertex_id], previous_palette);
+        current_clip = c.current_mvp * current.position;
+        previous_clip = c.previous_mvp * previous.position;
+    }
+    else
+    {
+        current_clip = c.current_mvp * position;
+        previous_clip = c.previous_mvp * position;
+    }
+    ALMetalTemporalMotionVaryings output;
+    output.current_clip = current_clip;
+    output.previous_clip = previous_clip;
+    current_clip.xy += 2.0 * c.raster.xy / c.extent_bias.xy * current_clip.w;
+    current_clip.y = -current_clip.y;
+    output.position = c.config.w != 0u ? current_clip : almetal_clip_from_gl(current_clip);
+    const bool avatar = (c.coverage.w & 16u) != 0u;
+    const uint material_index = c.coverage.x > 1u && !avatar ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0u;
+    output.material_index = c.coverage.y == 0u ? min(material_index, 31u) : min(material_index, 7u);
+    output.texcoord = avatar ? texcoords[vertex_id] : (c.texture_matrix * float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    if (c.coverage.y == 2u)
+        output.texcoord = almetal_world_pbr_texcoord(texcoords[vertex_id], c.texture_matrix,
+            pbr.slots[min(output.material_index, max(pbr.config.x, 1u) - 1u)].texture_transform[0]);
+    output.vertex_alpha = avatar ? 1.0 : float(colors[vertex_id].a) / 255.0;
+    return output;
+}
+
+fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
+    ALMetalTemporalMotionVaryings input [[stage_in]],
+    array<texture2d<float>, 32> textures [[texture(0)]],
+    texture2d<float> depth_texture [[texture(32)]],
+    sampler material_sampler [[sampler(0)]],
+    constant ALMetalTemporalMotionConstants& c [[buffer(1)]])
+{
+    const bool forward = (c.coverage.w & 8u) != 0u;
+    const bool alpha_mask = (c.coverage.w & 1u) != 0u;
+    const uint material_index = input.material_index;
+    float alpha = material_index < c.coverage.x ?
+        textures[material_index].sample(material_sampler, input.texcoord, bias(c.extent_bias.z)).a : 1.0;
+    if (c.coverage.y == 2u) alpha *= input.vertex_alpha;
+    if (c.coverage.y == 0u && (c.coverage.w & 2u) != 0u) alpha *= input.vertex_alpha;
+    const bool masked = alpha_mask || (c.coverage.y == 1u && c.coverage.z == 2u);
+    const float threshold = c.coverage.y ? c.thresholds[min(material_index, 7u)].x : c.raster.z;
+    const float quantization_bias = c.coverage.y != 0u || (c.coverage.y == 0u && (c.coverage.w & 4u) != 0u)
+        ? 1.0 / 512.0 : 0.0;
+    if ((masked && alpha < threshold - quantization_bias) || (forward && alpha < c.raster.z)) discard_fragment();
+    const uint2 pixel = min(uint2(input.position.xy), uint2(c.extent_bias.xy) - 1u);
+    const float reference_depth = depth_texture.read(pixel).x;
+    const float depth = input.position.z;
+    const float epsilon = 2.e-6;
+    if (forward ? (c.config.w != 0u ? depth < reference_depth - epsilon : depth > reference_depth + epsilon)
+                : abs(depth - reference_depth) > epsilon) discard_fragment();
+    const bool valid = abs(input.current_clip.w) > 1.e-7 && abs(input.previous_clip.w) > 1.e-7 &&
+        all(isfinite(input.current_clip)) && all(isfinite(input.previous_clip));
+    const float2 motion = valid ? (input.previous_clip.xy / input.previous_clip.w -
+        input.current_clip.xy / input.current_clip.w) * .5 * c.extent_bias.xy : float2(0.0);
+    ALMetalTemporalMotionOutput output;
+    output.motion = motion;
+    output.reactive = max(c.extent_bias.w, valid ? 0.0 : 1.0);
+    output.depth = reference_depth;
+    return output;
+}
+
+fragment float4 almetal_world_temporal_color_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> reconstructed [[texture(0)]],
+    texture2d<float> original [[texture(1)]],
+    sampler color_sampler [[sampler(0)]])
+{
+    return float4(reconstructed.sample(color_sampler, input.texcoord).rgb,
+                  original.sample(color_sampler, input.texcoord).a);
+}
+
+fragment ALMetalTemporalMotionOutput almetal_temporal_impostor_reactive_fragment(
+    ALMetalWorldImpostorVaryings input [[stage_in]],
+    texture2d<float> albedo [[texture(0)]], texture2d<float> depth_texture [[texture(32)]],
+    sampler point_sampler [[sampler(0)]])
+{
+    if (albedo.sample(point_sampler, input.texcoord).a < .01) discard_fragment();
+    const float depth = depth_texture.read(uint2(input.position.xy)).x;
+    if (abs(depth - input.position.z) > 2.e-6) discard_fragment();
+    ALMetalTemporalMotionOutput output; output.motion = 0; output.reactive = 1; output.depth = depth;
+    return output;
+}

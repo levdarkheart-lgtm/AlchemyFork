@@ -1,0 +1,185 @@
+/** Temporal motion/coverage fixtures through the production G-buffer and motion replay. */
+#include "almetal_world_inputs_fixture.h"
+#include <cmath>
+
+namespace
+{
+struct MotionPixels
+{
+    std::vector<std::array<std::uint16_t, 2>> motion;
+    std::vector<std::uint8_t> reactive;
+    std::vector<float> depth;
+    float x(unsigned x, unsigned y) const
+    { __fp16 value; const auto bits = motion[y * side + x][0]; std::memcpy(&value, &bits, 2); return float(value); }
+    float y(unsigned x, unsigned y) const
+    { __fp16 value; const auto bits = motion[y * side + x][1]; std::memcpy(&value, &bits, 2); return float(value); }
+};
+ALMetalWorldTemporalPreviousDraw previousDraw(const ALMetalWorldSimpleBatch& batch)
+{
+    ALMetalWorldTemporalPreviousDraw p;
+    std::copy_n(batch.modelview_projection, 16, p.modelview_projection);
+    std::copy_n(batch.texture_matrix, 16, p.texture_matrix);
+    if (batch.skin_palette) p.skin_palette.assign(batch.skin_palette, batch.skin_palette + batch.skin_palette_float_count);
+    p.skin_joint_count = batch.skin_joint_count;
+    std::copy_n(batch.avatar_wind, 4, p.avatar_wind);
+    std::copy_n(batch.avatar_sin_wave, 4, p.avatar_sin_wave);
+    std::copy_n(batch.avatar_gravity, 4, p.avatar_gravity);
+    std::copy_n(batch.avatar_cloth_depth, 4, p.avatar_cloth_depth);
+    p.valid = true; return p;
+}
+MotionPixels motionPixels(Fixture& f, ALMetalWorldSimpleBatch& batch,
+    const ALMetalWorldTemporalPreviousDraw& previous, float camera_shift = 0.f,
+    float jitter_x = 0.f, float jitter_y = 0.f,
+    const ALMetalWorldOpaquePostDeferredScene* forward = nullptr, float water_z = 0.f, bool reverse_z = false)
+{
+    auto world = f.scene(); world.batches = &batch; world.batch_count = 1; world.reverse_z = reverse_z;
+    world.temporal_jitter_pixels[0] = jitter_x; world.temporal_jitter_pixels[1] = jitter_y;
+    auto gbuffer = f.renderer->render(world, &f.error); INFO(f.error); REQUIRE(gbuffer);
+    ALMetalWorldTemporalMotionScene scene;
+    scene.width = scene.height = side; scene.opaque_scene = &world;
+    scene.depth = gbuffer->depthStencilTexture(); scene.reset = false; scene.reverse_z = reverse_z;
+    scene.previous_opaque = &previous; scene.previous_opaque_count = 1;
+    scene.forward_scene = forward;
+    scene.jitter_pixels[0] = jitter_x; scene.jitter_pixels[1] = jitter_y;
+    identity(scene.clip_to_previous_clip); scene.clip_to_previous_clip[12] = camera_shift;
+    identity(scene.inverse_projection); scene.reject_water = water_z != 0.f;
+    scene.eye_water_plane[2] = 1.f; scene.eye_water_plane[3] = -water_z;
+    auto motion = f.renderer->renderTemporalMotion(scene, &f.error); INFO(f.error); REQUIRE(motion);
+    MotionPixels result; result.motion.resize(side * side); result.reactive.resize(side * side); result.depth.resize(side * side);
+    REQUIRE(motion->colorTexture(0)->readback(*f.device, 0, 0, {}, result.motion.data(), side * 4, &f.error));
+    REQUIRE(motion->colorTexture(1)->readback(*f.device, 0, 0, {}, result.reactive.data(), side, &f.error));
+    REQUIRE(motion->colorTexture(2)->readback(*f.device, 0, 0, {}, result.depth.data(), side * 4, &f.error));
+    return result;
+}
+}
+
+TEST_CASE("Temporal rigid object motion excludes camera-independent background and raster jitter", "[almetal][temporal][motion]")
+{
+    Fixture f;
+    auto batch = f.batch(0); auto previous = previousDraw(batch);
+    batch.modelview_projection[12] = .25f;
+    for (auto jitter : std::array<std::array<float, 2>, 3>{{{0, 0}, {.25f, -.375f}, {-.25f, .125f}}})
+    {
+        auto pixels = motionPixels(f, batch, previous, 0, jitter[0], jitter[1]);
+        CHECK(std::abs(pixels.x(18, 16) + 4.f) < .02f);
+        CHECK(std::abs(pixels.y(18, 16)) < .02f);
+        CHECK(pixels.reactive[16 * side + 18] == 0);
+        CHECK(std::abs(pixels.x(1, 30)) < .02f);
+        CHECK(pixels.reactive[30 * side + 1] == 255); // no finite sky surface
+    }
+}
+
+TEST_CASE("Temporal camera projection has analytical current-to-previous input-pixel displacement", "[almetal][temporal][motion]")
+{
+    Fixture f; auto batch = f.batch(0); auto previous = previousDraw(batch);
+    batch.modelview_projection[12] = .125f;
+    auto pixels = motionPixels(f, batch, previous, -.125f);
+    CHECK(std::abs(pixels.x(16, 16) + 2.f) < .02f);
+    CHECK(std::abs(pixels.x(1, 30) + 2.f) < .02f);
+    CHECK(std::abs(pixels.y(16, 16)) < .02f);
+}
+
+TEST_CASE("Temporal attachment and avatar palettes produce independent deformation motion", "[almetal][temporal][motion][avatar]")
+{
+    for (unsigned family : {4u, 6u})
+    {
+        CAPTURE(family);
+        Fixture f; auto batch = f.batch(family); auto previous = previousDraw(batch);
+        if (family == 4) f.attachment_pose[7] = .125f; // joint column0.w
+        else for (unsigned joint = 0; joint < 15; ++joint) f.avatar_pose[joint * 4 + 3] = .125f;
+        auto pixels = motionPixels(f, batch, previous);
+        CHECK(std::abs(pixels.x(17, 16) + 2.f) < .02f);
+        CHECK(std::abs(pixels.y(17, 16)) < .02f);
+        CHECK(pixels.reactive[16 * side + 17] == 0);
+        previous.valid = false;
+        auto invalid = motionPixels(f, batch, previous);
+        CHECK(invalid.reactive[16 * side + 17] == 255);
+    }
+}
+
+TEST_CASE("Temporal alpha-tested legacy and PBR coverage agrees with production depth", "[almetal][temporal][motion][alpha]")
+{
+    for (unsigned family : {0u, 1u, 2u})
+    {
+        CAPTURE(family);
+        Fixture f;
+        const std::uint8_t texture[16]{255,255,255,255, 255,255,255,0, 255,255,255,0, 255,255,255,255};
+        const auto* coverage = f.texture(ALMetalPixelFormat::rgba8_unorm, 2, texture, 8);
+        f.geometry.uv[0][0] = 0; f.geometry.uv[0][1] = 0;
+        f.geometry.uv[1][0] = 1; f.geometry.uv[1][1] = 0;
+        f.geometry.uv[2][0] = .5f; f.geometry.uv[2][1] = 1;
+        f.vertices = f.buffer(&f.geometry, sizeof(f.geometry));
+        auto batch = f.batch(family); batch.diffuse_textures[0] = coverage;
+        batch.alpha_mask = true; batch.alpha_cutoff = .5f;
+        if (family == 1) { batch.material_alpha_mode = 2; batch.materialSlots()[0].alpha_cutoff = .5f; }
+        if (family == 2) batch.pbrSlots()[0].alpha_cutoff = .5f;
+        auto previous = previousDraw(batch);
+        auto pixels = motionPixels(f, batch, previous, 0, .25f, -.125f);
+        unsigned covered = 0, uncovered = 0;
+        for (unsigned i = 0; i < side * side; ++i)
+        {
+            if (pixels.depth[i] < .99f)
+            {
+                ++covered;
+                CHECK(pixels.reactive[i] == 0);
+                const unsigned x = i % side, y = i / side;
+                CHECK(std::abs(pixels.x(x, y)) < .02f);
+                CHECK(std::abs(pixels.y(x, y)) < .02f);
+            }
+            else ++uncovered;
+        }
+        CHECK(covered > 20); CHECK(uncovered > 100);
+    }
+}
+
+TEST_CASE("Temporal animated UV and blended content conservatively reject history", "[almetal][temporal][motion][reactive]")
+{
+    Fixture f; auto batch = f.batch(0); auto previous = previousDraw(batch);
+    batch.texture_matrix[12] = .25f;
+    auto animated = motionPixels(f, batch, previous);
+    CHECK(animated.reactive[16 * side + 16] == 255);
+    batch.texture_matrix[12] = 0.f;
+    auto blended = batch; blended.pre_water_alpha = true; blended.pre_water_minimum_alpha = .004f;
+    ALMetalWorldOpaquePostDeferredScene forward; forward.batches = &blended; forward.batch_count = 1;
+    auto pixels = motionPixels(f, batch, previous, 0, 0, 0, &forward);
+    CHECK(pixels.reactive[16 * side + 16] == 255);
+    CHECK(std::abs(pixels.x(16, 16)) < .02f); // transparent rejection does not replace opaque motion/depth
+}
+
+TEST_CASE("Temporal cloth motion uses prior submitted procedural deformation parameters", "[almetal][temporal][motion][avatar]")
+{
+    Fixture f;
+    for (auto& clothing : f.geometry.cloth) { clothing[0] = .2f; clothing[3] = 1.f; }
+    f.vertices = f.buffer(&f.geometry, sizeof(f.geometry));
+    auto batch = f.batch(6); batch.avatar_cloth = true; batch.cloth_offset = offsetof(Fixture::Geometry, cloth);
+    auto previous = previousDraw(batch);
+    // Unit +Z source normal, gravity .1 gives .15 cloth displacement factor; .2*.15=.03 NDC, .48 input pixels.
+    batch.avatar_gravity[2] = .1f;
+    auto pixels = motionPixels(f, batch, previous);
+    CHECK(std::abs(pixels.x(16, 16) + .48f) < .025f);
+    CHECK(std::abs(pixels.y(16, 16)) < .025f);
+    CHECK(pixels.reactive[16 * side + 16] == 0);
+}
+
+TEST_CASE("Temporal water rejection is bounded by the opaque eye-ray intersection", "[almetal][temporal][motion][reactive]")
+{
+    Fixture f; auto batch = f.batch(0); auto previous = previousDraw(batch);
+    auto behind = motionPixels(f, batch, previous, 0, 0, 0, nullptr, .5f);
+    auto front = motionPixels(f, batch, previous, 0, 0, 0, nullptr, .1f);
+    CHECK(behind.reactive[16 * side + 16] == 0);
+    CHECK(front.reactive[16 * side + 16] == 255);
+    CHECK(std::abs(front.x(16, 16)) < .02f);
+    CHECK(std::abs(front.depth[16 * side + 16] - .625f) < 1.e-6f);
+}
+
+TEST_CASE("Temporal reversed depth retains motion sign and device depth", "[almetal][temporal][motion][depth]")
+{
+    Fixture f; auto batch = f.batch(0); auto previous = previousDraw(batch);
+    batch.modelview_projection[13] = .125f;
+    auto pixels = motionPixels(f, batch, previous, 0, .25f, -.25f, nullptr, 0, true);
+    CHECK(std::abs(pixels.y(16, 17) + 2.f) < .02f);
+    CHECK(std::abs(pixels.x(16, 17)) < .02f);
+    CHECK(std::abs(pixels.depth[17 * side + 16] - .25f) < 1.e-6f);
+    CHECK(pixels.reactive[17 * side + 16] == 0);
+    CHECK(pixels.depth[31 * side + 1] == 0.f);
+}
