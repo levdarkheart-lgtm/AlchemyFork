@@ -4101,14 +4101,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         main_world_capture && !snapshot_request && !gSnapshot && !gCubeSnapshot && !sRenderingHUDs &&
         !sCutoutRender && !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
         RenderBufferVisualization < 0);
-    if (ALMetalDiagnosticTelemetry::enabled())
-    {
-        // Review-only A/B override, never persisted or exposed as a graphics preference. It exists only in
-        // an explicitly enabled quiet diagnostic session; normal rendering always uses the automatic policy.
-        static const auto* disable_bias = gSavedSettings.declareBOOL("RenderMetalSpatialMipBiasDisabledForReview",
-            false, "Temporary quiet-session control for Spatial mip-policy qualification", LLControlVariable::PERSIST_NO);
-        if (disable_bias->getValue().asBoolean()) capture.material_mip_bias = 0.f;
-    }
     if (capture.normal_hdr != LLRender::sGBufferNormHDR ||
         capture.hdr != hdrEnabled())
         capture.avatar_resources->discardIncompatible(
