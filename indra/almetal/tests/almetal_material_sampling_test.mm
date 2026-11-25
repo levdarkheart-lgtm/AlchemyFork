@@ -118,9 +118,9 @@ void equalGBuffer(const Pixels& actual, const Pixels& expected)
 
 void closeSamplingGBuffer(const Pixels& actual, const Pixels& expected)
 {
-    // Fractional mip LOD expressed as log2(rho)+bias or log2(rho*exp2(bias))
-    // can differ at sampler fixed-point/normalized-output rounding boundaries.
-    // Keep exact depth/stencil, <=1/255 color and <=8/65535 normal-storage tolerances.
+    // The independent explicit-LOD reference is stored as normalized 16-bit
+    // constant texels. Allow only that conversion and G-buffer quantization:
+    // exact depth/stencil, <=1/255 color and <=8/65535 normal storage.
     for (unsigned slot = 0; slot < actual.colors.size(); ++slot)
     {
         REQUIRE(actual.colors[slot].size() == expected.colors[slot].size());
@@ -151,6 +151,68 @@ void scaleSamplingUV(Fixture& f, const Fixture::Geometry& original, float scale)
     for (auto& uv : f.geometry.uv) for (float& axis : uv) axis *= scale;
     f.vertices = f.buffer(&f.geometry,sizeof(f.geometry));
 }
+
+// Independent native explicit-LOD reference for the rho=4 triangle. A
+// fractional bias and a derivative rescale are not byte-equivalent on M1 Max:
+// native calculate_lod and texture-filter LOD precision differ. Explicit level
+// (2+bias) independently reproduces the sampler's actual requested LOD without
+// cloning any production material shader, hardcoding a GPU quantization grid,
+// or widening image tolerances. Private PPD598 oracle retains that distinction.
+struct ExplicitMaterialLodReference
+{
+    id<MTLDevice> device;
+    id<MTLRenderPipelineState> pipeline;
+    explicit ExplicitMaterialLodReference(Fixture& f)
+    {
+        device=(__bridge id<MTLDevice>)f.device->nativeHandle();
+        NSString* source=@R"METAL(
+            #include <metal_stdlib>
+            using namespace metal;
+            struct V {float4 p[[position]];float2 uv;};
+            vertex V material_reference_vertex(uint i[[vertex_id]]) {
+                float2 uv=float2((i<<1)&2,i&2); return {float4(uv.x*2-1,1-uv.y*2,0,1),uv};
+            }
+            fragment float4 material_reference_fragment(V v[[stage_in]],texture2d<float> t[[texture(0)]],
+                constant float& lod[[buffer(0)]]) {
+                constexpr sampler s(coord::normalized,address::repeat,filter::linear,mip_filter::linear,max_anisotropy(1));
+                return t.sample(s,v.uv,level(lod));
+            }
+        )METAL";
+        NSError* error=nil;
+        auto options=[MTLCompileOptions new]; options.languageVersion=MTLLanguageVersion3_1;
+        auto library=[device newLibraryWithSource:source options:options error:&error];
+        INFO((error ? error.description.UTF8String : "")); REQUIRE(library);
+        auto descriptor=[MTLRenderPipelineDescriptor new];
+        descriptor.vertexFunction=[library newFunctionWithName:@"material_reference_vertex"];
+        descriptor.fragmentFunction=[library newFunctionWithName:@"material_reference_fragment"];
+        descriptor.colorAttachments[0].pixelFormat=MTLPixelFormatRGBA32Float;
+        pipeline=[device newRenderPipelineStateWithDescriptor:descriptor error:&error];
+        INFO((error ? error.description.UTF8String : "")); REQUIRE(pipeline);
+    }
+    const ALMetalTexture* constant(Fixture& f,const ALMetalTexture& texture,float lod)
+    {
+        auto descriptor=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:side height:side mipmapped:NO];
+        descriptor.storageMode=MTLStorageModeShared; descriptor.usage=MTLTextureUsageRenderTarget;
+        auto output=[device newTextureWithDescriptor:descriptor]; REQUIRE(output);
+        auto pass=[MTLRenderPassDescriptor renderPassDescriptor];
+        pass.colorAttachments[0].texture=output; pass.colorAttachments[0].loadAction=MTLLoadActionDontCare;
+        pass.colorAttachments[0].storeAction=MTLStoreActionStore;
+        auto command=[(__bridge id<MTLCommandQueue>)f.device->nativeCommandQueue() commandBuffer]; REQUIRE(command);
+        auto encoder=[command renderCommandEncoderWithDescriptor:pass]; REQUIRE(encoder);
+        [encoder setRenderPipelineState:pipeline]; [encoder setViewport:(MTLViewport){0,0,side,side,0,1}];
+        [encoder setFragmentTexture:(__bridge id<MTLTexture>)texture.nativeHandle() atIndex:0];
+        [encoder setFragmentBytes:&lod length:sizeof(lod) atIndex:0];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3]; [encoder endEncoding];
+        [command commit]; [command waitUntilCompleted]; REQUIRE(command.status==MTLCommandBufferStatusCompleted);
+        std::array<float,4> pixel{};
+        [output getBytes:pixel.data() bytesPerRow:sizeof(pixel) fromRegion:MTLRegionMake2D(side/2,side/2,1,1) mipmapLevel:0];
+        std::array<std::uint16_t,4> normalized;
+        for (unsigned c=0;c<4;++c)
+        { REQUIRE(std::isfinite(pixel[c])); normalized[c]=std::lround(std::clamp(pixel[c],0.f,1.f)*65535.f); }
+        return f.texture(ALMetalPixelFormat::rgba16_unorm,1,normalized.data(),sizeof(normalized));
+    }
+};
 
 std::unique_ptr<ALMetalRenderTarget> samplingSeed(Fixture& f, bool gbuffer)
 {
@@ -203,7 +265,7 @@ const ALMetalTexture* materialSamplingEnvironment(Fixture& f)
 }
 
 AlphaPixels sampleAlpha(Fixture& f, unsigned family, const ALMetalTexture* texture, float bias,
-    const ALMetalTexture* legacy_environment)
+    const ALMetalTexture* legacy_environment, bool include_depth=true)
 {
     auto gbuffer = samplingSeed(f, true), composed = samplingSeed(f, false);
     auto color = samplingBatch(f, family, MaterialMap::diffuse, texture);
@@ -243,7 +305,8 @@ AlphaPixels sampleAlpha(Fixture& f, unsigned family, const ALMetalTexture* textu
     lighting.parameters[0] = 128.f; lighting.parameters[1] = .004f; lighting.parameters[2] = 1.f;
     ALMetalWorldOpaquePostDeferredScene scene;
     scene.gbuffer = gbuffer.get(); scene.composed_lighting = composed.get();
-    scene.width = scene.height = side; scene.batches = batches.data(); scene.batch_count = batches.size();
+    scene.width = scene.height = side;
+    scene.batches = batches.data(); scene.batch_count = include_depth ? batches.size() : 1;
     scene.alpha_environment = &environment; scene.alpha_lighting = &lighting;
     scene.legacy_environment = legacy_environment;
     scene.material_mip_bias = bias;
@@ -337,7 +400,7 @@ TEST_CASE("almetal: Temporal material bias selects LOD0 and fractional finer mip
 {
     @autoreleasepool
     {
-        Fixture f; materialSamplingTriangle(f);
+        Fixture f; materialSamplingTriangle(f); ExplicitMaterialLodReference native_lod(f);
         const auto original = f.geometry;
         for (unsigned family : {0u,1u,2u})
         for (MaterialMap map : {MaterialMap::diffuse,MaterialMap::normal,MaterialMap::auxiliary,MaterialMap::emissive})
@@ -360,11 +423,10 @@ TEST_CASE("almetal: Temporal material bias selects LOD0 and fractional finer mip
             {
                 const auto policy=methodSamplingPolicies[index]; CAPTURE(policy.name,policy.bias);
                 observed[index]=sampleGBuffer(f,batch,policy.bias);
-                // Independent derivative oracle: constant values within each
-                // mip make UV location irrelevant; scaling only rho selects the
-                // same analytical LOD2+bias through the original zero-bias path.
-                scaleSamplingUV(f,original,std::exp2(policy.bias));
-                const auto reference=samplingBatch(f,family,map,chain);
+                const bool integer=policy.bias==std::floor(policy.bias);
+                scaleSamplingUV(f,original,integer ? std::exp2(policy.bias) : 1.f);
+                const auto* reference_texture=integer ? chain : native_lod.constant(f,*chain,2.f+policy.bias);
+                const auto reference=samplingBatch(f,family,map,reference_texture);
                 closeSamplingGBuffer(observed[index],sampleGBuffer(f,reference,0.f));
             }
             REQUIRE_FALSE(observed[0] == observed[1]); REQUIRE_FALSE(observed[1] == observed[2]);
@@ -379,7 +441,7 @@ TEST_CASE("almetal: Temporal alpha color and depth keep matching finer and fract
 {
     @autoreleasepool
     {
-        Fixture f; materialSamplingTriangle(f); const auto original=f.geometry;
+        Fixture f; materialSamplingTriangle(f); const auto original=f.geometry; ExplicitMaterialLodReference native_lod(f);
         std::array<RGBA,8> levels; levels.fill(RGBA{0,0,255,0}); levels[0]={255,0,0,255};
         const auto* chain=materialDistinctMips(f,levels);
         const auto* environment=materialSamplingEnvironment(f);
@@ -392,8 +454,19 @@ TEST_CASE("almetal: Temporal alpha color and depth keep matching finer and fract
                 CAPTURE(family,policy.name,policy.bias);
                 scaleSamplingUV(f,original,1.f);
                 const auto actual=sampleAlpha(f,family,chain,policy.bias,environment);
-                scaleSamplingUV(f,original,std::exp2(policy.bias));
-                const auto expected=sampleAlpha(f,family,chain,0.f,environment);
+                // Compare the two production passes directly at the SAME
+                // actual bias, independently of any fractional-LOD oracle.
+                const auto color_only=sampleAlpha(f,family,chain,policy.bias,environment,false);
+                REQUIRE(actual.color==color_only.color);
+                const std::array<__fp16,4> seed{.03125f,.0625f,.125f,.5f};
+                std::array<std::uint16_t,4> seed_bits; std::memcpy(seed_bits.data(),seed.data(),sizeof(seed_bits));
+                const auto far=std::bit_cast<std::uint32_t>(1.f);
+                for (std::size_t p=0;p<actual.depth.size();++p)
+                    REQUIRE((color_only.color[p]!=seed_bits)==(actual.depth[p]!=far));
+                const bool integer=policy.bias==std::floor(policy.bias);
+                scaleSamplingUV(f,original,integer ? std::exp2(policy.bias) : 1.f);
+                const auto* reference_texture=integer ? chain : native_lod.constant(f,*chain,2.f+policy.bias);
+                const auto expected=sampleAlpha(f,family,reference_texture,0.f,environment);
                 REQUIRE(actual.depth == expected.depth); REQUIRE(actual.color.size() == expected.color.size());
                 for (std::size_t p=0;p<actual.color.size();++p) for (unsigned c=0;c<4;++c)
                 {
