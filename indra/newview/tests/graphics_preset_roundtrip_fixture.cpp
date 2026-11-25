@@ -168,12 +168,12 @@ void run()
     CHECK(gSavedSettings.getString("PresetGraphicActive") == "MetalFX roundtrip");
     CHECK(!manager.mIgnoreChangedSignal);
 
-    // Both Half variants are fenced when an older quality preset has no key.
+    // Every optional mode returns to Standard when an older quality preset has no key.
     LLSD older;
     older["RenderFSAAType"] = setting("U32", 1);
     older["RenderCASSharpness"] = setting("F32", .25f);
     write(PRESETS_GRAPHIC, "Older graphics", older);
-    for (S32 mode : {1, 2})
+    for (S32 mode : {1, 2, 3, 4, 5, 6, 7})
     {
         gSavedSettings.setS32(MODE, mode);
         manager.loadPreset(PRESETS_GRAPHIC, "Older graphics");
@@ -184,8 +184,8 @@ void run()
         CHECK(!manager.mIgnoreChangedSignal);
     }
 
-    // Explicit Standard, Half, and higher-resolution MetalFX modes round-trip.
-    for (S32 mode : {0, 1, 3, 4})
+    // Standard, linear, Spatial and Temporal modes round-trip without remapping their saved IDs.
+    for (S32 mode : {0, 1, 3, 4, 5, 6, 7})
     {
         gSavedSettings.setS32(MODE, mode);
         const auto name = "Explicit mode " + std::to_string(mode);

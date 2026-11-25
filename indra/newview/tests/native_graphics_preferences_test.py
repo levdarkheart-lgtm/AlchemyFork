@@ -86,9 +86,12 @@ def verify_packaging(read, advanced):
         assert status.get("wrap") == "true" and int(status.get("height")) >= 32, "fallback reason needs two lines"
         assert int(status.get("left")) + int(status.get("width")) < int(controls["vert_border"].get("left")), "status overlaps the other column"
         if "MainResolutionMetalFX75" in controls:
-            assert {node.get("name"): node.get("value") for node in controls["main resolution mode"]} == {
+            expected_modes = {
                 "MainResolutionStandard": "0", "MainResolutionHalf": "1", "MainResolutionMetalFX": "2",
-                "MainResolutionMetalFX67": "3", "MainResolutionMetalFX75": "4"}, "saved resolution choice IDs changed"
+                "MainResolutionMetalFX67": "3", "MainResolutionMetalFX75": "4"}
+            if "MainResolutionTemporal50" in controls:
+                expected_modes.update(MainResolutionTemporal50="5", MainResolutionTemporal67="6", MainResolutionTemporal75="7")
+            assert {node.get("name"): node.get("value") for node in controls["main resolution mode"]} == expected_modes, "saved resolution choice IDs changed"
             mode = llsd_map(settings["RenderMetalMainResolutionMode"])
             assert mode["Type"].text == "S32" and mode["Persist"].text == "1" and mode["Value"].text == "0", "Standard must stay the persistent default"
             assert int(status.get("height")) >= 48, "effective scale and dimensions need room beside a fallback reason"
@@ -156,6 +159,7 @@ def main():
         "{" + json.dumps(key) + ", " + json.dumps(value) + "}" for key, value in strings.items()))
     generated = generated.replace("// @RESOLUTION_STATUS_TESTS@", "checkResolutionStatus();" if has_resolution_status else "")
     generated = "#define HAS_RESOLUTION_STATUS " + str(int(has_resolution_status)) + "\n" + generated
+    generated = "#define HAS_TEMPORAL_RESOLUTION " + str(int("main_resolution_temporal" in strings)) + "\n" + generated
     generated = "#define HAS_SCALED_RESOLUTION " + str(int("ALRenderResourceInputs::mainResolutionPolicy(choice)" in source)) + "\n" + generated
     hookups = "\n".join(statement(source, name + " =") for name in
                          ("mImpostorsChangedSignal", "mNumImpostorsChangedSignal"))

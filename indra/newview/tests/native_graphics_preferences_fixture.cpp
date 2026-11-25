@@ -244,7 +244,29 @@ void checkResolutionStatus()
     gPipeline.status = {4, 2, true, "", 2593, 1627, 3457, 2169};
     floater.draw();
     CHECK(text.text == "Active: 75% MetalFX Spatial\nScene 2593×1627 → 3457×2169");
-    for (S32 invalid : {-1, 5, 99})
+#if HAS_TEMPORAL_RESOLUTION
+    for (const auto& [choice, percentage] : std::map<S32, std::string>{{5, "50"}, {6, "67"}, {7, "75"}})
+    {
+        gSavedSettings.resolution_mode = choice;
+        floater.draw();
+        CHECK(text.text == "Pending next world frame");
+        gPipeline.status = {choice, 3, true, ""};
+        floater.draw();
+        CHECK(text.text == "Active: " + percentage + "% MetalFX Temporal");
+        gPipeline.status = {choice, 1, true, "Temporal is unavailable on this device"};
+        floater.draw();
+        CHECK(text.text == "Active: " + percentage + "% Linear — Temporal is unavailable on this device");
+        gPipeline.status = {choice, 2, true, "This view uses Spatial reconstruction"};
+        floater.draw();
+        CHECK(text.text == "Active: " + percentage + "% MetalFX Spatial — This view uses Spatial reconstruction");
+    }
+    gSavedSettings.resolution_mode = 6;
+    gPipeline.status = {6, 3, true, "", 2305, 1446, 3457, 2169, -1.58f};
+    floater.draw();
+    CHECK(text.text == "Active: 67% MetalFX Temporal\nScene 2305×1446 → 3457×2169");
+    CHECK(text.tooltip == text.text + "\nWorld material mip adjustment: -1.58");
+#endif
+    for (S32 invalid : {-1, 8, 99})
     {
         gSavedSettings.resolution_mode = invalid;
         gPipeline.status = {0, 0, true, ""};

@@ -13,6 +13,7 @@
   <string name="main_resolution_standard">Standard</string>
   <string name="main_resolution_linear">[SCALE]% Linear</string>
   <string name="main_resolution_metalfx">[SCALE]% MetalFX Spatial</string>
+  <string name="main_resolution_temporal">[SCALE]% MetalFX Temporal</string>
   <string name="main_resolution_active">Active: [MODE]</string>
   <string name="main_resolution_fallback">Active: [MODE] — [REASON]</string>
   <string name="main_resolution_unavailable">MetalFX is unavailable for this view</string>
@@ -521,7 +522,7 @@
     name="main resolution mode"
     top_delta="0"
     width="175"
-    tool_tip="Standard follows the existing resolution controls. Scaled modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. 67% uses two-thirds of each output dimension; 75% uses three-quarters. MetalFX requires FXAA or SMAA and supplies its own sharpening instead of CAS; your CAS setting is preserved. With antialiasing off or MetalFX unavailable, linear scaling at the selected percentage and normal CAS are used. Same-size ordinary snapshots in scaled modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
+    tool_tip="Standard follows the existing resolution controls. Scaled modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. 67% uses two-thirds of each output dimension; 75% uses three-quarters. Spatial requires FXAA or SMAA and supplies its own sharpening instead of CAS. Temporal supplies antialiasing without additional CAS sharpening; saved FXAA/SMAA and sharpening preferences are preserved for other modes. Unsupported views use the reported fallback. Spatial with antialiasing off uses linear scaling and normal CAS. Same-size ordinary snapshots in scaled modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
     <combo_box.item
       label="Standard"
       name="MainResolutionStandard"
@@ -542,6 +543,18 @@
       label="75% (MetalFX Spatial)"
       name="MainResolutionMetalFX75"
       value="4" />
+    <combo_box.item
+      label="50% (MetalFX Temporal)"
+      name="MainResolutionTemporal50"
+      value="5" />
+    <combo_box.item
+      label="67% (MetalFX Temporal)"
+      name="MainResolutionTemporal67"
+      value="6" />
+    <combo_box.item
+      label="75% (MetalFX Temporal)"
+      name="MainResolutionTemporal75"
+      value="7" />
   </combo_box>
   <text
     follows="left|top"
