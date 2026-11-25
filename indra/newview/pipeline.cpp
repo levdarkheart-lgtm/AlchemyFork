@@ -10205,7 +10205,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             !mMetalHeroWorldCaptureActive && !mMetalReflectionWorldCaptureActive &&
                             !gSnapshot && !gCubeSnapshot && !sRenderingHUDs && !cutout_snapshot &&
                             !capture.world_ui_chain_snapshot && !capture.world_ui_chain_debug_color &&
-                            RenderBufferVisualization < 0 && !no_post)
+                            RenderBufferVisualization < 0)
                         {
                             pending_resolution_status = MetalMainResolutionStatus{
                                 static_cast<S32>(requested_resolution),
