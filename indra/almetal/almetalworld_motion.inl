@@ -28,6 +28,7 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
         mImpl->temporal_motion_impostor) return true;
     ALMetalRenderPipelineDescriptor descriptor;
     descriptor.library = mImpl->library.get();
+    descriptor.color_attachment_count = 3;
     descriptor.colors[0].format = ALMetalPixelFormat::rg16_float;
     descriptor.colors[1].format = ALMetalPixelFormat::r8_unorm;
     descriptor.colors[2].format = ALMetalPixelFormat::r32_float;
