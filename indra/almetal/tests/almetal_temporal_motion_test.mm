@@ -183,3 +183,75 @@ TEST_CASE("Temporal reversed depth retains motion sign and device depth", "[alme
     CHECK(pixels.reactive[17 * side + 16] == 0);
     CHECK(pixels.depth[31 * side + 1] == 0.f);
 }
+
+TEST_CASE("Temporal reconstruction consumes production rigid and avatar motion with jittered color", "[almetal][temporal][motion][integration]")
+{
+    for (unsigned family : {0u, 6u})
+    {
+        CAPTURE(family);
+        Fixture f;
+        auto scaler = ALMetalTemporalScaler::create(*f.device, &f.error); INFO(f.error); REQUIRE(scaler);
+        ALMetalTemporalScalerDescriptor descriptor;
+        descriptor.input_width = descriptor.input_height = side;
+        descriptor.output_width = descriptor.output_height = side * 2;
+        ALMetalTemporalScalerRequirements requirements;
+        REQUIRE(scaler->prepare(descriptor, requirements, &f.error)); INFO(f.error);
+        REQUIRE(f.renderer->prepareTemporalMotion(&f.error));
+        auto hdr = f.renderer->prepareTemporalTarget(side, side, false, &f.error);
+        auto reconstructed = f.renderer->prepareTemporalTarget(side * 2, side * 2, true, &f.error);
+        auto resolved = f.renderer->prepareTemporalTarget(side * 2, side * 2, false, &f.error);
+        REQUIRE(hdr); REQUIRE(reconstructed); REQUIRE(resolved);
+        auto batch = f.batch(family);
+        auto previous = previousDraw(batch);
+        std::array<float, 2> centroids{};
+        for (unsigned frame_index = 0; frame_index != 2; ++frame_index)
+        {
+            if (frame_index)
+            {
+                if (family == 6) for (unsigned joint = 0; joint != 15; ++joint) f.avatar_pose[joint * 4 + 3] = .125f;
+                else batch.modelview_projection[12] = .125f;
+            }
+            const float jitter_x = frame_index ? -.25f : 0.f;
+            const float jitter_y = frame_index ? .16666667f : -.16666667f;
+            auto world = f.scene(); world.batches = &batch; world.batch_count = 1;
+            world.temporal_jitter_pixels[0] = jitter_x; world.temporal_jitter_pixels[1] = jitter_y;
+            REQUIRE(f.renderer->beginCommandBatch("Production avatar Temporal fixture", &f.error));
+            auto gbuffer = f.renderer->render(world, &f.error); INFO(f.error); REQUIRE(gbuffer);
+            // This independently authored fixture uses the production G-buffer's decoded material color as linear
+            // HDR scene input. Actual world lighting/post orchestration has its separate presentation fixture.
+            REQUIRE(f.renderer->resolveTemporalColor(*gbuffer, *gbuffer, *hdr, &f.error));
+            ALMetalWorldTemporalMotionScene motion_scene;
+            motion_scene.width = motion_scene.height = side; motion_scene.opaque_scene = &world;
+            motion_scene.depth = gbuffer->depthStencilTexture(); motion_scene.reverse_z = false;
+            motion_scene.reset = frame_index == 0; identity(motion_scene.clip_to_previous_clip);
+            motion_scene.jitter_pixels[0] = jitter_x; motion_scene.jitter_pixels[1] = jitter_y;
+            motion_scene.previous_opaque = &previous; motion_scene.previous_opaque_count = 1;
+            auto motion = f.renderer->renderTemporalMotion(motion_scene, &f.error); INFO(f.error); REQUIRE(motion);
+            ALMetalTemporalScalerFrame frame; frame.depth_reversed = false;
+            frame.jitter_x = jitter_x; frame.jitter_y = jitter_y; frame.reset = frame_index == 0;
+            ALMetalTemporalScaler::Ticket ticket = 0;
+            REQUIRE(f.renderer->encodeTemporalUpscale(*scaler, descriptor, *hdr->colorTexture(0), *motion,
+                *reconstructed, frame, ticket, &f.error)); INFO(f.error);
+            REQUIRE(f.renderer->resolveTemporalColor(*hdr, *reconstructed, *resolved, &f.error));
+            REQUIRE(f.renderer->commitCommandBatch(&f.error)); INFO(f.error);
+            REQUIRE(scaler->submitted(ticket, &f.error));
+            std::vector<__fp16> pixels(side * 2 * side * 2 * 4);
+            REQUIRE(resolved->colorTexture(0)->readback(*f.device, 0, 0, {}, pixels.data(), side * 2 * 8, &f.error));
+            float sum = 0.f; unsigned count = 0;
+            for (unsigned y = 0; y < side * 2; ++y) for (unsigned x = 0; x < side * 2; ++x)
+            {
+                const auto* pixel = pixels.data() + (y * side * 2 + x) * 4;
+                CHECK(std::isfinite(float(pixel[0]))); CHECK(std::isfinite(float(pixel[1]))); CHECK(std::isfinite(float(pixel[2])));
+                if (float(pixel[0]) > .2f && float(pixel[1]) < .15f && float(pixel[2]) < .1f)
+                { sum += float(x); ++count; }
+            }
+            REQUIRE(count > 300); centroids[frame_index] = sum / float(count);
+            previous = previousDraw(batch);
+        }
+        // Known .125 clip-space translation is 2 input / 4 output pixels. Reconstruction may soften the boundary;
+        // the centroid must follow the independently moving skin rather than leave its prior silhouette behind.
+        CHECK(std::abs((centroids[1] - centroids[0]) - 4.f) < 1.25f);
+        CHECK(scaler->stats().encoded_calls == 2);
+        CHECK(scaler->stats().submitted_calls == 2);
+    }
+}

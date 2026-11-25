@@ -3943,7 +3943,10 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
     if (!rebuild_optional(rebuild_optional, mImpl->spatial_input_pipeline,
                           next.spatial_input_pipeline) ||
         !rebuild_optional(rebuild_optional, mImpl->spatial_presentation_pipeline,
-                          next.spatial_presentation_pipeline)) return {};
+                          next.spatial_presentation_pipeline) ||
+        !rebuild_optional(rebuild_optional, mImpl->temporal_resolve_pipeline,
+                          next.temporal_resolve_pipeline)) return {};
+    if (mImpl->temporal_motion_background && !replacement->prepareTemporalMotion(error)) return {};
     // These experimental/blend-specialized PSOs are created lazily rather
     // than by create(). Rebuild already-used variants before committing too.
     if (!rebuild_optional(rebuild_optional, mImpl->probe_above_water_flat_pipelines,
