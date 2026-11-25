@@ -4,7 +4,14 @@ Commit `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` is the actual candidate 69464 
 PPD591 is the owner-requested active scope on `codex/metalfx-spatial-20261124`,
 pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
 3df7055a9d have identical gated quiet-output observations. Earlier research stays
-separate. Native remains default; combined lighting OFF; no push authorized.
+separate. Native remains default; combined lighting OFF. On 2026-11-25 the owner authorizes pushing this
+feature branch for AI review only. Private evidence stays local; no usual-branch merge or release.
+
+## Immediate executable action
+
+Publish the owner-authorized `codex/metalfx-spatial-20261124` review branch after the documentation
+harness passes. Share its source/report links for independent review. Keep private evidence local,
+Native default and existing build69464 unchanged; do not merge the usual branch or start Temporal.
 
 ## Active quality work — PPD596
 
@@ -30,7 +37,7 @@ modestly helps textures while missing raster detail persists.67% is the balanced
 still. Continuous motion/scene acceptance remains limited, not silently closed.
 
 Final Native/original controls/CAS restored, review override false, screenshot mode restored and PID22729 closed.
-Review DMG/source/evidence bundle on iCloud Desktop; no push. PPD596 is ready for owner review. Separate PPD597
+Review DMG/source/evidence bundle on iCloud Desktop; review-branch publication now authorized. PPD596 is ready for owner review. Separate PPD597
 records the existing hidden-only probe fixture's default CTest registration failure; do not count it as passing
 or restart probe work. Temporal is a subsequent owner decision; no implementation here.
 
@@ -44,7 +51,7 @@ test after real MetalFX encoding. Release build,14 selected CTest suites (3CPU+
 login/UI/snapshot smoke test or timing run; the later69464 review above supersedes that runtime boundary.
 Review this focused diff and current candidate next; do not restart broad FPS work.
 The separate69462 review DMG and focused diff/verification bundle are on iCloud
-Desktop for review;69457 remains unchanged. No push is authorized.
+Desktop for review;69457 remains unchanged. The owner now authorizes review-branch publication only.
 
 Initial69457 evidence follows; it does not measure the69462 changes.
 Implementation, source-review corrections, clean control/candidate builds and

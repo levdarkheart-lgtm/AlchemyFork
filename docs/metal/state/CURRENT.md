@@ -39,7 +39,9 @@ balance;75% is the best scaled still, while50% retains obvious thin-edge artifac
 separate from extra source pixels. Motion evidence is qualitative/stepped, with unmatched sampled poses;
 continuous shimmer and broader material acceptance remain owner review. Final Native mode/original controls/CAS
 are restored, override false, capture utility restored to stills, and PID22729 is closed. Review app/bundle are
-on iCloud Desktop. No Temporal implementation or push.
+on iCloud Desktop. No Temporal implementation. On 2026-11-25 the owner explicitly authorizes
+publication to `codex/metalfx-spatial-20261124` for another AI to review. Private evidence stays local;
+usual-branch integration, release and product acceptance remain unapproved. Application code remains a5142ae5c2.
 
 PPD597 records an existing hidden/manual probe fixture's incorrect ordinary CTest registration. It was excluded,
 not passed; its coherent maintenance disposition is retained separately without reopening probe experiments.

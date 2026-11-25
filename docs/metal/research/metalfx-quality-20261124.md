@@ -18,7 +18,8 @@ Later test-fixture and documentation commits do not change that executable's ide
 - CPU SHA256: `6c498099bb4acde29e0cc9033dc2faa81c978df4fe3f9b35a37e30190518b05d`.
 - Library SHA256: `087705e4082de00098f9e52fd2a95b5d10688151fde0cceae71d84e35b3ef607`.
 - Private evidence: `artifacts/metal/metalfx-quality-20261124/`.
-- Nothing pushed. Review packaging is local/ad-hoc, Apple Silicon/macOS26+, not notarized.
+- Owner authorized publication to `codex/metalfx-spatial-20261124` on 2026-11-25 for AI review.
+  Private captures/bundles stay local. Review packaging is ad-hoc, Apple Silicon/macOS26+, not notarized.
 
 `ALRenderResourceInputs` centrally maps stable saved choices to reconstruction method
 and exact rational scale. IDs 0/1/2 retain Native, linear50 and Spatial50; IDs 3/4 add
@@ -162,4 +163,5 @@ review executable/evidence for reproducibility.
 Starting Native mode, original66 controls and CAS are restored; the review-only override is
 false. The camera returns to its fixed starting position, capture utility returns to still
 mode, and final viewer PID22729 is closed. Review app/DMG, focused diff, exact results, PNGs/crops
-and clips are on iCloud Desktop. PPD596 is ready for owner review; no push is authorized.
+and clips are on iCloud Desktop. PPD596 is ready for owner review. The owner authorized pushing the
+feature branch for AI review on 2026-11-25; usual-branch integration and release remain unapproved.
