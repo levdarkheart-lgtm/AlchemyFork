@@ -21211,10 +21211,13 @@ fragment float4 almetal_world_temporal_color_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> reconstructed [[texture(0)]],
     texture2d<float> original [[texture(1)]],
-    sampler color_sampler [[sampler(0)]])
+    sampler color_sampler [[sampler(0)]],
+    constant float4& alpha_uv_offset [[buffer(0)]])
 {
+    // RGB is reconstructed onto the unjittered grid. Sample current-frame glow/coverage at the corresponding
+    // jittered input location; MetalFX's output alpha has no viewer glow contract and is deliberately ignored.
     return float4(reconstructed.sample(color_sampler, input.texcoord).rgb,
-                  original.sample(color_sampler, input.texcoord).a);
+                  original.sample(color_sampler, input.texcoord + alpha_uv_offset.xy).a);
 }
 
 fragment ALMetalTemporalMotionOutput almetal_temporal_impostor_reactive_fragment(

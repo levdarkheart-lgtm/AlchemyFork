@@ -3090,7 +3090,7 @@ public:
         std::string* error = nullptr);
     bool resolveTemporalColor(const ALMetalRenderTarget& original,
         const ALMetalRenderTarget& reconstructed, ALMetalRenderTarget& preallocated_output,
-        std::string* error = nullptr);
+        std::string* error = nullptr, const float* jitter_pixels = nullptr);
     std::unique_ptr<ALMetalRenderTarget> prepareTemporalTarget(std::uint32_t width,
         std::uint32_t height, bool shader_write, std::string* error = nullptr);
     bool prepareTemporalMotion(std::string* error = nullptr);
