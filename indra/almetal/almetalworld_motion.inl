@@ -14,7 +14,7 @@ struct alignas(16) WorldTemporalMotionConstants
 struct alignas(16) WorldTemporalReprojectionConstants
 {
     float current_to_previous[16]{}, inverse_projection[16]{}, eye_water_plane[4]{};
-    float extent_jitter[4]{};
+    float extent_jitter[4]{}, water_parameters[4]{};
     std::uint32_t config[4]{};
 };
 }
@@ -69,22 +69,12 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     return true;
 }
 
-std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderTemporalMotion(
-    const ALMetalWorldTemporalMotionScene& scene, std::string* error)
-try
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::prepareTemporalMotionTarget(
+    std::uint32_t width, std::uint32_t height, std::string* error)
 {
-    Impl::GBufferFailureScope transaction(mImpl.get(), error);
-    if (!scene.width || !scene.height || !scene.depth || !scene.opaque_scene ||
-        scene.depth->descriptor().width != scene.width || scene.depth->descriptor().height != scene.height ||
-        !finiteValues(scene.clip_to_previous_clip, 16) || !finiteValues(scene.jitter_pixels, 2) ||
-        (scene.previous_opaque_count && !scene.previous_opaque) ||
-        (scene.previous_forward_count && !scene.previous_forward) ||
-        !prepareTemporalMotion(error))
-    { setError(error, "Temporal motion inputs are incomplete or incompatible"); return {}; }
-    const auto& opaque = *scene.opaque_scene;
-    if (!alMetalValidateWorldView(opaque, error)) return {};
+    if (!width || !height || !prepareTemporalMotion(error)) return {};
     ALMetalRenderTargetDescriptor desc;
-    desc.width = scene.width; desc.height = scene.height;
+    desc.width = width; desc.height = height;
     desc.color_attachment_count = 3;
     desc.colors[0].format = ALMetalPixelFormat::rg16_float;
     desc.colors[0].label = "Alchemy Temporal current-to-previous input pixels";
@@ -93,7 +83,38 @@ try
     desc.colors[2].format = ALMetalPixelFormat::r32_float;
     desc.colors[2].label = "Alchemy Temporal raw device depth";
     desc.label = "Alchemy Temporal motion/depth/rejection inputs";
-    auto target = mImpl->makeRenderTarget(*mImpl->device, desc, error);
+    return mImpl->makeRenderTarget(*mImpl->device, desc, error);
+}
+
+std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::renderTemporalMotion(
+    const ALMetalWorldTemporalMotionScene& scene, std::string* error,
+    std::unique_ptr<ALMetalRenderTarget> prepared_output)
+try
+{
+    Impl::GBufferFailureScope transaction(mImpl.get(), error);
+    if (!scene.width || !scene.height || !scene.depth || !scene.opaque_scene ||
+        scene.depth->descriptor().width != scene.width || scene.depth->descriptor().height != scene.height ||
+        !finiteValues(scene.clip_to_previous_clip, 16) || !finiteValues(scene.jitter_pixels, 2) ||
+        !std::isfinite(scene.water_rejection_margin) || scene.water_rejection_margin < 0.f ||
+        (scene.reject_water && (!finiteValues(scene.inverse_projection, 16) || !finiteValues(scene.eye_water_plane, 4))) ||
+        (scene.previous_opaque_count && !scene.previous_opaque) ||
+        (scene.previous_forward_count && !scene.previous_forward) ||
+        !prepareTemporalMotion(error))
+    { setError(error, "Temporal motion inputs are incomplete or incompatible"); return {}; }
+    const auto& opaque = *scene.opaque_scene;
+    if (!alMetalValidateWorldView(opaque, error)) return {};
+    auto target = std::move(prepared_output);
+    if (target)
+    {
+        const auto& descriptor = target->descriptor();
+        if (descriptor.width != scene.width || descriptor.height != scene.height ||
+            descriptor.sample_count != 1 || descriptor.color_attachment_count != 3 ||
+            descriptor.colors[0].format != ALMetalPixelFormat::rg16_float ||
+            descriptor.colors[1].format != ALMetalPixelFormat::r8_unorm ||
+            descriptor.colors[2].format != ALMetalPixelFormat::r32_float)
+        { setError(error, "Temporal prepared motion target is incompatible"); return {}; }
+    }
+    else target = prepareTemporalMotionTarget(scene.width, scene.height, error);
     if (!target) return {};
     ALMetalRenderPassConfig config;
     for (unsigned i = 0; i != 3; ++i)
@@ -117,6 +138,7 @@ try
     std::memcpy(reprojection.eye_water_plane, scene.eye_water_plane, sizeof(reprojection.eye_water_plane));
     reprojection.config[0] = scene.reverse_z; reprojection.config[1] = scene.reset;
     reprojection.config[2] = scene.reject_water;
+    reprojection.water_parameters[0] = std::max(scene.water_rejection_margin, 0.f);
     bool ok = encoder->setViewport({0, 0, double(scene.width), double(scene.height), 0, 1}, error) &&
         encoder->setScissor({0, 0, scene.width, scene.height}, error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&

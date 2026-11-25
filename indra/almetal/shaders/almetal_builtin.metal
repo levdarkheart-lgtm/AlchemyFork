@@ -21060,7 +21060,7 @@ struct ALMetalTemporalReprojectionConstants
 {
     float4x4 current_to_previous, inverse_projection;
     float4 eye_water_plane;
-    float4 extent_jitter;
+    float4 extent_jitter, water_parameters;
     uint4 config;
 };
 struct ALMetalTemporalMotionOutput
@@ -21105,8 +21105,14 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
         // Parameterize an eye ray by the opaque point. A positive plane intersection before t=1 is visible water.
         const float3 eye = eye_h.xyz / (abs(eye_h.w) > 1.e-8 ? eye_h.w : 1.e-8);
         const float denominator = dot(c.eye_water_plane.xyz, eye);
-        const float t = abs(denominator) > 1.e-8 ? -c.eye_water_plane.w / denominator : -1.0;
-        water = t > 0.0 && (background || t <= 1.00001);
+        // Expand the plane to the known wave-height slab. A camera inside that band has no conservative
+        // per-pixel plane separation; reject its history explicitly rather than ghosting dynamic crests.
+        const float margin = c.water_parameters.x * length(c.eye_water_plane.xyz);
+        const float signed_distance = c.eye_water_plane.w;
+        const bool inside_wave_band = abs(signed_distance) <= margin;
+        const float nearest_plane = signed_distance - copysign(margin, signed_distance);
+        const float t = abs(denominator) > 1.e-8 ? -nearest_plane / denominator : -1.0;
+        water = inside_wave_band || (t > 0.0 && (background || t <= 1.00001));
     }
     output.reactive = valid && !background && !water ? 0.0 : 1.0;
     output.depth = depth;

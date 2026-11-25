@@ -30,7 +30,7 @@ ALMetalWorldTemporalPreviousDraw previousDraw(const ALMetalWorldSimpleBatch& bat
 MotionPixels motionPixels(Fixture& f, ALMetalWorldSimpleBatch& batch,
     const ALMetalWorldTemporalPreviousDraw& previous, float camera_shift = 0.f,
     float jitter_x = 0.f, float jitter_y = 0.f,
-    const ALMetalWorldOpaquePostDeferredScene* forward = nullptr, float water_z = 0.f, bool reverse_z = false)
+    const ALMetalWorldOpaquePostDeferredScene* forward = nullptr, float water_z = 0.f, bool reverse_z = false, float wave_margin = 0.f)
 {
     auto world = f.scene(); world.batches = &batch; world.batch_count = 1; world.reverse_z = reverse_z;
     world.temporal_jitter_pixels[0] = jitter_x; world.temporal_jitter_pixels[1] = jitter_y;
@@ -44,6 +44,7 @@ MotionPixels motionPixels(Fixture& f, ALMetalWorldSimpleBatch& batch,
     identity(scene.clip_to_previous_clip); scene.clip_to_previous_clip[12] = camera_shift;
     identity(scene.inverse_projection); scene.reject_water = water_z != 0.f;
     scene.eye_water_plane[2] = 1.f; scene.eye_water_plane[3] = -water_z;
+    scene.water_rejection_margin = wave_margin;
     auto motion = f.renderer->renderTemporalMotion(scene, &f.error); INFO(f.error); REQUIRE(motion);
     MotionPixels result; result.motion.resize(side * side); result.reactive.resize(side * side); result.depth.resize(side * side);
     REQUIRE(motion->colorTexture(0)->readback(*f.device, 0, 0, {}, result.motion.data(), side * 4, &f.error));
@@ -170,6 +171,10 @@ TEST_CASE("Temporal water rejection is bounded by the opaque eye-ray intersectio
     CHECK(front.reactive[16 * side + 16] == 255);
     CHECK(std::abs(front.x(16, 16)) < .02f);
     CHECK(std::abs(front.depth[16 * side + 16] - .625f) < 1.e-6f);
+    auto crest = motionPixels(f, batch, previous, 0, 0, 0, nullptr, .5f, false, .4f);
+    CHECK(crest.reactive[16 * side + 16] == 255); // nearer wave bound intersects before the opaque surface
+    auto near_water = motionPixels(f, batch, previous, 0, 0, 0, nullptr, .1f, false, .2f);
+    CHECK(std::all_of(near_water.reactive.begin(), near_water.reactive.end(), [](auto value) { return value == 255; }));
 }
 
 TEST_CASE("Temporal reversed depth retains motion sign and device depth", "[almetal][temporal][motion][depth]")

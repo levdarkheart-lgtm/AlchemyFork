@@ -1949,6 +1949,7 @@ struct ALMetalWorldTemporalMotionScene
     float inverse_projection[16]{};
     float eye_water_plane[4]{};
     bool reject_water = false;
+    float water_rejection_margin = 0.f;
     // Actual raster offsets in input-texture pixels. Positive Y follows texture storage (viewer emulates GL row zero).
     float jitter_pixels[2]{};
     std::uint32_t width = 0, height = 0;
@@ -3093,9 +3094,12 @@ public:
         std::string* error = nullptr, const float* jitter_pixels = nullptr);
     std::unique_ptr<ALMetalRenderTarget> prepareTemporalTarget(std::uint32_t width,
         std::uint32_t height, bool shader_write, std::string* error = nullptr);
+    std::unique_ptr<ALMetalRenderTarget> prepareTemporalMotionTarget(std::uint32_t width,
+        std::uint32_t height, std::string* error = nullptr);
     bool prepareTemporalMotion(std::string* error = nullptr);
     std::unique_ptr<ALMetalRenderTarget> renderTemporalMotion(
-        const ALMetalWorldTemporalMotionScene&, std::string* error = nullptr);
+        const ALMetalWorldTemporalMotionScene&, std::string* error = nullptr,
+        std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
 
     // Fallible cached preflight, before choosing the sharpening path. A false
     // result permits existing linear presentation scaling. Once encoding has
