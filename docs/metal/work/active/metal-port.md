@@ -10,19 +10,19 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `663a591f2c543158d4e0bf5a68e4e7236f20a559` is the packaged Temporal application code.
+Commit `64023b8b1656dec297a2658ff546f35ad06efe36` is the corrected69501 application source.
+PPD608/609 are implemented and offline-verified: exact active downstream owners acquired before opacity;
+complete-current-presentation rule enforced at both normal/generic Temporal commit boundaries. Minimal12-world
+allocation2/reuse22/deferral0 versus preserved69494 24/0/132; optional effects also plateau with no post-warm growth.
+Pre-display missing dirt/grade cancellation, once-only settlement, actual retained background and reset recovery pass.
+Focused15 suites pass; Release build,346 ARM64 images/signature/import checks and fullscreen login-only smoke pass.
+Original17 settings files restored and viewer closed. Native/Spatial defaults and quality policies unchanged.
 
-PPD598 implementation/offline qualification is complete for owner live review. The separate Temporal branch
-starts from41e90aaadb; review app69494 contains production663a591f2c (later841358a is test-only).
-Full Release build,346 ARM64 checks, deep/strict signing, mounted DMG identity and fullscreen login-only
-smoke pass. Original17 settings files are restored, viewer closed.18 new scaler/post/material and10 motion
-cases pass API/GPU validation;15 existing regression suites and focused CPU/UI/preset suites pass.
-[Temporal review](../../research/metalfx-temporal-20261125.md) owns exact identities, evidence and limitations.
-
-Private iCloud delivery and authorized Temporal-branch publication receipts accompany the review bundle. The next engineering decision
-is owner live review of Temporal67 detail, motion, transparency and mode changes. No live FPS/quality claim,
-usual-branch merge, release, second renderer project or renewed probe investigation. PPD597/599/600 and
-601–607 preserve their original failures/source proof and repaired verification boundaries.
+The owner authorizes Temporal-review-only code/test/doc push and new private iCloud DMG/ZIP/checksums.
+Delivery receipts record upload completion and final branch commit separately from the app pin. Original69494,
+Spatial and usual branches are preserved. Next decision is owner live rendering review of Temporal67; use
+macOS captures because the viewer snapshot path is independent. No live FPS/quality claim or renewed profiling.
+[Existing Temporal report](../../research/metalfx-temporal-20261125.md) owns exact evidence and boundaries.
 
 ## Preserved Spatial parent checkpoint
 

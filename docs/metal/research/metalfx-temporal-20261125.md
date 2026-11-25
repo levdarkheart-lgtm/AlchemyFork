@@ -1,6 +1,10 @@
-# MetalFX Temporal review — ready for owner live review
+# MetalFX Temporal review — corrected69501 ready for owner review
 
-## Identity and scope
+Current corrective scope: **PPD608/609**, source **64023b8b1656dec297a2658ff546f35ad06efe36**.
+The final section records its allocation/cancellation evidence. The original69494 identity and results below
+are preserved historical provenance; they are not measurements of the corrected viewer.
+
+## Preserved69494 identity and scope
 
 Parent `41e90aaadb938d77955f7c7e752362aab875fff6` was fetched from
 `codex/metalfx-spatial-20261124` unchanged. Implementation uses the separate
@@ -158,3 +162,79 @@ Review stationary textures/thin edges, camera pan/rotation, independently moving
 foliage/hair disocclusion, glass/particles/water, native UI, resize/mode transitions and snapshots.
 Watch for ghosting, shimmer, over-rejection and texture sharpness. This build is ready for that owner
 live review; image-quality acceptance, scene-motion stability and FPS remain explicitly open under PPD598.
+
+
+## Corrective review69501 — allocation ordering and pre-display cancellation
+
+Fetched review head `dbff1c4f1ee78c3a6386a7075d27393f75025498` was unchanged and the Temporal worktree
+was clean before correction. Application source is **64023b8b1656dec297a2658ff546f35ad06efe36**.
+Private evidence: `artifacts/metal/metalfx-temporal-corrections-20261125/`.
+
+PPD608's cause was resource acquisition after `nativeHandle()` correctly marked the command opaque.
+All active downstream pooled targets are now acquired beforehand and carried as exact move-owned targets:
+bloom levels, optional cross-filter targets, display transfer, final presentation and requested reference still.
+Shared descriptor builders preserve the old bloom rounding/formats. Cached procedural lens dirt is prepared
+before Temporal; its inputs need no reconstructed scene. Reference request consumption remains after valid
+display. Exposure, flare and reduced-depth DoF are already before Temporal; SSR-history update and UI/scopes
+are after settlement. Temporal-ineligible AA/CAS/legacy-glow/RLVa paths retain their existing behavior.
+Partial preparation, mismatches and abandonment use existing RAII, pool and completion ownership. No opaque
+or generation checks were weakened, and no production waits, queue or separate cache was added.
+
+Settled12-world fixture at128x96, with a4-world warm-up (native API/GPU validation):
+
+| Configuration | New textures | Pool reuses | Dependency deferrals | Cached bytes | New after warm4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Historical69494, display/final only |24|0|132|1179648|16|
+| Corrected, display/final only |2|22|0|98304|0|
+| Corrected, bloom |6|66|0|114624|0|
+| Corrected, halation/cross-filter/reference |10|110|0|198528|0|
+
+The historical row comes from `temporal-agent-final-checks.json`, production663a591f2c/fixture841358a;
+that exact preserved69494 configuration matches only the corrected minimal row. The optional-effect rows
+have no historical comparison. Continued worlds require positive reuse and an exact allocation plateau,
+not merely bounded storage. Two pending worlds retain distinct targets; odd/changed descriptors, abandonment
+reuse, strict mismatches without replacement allocations and zero leaked texture/buffer storage also pass.
+These are allocation/lifetime results, not FPS measurements.
+
+PPD609's cause was cancellation nested inside `if(exact_base)`: missing dirt/grading skipped it and generic
+cleanup could commit an unfinished Temporal batch. The owning viewer now checks the same Temporal-only
+finalization rule before both commit routes. Flags are cleared before cancellation, making repeated cleanup
+inert. It abandons pending pose/jitter work, invalidates the next history, clears pending current outputs,
+reference and mode status, and leaves the existing `ALMetalRetainedBackground` authority intact.
+Native/Spatial partial commits and the settlement observer's current-presentation requirement remain.
+
+The new3-case orchestration fixture uses the production eligibility and cancellation functions with real
+native commands/scaler/history. Dirt and grade are each unavailable **before the display consumer is called**.
+It asserts no affected command submission, no authoritative pose/jitter advancement, exactly one rejection
+settlement, no successful mode publication, identical retained-world lease/frame/generation/pixels, clean
+teardown and reset/recovered submission. This extends rather than repeats late renderer-failure coverage.
+
+Focused verification passes15 suites, including Temporal presentation7cases/362284 assertions,
+orchestration3/264, scaler6/1041531, motion10/51365, history13/1289, resource plans, Native/Spatial post/lighting
+admission, and actual finalize policy16/469. Exact command, environment, executable/library hashes and exit0
+are retained in `focused-01-receipt.json` and `focused-01.log`. Metal API/GPU validation is enabled.
+A first build invocation used the wrong test-target name and failed before compilation; the corrected build02
+passes. No product defect is inferred from that setup error.
+
+Release build69501 passes;346 ARM64 images, three owned executables' imports, and deep/strict signing pass.
+Fullscreen login-only smoke uses the verified69501 executable/PID with AutoLoginfalse, then quits cleanly;
+all17 original settings files are restored byte-exact. Original69494 artifacts and Spatial/usual branches remain preserved. All disclosed content-motion,
+snapshot, exposure, mip, AA and sharpening policies are unchanged. Home/Club FPS and live quality remain
+owner review; no new live traces or login are part of this correction.
+
+For live comparison use macOS window screenshots or screen recording. The viewer's independent native-detail
+snapshot path does not reliably represent the displayed Temporal reconstruction.
+
+
+Corrected executable SHA-256: `e0eb97ac31bf08a354e7ad6cf7fd6a33197c5ff514b718c1df69488725bbf0d9`.
+Shader-library SHA-256: `b8662ac1995b4e7df0242d975269521c4580b74ab53dff9ab1cc556ee3ec4109`, byte-identical
+to69494. New DMG: `Alchemy-MetalFX-Temporal-69501-AppleSilicon.dmg`; compact source/verification ZIP:
+`MetalFX-Temporal-69501-Review.zip`; checksums: `SHA256SUMS-Temporal-69501.txt`, on iCloud Desktop.
+Deployment remains Apple Silicon/macOS26+, ad-hoc signed and not notarized. The bundle records the final
+review-branch commit separately from application64023b8b16 and includes package hash/mounted-file verification.
+Native remains default; select67% (MetalFX Temporal) under Advanced Graphics → World resolution and check
+the committed effective status/reason after entering the world. Keep combined main lighting OFF. No remaining
+blocker to owner review is known; live acceptance, broader content limitations and inherited PPD592 remain open.
+
+Corrected DMG SHA-256: `5f10e12ce4738be5727ee70c7e1df61940d6405f852a422b5872cdd2fb76cb1e`.
+Readonly-mounted executable/library hashes and deep/strict signature match the frozen69501 app.

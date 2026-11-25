@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-608 -->
+<!-- next-defect-id: PPD-610 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14732,7 +14732,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Original reference: `almetal_probe_accumulator_test.mm` contains hidden/manual cases requiring external baseline/candidate source inputs. Its ordinary file-level CTest filter excludes hidden cases, matching none.
 - Evidence: [Original verification and exclusions](research/metalfx-quality-20261124.md), [Temporal corrective verification](research/metalfx-temporal-20261125.md). During PPD596 focused verification, `ctest -R almetal_tests/almetal_probe_accumulator_test` fails with “No test cases matched” and “No tests ran”. Direct hidden correctness invocation then fails before GPU work because `ALCHEMY_PROBE_TEST_BASELINE_SOURCE` is absent. Private `gpu-tests.log` and `explicit-probe-parity.log` retain both attempts. No new probe experiment ran.
 - Next action: Retain the explicit external-input/manual fixture and its documented hidden invocation. Default registration repair is implemented; owner review remains separate from the successful enumeration check. Do not reopen probe optimization or count the manual fixture as executed.
-- Verification: CMake now compiles this source through target_sources outside automatic per-file CTest registration. Final qualified-Python enumeration contains804 default tests and zero probe-accumulator entries. Supported Catch --list-tests --verbosity quiet with [.probe-accumulator-parity] lists the real hidden case without executing it or supplying external data. The obsolete --list-test-names-only attempt failed and is retained. Canonical private cpu-qualification-03 and cpu-fixtures-final-01 receipts preserve commands, inventories and hashes.
+- Verification: CMake now compiles this source through target_sources outside automatic per-file CTest registration. The69494 qualified-Python enumeration contains804 default tests and zero probe-accumulator entries; corrected69501 contains805 with the new orchestration suite and still zero manual probe entries. Supported Catch --list-tests --verbosity quiet with [.probe-accumulator-parity] lists the real hidden case without executing it or supplying external data. The obsolete --list-test-names-only attempt failed and is retained. Canonical private cpu-qualification-03 and cpu-fixtures-final-01 receipts preserve commands, inventories and hashes.
 - Owner verification: pending
 - Push approval: granted
 
@@ -14754,7 +14754,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-25
 - Original reference: Owner requests an optional native Temporal renderer with rigid/attachment/skinned motion, main-world history and offline correctness before owner live review.
 - Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
-- Next action: Owner reviews the frozen69494 review package for live stationary detail, camera/rigid/avatar motion, foliage/hair, transparency, mode changes and real-scene FPS. Native stays default. Terrain editing and texture-content-only animation remain explicit review limitations. Only the Temporal review branch is authorized for publication; usual-branch integration and release acceptance remain unapproved.
+- Next action: Owner reviews the corrected69501 package (PPD608/609) for live stationary detail, camera/rigid/avatar motion, foliage/hair, transparency, mode changes and real-scene FPS;69494 remains historical. Native stays default. Terrain editing and texture-content-only animation remain explicit review limitations. Only the Temporal review branch is authorized for publication; usual-branch integration and release acceptance remain unapproved.
 - Verification: Application production source663a591f2c/build26.4.0.69494 passes full build03, deep/strict signing and346 ARM64-image checks. Temporal integrated03 passes18 cases/2,221,543 assertions with API/GPU Validation after test-only fractional-LOD oracle correction841358a; application/shader bytes are unchanged. Motion-final-02 independently passes10 cases/51,365 assertions, including real rigid/body/cloth production paths into MetalFX. History13/1,289 and resource-plan34/3,356 pass; actual preferences398 and preset116 checks pass. Fifteen existing regression suites pass. Qualified fullscreen login smoke stops at login with AutoLogin false, OpenHTJ2K0.27.0 and17 original settings files restored byte-exact. No live login, Home/Club image-quality acceptance, real-scene stability or FPS result is claimed. Static terrain uses camera/depth reprojection without explicit terrain-edit rejection; texture-content-only animation lacks a dedicated reactive classification. Water/sky/blended/particle rejection is intentional, not full temporal accumulation for those pixels.
 - Owner verification: pending
 - Push approval: granted
@@ -14939,3 +14939,43 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-25: Registered before repair from independent source review during offline qualification. No live quality or FPS attribution.
 
 - 2026-11-25 final corrective disposition: Implemented downstream actual-dimension plate selection while preserving normal settings and Native/Spatial sizing. Added a real enabled-dirt post test with strict incompatible-size rejection and a positive output response. No quality reduction or additional scheduling mechanism was used.
+
+
+## PPD-608 — Temporal opaque encoding prevents downstream post-target reuse
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Temporal post resource preparation
+- Discovered: 2026-11-25
+- Original reference: Original1eb44bb renderFinalize holds transient post owners through presentation; MetalFX is new. Existing native renderSpatialUpscale pre-acquires its final target before native command access.
+- Evidence: [Temporal review](research/metalfx-temporal-20261125.md). Build69494 ownership fixture12 settled worlds creates24textures with0reuse/132dependency deferrals; nativeHandle marks the current plan opaque and View::mayIssueGeneration correctly rejects reuse.
+- Next action: Deliver corrected review build after package/login-screen checks; owner performs live image review. Keep fixed-descriptor plateau, optional-effect and in-flight/abandon assertions. No Home FPS benefit is claimed.
+- Verification: Source64023b8b16 pre-acquires actual active bloom/cross-filter, display, final and requested reference owners before Temporal; dirt generation is earlier. API/GPU validation passes7 presentation cases including3 twelve-world sections: minimal2new/22reuse/0deferrals/98304cached bytes versus historical69494 24/0/132/1179648. Bloom6new/66reuse/0deferrals, halation-cross-reference10new/110reuse/0deferrals; every arm allocates zero after warm4. Distinct pending targets, descriptor rejection without replacement allocation, abandonment reuse and zero teardown resource leaks pass. Full focused15-suite run, Release69501 build,346 ARM64/signature/import checks and fullscreen login-only smoke pass; delivery verification is retained in the private review receipts.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Owner reports and authorizes bounded corrective implementation, tests, package and push on the Temporal review branch only. Existing69494 artifacts are preserved. Compare allocation/resource correctness without live traces or quality-policy changes.
+
+
+- 2026-11-25 corrective verification: c5c61c93b0 adds prepared owners with shared authoritative bloom descriptors;64023b8b16 wires actual viewer effects/dimensions and preserves reference-request consumption. Native/Spatial on-demand defaults, resource-plan opacity/generation checks and all shader/quality policies are unchanged. Original69494 receipts remain private and explicitly historical.
+
+## PPD-609 — Early display rejection bypasses Temporal cancellation
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Viewer main-post transaction orchestration
+- Discovered: 2026-11-25
+- Original reference: MetalFX history is new; original renderFinalize requires complete post consumers while existing Native/Spatial native batches retain valid partial-commit semantics.
+- Evidence: [Temporal review](research/metalfx-temporal-20261125.md). At dbff1c4f1e Temporal encodes before exact_base; unavailable dirt/grade can skip the inner cancellation and reach generic opaque-post commit.
+- Next action: Retain both owning commit guards and pre-display eligibility/retained-background recovery fixtures. Deliver corrected review build for owner live review; no demonstrated visible corruption or FPS claim.
+- Verification: Source64023b8b16 guards both normal and generic cleanup commits with one idempotent Temporal cancellation decision; display eligibility uses the same production policy as the fixture. Native API/GPU validation passes3 orchestration cases/264 assertions: missing required dirt or grading prevents display invocation and leaves the affected command unsubmitted; no pose/jitter submission advance or mode publication; one abandonment settlement despite repeated cleanup; actual retained-background lease/frame/native generation/pixels preserved; next accepted frame resets and submits. Native/Spatial partial commits and teardown allocation accounting pass. Existing history guard is preserved; visible corruption was not established.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Owner authorizes scoped correction and recurrence coverage. Preserve last valid presentation, submitted-history/jitter semantics, generation/retirement rules and valid Native/Spatial partial commits. No live login/trace or FPS claim.
+
+- 2026-11-25 corrective verification: eee0f3d3ce/d638b2bf73 add the shared eligibility/finalization policy and actual retained-world fixture;64023b8b16 installs it at both viewer commit boundaries. Cancellation clears current pending products/reference/status and invalidates recovery history without touching the independently retained pre-UI world. Focused15-suite run and full69501 build/static checks/login-only smoke pass; private package receipts complete delivery qualification.

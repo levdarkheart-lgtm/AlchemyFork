@@ -1,4 +1,4 @@
-# Current engineering state — Temporal ready for owner live review
+# Current engineering state — corrected Temporal69501 owner review
 
 Observed 2026-11-25 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
 Current implementation branch is `codex/metalfx-temporal-20261125`, with the separate Spatial
@@ -12,9 +12,29 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
-## Active Temporal work — PPD598
+## Active corrective work — PPD608/609
 
-**Renderer code checkpoint:** `663a591f2c543158d4e0bf5a68e4e7236f20a559` (actual app69494).
+**Renderer code checkpoint:** `64023b8b1656dec297a2658ff546f35ad06efe36` (actual app26.4.0.69501).
+Fetched Temporal head dbff1c4f1e unchanged. Corrected app/source are isolated from preserved69494 artifacts;
+Spatial41e90aaadb and usual7911e382ce stay unchanged. Owner authorizes this review branch's push/private delivery.
+PPD608 pre-acquires all active post targets before opacity, including bloom/cross-filter/reference, and moves
+cached dirt preparation earlier. PPD609 guards both commit routes, cancelling early display-ineligible Temporal
+work with no history/mode publication, while preserving the actual retained pre-UI world and reset recovery.
+Minimal12-world result:2new textures/22reuse/0deferrals/98304cached bytes, zero allocations after warm4;
+historical69494 was24/0/132/1179648. Optional-effect arms plateau too. No safeguard or shader changes.
+
+Focused15 suites pass API/GPU validation where applicable, including7 presentation and3 actual eligibility/
+cancellation cases, history/motion/resource planning and Native/Spatial regressions. Release build,346 ARM64
+checks, deep/strict signature and owned-import checks pass. Fullscreen login-only smoke uses AutoLoginfalse,
+then quits;17 starting settings files are restored byte-exact. No login/traces or Home/Club measurements.
+Private corrected package/branch delivery receipts accompany the review bundle. Next action: owner live review
+of Temporal67 using macOS window screenshots/recording, since independent viewer snapshots use another path.
+[Temporal report](../research/metalfx-temporal-20261125.md) retains exact identities/tests and historical failures.
+No FPS benefit, live quality acceptance, main merge or product release is claimed. Content limitations unchanged.
+
+## Preserved69494 Temporal checkpoint — PPD598
+
+Preserved69494 source: `663a591f2c543158d4e0bf5a68e4e7236f20a559`.
 
 Separate `worktrees/metalfx-temporal` / `codex/metalfx-temporal-20261125`, fetched parent
 `41e90aaadb938d77955f7c7e752362aab875fff6` unchanged. App **26.4.0.69494**, production source
@@ -35,7 +55,7 @@ PPD597/599/600 inherited repairs and PPD601–607 corrections retain failed evid
 Fractional mip tests use a calibrated native explicit-LOD oracle; no production formula/tolerance relaxation.
 
 Known review limits: reactive-only transparent/sky/water regions, terrain-edit and texture-content animation
-not explicitly classified, conservative native-closure allocation churn, and inherited third-party release gaps.
+not explicitly classified, the historical allocation churn corrected under PPD608, and inherited third-party release gaps.
 Next action is the owner's live Temporal67 review: detail, moving avatars/camera, hair/foliage/transparency,
 water, resize/mode changes and snapshots. No additional Home FPS investigation or optimization is authorized
 by this handoff; the review branch and iCloud receipts record publication/delivery separately.
@@ -97,29 +117,9 @@ receipts are under `artifacts/metal/metalfx-integration-20261124/`.
 The verified69462 review DMG is separately named on iCloud Desktop; the69457
 package is retained unchanged. Neither packaging nor fixtures log in the owner.
 
-Initial candidate69457/source68e59fc and matched native control69456/f384e2c220 build
-and app verification pass. Each bundle contains346 ARM64 Mach-O components.
-CPU planning/preferences pass2/2; API+Shader Validation GPU scopes pass11/11,
-plus11979 assertions across6 display-post cases. Source-review corrections to
-target acquisition and staged shader reload are included in the pinned build.
-
-The69457 quiet Home sequence observes15.135/35.570/35.026 successful joined worlds/s
-for Native/Half-linear/MetalFX, respectively. Actual main scene sizes are3456×2168
-and1728×1084, output/shadow reference3456×2168; the scaler actually executes.
-One lost FX lifecycle event prevents full-population qualification. There is no
-timed restored control; workload/loss limits and all denominators remain explicit.
-These are new-world GPU completions, not scanout FPS or native-image equivalence.
-
-Verified stills show sharper reconstruction than linear, reduced fine scene detail
-versus Native and sharp native UI. Matched small camera sweeps are retained as
-review videos; temporal quality remains for owner review. Resize/return reuses two
-scaler descriptors. Initial69457 same-size Snapshot preview used Half-linear;
-the current policy is corrected above. Explicit overrides retain legacy semantics.
-Mode0, all original66 controls, CAS and the fixed camera were verified restored;
-the test viewer shut down normally at16:00:12 UTC. Exact receipts are under
-`artifacts/metal/metalfx-spatial-20261124`; the compact
-[implementation record](../research/metalfx-spatial-20261124.md) owns this scope.
-Actual runtime OpenHTJ2K0.27 was verified as the sole texture pixel decoder.
+Initial69457 native/linear/Spatial performance, image and resize evidence remains in the
+[Spatial implementation record](../research/metalfx-spatial-20261124.md); it is historical and is not
+Temporal69501 evidence. OpenHTJ2K0.27 remains the sole pixel decoder.
 
 Owner-requested private DMG69457 is on iCloud Desktop. Mounted bytes/modes/symlinks,
 signing and346 ARM64 checks pass; exact68e59fc app retained. Apple Silicon/macOS26+
