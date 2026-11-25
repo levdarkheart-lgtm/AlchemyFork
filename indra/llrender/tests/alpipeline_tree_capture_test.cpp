@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: LGPL-2.1-only
  */
 #include <catch2/catch_test_macros.hpp>
+#include "alnativepublication.h"
 
 #include <array>
 #include <cstdint>
@@ -96,6 +97,8 @@ struct LLVertexBuffer
     enum { TYPE_VERTEX, TYPE_NORMAL, TYPE_TEXCOORD0, TYPE_COLOR };
     U32 mask = 15, vertices = 3, indices = 3;
     bool publication_ready = true;
+    ALNativePublication::Signal publication;
+    const ALNativePublication::Signal& nativePublication() const { return publication; }
     unsigned prepares = 0;
     mutable unsigned vertex_reads = 0, index_reads = 0;
     mutable std::vector<unsigned> attribute_reads;
@@ -124,6 +127,7 @@ struct LLFace
 enum class ALMetalIndexType { uint16, uint32 };
 struct ALMetalWorldSimpleBatch
 {
+    std::uint64_t temporal_instance_id = 0, temporal_generation = 0;
     ALMetalBuffer* vertices = nullptr;
     ALMetalBuffer* indices = nullptr;
     U32 position_offset = 0, normal_offset = 0, texcoord_offset = 0, color_offset = 0;
@@ -189,6 +193,7 @@ struct Context
     LLViewerTexture texture{&image}, fallback{&default_image};
     Context()
     {
+        buffer.publication.didPublish();
         LLViewerFetchedTexture::sDefaultImagep.value = &fallback;
         main_view = true; matrix_ready = true; diagnostic_throws = false;
         matrix_calls = 0; diagnostics.clear();
@@ -265,6 +270,26 @@ TEST_CASE("Native tree capture uses resident and revived resources without unnec
     CHECK(revived.capture().batches[0].diffuse_textures[0] == published.native.get());
     CHECK(published.bind_updates == 1);
     CHECK(revived.default_image.bind_updates == 0);
+}
+
+TEST_CASE("Native tree capture snapshots its actual geometry publication identity and revision", "[pipeline][tree][ppd604]")
+{
+    Context c;
+    const auto identity=c.buffer.nativePublication().identity();
+    const auto first_revision=c.buffer.nativePublication().publishedRevision();
+    REQUIRE(identity!=0);REQUIRE(first_revision!=0);
+    c.draw();
+    REQUIRE(c.capture().complete);REQUIRE(c.capture().batches.size()==1);
+    CHECK(c.capture().batches[0].temporal_instance_id==identity);
+    CHECK(c.capture().batches[0].temporal_generation==first_revision);
+    c.buffer.publication.willWrite();c.buffer.publication.didPublish();
+    const auto next_revision=c.buffer.nativePublication().publishedRevision();
+    REQUIRE(next_revision!=first_revision);
+    c.draw();
+    REQUIRE(c.capture().complete);REQUIRE(c.capture().batches.size()==2);
+    CHECK(c.capture().batches[0].temporal_generation==first_revision);
+    CHECK(c.capture().batches[1].temporal_instance_id==identity);
+    CHECK(c.capture().batches[1].temporal_generation==next_revision);
 }
 
 TEST_CASE("Native tree capture keeps null and failed default inputs unrecoverable", "[pipeline][tree][ppd473]")

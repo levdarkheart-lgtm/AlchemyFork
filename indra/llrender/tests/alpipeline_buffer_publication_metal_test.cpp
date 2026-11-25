@@ -586,6 +586,9 @@ TEST_CASE("Actual opaque capture prepares before copying a handle that later set
     info.mVertexBuffer->setBuffer();REQUIRE(info.mVertexBuffer->hasPublishedMetalVertexBuffer());
     CHECK(info.mVertexBuffer->getMetalVertexBuffer()!=old);
     CHECK(capture.batches[0].vertices==info.mVertexBuffer->getMetalVertexBuffer());
+    CHECK(capture.batches[0].temporal_instance_id==info.metalSourcePublication()->identity());
+    CHECK(capture.batches[0].temporal_generation==info.mVertexBuffer->nativePublication().publishedRevision());
+    CHECK(capture.batches[0].temporal_generation!=0);
     CHECK(f.copied<F32>(*capture.batches[0].vertices,capture.batches[0].position_offset,4)[0]==.1f);
     const auto pixels=f.render(capture.batches[0]);
     CHECK(pixels[4*Publication::side+2][0]==0);CHECK(pixels[4*Publication::side+10][0]==255);
@@ -668,6 +671,11 @@ TEST_CASE("Actual scene factory shares main probe shadow sources and separates a
     auto main=Inputs::ALScenePublicationNative::world(info,flavor,
         Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
     REQUIRE(main); CHECK(main.reused);CHECK(main.owner->bounds.qualified);
+    CHECK(main.prototype->temporal_instance_id==info.metalSourcePublication()->identity());
+    CHECK(main.prototype->temporal_generation==info.mVertexBuffer->nativePublication().publishedRevision());
+    CHECK(capture.batches[0].temporal_instance_id==main.prototype->temporal_instance_id);
+    CHECK(capture.batches[0].temporal_generation==main.prototype->temporal_generation);
+    const auto previous_geometry_revision=main.prototype->temporal_generation;
     auto probe=Inputs::ALScenePublicationNative::world(info,flavor,
         Inputs::sNativeSceneSources,Inputs::sNativeSceneSerial,Inputs::gFrameCount);
     REQUIRE(probe); CHECK(probe.owner==main.owner); CHECK(probe.prototype==main.prototype);
@@ -712,6 +720,11 @@ TEST_CASE("Actual scene factory shares main probe shadow sources and separates a
     pipeline.captureMetalWorldGBufferBatch(info,false);
     REQUIRE(capture.complete); REQUIRE(capture.batches.size()==3);
     CHECK(capture.batches.back().vertices!=old_vertices);
+    CHECK(capture.batches.back().temporal_instance_id==info.metalSourcePublication()->identity());
+    CHECK(capture.batches.back().temporal_generation==info.mVertexBuffer->nativePublication().publishedRevision());
+    CHECK(capture.batches.back().temporal_generation!=previous_geometry_revision);
+    CHECK(capture.batches[0].temporal_generation==previous_geometry_revision);
+    CHECK(main.prototype->temporal_generation==previous_geometry_revision);
     CHECK(f.copied<F32>(*old_vertices,0,4)[0]==-1.f);
     CHECK(f.copied<F32>(*capture.batches.back().vertices,0,4)[0]==.1f);
     const auto old_pixels=f.render(capture.batches[0]);
