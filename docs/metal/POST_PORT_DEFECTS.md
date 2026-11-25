@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-601 -->
+<!-- next-defect-id: PPD-608 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14706,7 +14706,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-24
 - Original reference: The091243d236 integration checkout includes69462 fixes. Original Alchemy material sampler/LOD and streaming behavior is the reference; MetalFX's additional spatial bias is new Apple guidance.
 - Evidence: [Spatial quality review](research/metalfx-quality-20261124.md), private `artifacts/metal/metalfx-quality-20261124/` source/build/test/results/PNG/movie receipts.
-- Next action: Owner reviews build 69464's 50/67/75 choices, preset/fallback/snapshot behavior and image/motion limitations. Keep Native default and combined lighting OFF. 67% is the balanced recommendation; Temporal is a separate next decision, not implemented. Retire the local review-only bias override before normal-branch production integration/rebuild. Do not infer precise overhead, zero Native regression or full-population timing qualification from these bounded observations. Publish only to the authorized review branch; normal-branch integration remains unapproved.
+- Next action: Owner reviews build 69464's 50/67/75 choices, preset/fallback/snapshot behavior and image/motion limitations. Keep Native default and combined lighting OFF. 67% is the balanced recommendation; Temporal is a separate next decision, not implemented. PPD600 retires that override on the Temporal branch; the exact older Spatial review executable/evidence remain preserved. Normal-branch integration is still unapproved. Do not infer precise overhead, zero Native regression or full-population timing qualification from these bounded observations. Publish only to the authorized review branch; normal-branch integration remains unapproved.
 - Verification: Application code a5142ae5c2/build69464 (CPU6c498099…; library087705e4…) passes full Release/app signing/346 ARM64 inspections, three CPU and fourteen relevant Metal suites with API/GPU Validation. Exact rational dimensions, scoped material bias, alpha depth/color, terrain gradients, zero recovery, presets, scaler reuse and presentation failure are covered. Bounded 53-probe observed rates: Native15.14, disabled50 control35.68, biased50 35.58, 67%25.41, 75%21.07, restored disabled50 35.90 worlds/s (last control explicit20s prefix). Original warming controls excluded; only B2 passes every local population gate, other retained endpoints have named observer holes. Five lossless PNGs/1:1 crops and motion clips retained; selected UI crops byte-identical. Continuous shimmer and broad scene/material acceptance remain limited. Final Native/original controls/CAS restored, review override false, viewer closed. Review-branch publication is authorized; owner acceptance remains pending.
 - Owner verification: pending
 - Push approval: granted
@@ -14725,14 +14725,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-597 — A hidden-only manual probe fixture is registered as an ordinary CTest suite
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Metal test registration
 - Discovered: 2026-11-24
 - Original reference: `almetal_probe_accumulator_test.mm` contains hidden/manual cases requiring external baseline/candidate source inputs. Its ordinary file-level CTest filter excludes hidden cases, matching none.
-- Evidence: [Focused verification and exclusions](research/metalfx-quality-20261124.md). During PPD596 focused verification, `ctest -R almetal_tests/almetal_probe_accumulator_test` fails with “No test cases matched” and “No tests ran”. Direct hidden correctness invocation then fails before GPU work because `ALCHEMY_PROBE_TEST_BASELINE_SOURCE` is absent. Private `gpu-tests.log` and `explicit-probe-parity.log` retain both attempts. No new probe experiment ran.
-- Next action: Separate maintenance: remove hidden-only/manual source files from ordinary automatic CTest registration. If this research fixture remains useful, give it an explicit manual invocation with declared input requirements; otherwise archive/remove it according to the owner's dead-experiment policy. Do not reopen probe optimization. This task does not alter that independent harness path.
-- Verification: Observed registration failure and source/tag/input inspection establish a default-test disposition defect, not a rendering regression. PPD596's fourteen runnable relevant Metal suites pass separately; this excluded fixture is not counted as passing.
+- Evidence: [Original verification and exclusions](research/metalfx-quality-20261124.md), [Temporal corrective verification](research/metalfx-temporal-20261125.md). During PPD596 focused verification, `ctest -R almetal_tests/almetal_probe_accumulator_test` fails with “No test cases matched” and “No tests ran”. Direct hidden correctness invocation then fails before GPU work because `ALCHEMY_PROBE_TEST_BASELINE_SOURCE` is absent. Private `gpu-tests.log` and `explicit-probe-parity.log` retain both attempts. No new probe experiment ran.
+- Next action: Retain the explicit external-input/manual fixture and its documented hidden invocation. Default registration repair is implemented; owner review remains separate from the successful enumeration check. Do not reopen probe optimization or count the manual fixture as executed.
+- Verification: CMake now compiles this source through target_sources outside automatic per-file CTest registration. Final qualified-Python enumeration contains804 default tests and zero probe-accumulator entries. Supported Catch --list-tests --verbosity quiet with [.probe-accumulator-parity] lists the real hidden case without executing it or supplying external data. The obsolete --list-test-names-only attempt failed and is retained. Canonical private cpu-qualification-03 and cpu-fixtures-final-01 receipts preserve commands, inventories and hashes.
 - Owner verification: pending
 - Push approval: granted
 
@@ -14744,16 +14744,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-25: Owner includes the focused manual-fixture registration repair in Temporal scope. Keep compilation and explicit hidden invocations, remove the empty ordinary per-file CTest entry. Configuration/default-test enumeration verification pending; no probe experiment.
 
+- 2026-11-25 final corrective disposition: Completed the scoped registration repair. Verified default omission and explicit hidden-case discovery, preserving the original empty-suite failure and missing-external-input attempt. No probe shader experiment ran.
+
 ## PPD-598 — Optional MetalFX Temporal reconstruction lacks world motion and transactional history
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: MetalFX Temporal integration
 - Discovered: 2026-11-25
 - Original reference: Owner requests an optional native Temporal renderer with rigid/attachment/skinned motion, main-world history and offline correctness before owner live review.
 - Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
-- Next action: Implement native HDR reconstruction, coherent jitter/motion/history, deterministic production fixtures and review package; do not substitute camera-only motion.
-- Verification: Parent source inspected; implementation and offline/runtime verification pending. No live quality or FPS claim.
+- Next action: Owner reviews the frozen69494 review package for live stationary detail, camera/rigid/avatar motion, foliage/hair, transparency, mode changes and real-scene FPS. Native stays default. Terrain editing and texture-content-only animation remain explicit review limitations. Only the Temporal review branch is authorized for publication; usual-branch integration and release acceptance remain unapproved.
+- Verification: Application production source663a591f2c/build26.4.0.69494 passes full build03, deep/strict signing and346 ARM64-image checks. Temporal integrated03 passes18 cases/2,221,543 assertions with API/GPU Validation after test-only fractional-LOD oracle correction841358a; application/shader bytes are unchanged. Motion-final-02 independently passes10 cases/51,365 assertions, including real rigid/body/cloth production paths into MetalFX. History13/1,289 and resource-plan34/3,356 pass; actual preferences398 and preset116 checks pass. Fifteen existing regression suites pass. Qualified fullscreen login smoke stops at login with AutoLogin false, OpenHTJ2K0.27.0 and17 original settings files restored byte-exact. No live login, Home/Club image-quality acceptance, real-scene stability or FPS result is claimed. Static terrain uses camera/depth reprojection without explicit terrain-edit rejection; texture-content-only animation lacks a dedicated reactive classification. Water/sky/blended/particle rejection is intentional, not full temporal accumulation for those pixels.
 - Owner verification: pending
 - Push approval: granted
 
@@ -14762,16 +14764,21 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-25: Registered before implementation. Owner explicitly authorizes the separate Temporal review branch, engineering/tests/build/private packaging and push; usual branch remains unchanged.
 
 
+
+- 2026-11-25 corrective native motion execution enumerates10cases:9pass, one new legacy-alpha fixture is rejected before GPU work for an invalid generic alpha_mask/material_alpha_mode2 combination. Preserve motion-final-01; correct only fixture routing and retain strict production validation. Full viewer first link also retained stale Temporal API objects from concurrent development; final frozen-source relink remains required.
+
+- 2026-11-25 final corrective disposition: Ready for owner live review after full69494 build, architecture/signing verification, qualified fullscreen login-only smoke and focused CPU/GPU execution. Current/previous rigid and skeletal/cloth poses are submission-owned; native producer publication revisions protect in-place rewrites. Jitter cycles follow actual scale (32/18/15 phases at50/67/75); Temporal mip policy is log2(input/output)-1 without stacking. Retain unsupported-view early fallback, late-failure publication cancellation and all original failed setup/fixture attempts. The fractional-mip draft failed strict comparisons; independent native explicit-LOD sampling corrected the test oracle without changing production shaders or comparison tolerances, and integrated03 passes. Live acceptance remains unclaimed.
+
 ## PPD-599 — Committed ordinary no-post views suppress effective scaling status
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: MetalFX Temporal integration
 - Discovered: 2026-11-25
 - Original reference: pipeline.cpp publishes pending_resolution_status only when !no_post, although ordinary no-post or legacy-sky views can commit linear scaling successfully.
 - Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
-- Next action: Publish truthful effective fallback only after a successful ordinary main transaction; preserve exclusion of independent views and failed transactions.
-- Verification: Parent source inspected; implementation and offline/runtime verification pending. No live quality or FPS claim.
+- Next action: Owner checks the effective mode/reason for ordinary no-post and legacy-sky views in the review viewer. The source repair is complete; retain commit-only status publication and exclusion of independent or failed views.
+- Verification: The ordinary-main pending-status guard no longer excludes no_post; reconstruction eligibility still selects valid linear fallback, and status is installed only after successful ordinary transaction commit. Full69494 build and actual UI fixture398 checks pass; existing legacy-admission/finalization suites also pass. A logged-in no-post/legacy-sky status transition was not exercised, nor is the UI fixture an end-to-end world-status test.
 - Owner verification: pending
 - Push approval: granted
 
@@ -14779,20 +14786,156 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-25: Registered before implementation. Owner explicitly authorizes the separate Temporal review branch, engineering/tests/build/private packaging and push; usual branch remains unchanged.
 
+- 2026-11-25 final corrective disposition: Implemented the narrowly scoped pending-status guard repair and retained ordinary-view/commit restrictions. Source, build and UI/legacy-admission coverage are corrective evidence; owner live status observation remains pending.
 
 ## PPD-600 — Spatial qualification override remains in production source
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: MetalFX Temporal integration
 - Discovered: 2026-11-25
 - Original reference: pipeline.cpp declares RenderMetalSpatialMipBiasDisabledForReview in quiet telemetry sessions; exact review69464 and its private evidence are already preserved.
 - Evidence: [Temporal implementation and verification](research/metalfx-temporal-20261125.md).
-- Next action: Remove the temporary override from current production encoding; retain automatic method-specific sampling and old review app/evidence.
-- Verification: Parent source inspected; implementation and offline/runtime verification pending. No live quality or FPS claim.
+- Next action: Retain automatic method-specific sampling and the exact old Spatial69464 executable/evidence. No current production override remains to retire; owner reviews the new Temporal/Spatial choices and their normal mip policies.
+- Verification: RenderMetalSpatialMipBiasDisabledForReview declaration/read are absent from current indra production source. Native/linear, Spatial and Temporal use the centralized effective-method policy; resource-plan and material-sampling checks pass, including final integrated03. The old69464 app/library and private review evidence remain preserved; their historical control windows are not relabelled as measurements of69494.
 - Owner verification: pending
 - Push approval: granted
 
 ### History
 
 - 2026-11-25: Registered before implementation. Owner explicitly authorizes the separate Temporal review branch, engineering/tests/build/private packaging and push; usual branch remains unchanged.
+
+- 2026-11-25 final corrective disposition: Removed the nonpersistent qualification-only override from the current production path. Kept Native default, original Spatial saved IDs and the separately retained69464 evidence. No new tuning preference or dormant shipping bypass was added.
+
+## PPD-601 — Temporal prefix is not poisoned by late final-presentation rejection
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Main-world Temporal transaction
+- Discovered: 2026-11-25
+- Original reference: Existing final-presentation transaction scope covers Spatial upscaled_color/prepared_output. Temporal reconstructs earlier HDR and passes neither late Spatial marker.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). Private temporal-presentation-integrated-01 retains an actual successful Temporal encode followed by final validation rejection and an incorrectly successful outer commit.
+- Next action: Retain the strict successful-Temporal-prefix/final-rejection transaction regression and existing settlement ownership. Owner live review remains separate; do not restore a late jittered linear fallback or permit partial world publication.
+- Verification: Successful Temporal encoding marks the enclosing command batch. Final-presentation and later post failures poison that batch through the existing failure scope; rejected batches deny outer commit/publication, settle as abandoned and preserve the previous image/history. The unchanged late-rejection assertion and two-groups-in-flight/resource-retirement cases pass in integrated03 (18-case combined scope). Full69494 build and existing presentation regressions pass.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair from the actual production-path offscreen fixture. Two other first-run failures are fixture scope/temporal-parity assumptions, retained separately without weakening the real late-failure assertion.
+
+- 2026-11-25 final corrective disposition: Corrected the demonstrated partial-transaction admission. Preserve temporal-presentation-integrated-01 and its incorrectly successful outer commit. Corrective tests now require actual Temporal encoding before forced final validation failure, outer rejection, prior-image retention and reset on the next accepted world; no assertion was relaxed.
+
+## PPD-602 — Temporal motion pipeline declares one attachment for a three-target pass
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Main-world Temporal correctness
+- Discovered: 2026-11-25
+- Original reference: New Temporal integration has no original Temporal equivalent; existing material coverage and glow-alpha semantics remain authoritative.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). Actual API/GPU-validation motion fixture aborts because the pipeline descriptor leaves color_attachment_count at1 while rendering RG16F/R8/R32 attachments.
+- Next action: Retain exact motion attachment declarations and validated camera/object/skin/coverage fixtures. Owner live rendering acceptance remains pending; the descriptor repair itself is complete.
+- Verification: Motion pipelines explicitly declare the three RG16F/R8Unorm/R32F color targets. Corrective API/GPU-validation motion-final-02 passes10 cases/51,365 assertions; the actual app uses the same compiled shader library. The initial attachment-count validation abort is retained separately from a later invalid new alpha-fixture routing attempt.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair during production-path offline qualification; no delivered viewer or prior Spatial behavior is implicated.
+
+- 2026-11-25 final corrective disposition: Declared the exact three-attachment PSO layout and reran production motion/image checks. Preserve the original API-validation abort; subsequent corrective execution succeeds without weakening Metal validation or coverage assertions.
+
+## PPD-603 — Temporal glow alpha resolve samples a jittered source without removing its offset
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Main-world Temporal correctness
+- Discovered: 2026-11-25
+- Original reference: New Temporal integration has no original Temporal equivalent; existing material coverage and glow-alpha semantics remain authoritative.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). Source review of the new RGB/alpha resolve finds reconstructed unjittered RGB combined with original jittered alpha at the same normalized UV. Constant-alpha fixtures cannot detect the edge misalignment.
+- Next action: Retain the analytical nonuniform glow-alpha alignment fixture and explicit current-jitter resolve input. Owner reviews glow/fine-edge appearance in world; no native-image parity or live stability claim.
+- Verification: Temporal RGB remains the native reconstructed result. Alpha is sampled from current original HDR with positive jitter/input-extent UV compensation, restoring alignment rather than trusting MetalFX output alpha. The nonuniform jittered-alpha fixture and HDR/DoF/post tests pass in integrated03. Strict alpha and final-presentation checks are preserved.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair during production-path offline qualification; no delivered viewer or prior Spatial behavior is implicated.
+
+- 2026-11-25 final corrective disposition: Passed current raster jitter to the production RGB/alpha resolve and added the missing nonuniform analytical edge case. Constant-alpha coverage remains; the new test verifies both positive and negative offsets without changing RGB or the current-frame glow semantics.
+
+## PPD-604 — Temporal raw geometry history omits in-place publication revisions
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Main-world instance history
+- Discovered: 2026-11-25
+- Original reference: Existing LLVertexBuffer nativePublication Signal has anti-ABA identity and completed publishedRevision. ALMetalBuffer writes can reuse a native allocation without advancing its ResourceView generation.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). Native resource.mm write path and LLVertexBuffer upload/publication contracts show that allocation identity/generation alone cannot identify an in-place morph/topology rewrite.
+- Next action: Retain producer publication stamps, raw-capture relocation and in-place-rewrite regressions. Owner checks moving/morphing avatars and attachments; duplicate/unknown instance matches reject history conservatively instead of borrowing another pose.
+- Verification: Raw main/avatar/tree batches and immutable source prototypes copy existing native producer identity/publishedRevision after preparation; exact native generations/layout/index ranges remain in history keys. History13 cases include actual shared-buffer write preserving allocation identity/generation, a stale-stamp negative control and rejection after Signal publishedRevision advances. Tree contract runtime passes7 cases/300 assertions under ASan/UBSan; real buffer/source publication and tree CTest scopes pass within the15-suite GPU regression set. Build02 fixture-stub API omissions are retained, then corrected with positive stamp assertions and all old assertions intact.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair. Use the existing authoritative publication signal, without another counter, hash, mutable material cache or simulation-owned previous pose.
+
+- 2026-11-25 final corrective disposition: Stamped actual authoritative LLVertexBuffer publications without introducing another counter or vertex hash. Removed transient CPU batch addresses from raw fallback keys so relocated captures retain valid previous palettes. Verified actual in-place write/revision rejection and preserved old captured generations across subsequent publications. Full build03 and relevant regression scopes pass; animated live-avatar acceptance remains owner review.
+
+## PPD-605 — Temporal motion accepts behind-camera or half-float-overflow reprojection
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Temporal motion validation
+- Discovered: 2026-11-25
+- Original reference: New motion output is RG16Float and current-to-previous pixel displacement. Invalid previous clip positions must reject history rather than create unrelated vectors.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). Source accepts abs(previous.w)>epsilon and lacks half-float displacement bounds, allowing behind-camera projection or infinite stored vectors.
+- Next action: Retain finite representable motion and positive current/previous-W guards with analytical fixtures. Owner live fast-motion/disocclusion review remains pending; do not treat invalid vectors as valid static history.
+- Verification: Camera and geometry motion reject non-finite results, nonpositive clip W and displacement outside RG16Float representable bounds. Invalid cases emit zero motion with reactive rejection. Behind-camera, overflow, reversed-depth and deformation fixtures pass in motion-final-02 under API/GPU Validation; full69494 build succeeds.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair during offline qualification; not attributed to a live owner incident.
+
+- 2026-11-25 final corrective disposition: Replaced absolute-W admission with positive-W checks and bounded finite half-float motion. Corrective analytical GPU cases verify rejection while ordinary rigid/camera/skinned motion continues to produce the expected vectors.
+
+## PPD-606 — Rejected impostor bake can clear an active Temporal view policy
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Temporal independent-view and post contracts
+- Discovered: 2026-11-25
+- Original reference: Existing native capture admission and display-post auxiliary-texture contracts are retained by the new Temporal mode.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). beginMetalImpostorBakeCapture clears temporal_effective/jitter before returning for an already active capture. A rejected independent view must not mutate that main-world transaction.
+- Next action: Owner reviews avatar/impostor and reconstruction-mode transitions. Source admission ordering is repaired; preserve current main-world policy when an independent request is rejected, and keep accepted independent views unjittered without advancing main history.
+- Verification: beginMetalImpostorBakeCapture now returns for an active capture before clearing temporal_effective/jitter. Accepted independent capture disables main raster jitter; main committed pose history is not advanced. Device changes and successful shader reload reset their device/stream owners coherently. Full69494 build and qualified login-only smoke pass; no synthetic active-main rejection runtime fixture or logged-in impostor transition is claimed.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair from independent source review during offline qualification. No live quality or FPS attribution.
+
+- 2026-11-25 final corrective disposition: Moved independent-view policy mutation after the existing active-capture admission guard. Preserved logical camera, independent capture behavior and main-world history; source inspection establishes the corrected ordering, with live transition acceptance left explicit.
+
+## PPD-607 — Temporal display post retains a reduced-size lens dirt plate
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Temporal independent-view and post contracts
+- Discovered: 2026-11-25
+- Original reference: Existing native capture admission and display-post auxiliary-texture contracts are retained by the new Temporal mode.
+- Evidence: [Temporal integration verification](research/metalfx-temporal-20261125.md). lensDirtConfig sizes its plate from mainScreen scene extent; after Temporal the display-post source has output extent and its strict lens-dirt validation requires that extent. Positive dirt strength would reject every frame.
+- Next action: Retain actual-post-source lens-dirt sizing/cache selection and positive dirt-response coverage. Owner reviews enabled lens effects and mode/fallback transitions; Native and Spatial behavior remain the existing path.
+- Verification: Temporal-requested post processing generates/selects its dirt plate from the actual successful post_source descriptor, including early linear fallback, and avoids reduced/output pre-generation ping-pong. The positive lens-dirt fixture verifies reduced plate rejection, output-sized plate execution and changed bloom response in integrated03. Full69494 build and existing postchain/exposure/finalization regressions pass.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-25: Registered before repair from independent source review during offline qualification. No live quality or FPS attribution.
+
+- 2026-11-25 final corrective disposition: Implemented downstream actual-dimension plate selection while preserving normal settings and Native/Spatial sizing. Added a real enabled-dirt post test with strict incompatible-size rejection and a positive output response. No quality reduction or additional scheduling mechanism was used.
