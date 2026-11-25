@@ -300,7 +300,6 @@ if(AL_BUILD_TESTS)
             tests/almetal_borrowed_target_test.mm
             tests/almetal_base_lighting_fastpath_test.mm
             tests/almetal_zero_lighting_test.mm
-            tests/almetal_probe_accumulator_test.mm
             tests/almetal_debug_buffer_test.mm
             tests/almetal_shader_reload_test.mm
             tests/almetal_utility_reload_test.mm
@@ -344,6 +343,9 @@ if(AL_BUILD_TESTS)
   # This TU owns fixtures and included cases only; it has no direct file-tagged
   # cases and must not create an empty per-file CTest entry.
   target_sources(almetal_tests PRIVATE tests/almetal_world_visibility_test.mm)
+  # External-input research fixtures are explicitly manual, never an empty default CTest suite.
+  # Invoke the hidden .probe-accumulator-* tags with the four documented source/library inputs.
+  target_sources(almetal_tests PRIVATE tests/almetal_probe_accumulator_test.mm)
   set_source_files_properties(tests/almetal_command_timing_test.mm tests/almetal_avatar_resources_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
