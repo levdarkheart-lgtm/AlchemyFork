@@ -52,7 +52,7 @@ bool LLPipeline::consumeReferenceStillRequest()
 }
 
 std::unique_ptr<ALMetalRenderTarget> LLPipeline::captureReferenceStill(
-    const ALMetalRenderTarget& source)
+    const ALMetalRenderTarget& source, std::unique_ptr<ALMetalRenderTarget> prepared_output)
 {
     if (sCutoutRender || gCubeSnapshot || !mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->renderer)
@@ -77,7 +77,7 @@ std::unique_ptr<ALMetalRenderTarget> LLPipeline::captureReferenceStill(
     // Keep the preceding committed still until a replacement commits.
     // Allocation/encoding failure consumes the attempt, not the old image.
     std::string error;
-    auto pending = capture.renderer->capturePresentationReference(source, &error);
+    auto pending = capture.renderer->capturePresentationReference(source, &error, std::move(prepared_output));
     if (!pending)
     {
         LL_WARNS("Metal") << "Native presentation-reference capture failed: " << error << LL_ENDL;

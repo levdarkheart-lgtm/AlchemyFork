@@ -59,7 +59,7 @@ struct FinalizePixelReader
     bool reference_succeeds = true;
     unsigned reference_copies = 0;
     std::unique_ptr<FinalizeSource> capturePresentationReference(
-        const FinalizeSource& source, std::string* error)
+        const FinalizeSource& source, std::string* error, std::unique_ptr<FinalizeSource> prepared_output = {})
     {
         ++reference_copies;
         if (!reference_succeeds)
@@ -67,7 +67,7 @@ struct FinalizePixelReader
             *error = "Authored copy admission failure";
             return nullptr;
         }
-        auto result = std::make_unique<FinalizeSource>();
+        auto result = prepared_output ? std::move(prepared_output) : std::make_unique<FinalizeSource>();
         result->dimensions = source.descriptor();
         // The renderer's original-mapped contract is RGB10_A2 for either
         // display source format. Exact conversion is tested by its GPU owner.
@@ -166,7 +166,8 @@ struct FinalizePolicyPipeline
     bool canCaptureMetalWorldPresentation() const { return presentation_eligible; }
     bool canCaptureMetalScopeSample(bool) const { return scopes_open && scope_eligible && presentation_eligible; }
     bool consumeReferenceStillRequest();
-    std::unique_ptr<FinalizeSource> captureReferenceStill(const FinalizeSource& source);
+    std::unique_ptr<FinalizeSource> captureReferenceStill(const FinalizeSource& source,
+        std::unique_ptr<FinalizeSource> prepared_output = {});
     void publishReferenceStill(std::unique_ptr<FinalizeSource> pending);
     bool hasReferenceStill() const;
     void clearReferenceStill();
@@ -329,6 +330,26 @@ TEST_CASE("Native lens preflight solves changed viewport and settings before pre
     CHECK(f.pipeline.mLensDistortFit.inputs == held);
     scene.output_width = 0;
     CHECK_FALSE(f.pipeline.configureMetalPresentationLens(scene));
+}
+
+TEST_CASE("Native reference staging transfers a prepared owner only after a valid request",
+          "[native-finalize-policy]")
+{
+    FinalizeCase f; auto& p = f.pipeline; auto& c = *p.mMetalWorldSimpleCapture;
+    FinalizeSource source;
+    auto prepared = std::make_unique<FinalizeSource>();
+    CHECK_FALSE(p.captureReferenceStill(source, std::move(prepared)));
+    CHECK(c.renderer->reference_copies == 0);
+    p.mReferenceStillWanted = true;
+    prepared = std::make_unique<FinalizeSource>();
+    auto* exact_owner = prepared.get();
+    auto pending = p.captureReferenceStill(source, std::move(prepared));
+    REQUIRE(pending);
+    CHECK(pending.get() == exact_owner);
+    CHECK_FALSE(p.mReferenceStillWanted);
+    CHECK_FALSE(p.hasReferenceStill());
+    p.publishReferenceStill(std::move(pending));
+    CHECK(c.reference_still_target.get() == exact_owner);
 }
 
 TEST_CASE("Native reference staging preserves a committed still until successful replacement",

@@ -92,6 +92,7 @@
 #include "../almetal/almetalshadowcache.h"
 #include "../almetal/almetalworldinputs.h"
 #include "../almetal/almetaltemporalworldhistory.h"
+#include "pipeline_main_post_transaction_native.h"
 #include "../almetal/almetalworldvisibility.h"
 #include "alnativeframebudget.h"
 #include "alnativeframeplan.h"
@@ -9301,6 +9302,42 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // display/presentation transaction commits.
             capture.presentation_resolution_mode = 0;
             bool post_batch_active = opaque_post_batch_active;
+            bool final_presentation_available = false;
+            std::unique_ptr<ALMetalRenderTarget> pending_reference_still;
+            const auto cancel_incomplete_temporal_post = [&]
+            {
+                return alMetalCancelIncompleteTemporalPost(capture.temporal_effective,
+                    final_presentation_available, post_batch_active, opaque_post_batch_active, [&]
+                    {
+                        capture.renderer->cancelCommandBatch();
+                        capture.abandonTemporalFrame();
+                        capture.temporal_history.invalidate();
+                        capture.temporal_scaler->invalidate();
+                        pending_reference_still.reset();
+                        pending_resolution_status.reset();
+                        // capture.ui_background owns the last committed pre-UI world independently.
+                        // Discard current products without touching that retained presentation.
+                        capture.presentation_target.reset();
+                        capture.presentation_frame = std::numeric_limits<U32>::max();
+                        target.reset();
+                        capture.display_post_target.reset();
+                        capture.display_post_frame = std::numeric_limits<U32>::max();
+                        capture.depth_of_field_target.reset();
+                        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+                        capture.bloom_target.reset();
+                        capture.bloom_frame = std::numeric_limits<U32>::max();
+                        capture.exposure_target.reset();
+                        capture.exposure_meter_target.reset();
+                        capture.exposure_frame = std::numeric_limits<U32>::max();
+                        capture.exposure_epoch = 0;
+                        mMetalExposureHistoryReady = false;
+                        capture.lens_flare_state_target.reset();
+                        capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
+                        capture.lens_flare_state_epoch = 0;
+                        mMetalLensFlareHistoryReady = false;
+                        capture.markIncomplete(__LINE__);
+                    });
+            };
             if (batch_main_post && !post_batch_active)
             {
                 std::string post_batch_error;
@@ -9392,8 +9429,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
-            #include "pipeline_temporal_reconstruction_native.inl"
-
             // Display transfer and bloom suppression follow the effective
             // EEP probe ambiance, independently of the surface-lighting
             // classic-mode variant.
@@ -9461,15 +9496,17 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // native post source, independently of the window's resource plan.
             const U32 requested_bloom_mips = requestedMetalBloomMipCount(
                 exact_dof, native_bloom_strength, native_halation_strength,
-                post_source ? post_source->descriptor().width : 0,
-                post_source ? post_source->descriptor().height : 0);
+                capture.temporal_effective ? capture.temporal_resolved_output->descriptor().width
+                    : post_source ? post_source->descriptor().width : 0,
+                capture.temporal_effective ? capture.temporal_resolved_output->descriptor().height
+                    : post_source ? post_source->descriptor().height : 0);
             const bool wants_native_bloom = requested_bloom_mips >= 3;
             capture.bloom_target.reset();
             capture.bloom_frame = std::numeric_limits<U32>::max();
             std::unique_ptr<ALMetalRenderTarget> cross_filter_target;
+            ALMetalWorldBloomScene bloom;
             if (wants_native_bloom)
             {
-                ALMetalWorldBloomScene bloom;
                 bloom.source = post_source;
                 bloom.mip_count = requested_bloom_mips;
                 bloom.resolution_scale = static_cast<U32>(llclamp(
@@ -9499,9 +9536,65 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     cross_filter_falloff(), 0.1f, 3.f);
                 bloom.cross_filter_chromatic = llclamp(
                     cross_filter_chromatic(), 0.f, 1.f);
+            }
+
+            // Acquire every active downstream pooled owner before MetalFX exposes the native command.
+            // The opaque-generation safeguard remains in force throughout encoding and abandonment.
+            LensDirtConfig dirt = lensDirtConfig(true);
+            if (mResourceInputs.mainResolutionPolicy().usesTemporal() && dirt.enabled && post_source)
+            {
+                const auto& dirt_source = capture.temporal_effective
+                    ? capture.temporal_resolved_output->descriptor() : post_source->descriptor();
+                dirt.plate.width = dirt_source.width;
+                dirt.plate.height = dirt_source.height;
+                if (capture.lens_dirt_params != dirt.plate || !capture.lens_dirt_target)
+                {
+                    std::string dirt_error;
+                    if (!capture.prepareLensDirtPlate(dirt.plate, &dirt_error))
+                        LL_WARNS("Metal") << "Temporal display-post lens dirt plate unavailable: "
+                            << dirt_error << LL_ENDL;
+                }
+            }
+            ALMetalWorldTemporalPostTargets temporal_post_targets;
+            if (capture.temporal_effective)
+            {
+                const auto& source = capture.temporal_resolved_output->descriptor();
+                const auto& viewport = gViewerWindow->getWorldViewRectRaw();
+                ALMetalWorldTemporalPostConfig config;
+                config.width = source.width;
+                config.height = source.height;
+                config.presentation_width = llmax(viewport.getWidth(), 0);
+                config.presentation_height = llmax(viewport.getHeight(), 0);
+                config.hdr = capture.hdr;
+                config.bloom_mip_count = wants_native_bloom ? requested_bloom_mips : 0;
+                config.bloom_resolution_scale = bloom.resolution_scale;
+                config.bloom_halation = bloom.halation;
+                config.cross_filter = wants_native_bloom && bloom.cross_filter;
+                config.reference_capture = mReferenceStillWanted && !sCutoutRender && !gCubeSnapshot;
+                std::string prepare_error;
+                auto prepared = capture.renderer->prepareTemporalPostTargets(config, &prepare_error);
+                if (!prepared)
+                {
+                    capture.renderer->cancelCommandBatch();
+                    capture.abandonTemporalFrame();
+                    capture.temporal_history.invalidate();
+                    capture.temporal_scaler->invalidate();
+                    capture.markIncomplete(__LINE__);
+                    LL_WARNS("Metal") << "Temporal post resource preparation canceled this world: "
+                        << prepare_error << LL_ENDL;
+                    return;
+                }
+                temporal_post_targets = std::move(*prepared);
+            }
+
+            #include "pipeline_temporal_reconstruction_native.inl"
+
+            if (wants_native_bloom)
+            {
+                bloom.source = post_source;
                 std::string bloom_error;
                 auto bloom_target = capture.renderer->renderBloom(
-                    bloom, &bloom_error, &cross_filter_target);
+                    bloom, &bloom_error, &cross_filter_target, std::move(temporal_post_targets.bloom));
                 if (bloom_target)
                 {
                     capture.bloom_target = std::move(bloom_target);
@@ -9589,32 +9682,17 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                  capture.lens_flare_state_epoch ==
                      mMetalLensFlareHistoryEpoch &&
                  capture.lens_flare_state_frame == gFrameCount);
-            LensDirtConfig dirt = lensDirtConfig(true);
-            if (mResourceInputs.mainResolutionPolicy().usesTemporal() && dirt.enabled && post_source)
-            {
-                // Temporal reconstructs before display transfer. Plates follow the actual successful post source,
-                // including early linear fallback, and never bounce through the reduced early-generation path.
-                dirt.plate.width=post_source->descriptor().width;
-                dirt.plate.height=post_source->descriptor().height;
-                if (capture.lens_dirt_params != dirt.plate || !capture.lens_dirt_target)
-                {
-                    std::string dirt_error;
-                    if (!capture.prepareLensDirtPlate(dirt.plate,&dirt_error))
-                        LL_WARNS("Metal") << "Temporal display-post lens dirt plate unavailable: " << dirt_error << LL_ENDL;
-                }
-            }
             const bool exact_lens_dirt = cutout_snapshot || !dirt.enabled ||
                 (capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
             std::string presentation_error;
             const bool exact_presentation =
                 canCaptureMetalWorldPresentation(&presentation_error);
-            const bool exact_base =
-                exact_presentation && sky &&
-                exact_dynamic_exposure && exact_dof && exact_bloom &&
-                exact_cross_filter && exact_lens_flare &&
-                exact_lens_dirt && exact_legacy_glow_noise &&
-                grade.native_resources_ready;
+            const ALMetalMainPostDisplayEligibility display_eligibility{
+                exact_presentation, static_cast<bool>(sky), exact_dynamic_exposure, exact_dof,
+                exact_bloom, exact_cross_filter, exact_lens_flare, exact_lens_dirt,
+                exact_legacy_glow_noise, grade.native_resources_ready};
+            const bool exact_base = display_eligibility.ready();
             if (!exact_base)
             {
                 LL_INFOS_ONCE("Metal")
@@ -9887,12 +9965,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
                 std::string display_error;
                 bool display_post_available = false;
-                bool final_presentation_available = false;
-                std::unique_ptr<ALMetalRenderTarget>
-                    pending_reference_still;
                 auto display_target =
                     capture.renderer->renderDisplayPost(
-                        display, &display_error);
+                        display, &display_error, std::move(temporal_post_targets.display));
                 if (display_target)
                 {
                     ALMetalWorldSMAAIntermediates debug_smaa;
@@ -10314,7 +10389,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         // request is one-shot; only a committed replacement
                         // may retire the prior same-sized reference owner.
                         pending_reference_still = captureReferenceStill(
-                            *capture.display_post_target);
+                            *capture.display_post_target, std::move(temporal_post_targets.reference));
 
                         // The display-post target is the same RGB10_A2 (HDR)
                         // or RGBA8 (non-HDR) source measured by the scopes.
@@ -10554,7 +10629,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             auto final_target =
                                 capture.renderer->renderPresentationPost(
                                     presentation, &presentation_error,
-                                    std::move(spatial_target.presentation));
+                                    capture.temporal_effective ? std::move(temporal_post_targets.presentation)
+                                        : std::move(spatial_target.presentation));
                             if (final_target)
                             {
                                 capture.presentation_target =
@@ -10580,13 +10656,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                            "the current native transaction cannot publish: "
                         << display_error << LL_ENDL;
                 }
-                if (capture.temporal_effective && !final_presentation_available)
-                {
-                    capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
-                    capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate();
-                    post_batch_active=false; opaque_post_batch_active=false;
-                    target.reset(); display_post_available=false; capture.markIncomplete(__LINE__);
-                }
+                if (cancel_incomplete_temporal_post()) display_post_available = false;
                 if (post_batch_active)
                 {
                     const bool committing_opaque_post =
@@ -10684,7 +10754,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 if (capture.temporal_effective && !capture.temporal_submitted)
                 {
                     // Native submission alone cannot publish a world whose history transaction failed settlement.
-                    capture.presentation_target.reset(); capture.presentation_frame=std::numeric_limits<U32>::max();
+                    capture.presentation_target.reset();
+                    capture.presentation_frame = std::numeric_limits<U32>::max();
+                    pending_reference_still.reset();
                     final_presentation_available=false; pending_resolution_status.reset();
                     capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate();
                     capture.markIncomplete(__LINE__);
@@ -10722,6 +10794,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         << LL_ENDL;
                 }
             }
+            // Ineligible display consumers (including missing dirt/grade) never enter exact_base.
+            // Apply the same finalization rule here before generic cleanup can partially commit.
+            cancel_incomplete_temporal_post();
             if (post_batch_active)
             {
                 // A standalone optional optical batch has no owner without

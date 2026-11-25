@@ -253,6 +253,7 @@ if(AL_BUILD_TESTS)
     almetal_tests
     PROJECT almetal
     SOURCES tests/almetal_temporal_presentation_test.mm
+            tests/almetal_temporal_orchestration_test.mm
             tests/almetal_temporal_scaler_test.mm
             tests/almetal_temporal_motion_test.mm
             tests/almetal_temporal_history_test.cpp
@@ -360,6 +361,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_temporal_presentation_test.mm
+                              tests/almetal_temporal_orchestration_test.mm
                               tests/almetal_temporal_scaler_test.mm
                               tests/almetal_temporal_motion_test.mm
                               tests/almetal_temporal_history_test.cpp

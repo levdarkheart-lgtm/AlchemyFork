@@ -1848,7 +1848,8 @@ public:
     };
 private:
     bool consumeReferenceStillRequest();
-    std::unique_ptr<ALMetalRenderTarget> captureReferenceStill(const ALMetalRenderTarget& source);
+    std::unique_ptr<ALMetalRenderTarget> captureReferenceStill(const ALMetalRenderTarget& source,
+        std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
     void publishReferenceStill(std::unique_ptr<ALMetalRenderTarget> pending);
     F32 lensDistortionFitScale(const LensDistortFit::Inputs& inputs);
     bool configureMetalPresentationLens(ALMetalWorldPresentationScene& presentation);
