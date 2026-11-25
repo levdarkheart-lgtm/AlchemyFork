@@ -123,17 +123,31 @@ struct Fixture
         REQUIRE(renderer->resolveTemporalColor(input, *reconstructed, *resolved, &error)); INFO(error);
         return ticket;
     }
-    std::unique_ptr<ALMetalRenderTarget> display(const ALMetalTexture* adapted = nullptr)
+    ALMetalWorldTemporalPostConfig postConfig()
+    {
+        ALMetalWorldTemporalPostConfig config;
+        config.width = OW; config.height = OH;
+        config.presentation_width = OW; config.presentation_height = OH;
+        return config;
+    }
+    ALMetalWorldTemporalPostTargets postTargets(const ALMetalWorldTemporalPostConfig& config)
+    {
+        auto result = renderer->prepareTemporalPostTargets(config, &error);
+        INFO(error); REQUIRE(result); return std::move(*result);
+    }
+    std::unique_ptr<ALMetalRenderTarget> display(const ALMetalTexture* adapted = nullptr,
+        std::unique_ptr<ALMetalRenderTarget> prepared = {})
     {
         ALMetalWorldDisplayPostScene scene; scene.source = resolved.get(); scene.hdr = true;
         scene.adapted_exposure = .25f; scene.adapted_exposure_texture = adapted;
-        auto result = renderer->renderDisplayPost(scene, &error); REQUIRE(result); INFO(error); return result;
+        auto result = renderer->renderDisplayPost(scene, &error, std::move(prepared)); REQUIRE(result); INFO(error); return result;
     }
-    std::unique_ptr<ALMetalRenderTarget> present(const ALMetalRenderTarget& input, bool invalid = false)
+    std::unique_ptr<ALMetalRenderTarget> present(const ALMetalRenderTarget& input, bool invalid = false,
+        std::unique_ptr<ALMetalRenderTarget> prepared = {})
     {
         ALMetalWorldPresentationScene scene; scene.source = &input; scene.output_width = OW; scene.output_height = OH;
         if (invalid) scene.lens_distortion_amount = -1.f;
-        return renderer->renderPresentationPost(scene, &error);
+        return renderer->renderPresentationPost(scene, &error, std::move(prepared));
     }
     struct Settlement { unsigned published = 0, rejected = 0; bool history_submitted = false; };
     std::shared_ptr<Settlement> observe(ALMetalTemporalScaler::Ticket ticket)
@@ -278,8 +292,10 @@ TEST_CASE("Temporal worlds submit and retain their post resources while two grou
         {
             f.frame_data->beginFrame(index + 1);
             REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal pending required world", &f.error));
-            auto ticket = f.temporal(*f.source); auto display = f.display();
-            outputs[index] = f.present(*display); REQUIRE(outputs[index]);
+            auto targets = f.postTargets(f.postConfig());
+            auto ticket = f.temporal(*f.source);
+            auto display = f.display(nullptr, std::move(targets.display));
+            outputs[index] = f.present(*display, false, std::move(targets.presentation)); REQUIRE(outputs[index]);
             settlement[index] = f.observe(ticket); completion[index] = f.renderer->commandBatchCompletion();
             REQUIRE(f.renderer->commitCommandBatch(&f.error)); REQUIRE(settlement[index]->history_submitted);
             REQUIRE(settlement[index]->published == 1);
@@ -288,6 +304,7 @@ TEST_CASE("Temporal worlds submit and retain their post resources while two grou
         REQUIRE(gate.state->load() == 0);
         REQUIRE(ALMetalDevice::committedCommandBufferCount() == submitted + 2);
         REQUIRE(f.scaler->stats().submitted_calls == 2); REQUIRE(f.scaler->stats().reset_calls == 1);
+        REQUIRE(outputs[0]->colorTexture(0)->nativeHandle() != outputs[1]->colorTexture(0)->nativeHandle());
         f.scaler.reset(); gate.release();
         for (const auto& token : completion) REQUIRE(token->waitUntilCompleted(&f.error));
         const auto first = f.readBytes(*outputs[0]), second = f.readBytes(*outputs[1]);
@@ -303,39 +320,153 @@ TEST_CASE("Temporal worlds submit and retain their post resources while two grou
     }
 }
 
-TEST_CASE("Temporal repeated post transactions keep scaler and pooled ownership bounded", "[metal][temporal-presentation]")
+TEST_CASE("Temporal repeated post transactions reach steady-state pooled target reuse", "[metal][temporal-presentation]")
 {
     const auto before = alMetalResourceAllocationStats();
     {
         @autoreleasepool
         {
             Fixture f;
+            auto config = f.postConfig();
+            const char* configuration = "display and presentation";
+            SECTION("same configuration as the historical 69494 twelve-world fixture") {}
+            SECTION("bloom pyramid without halation")
+            {
+                configuration = "bloom"; config.bloom_mip_count = 4; config.bloom_resolution_scale = 2;
+            }
+            SECTION("halation cross filter and reference capture")
+            {
+                configuration = "halation cross-filter reference";
+                config.bloom_mip_count = 4; config.bloom_resolution_scale = 2;
+                config.bloom_halation = true; config.cross_filter = true; config.reference_capture = true;
+            }
             const auto created = alMetalResourceAllocationStats().textures_created;
-            std::uint64_t warm_created = created;
+            std::uint64_t warm_created = created, warm_reuses = 0, warm_deferrals = 0;
+            std::size_t targets_per_world = 0;
             for (unsigned index = 0; index < 12; ++index)
             {
                 f.frame_data->beginFrame(index + 1);
-                REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal bounded pool sequence", &f.error));
+                REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal steady-state pool sequence", &f.error));
+                auto targets = f.postTargets(config);
+                targets_per_world = 2 + targets.bloom.levels.size() +
+                    (config.cross_filter ? 3 : 0) + (config.reference_capture ? 1 : 0);
+                const auto display_backing = targets.display->colorTexture(0)->nativeHandle();
+                const auto presentation_backing = targets.presentation->colorTexture(0)->nativeHandle();
                 auto ticket = f.temporal(*f.source);
-                auto display = f.display(); auto final = f.present(*display); REQUIRE(final);
+                std::unique_ptr<ALMetalRenderTarget> bloom, cross_filter, reference;
+                if (config.bloom_mip_count)
+                {
+                    ALMetalWorldBloomScene scene;
+                    scene.source = f.resolved.get(); scene.mip_count = config.bloom_mip_count;
+                    scene.resolution_scale = config.bloom_resolution_scale;
+                    scene.halation = config.bloom_halation; scene.cross_filter = config.cross_filter;
+                    bloom = f.renderer->renderBloom(scene, &f.error, &cross_filter, std::move(targets.bloom));
+                    INFO(f.error); REQUIRE(bloom);
+                    REQUIRE(static_cast<bool>(cross_filter) == config.cross_filter);
+                }
+                ALMetalWorldDisplayPostScene scene;
+                scene.source = f.resolved.get(); scene.hdr = true;
+                scene.bloom_texture = bloom ? bloom->colorTexture(0) : nullptr;
+                scene.bloom_strength = bloom ? .325f : 0.f;
+                scene.cross_filter_texture = cross_filter ? cross_filter->colorTexture(0) : nullptr;
+                scene.cross_filter_strength = cross_filter ? .1f : 0.f;
+                auto display = f.renderer->renderDisplayPost(scene, &f.error, std::move(targets.display));
+                INFO(f.error); REQUIRE(display);
+                REQUIRE(display->colorTexture(0)->nativeHandle() == display_backing);
+                if (config.reference_capture)
+                {
+                    const auto reference_backing = targets.reference->colorTexture(0)->nativeHandle();
+                    reference = f.renderer->capturePresentationReference(*display, &f.error, std::move(targets.reference));
+                    INFO(f.error); REQUIRE(reference);
+                    REQUIRE(reference->colorTexture(0)->nativeHandle() == reference_backing);
+                }
+                auto final = f.present(*display, false, std::move(targets.presentation)); REQUIRE(final);
+                REQUIRE(final->colorTexture(0)->nativeHandle() == presentation_backing);
                 auto settled = f.observe(ticket);
                 auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion);
                 REQUIRE(f.renderer->commitCommandBatch(&f.error)); REQUIRE(settled->history_submitted);
-                // This exceptional offscreen test settles each transaction to
-                // examine retained pool storage. Production gains no new wait.
+                // Settle only in this offscreen fixture to distinguish genuine
+                // concurrency growth from the historical per-world churn.
                 REQUIRE(completion->waitUntilCompleted(&f.error));
-                if (index == 3) warm_created = alMetalResourceAllocationStats().textures_created;
-                REQUIRE(f.renderer->renderTargetPoolStats().cached_bytes <= 2048ull * 1024ull * 1024ull);
+                const auto pool = f.renderer->renderTargetPoolStats();
+                if (index == 3)
+                {
+                    warm_created = alMetalResourceAllocationStats().textures_created;
+                    warm_reuses = pool.reuses; warm_deferrals = pool.dependency_deferrals;
+                }
+                if (index > 3)
+                {
+                    REQUIRE(alMetalResourceAllocationStats().textures_created == warm_created);
+                    REQUIRE(pool.dependency_deferrals == warm_deferrals);
+                }
+                REQUIRE(pool.cached_bytes <= 2048ull * 1024ull * 1024ull);
             }
             REQUIRE(f.scaler->stats().creation_successes == 1);
             REQUIRE(f.scaler->stats().reset_calls == 1);
             REQUIRE(f.scaler->stats().submitted_calls == 12);
             const auto pool = f.renderer->renderTargetPoolStats();
             const auto allocations = alMetalResourceAllocationStats();
-            std::cout << "Temporal post12 pool acquisitions=" << pool.acquisitions << ", reuses=" << pool.reuses
-                      << ", deferrals=" << pool.dependency_deferrals << ", cached_bytes=" << pool.cached_bytes
-                      << ", textures_created=" << allocations.textures_created - created
+            REQUIRE(pool.reuses - warm_reuses >= 8 * targets_per_world);
+            REQUIRE(allocations.textures_created == warm_created);
+            std::cout << "Temporal post12 config=" << configuration << ", pool acquisitions=" << pool.acquisitions
+                      << ", reuses=" << pool.reuses << ", deferrals=" << pool.dependency_deferrals
+                      << ", cached_bytes=" << pool.cached_bytes << ", textures_created=" << allocations.textures_created - created
                       << ", created_after_warm4=" << allocations.textures_created - warm_created << '\n';
+        }
+    }
+    const auto after = alMetalResourceAllocationStats();
+    REQUIRE(after.texture_bytes_live == before.texture_bytes_live);
+    REQUIRE(after.buffer_bytes_live == before.buffer_bytes_live);
+}
+
+TEST_CASE("Temporal prepared post resources validate descriptors and survive abandonment", "[metal][temporal-presentation]")
+{
+    const auto before = alMetalResourceAllocationStats();
+    {
+        @autoreleasepool
+        {
+            Fixture f;
+            auto config = f.postConfig();
+            config.width = 129; config.height = 97;
+            config.presentation_width = 133; config.presentation_height = 101;
+            config.bloom_mip_count = 4; config.bloom_resolution_scale = 1;
+            config.bloom_halation = true; config.cross_filter = true; config.reference_capture = true;
+            REQUIRE(f.renderer->beginMainFrameBatch(1, "Temporal prepared resources abandoned before encoding", &f.error));
+            {
+                auto targets = f.postTargets(config);
+                REQUIRE(targets.display->descriptor().width == 129);
+                REQUIRE(targets.display->descriptor().height == 97);
+                REQUIRE(targets.presentation->descriptor().width == 133);
+                REQUIRE(targets.presentation->descriptor().height == 101);
+                REQUIRE(targets.reference->descriptor().colors[0].format == ALMetalPixelFormat::rgb10a2_unorm);
+                REQUIRE(targets.bloom.levels.size() == 4);
+                REQUIRE(targets.bloom.levels[0]->descriptor().width == 96);
+                REQUIRE(targets.bloom.levels[0]->descriptor().height == 72);
+                REQUIRE(targets.bloom.levels[3]->descriptor().width == 12);
+                REQUIRE(targets.bloom.cross_filter[0]->descriptor().width == 48);
+                f.renderer->cancelCommandBatch();
+            }
+            const auto created = alMetalResourceAllocationStats().textures_created;
+            REQUIRE(f.renderer->beginMainFrameBatch(1, "Temporal reuses unsubmitted prepared resources", &f.error));
+            {
+                auto targets = f.postTargets(config);
+                REQUIRE(alMetalResourceAllocationStats().textures_created == created);
+                f.renderer->cancelCommandBatch();
+            }
+            const auto submitted = ALMetalDevice::committedCommandBufferCount();
+            REQUIRE(f.renderer->beginMainFrameBatch(1, "Temporal supplied target descriptor rejection", &f.error));
+            auto targets = f.postTargets(f.postConfig());
+            auto ticket = f.temporal(*f.source); auto settlement = f.observe(ticket);
+            const auto before_rejection = alMetalResourceAllocationStats().textures_created;
+            ALMetalWorldDisplayPostScene display; display.source = f.resolved.get(); display.hdr = true;
+            // A BGRA presentation owner cannot silently become a fresh display
+            // allocation after native encoding has made the command opaque.
+            REQUIRE_FALSE(f.renderer->renderDisplayPost(display, &f.error, std::move(targets.presentation)));
+            REQUIRE(f.error.find("Pre-acquired Temporal display-post") != std::string::npos);
+            REQUIRE(alMetalResourceAllocationStats().textures_created == before_rejection);
+            REQUIRE_FALSE(f.renderer->commitCommandBatch(&f.error));
+            REQUIRE(ALMetalDevice::committedCommandBufferCount() == submitted);
+            REQUIRE(settlement->rejected == 1); REQUIRE(settlement->published == 0);
         }
     }
     const auto after = alMetalResourceAllocationStats();

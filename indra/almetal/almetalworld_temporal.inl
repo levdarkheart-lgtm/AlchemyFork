@@ -1,4 +1,58 @@
 /** Main-world Temporal integration. Included only by almetalworld.cpp. */
+std::optional<ALMetalWorldTemporalPostTargets>
+ALMetalWorldGBufferRenderer::prepareTemporalPostTargets(
+    const ALMetalWorldTemporalPostConfig& config, std::string* error)
+{
+    if (!mImpl || !mImpl->device || !config.width || !config.height ||
+        !config.presentation_width || !config.presentation_height ||
+        (config.bloom_mip_count == 0 && config.cross_filter) ||
+        mImpl->command_batch_temporal_encoded)
+    {
+        setError(error, "Temporal post targets require a valid active plan before native Temporal encoding");
+        return std::nullopt;
+    }
+    ALMetalWorldTemporalPostTargets result;
+    if (config.bloom_mip_count)
+    {
+        auto descriptors = bloomTargetDescriptors(config.width, config.height, config.bloom_mip_count,
+            config.bloom_resolution_scale, config.bloom_halation, config.cross_filter);
+        if (!descriptors)
+        {
+            setError(error, "Temporal post bloom target plan is invalid");
+            return std::nullopt;
+        }
+        for (const auto& descriptor : descriptors->levels)
+        {
+            auto target = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+            if (!target) return std::nullopt;
+            result.bloom.levels.push_back(std::move(target));
+        }
+        if (descriptors->cross_filter)
+            for (auto& target : result.bloom.cross_filter)
+            {
+                target = mImpl->makeRenderTarget(*mImpl->device, *descriptors->cross_filter, error);
+                if (!target) return std::nullopt;
+            }
+    }
+    const auto display_descriptor = postTargetDescriptor(config.width, config.height,
+        config.hdr ? ALMetalPixelFormat::rgb10a2_unorm : ALMetalPixelFormat::rgba8_unorm,
+        "Alchemy native world display-post target");
+    result.display = mImpl->makeRenderTarget(*mImpl->device, display_descriptor, error);
+    if (!result.display) return std::nullopt;
+    const auto presentation_descriptor = postTargetDescriptor(config.presentation_width, config.presentation_height,
+        ALMetalPixelFormat::bgra8_unorm, "Alchemy native world final-presentation target");
+    result.presentation = mImpl->makeRenderTarget(*mImpl->device, presentation_descriptor, error);
+    if (!result.presentation) return std::nullopt;
+    if (config.reference_capture)
+    {
+        const auto descriptor = postTargetDescriptor(config.width, config.height, ALMetalPixelFormat::rgb10a2_unorm,
+            "Alchemy native final-presentation reference target");
+        result.reference = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+        if (!result.reference) return std::nullopt;
+    }
+    return result;
+}
+
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::prepareTemporalTarget(std::uint32_t width,
     std::uint32_t height, bool shader_write, std::string* error)

@@ -1188,6 +1188,73 @@ namespace
                                ALMetalTextureUsage::shader_read);
     }
 
+    ALMetalRenderTargetDescriptor postTargetDescriptor(std::uint32_t width,
+        std::uint32_t height, ALMetalPixelFormat format, const char* label)
+    {
+        ALMetalRenderTargetDescriptor result;
+        result.width = width;
+        result.height = height;
+        result.colors[0].format = format;
+        result.label = label;
+        return result;
+    }
+
+    bool preparedPostTargetMatches(const ALMetalRenderTarget& target,
+        const ALMetalRenderTargetDescriptor& expected)
+    {
+        const auto& supplied = target.descriptor();
+        const auto* color = target.colorTexture(0);
+        return supplied.width == expected.width && supplied.height == expected.height &&
+            supplied.sample_count == 1 && supplied.mipmap_level_count == 1 &&
+            supplied.color_attachment_count == 1 &&
+            supplied.colors[0].format == expected.colors[0].format &&
+            supplied.colors[0].texture == nullptr && supplied.depth_stencil_texture == nullptr &&
+            supplied.depth_stencil_format == ALMetalPixelFormat::invalid && color &&
+            color->descriptor().type == ALMetalTextureType::texture_2d &&
+            color->descriptor().storage == ALMetalStorageMode::private_gpu &&
+            color->descriptor().width == expected.width && color->descriptor().height == expected.height &&
+            color->descriptor().format == expected.colors[0].format &&
+            color->descriptor().mipmap_level_count == 1 && color->descriptor().array_length == 1 &&
+            sampleableTexture(color) &&
+            alMetalHasUsage(color->descriptor().usage, ALMetalTextureUsage::render_target);
+    }
+
+    struct BloomTargetDescriptors
+    {
+        std::vector<ALMetalRenderTargetDescriptor> levels;
+        std::optional<ALMetalRenderTargetDescriptor> cross_filter;
+    };
+
+    // The preparation and encode paths share this sizing/format calculation.
+    // Bloom uses floor division independently of the main-view rational scales.
+    std::optional<BloomTargetDescriptors> bloomTargetDescriptors(std::uint32_t width,
+        std::uint32_t height, std::uint32_t mip_count, std::uint32_t scale,
+        bool halation, bool cross_filter)
+    {
+        if (!width || !height || mip_count < 3 || mip_count > 7 || scale > 4)
+            return std::nullopt;
+        constexpr std::array<std::uint32_t, 5> numerator{{1, 3, 1, 1, 1}};
+        constexpr std::array<std::uint32_t, 5> denominator{{1, 4, 2, 4, 8}};
+        const auto base_width = std::max(1u, static_cast<std::uint32_t>(
+            std::uint64_t(width) * numerator[scale] / denominator[scale]));
+        const auto base_height = std::max(1u, static_cast<std::uint32_t>(
+            std::uint64_t(height) * numerator[scale] / denominator[scale]));
+        BloomTargetDescriptors result;
+        for (std::uint32_t mip = 0; mip < mip_count; ++mip)
+        {
+            result.levels.push_back(postTargetDescriptor(std::max(1u, base_width >> mip),
+                std::max(1u, base_height >> mip), halation ? ALMetalPixelFormat::rgba16_float
+                    : ALMetalPixelFormat::rg11b10_float, "Alchemy native world bloom target"));
+            if (result.levels.back().width == 1 && result.levels.back().height == 1) break;
+        }
+        if (result.levels.size() < 3) return std::nullopt;
+        if (cross_filter)
+            result.cross_filter = postTargetDescriptor(std::max(1u, base_width / 2u),
+                std::max(1u, base_height / 2u), ALMetalPixelFormat::rgba16_float,
+                "Alchemy native world cross-filter target");
+        return result;
+    }
+
     bool validReflectionProbes(
         const ALMetalWorldReflectionProbes* probes)
     {
@@ -12954,7 +13021,8 @@ std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderBloom(
     const ALMetalWorldBloomScene& scene,
     std::string* error,
-    std::unique_ptr<ALMetalRenderTarget>* cross_filter)
+    std::unique_ptr<ALMetalRenderTarget>* cross_filter,
+    ALMetalWorldBloomTargets prepared_targets)
 {
     Impl::GBufferFailureScope temporal_transaction(
         mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
@@ -13007,52 +13075,42 @@ ALMetalWorldGBufferRenderer::renderBloom(
         return nullptr;
     }
 
-    constexpr std::array<std::uint32_t, 5> scale_numerator{{
-        1, 3, 1, 1, 1,
-    }};
-    constexpr std::array<std::uint32_t, 5> scale_denominator{{
-        1, 4, 2, 4, 8,
-    }};
-    const std::size_t scale = scene.resolution_scale;
-    const std::uint32_t base_width = std::max(
-        1u, static_cast<std::uint32_t>(
-                static_cast<std::uint64_t>(source.width) *
-                scale_numerator[scale] / scale_denominator[scale]));
-    const std::uint32_t base_height = std::max(
-        1u, static_cast<std::uint32_t>(
-                static_cast<std::uint64_t>(source.height) *
-                scale_numerator[scale] / scale_denominator[scale]));
-
-    std::vector<std::unique_ptr<ALMetalRenderTarget>> targets;
-    targets.reserve(scene.mip_count);
-    for (std::uint32_t mip = 0; mip < scene.mip_count; ++mip)
-    {
-        ALMetalRenderTargetDescriptor descriptor;
-        descriptor.width = std::max(1u, base_width >> mip);
-        descriptor.height = std::max(1u, base_height >> mip);
-        descriptor.colors[0].format = scene.halation
-            ? ALMetalPixelFormat::rgba16_float
-            : ALMetalPixelFormat::rg11b10_float;
-        descriptor.colors[0].shader_read = true;
-        descriptor.colors[0].label =
-            "Alchemy native world bloom color";
-        descriptor.label = "Alchemy native world bloom target";
-    auto target = mImpl->makeRenderTarget(
-            *mImpl->device, descriptor, error);
-        if (!target)
-        {
-            return nullptr;
-        }
-        targets.push_back(std::move(target));
-        if (descriptor.width == 1 && descriptor.height == 1)
-        {
-            break;
-        }
-    }
-    if (targets.size() < 3)
+    const auto descriptors = bloomTargetDescriptors(source.width, source.height, scene.mip_count,
+        scene.resolution_scale, scene.halation, scene.cross_filter);
+    if (!descriptors)
     {
         setError(error, "Metal world bloom pyramid is too shallow");
         return nullptr;
+    }
+    const bool supplied = !prepared_targets.levels.empty() || std::any_of(
+        prepared_targets.cross_filter.begin(), prepared_targets.cross_filter.end(),
+        [](const auto& target) { return static_cast<bool>(target); });
+    if (supplied)
+    {
+        bool compatible = prepared_targets.levels.size() == descriptors->levels.size();
+        for (std::size_t mip = 0; compatible && mip < descriptors->levels.size(); ++mip)
+            compatible = prepared_targets.levels[mip] &&
+                preparedPostTargetMatches(*prepared_targets.levels[mip], descriptors->levels[mip]);
+        for (const auto& target : prepared_targets.cross_filter)
+            compatible = compatible && (descriptors->cross_filter
+                ? target && preparedPostTargetMatches(*target, *descriptors->cross_filter) : !target);
+        if (!compatible)
+        {
+            setError(error, "Pre-acquired Temporal bloom targets are incompatible");
+            return nullptr;
+        }
+    }
+    auto targets = std::move(prepared_targets.levels);
+    auto cross_targets = std::move(prepared_targets.cross_filter);
+    if (!supplied)
+    {
+        targets.reserve(descriptors->levels.size());
+        for (const auto& descriptor : descriptors->levels)
+        {
+            auto target = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+            if (!target) return nullptr;
+            targets.push_back(std::move(target));
+        }
     }
 
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
@@ -13134,31 +13192,19 @@ ALMetalWorldGBufferRenderer::renderBloom(
             "Alchemy world bloom downsample encoder");
     }
 
-    std::array<std::unique_ptr<ALMetalRenderTarget>, 3>
-        cross_targets;
     if (encoded && scene.cross_filter)
     {
-        ALMetalRenderTargetDescriptor descriptor;
-        descriptor.width = std::max(
-            1u, targets[0]->descriptor().width / 2u);
-        descriptor.height = std::max(
-            1u, targets[0]->descriptor().height / 2u);
-        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
-        descriptor.colors[0].shader_read = true;
-        descriptor.colors[0].label =
-            "Alchemy native world cross-filter color";
-        descriptor.label = "Alchemy native world cross-filter target";
-        for (auto& target : cross_targets)
-        {
-            target = mImpl->makeRenderTarget(
-                *mImpl->device, descriptor, error);
-            if (!target)
+        const auto& descriptor = *descriptors->cross_filter;
+        if (!supplied)
+            for (auto& target : cross_targets)
             {
-                mImpl->finishCommandBuffer(
-                    owned_command, false, error);
-                return nullptr;
+                target = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+                if (!target)
+                {
+                    mImpl->finishCommandBuffer(owned_command, false, error);
+                    return nullptr;
+                }
             }
-        }
 
         const float texel_x = 1.f /
             static_cast<float>(descriptor.width);
@@ -14010,7 +14056,7 @@ ALMetalWorldGBufferRenderer::renderLensDirt(
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderDisplayPost(
     const ALMetalWorldDisplayPostScene& scene,
-    std::string* error)
+    std::string* error, std::unique_ptr<ALMetalRenderTarget> prepared_output)
 {
     Impl::GBufferFailureScope temporal_transaction(
         mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
@@ -14259,8 +14305,13 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     output_descriptor.label = scene.hdr
         ? "Alchemy native HDR world display-post target"
         : "Alchemy native world display-post target";
-    auto output = mImpl->makeRenderTarget(
-        *mImpl->device, output_descriptor, error);
+    if (prepared_output && !preparedPostTargetMatches(*prepared_output, output_descriptor))
+    {
+        setError(error, "Pre-acquired Temporal display-post output is incompatible");
+        return nullptr;
+    }
+    auto output = prepared_output ? std::move(prepared_output)
+        : mImpl->makeRenderTarget(*mImpl->device, output_descriptor, error);
     if (!output)
     {
         return nullptr;
@@ -14629,7 +14680,7 @@ ALMetalWorldGBufferRenderer::renderRlvSphere(
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::capturePresentationReference(
     const ALMetalRenderTarget& source,
-    std::string* error)
+    std::string* error, std::unique_ptr<ALMetalRenderTarget> prepared_output)
 {
     Impl::GBufferFailureScope temporal_transaction(
         mImpl && mImpl->command_batch_temporal_encoded ? mImpl.get() : nullptr, error);
@@ -14658,8 +14709,13 @@ ALMetalWorldGBufferRenderer::capturePresentationReference(
     descriptor.colors[0].label =
         "Alchemy native final-presentation reference color";
     descriptor.label = "Alchemy native final-presentation reference target";
-    auto output = mImpl->makeRenderTarget(
-        *mImpl->device, descriptor, error);
+    if (prepared_output && !preparedPostTargetMatches(*prepared_output, descriptor))
+    {
+        setError(error, "Pre-acquired Temporal reference output is incompatible");
+        return nullptr;
+    }
+    auto output = prepared_output ? std::move(prepared_output)
+        : mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
     if (!output)
     {
         return nullptr;
@@ -15118,7 +15174,7 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     {
         const auto& supplied = prepared_output->descriptor();
         const auto* color = prepared_output->colorTexture(0);
-        if (!scene.upscaled_color || supplied.width != output_width ||
+        if ((!scene.upscaled_color && !mImpl->command_batch_temporal_encoded) || supplied.width != output_width ||
             supplied.height != output_height || supplied.color_attachment_count != 1 ||
             supplied.colors[0].format != ALMetalPixelFormat::bgra8_unorm ||
             supplied.colors[0].texture ||

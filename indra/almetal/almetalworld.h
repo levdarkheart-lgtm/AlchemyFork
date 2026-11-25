@@ -2190,6 +2190,30 @@ struct ALMetalWorldBloomScene
     float cross_filter_chromatic = 0.f;
 };
 
+// Frame-owned post targets acquired before Temporal makes its enclosing native
+// command opaque. Consumers take these exact owners; no persistent target cache
+// or alternate resource-plan lifetime is introduced.
+struct ALMetalWorldBloomTargets
+{
+    std::vector<std::unique_ptr<ALMetalRenderTarget>> levels;
+    std::array<std::unique_ptr<ALMetalRenderTarget>, 3> cross_filter;
+};
+
+struct ALMetalWorldTemporalPostConfig
+{
+    std::uint32_t width = 0, height = 0;
+    std::uint32_t presentation_width = 0, presentation_height = 0;
+    bool hdr = true;
+    std::uint32_t bloom_mip_count = 0, bloom_resolution_scale = 0;
+    bool bloom_halation = false, cross_filter = false, reference_capture = false;
+};
+
+struct ALMetalWorldTemporalPostTargets
+{
+    ALMetalWorldBloomTargets bloom;
+    std::unique_ptr<ALMetalRenderTarget> display, presentation, reference;
+};
+
 // The production non-HDR glow owner. It preserves glowExtractF/glowF's
 // reduced 512-wide target, alpha/luminance/warmth extraction, optional
 // 128-square static noise, alternating eight-tap blur and RGBA8/RGBA16F
@@ -3053,7 +3077,8 @@ public:
     // and complete grading may be folded in; this is not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
 
     // Apply one enabled RLVa vision-sphere effect to the completed
     // post-AA/CAS display target. Blur modes execute their dependent
@@ -3070,7 +3095,8 @@ public:
     // remains valid if a later presentation or UI owner fails.
     std::unique_ptr<ALMetalRenderTarget> capturePresentationReference(
         const ALMetalRenderTarget& source,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
 
     // Apply the final lens/print/reference family as one display-space pass.
     // Standalone CAS remains the preceding owner, so this method never hides
@@ -3094,6 +3120,10 @@ public:
         std::string* error = nullptr, const float* jitter_pixels = nullptr);
     std::unique_ptr<ALMetalRenderTarget> prepareTemporalTarget(std::uint32_t width,
         std::uint32_t height, bool shader_write, std::string* error = nullptr);
+    // Prepare only the active downstream resources, while generation reuse is
+    // still legal. Failure releases the partial pack through the normal pool.
+    std::optional<ALMetalWorldTemporalPostTargets> prepareTemporalPostTargets(
+        const ALMetalWorldTemporalPostConfig& config, std::string* error = nullptr);
     std::unique_ptr<ALMetalRenderTarget> prepareTemporalMotionTarget(std::uint32_t width,
         std::uint32_t height, std::string* error = nullptr);
     bool prepareTemporalMotion(std::string* error = nullptr);
@@ -3134,7 +3164,8 @@ public:
     std::unique_ptr<ALMetalRenderTarget> renderBloom(
         const ALMetalWorldBloomScene& scene,
         std::string* error = nullptr,
-        std::unique_ptr<ALMetalRenderTarget>* cross_filter = nullptr);
+        std::unique_ptr<ALMetalRenderTarget>* cross_filter = nullptr,
+        ALMetalWorldBloomTargets prepared_targets = {});
 
     // Extract and blur legacy non-HDR glow without crossing CPU memory. The
     // returned reduced target is combined only after AA/CAS, matching
