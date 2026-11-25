@@ -2576,6 +2576,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::vector<CommandSettlementObserver> command_settlement_observers;
     std::shared_ptr<std::uint64_t> settlement_observer_failures = std::make_shared<std::uint64_t>(0);
     bool command_batch_valid = true;
+    bool command_batch_temporal_encoded = false;
     std::string command_batch_failure;
     bool command_batch_generates_brdf_lut = false;
 
@@ -3731,6 +3732,7 @@ bool ALMetalShadowEncodingContext::adopt(ALMetalWorldGBufferRenderer& owner,
     target->command_settlement_observers.swap(source->command_settlement_observers);
     target->settlement_observer_failures = source->settlement_observer_failures;
     target->command_batch_valid = true;
+    target->command_batch_temporal_encoded = false;
     target->command_batch_failure.clear();
     mImpl->encode_attempted = false;
     mImpl->adopted = true;
@@ -4265,6 +4267,7 @@ bool ALMetalWorldGBufferRenderer::beginCommandBatch(
     }
     mImpl->command_batch = mImpl->device->makeCommandBuffer(label, error);
     mImpl->command_batch_valid = static_cast<bool>(mImpl->command_batch);
+    mImpl->command_batch_temporal_encoded = false;
     mImpl->command_batch_failure.clear();
     mImpl->command_batch_generates_brdf_lut = false;
     return static_cast<bool>(mImpl->command_batch);
@@ -4299,6 +4302,7 @@ bool ALMetalWorldGBufferRenderer::beginMainFrameBatch(
     }
     mImpl->main_reservation = ticket;
     mImpl->command_batch_valid = true;
+    mImpl->command_batch_temporal_encoded = false;
     mImpl->command_batch_failure.clear();
     mImpl->command_batch_generates_brdf_lut = false;
     return true;
@@ -4329,6 +4333,7 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     const auto shadow_ticket = mImpl->shadow_reservation;
     const auto main_ticket = mImpl->main_reservation;
     mImpl->command_batch_valid = true;
+    mImpl->command_batch_temporal_encoded = false;
     mImpl->command_batch_failure.clear();
     mImpl->command_batch_generates_brdf_lut = false;
     if (!valid)
@@ -4432,6 +4437,7 @@ void ALMetalWorldGBufferRenderer::cancelCommandBatch()
             mImpl->shadow_submissions->admission.cancel(mImpl->shadow_reservation);
         mImpl->shadow_reservation = 0;
         mImpl->command_batch_valid = true;
+        mImpl->command_batch_temporal_encoded = false;
         mImpl->command_batch_failure.clear();
         mImpl->command_batch_generates_brdf_lut = false;
         auto observers = std::move(mImpl->command_settlement_observers);
@@ -4466,6 +4472,7 @@ bool ALMetalWorldGBufferRenderer::beginShadowFrameBatch(
     mImpl->shadow_reservation = ticket;
     mImpl->command_batch = std::move(command);
     mImpl->command_batch_valid = true;
+    mImpl->command_batch_temporal_encoded = false;
     mImpl->command_batch_failure.clear();
     mImpl->command_batch_generates_brdf_lut = false;
     return true;
@@ -14861,10 +14868,12 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     const ALMetalWorldPresentationScene& scene,
     std::string* error, std::unique_ptr<ALMetalRenderTarget> prepared_output)
 {
-    // New spatial chains are one transaction, including invalid handoff
-    // targets. Preserve ordinary Native/cutout preflight behavior unchanged.
+    // Reconstructed worlds are one transaction, including final presentation validation. Temporal has
+    // already replaced HDR color, so it does not use Spatial's late upscaled_color handoff. A failure after
+    // its stateful encode must still reject the outer commit. Native/cutout preflight semantics remain intact.
     Impl::GBufferFailureScope transaction(
-        scene.upscaled_color || prepared_output ? mImpl.get() : nullptr, error);
+        scene.upscaled_color || prepared_output || (mImpl && mImpl->command_batch_temporal_encoded)
+            ? mImpl.get() : nullptr, error);
     const auto finite = [](const float* values, std::size_t count)
     {
         for (std::size_t index = 0; index < count; ++index)
