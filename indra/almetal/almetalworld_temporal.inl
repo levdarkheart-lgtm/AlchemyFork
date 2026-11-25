@@ -45,13 +45,14 @@ bool ALMetalWorldGBufferRenderer::encodeTemporalUpscale(ALMetalTemporalScaler& s
     inputs.depth = motion.colorTexture(2);
     inputs.output = output.colorTexture(0);
     const bool encoded = scaler.encode(*mImpl->command_batch, descriptor, inputs, frame, ticket, error);
+    if (encoded) mImpl->command_batch_temporal_encoded=true;
     transaction.succeeded = encoded;
     return encoded;
 }
 
 bool ALMetalWorldGBufferRenderer::resolveTemporalColor(const ALMetalRenderTarget& original,
     const ALMetalRenderTarget& reconstructed, ALMetalRenderTarget& output,
-    std::string* error)
+    std::string* error, const float* jitter_pixels)
 {
     Impl::GBufferFailureScope transaction(mImpl.get(), error);
     if (!mImpl || !mImpl->command_batch || !mImpl->command_batch_valid ||
@@ -64,6 +65,12 @@ bool ALMetalWorldGBufferRenderer::resolveTemporalColor(const ALMetalRenderTarget
         setError(error, "Temporal color resolve requires complete matching preallocated HDR outputs");
         return false;
     }
+    const auto& input_descriptor=original.descriptor();
+    const std::array<float,4> alpha_offset{
+        jitter_pixels ? jitter_pixels[0]/float(input_descriptor.width) : 0.f,
+        jitter_pixels ? jitter_pixels[1]/float(input_descriptor.height) : 0.f,0.f,0.f};
+    if (!std::isfinite(alpha_offset[0]) || !std::isfinite(alpha_offset[1]))
+    { setError(error,"Temporal glow-alpha jitter must be finite"); return false; }
     ALMetalRenderPassConfig config;
     config.colors[0].load = ALMetalLoadAction::dont_care;
     auto pass = output.makeRenderPass(config, error);
@@ -78,6 +85,7 @@ bool ALMetalWorldGBufferRenderer::resolveTemporalColor(const ALMetalRenderTarget
         encoder->setFragmentTexture(0,reconstructed.colorTexture(0),error) &&
         encoder->setFragmentTexture(1,original.colorTexture(0),error) &&
         encoder->setFragmentSampler(0,mImpl->linear_clamp_sampler.get(),error) &&
+        encoder->setFragmentBytes(0,alpha_offset.data(),sizeof(alpha_offset),error) &&
         encoder->draw(ALMetalPrimitiveType::triangle,0,3,1,error);
     const bool ended = encoder && encoder->end(error);
     transaction.succeeded = encoded && ended;

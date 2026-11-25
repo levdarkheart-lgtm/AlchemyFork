@@ -2196,6 +2196,19 @@ bool metalWorldAlphaUsesDirectionalShadows(const LLPipeline& pipeline)
 #include "light_screen_rect_native.inl"
 }
 
+bool LLPipeline::expandMetalTemporalCull(LLCamera& camera) const
+{
+    if (!isMainWorldPass() || mRT!=&mMainRT || !mResourceInputs.mainResolutionPolicy().usesTemporal() ||
+        gSnapshot || gCubeSnapshot || sRenderingHUDs || sCutoutRender || sImpostorRender) return false;
+    auto matrix=std::array<F32,16>{};
+    std::copy_n(camera.getProjection().getF32ptr(),16,matrix.begin());
+    const auto dimensions=mResourcePlan.mainViewDimensions();
+    alMetalExpandTemporalCullProjection(matrix.data(),dimensions.mSceneWidth,dimensions.mSceneHeight);
+    LLMatrix4a projection; projection.loadu(matrix.data()); camera.setProjection(projection);
+    LLViewerCamera::updateFrustumPlanes(camera);
+    return true;
+}
+
 LLMatrix4a LLPipeline::metalWorldProjection(const LLMatrix4a& projection) const
 {
     LLMatrix4a raster=projection;
@@ -8937,6 +8950,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.temporal_history.commit(world,&error))
                     {
                         capture.temporal_ticket=0;
+                        capture.temporal_submitted=true;
                         capture.temporal_previous_camera_position=capture.temporal_camera_position;
                         capture.temporal_previous_camera_direction=capture.temporal_camera_direction;
                         capture.temporal_previous_camera_valid=true;
@@ -10655,6 +10669,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     post_batch_active = false;
                     opaque_post_batch_active = false;
                 }
+                if (capture.temporal_effective && !capture.temporal_submitted)
+                {
+                    // Native submission alone cannot publish a world whose history transaction failed settlement.
+                    capture.presentation_target.reset(); capture.presentation_frame=std::numeric_limits<U32>::max();
+                    final_presentation_available=false; pending_resolution_status.reset();
+                    capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate();
+                    capture.markIncomplete(__LINE__);
+                }
                 // Standalone capture committed itself; a failed batch has
                 // already discarded pending. Final print/window availability
                 // is independent of the original pre-print reference grab.
@@ -10663,6 +10685,18 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 {
                     if (pending_resolution_status)
                         mMetalMainResolutionStatus = std::move(*pending_resolution_status);
+                    if (capture.temporal_effective && capture.temporal_submitted)
+                    {
+                        const auto temporal_stats=capture.temporal_scaler->stats();
+                        if (ALMetalDiagnosticTelemetry::enabled())
+                            ALMetalDiagnosticTelemetry::recordMetrics(
+                                {gFrameCount,ALMetalDiagnosticTelemetry::ViewKind::main,-1},"main_temporal_scaler",
+                                {capture.temporal_world_serial,temporal_stats.submitted_calls,temporal_stats.reset_calls,
+                                 temporal_stats.creation_successes,temporal_stats.gpu_failures,capture.width,capture.height,
+                                 static_cast<U32>(mResourceInputs.mMainResolutionMode)});
+                        LL_INFOS_ONCE("Metal") << "Native MetalFX Temporal main-world reconstruction submitted: HDR before tone mapping, "
+                            "object/avatar motion and reactive rejection, saved FXAA/SMAA/CAS bypassed" << LL_ENDL;
+                    }
                     LL_INFOS_ONCE("Metal")
                         << "Native world final BGRA8 presentation is "
                            "available for ordered UI composition"
@@ -18524,6 +18558,9 @@ bool LLPipeline::reloadMetalShaders(std::string* error)
     for (auto* owner : {mMetalWorldSimpleCapture.get(), mMetalProbeWorldSimpleCapture.get()})
     {
         if (!owner) continue;
+        owner->abandonTemporalFrame(); owner->temporal_history.invalidate();
+        if (owner->temporal_scaler) owner->temporal_scaler->invalidate();
+        owner->temporal_effective=false; owner->temporal_previous_camera_valid=false;
         // Only the successful shared-epoch commit retires asynchronous builds.
         // A failed second owner leaves both old renderers and build epochs live.
         owner->renderer_build.reset();
@@ -21021,18 +21058,7 @@ void LLPipeline::updateReverseZ(bool reverse_z)
 void LLPipeline::updateCull(LLCamera& logical_camera, LLCullResult& result)
 {
     LLCamera guarded_camera(logical_camera);
-    const bool temporal_guard=isMainWorldPass() && mRT==&mMainRT &&
-        mResourceInputs.mainResolutionPolicy().usesTemporal() && !gSnapshot && !gCubeSnapshot &&
-        !sRenderingHUDs && !sCutoutRender && !sImpostorRender;
-    if (temporal_guard)
-    {
-        auto matrix=std::array<F32,16>{};
-        std::copy_n(logical_camera.getProjection().getF32ptr(),16,matrix.begin());
-        const auto dimensions=mResourcePlan.mainViewDimensions();
-        alMetalExpandTemporalCullProjection(matrix.data(),dimensions.mSceneWidth,dimensions.mSceneHeight);
-        LLMatrix4a projection; projection.loadu(matrix.data()); guarded_camera.setProjection(projection);
-        LLViewerCamera::updateFrustumPlanes(guarded_camera);
-    }
+    const bool temporal_guard=expandMetalTemporalCull(guarded_camera);
     LLCamera& camera=temporal_guard ? guarded_camera : logical_camera;
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("updateCull"); // should always be zero GPU time, but drop a timer to flush stuff out
@@ -21726,8 +21752,12 @@ void LLPipeline::markRebuild(LLDrawable *drawablep, LLDrawable::EDrawableFlags f
     }
 }
 
-void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
+void LLPipeline::stateSort(LLCamera& logical_camera, LLCullResult &result)
 {
+    // Terrain's secondary visibility backstop must use the same conservative guard band as broad culling.
+    LLCamera guarded_camera(logical_camera);
+    const bool temporal_guard=expandMetalTemporalCull(guarded_camera);
+    LLCamera& camera=temporal_guard ? guarded_camera : logical_camera;
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("stateSort");
 

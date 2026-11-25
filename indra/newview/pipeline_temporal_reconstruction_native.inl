@@ -20,10 +20,12 @@
                 {
                     motion.reject_water=true;
                     std::copy_n(scene.water_surface->field.water_plane,4,motion.eye_water_plane);
+                    motion.water_rejection_margin=scene.water_surface->waves ?
+                        std::abs(scene.water_surface->wave_reach_amplitude[1]) : 0.f;
                 }
                 std::string temporal_error;
                 capture.temporal_motion = exact_dof && motion.opaque_scene
-                    ? capture.renderer->renderTemporalMotion(motion,&temporal_error) : nullptr;
+                    ? capture.renderer->renderTemporalMotion(motion,&temporal_error,std::move(capture.temporal_motion)) : nullptr;
                 ALMetalTemporalScalerFrame temporal_frame;
                 temporal_frame.jitter_x=capture.temporal_jitter[0]; temporal_frame.jitter_y=capture.temporal_jitter[1];
                 temporal_frame.depth_reversed=capture.reverse_z;
@@ -34,7 +36,7 @@
                         *post_source->colorTexture(0),*capture.temporal_motion,*capture.temporal_raw_output,
                         temporal_frame,capture.temporal_ticket,&temporal_error) &&
                     capture.renderer->resolveTemporalColor(*post_source,*capture.temporal_raw_output,
-                        *capture.temporal_resolved_output,&temporal_error);
+                        *capture.temporal_resolved_output,&temporal_error,capture.temporal_jitter.data());
                 if (!reconstructed)
                 {
                     capture.renderer->cancelCommandBatch();

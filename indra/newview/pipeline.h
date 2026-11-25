@@ -217,6 +217,7 @@ public:
 private:
     MetalMainResolutionStatus mMetalMainResolutionStatus;
     LLMatrix4a metalWorldProjection(const LLMatrix4a& projection) const;
+    bool expandMetalTemporalCull(LLCamera& camera) const;
 
     // The one application, which applyRenderInputs and loadRenderInputs run.
     void applyRenderInputs(const ALRenderInputRequests::Application& taken);
