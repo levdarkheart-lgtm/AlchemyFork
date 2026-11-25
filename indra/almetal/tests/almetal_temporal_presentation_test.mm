@@ -342,3 +342,55 @@ TEST_CASE("Temporal repeated post transactions keep scaler and pooled ownership 
     REQUIRE(after.texture_bytes_live == before.texture_bytes_live);
     REQUIRE(after.buffer_bytes_live == before.buffer_bytes_live);
 }
+
+TEST_CASE("Temporal glow alpha returns from jittered input to unjittered output coordinates", "[metal][temporal-presentation]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        const std::array<std::array<float, 2>, 3> phases{{{0.f,0.f},{.375f,.375f},{-.375f,-.375f}}};
+        for (unsigned index = 0; index < phases.size(); ++index)
+        {
+            const auto jitter = phases[index];
+            std::vector<__fp16> values(IW * IH * 4);
+            for (unsigned y = 0; y < IH; ++y) for (unsigned x = 0; x < IW; ++x)
+            {
+                auto* p = values.data() + (y * IW + x) * 4;
+                p[0] = .25f; p[1] = .5f; p[2] = .75f;
+                // Independent analytical field sampled with the same spatial
+                // offset as rasterized geometry. Its output must be centered,
+                // not shifted like the original lower-resolution attachment.
+                p[3] = .15f + .25f * (float(x) + .5f - jitter[0]) / float(IW) +
+                                .5f * (float(y) + .5f - jitter[1]) / float(IH);
+            }
+            auto upload = f.device->makeCommandBuffer("Authored jittered glow-alpha field", &f.error); REQUIRE(upload);
+            REQUIRE(const_cast<ALMetalTexture*>(f.source->colorTexture(0))->upload(*upload,0,0,{},values.data(),IW*8,&f.error));
+            REQUIRE(upload->commitAndWait(&f.error));
+            f.frame_data->beginFrame(index + 1);
+            REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal RGB and centered glow-alpha", &f.error));
+            ALMetalTemporalScalerFrame frame; frame.jitter_x = jitter[0]; frame.jitter_y = jitter[1];
+            ALMetalTemporalScaler::Ticket ticket = 0;
+            REQUIRE(f.renderer->encodeTemporalUpscale(*f.scaler,f.desc,*f.source->colorTexture(0),*f.motion,
+                *f.reconstructed,frame,ticket,&f.error)); INFO(f.error);
+            // The null/default path is the existing zero-jitter contract.
+            REQUIRE(f.renderer->resolveTemporalColor(*f.source,*f.reconstructed,*f.resolved,&f.error,
+                index ? jitter.data() : nullptr)); INFO(f.error);
+            auto settlement = f.observe(ticket);
+            REQUIRE(f.renderer->commitCommandBatch(&f.error)); REQUIRE(settlement->history_submitted);
+            const auto pixels = f.readHDR(*f.resolved);
+            const auto raw = f.readHDR(*f.reconstructed);
+            for (unsigned y = 4; y + 4 < OH; ++y) for (unsigned x = 4; x + 4 < OW; ++x)
+            {
+                const auto& p = pixels[y * OW + x];
+                for (unsigned c = 0; c < 3; ++c)
+                {
+                    REQUIRE(std::abs(p[c] - raw[y * OW + x][c]) < .002f);
+                    REQUIRE(std::abs(p[c] - Pixel{.25f,.5f,.75f,1.f}[c]) < .008f);
+                }
+                const float expected = .15f + .25f * (float(x) + .5f) / float(OW) +
+                                               .5f * (float(y) + .5f) / float(OH);
+                REQUIRE(std::abs(p[3] - expected) < .0015f);
+            }
+        }
+    }
+}
