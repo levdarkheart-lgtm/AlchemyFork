@@ -34,6 +34,24 @@ const ALMetalTexture* materialMipChain(Fixture& f, RGBA fine, RGBA coarse)
     return texture.get();
 }
 
+const ALMetalTexture* materialDistinctMips(Fixture& f, const std::array<RGBA, 8>& levels)
+{
+    ALMetalTextureDescriptor descriptor;
+    descriptor.width = descriptor.height = 128; descriptor.mipmap_level_count = levels.size();
+    descriptor.format = ALMetalPixelFormat::rgba8_unorm; descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Temporal material independently authored LOD colors";
+    std::shared_ptr<ALMetalTexture> texture = ALMetalTexture::create(*f.device, descriptor, &f.error);
+    INFO(f.error); REQUIRE(texture);
+    auto command = f.device->makeCommandBuffer("Temporal material distinct mip upload", &f.error); REQUIRE(command);
+    for (unsigned mip = 0; mip < levels.size(); ++mip)
+    {
+        const auto width = texture->width(mip);
+        const std::vector<RGBA> pixels(width * width, levels[mip]);
+        REQUIRE(texture->upload(*command,mip,0,{},pixels.data(),width*sizeof(RGBA),&f.error));
+    }
+    REQUIRE(command->commitAndWait(&f.error)); f.resources->textures.push_back(texture); return texture.get();
+}
+
 void materialSamplingTriangle(Fixture& f)
 {
     // Full-screen affine UVs: 128 texels / 32 pixels = rho4, exactly LOD2.
@@ -96,6 +114,42 @@ void equalGBuffer(const Pixels& actual, const Pixels& expected)
     }
     CHECK(std::equal(actual.depth.begin(), actual.depth.end(), expected.depth.begin()));
     CHECK(std::equal(actual.stencil.begin(), actual.stencil.end(), expected.stencil.begin()));
+}
+
+void closeSamplingGBuffer(const Pixels& actual, const Pixels& expected)
+{
+    // Fractional mip LOD expressed as log2(rho)+bias or log2(rho*exp2(bias))
+    // can differ at sampler fixed-point/normalized-output rounding boundaries.
+    // Keep exact depth/stencil, <=1/255 color and <=8/65535 normal-storage tolerances.
+    for (unsigned slot = 0; slot < actual.colors.size(); ++slot)
+    {
+        REQUIRE(actual.colors[slot].size() == expected.colors[slot].size());
+        if (actual.colors[slot].size() == side * side * 8)
+        {
+            for (std::size_t i = 0; i < actual.colors[slot].size(); i += 2)
+            {
+                std::uint16_t a, b;
+                std::memcpy(&a,actual.colors[slot].data()+i,2); std::memcpy(&b,expected.colors[slot].data()+i,2);
+                REQUIRE(std::abs(int(a)-int(b)) <= 8);
+            }
+        }
+        else for (std::size_t i = 0; i < actual.colors[slot].size(); ++i)
+            REQUIRE(std::abs(int(actual.colors[slot][i])-int(expected.colors[slot][i])) <= 1);
+    }
+    REQUIRE(actual.depth == expected.depth); REQUIRE(actual.stencil == expected.stencil);
+}
+
+struct SamplingPolicyCase { const char* name; float bias; };
+const std::array<SamplingPolicyCase, 5> methodSamplingPolicies{{
+    {"Native",0.f}, {"Spatial50",-1.f}, {"Temporal50",-2.f},
+    {"Temporal67",std::log2(2304.f/3456.f)-1.f},
+    {"Temporal75",std::log2(2592.f/3456.f)-1.f}}};
+
+void scaleSamplingUV(Fixture& f, const Fixture::Geometry& original, float scale)
+{
+    f.geometry = original;
+    for (auto& uv : f.geometry.uv) for (float& axis : uv) axis *= scale;
+    f.vertices = f.buffer(&f.geometry,sizeof(f.geometry));
 }
 
 std::unique_ptr<ALMetalRenderTarget> samplingSeed(Fixture& f, bool gbuffer)
@@ -276,5 +330,109 @@ TEST_CASE("almetal: terrain PBR explicit gradients apply the same mip bias as a 
         const auto scaled_derivatives = sampleGBuffer(f, batch, 0.f);
         CHECK_FALSE(zero == negative);
         equalGBuffer(negative, scaled_derivatives);
+    }
+}
+
+TEST_CASE("almetal: Temporal material bias selects LOD0 and fractional finer mips without stacking Spatial bias", "[almetal][material-sampling][temporal-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f; materialSamplingTriangle(f);
+        const auto original = f.geometry;
+        for (unsigned family : {0u,1u,2u})
+        for (MaterialMap map : {MaterialMap::diffuse,MaterialMap::normal,MaterialMap::auxiliary,MaterialMap::emissive})
+        {
+            if ((family == 0 && map != MaterialMap::diffuse) || (family == 1 && map == MaterialMap::emissive)) continue;
+            CAPTURE(family,static_cast<unsigned>(map));
+            std::array<RGBA,8> levels;
+            levels.fill(RGBA{64,64,64,255});
+            if (map == MaterialMap::normal)
+            { levels[0]={128,128,255,255}; levels[1]={192,128,240,255}; levels[2]={128,192,240,255}; }
+            else if (map == MaterialMap::auxiliary)
+            { levels[0]={200,32,220,255}; levels[1]={255,64,32,255}; levels[2]={128,224,192,255}; }
+            else { levels[0]={255,0,0,255}; levels[1]={0,255,0,255}; levels[2]={0,0,255,255}; }
+            const auto* chain = materialDistinctMips(f,levels);
+            scaleSamplingUV(f,original,1.f);
+            const auto batch = samplingBatch(f,family,map,chain);
+            const auto native = sampleGBuffer(f,batch,0.f);
+            std::array<Pixels,5> observed;
+            for (unsigned index=0;index<methodSamplingPolicies.size();++index)
+            {
+                const auto policy=methodSamplingPolicies[index]; CAPTURE(policy.name,policy.bias);
+                observed[index]=sampleGBuffer(f,batch,policy.bias);
+                // Independent derivative oracle: constant values within each
+                // mip make UV location irrelevant; scaling only rho selects the
+                // same analytical LOD2+bias through the original zero-bias path.
+                scaleSamplingUV(f,original,std::exp2(policy.bias));
+                const auto reference=samplingBatch(f,family,map,chain);
+                closeSamplingGBuffer(observed[index],sampleGBuffer(f,reference,0.f));
+            }
+            REQUIRE_FALSE(observed[0] == observed[1]); REQUIRE_FALSE(observed[1] == observed[2]);
+            REQUIRE_FALSE(observed[2] == observed[3]); REQUIRE_FALSE(observed[3] == observed[4]);
+            equalGBuffer(sampleGBuffer(f,batch,-2.f,true),observed[2]);
+            equalGBuffer(sampleGBuffer(f,batch,0.f),native);
+        }
+    }
+}
+
+TEST_CASE("almetal: Temporal alpha color and depth keep matching finer and fractional mip choices", "[almetal][material-sampling][temporal-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f; materialSamplingTriangle(f); const auto original=f.geometry;
+        std::array<RGBA,8> levels; levels.fill(RGBA{0,0,255,0}); levels[0]={255,0,0,255};
+        const auto* chain=materialDistinctMips(f,levels);
+        const auto* environment=materialSamplingEnvironment(f);
+        for (unsigned family : {0u,1u,2u})
+        {
+            scaleSamplingUV(f,original,1.f);
+            const auto native=sampleAlpha(f,family,chain,0.f,environment);
+            for (const auto policy : methodSamplingPolicies)
+            {
+                CAPTURE(family,policy.name,policy.bias);
+                scaleSamplingUV(f,original,1.f);
+                const auto actual=sampleAlpha(f,family,chain,policy.bias,environment);
+                scaleSamplingUV(f,original,std::exp2(policy.bias));
+                const auto expected=sampleAlpha(f,family,chain,0.f,environment);
+                REQUIRE(actual.depth == expected.depth); REQUIRE(actual.color.size() == expected.color.size());
+                for (std::size_t p=0;p<actual.color.size();++p) for (unsigned c=0;c<4;++c)
+                {
+                    __fp16 a,b; std::memcpy(&a,&actual.color[p][c],2); std::memcpy(&b,&expected.color[p][c],2);
+                    REQUIRE(std::abs(float(a)-float(b)) < .002f);
+                }
+                if (policy.bias == -2.f)
+                {
+                    const auto far=std::bit_cast<std::uint32_t>(1.f);
+                    REQUIRE(std::all_of(actual.depth.begin(),actual.depth.end(),[far](auto d){return d != far;}));
+                    REQUIRE(actual.color != native.color);
+                }
+            }
+            scaleSamplingUV(f,original,1.f);
+            REQUIRE(sampleAlpha(f,family,chain,0.f,environment) == native);
+        }
+    }
+}
+
+TEST_CASE("almetal: Temporal terrain gradients select the same detail as method-specific derivative scaling", "[almetal][material-sampling][temporal-material]")
+{
+    @autoreleasepool
+    {
+        Fixture f;
+        std::array<RGBA,8> levels; levels.fill(RGBA{64,64,64,255});
+        levels[0]={255,0,0,255}; levels[1]={0,255,0,255}; levels[2]={0,0,255,255};
+        const auto* chain=materialDistinctMips(f,levels);
+        auto original=f.batch(8); original.terrain_triplanar=false; original.terrain_hex=false;
+        std::fill_n(original.diffuse_textures.begin(),4,chain);
+        const auto native=sampleGBuffer(f,original,0.f);
+        for (const auto policy:methodSamplingPolicies)
+        {
+            CAPTURE(policy.name,policy.bias);
+            const auto actual=sampleGBuffer(f,original,policy.bias);
+            auto reference=original;
+            for (unsigned slot=0;slot<reference.pbr_slot_count;++slot)
+                for (unsigned axis=0;axis<4;++axis) reference.terrain_uv_transform[slot][axis] *= std::exp2(policy.bias);
+            closeSamplingGBuffer(actual,sampleGBuffer(f,reference,0.f));
+        }
+        equalGBuffer(sampleGBuffer(f,original,0.f),native);
     }
 }
