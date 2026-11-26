@@ -4,6 +4,9 @@
     ALMetalTemporalScalerDescriptor temporal_descriptor;
     std::shared_ptr<const ALMetalWorldViewInputs> temporal_opaque_inputs;
     std::unique_ptr<ALMetalRenderTarget> temporal_raw_output, temporal_resolved_output, temporal_motion;
+    // Forward alpha-depth is allowed to update the G-buffer attachment. Keep
+    // the original opaque visibility for matching composite motion afterward.
+    std::unique_ptr<ALMetalRenderTarget> temporal_opaque_depth;
     ALMetalTemporalScaler::Ticket temporal_ticket = 0;
     std::array<F32, 2> temporal_jitter{};
     U64 temporal_world_serial = 0, temporal_gpu_failures = 0;
@@ -13,6 +16,51 @@
     LLVector3 temporal_camera_direction, temporal_previous_camera_direction;
     bool temporal_previous_camera_valid = false;
 
+    // Only discontinuous sky inputs belong here. Camera matrices, cloud scroll,
+    // time and the frame-owned star attachment must not invalidate a static dome.
+    struct TemporalSkyIdentity
+    {
+        bool visible = false;
+        std::array<U32, 2> layers{};
+        std::array<std::pair<U64, U64>, 10> maps{};
+        std::array<F32, 12> hdri_rotation{};
+        F32 hdri_split = 0.f;
+        bool operator==(const TemporalSkyIdentity&) const = default;
+    };
+    std::optional<TemporalSkyIdentity> temporal_previous_sky, temporal_pending_sky;
+
+    bool stageTemporalSky(const ALMetalWorldModernSkyScene* sky)
+    {
+        TemporalSkyIdentity current;
+        if (sky)
+        {
+            current.visible = true;
+            current.layers = {sky->constants.config[0], sky->constants.config[1]};
+            const ALMetalTexture* maps[] = {sky->rainbow_texture, sky->halo_texture, sky->hdri_texture,
+                sky->sun_texture, sky->sun_next_texture, sky->moon_texture, sky->bloom_texture,
+                sky->bloom_next_texture, sky->cloud_texture, sky->cloud_next_texture};
+            const auto& c = sky->constants;
+            const bool hdri = (c.config[0] & 128u) != 0u;
+            const bool dome = !hdri || c.transfer[1] < 1.f;
+            const bool active[] = {dome && c.dome.optics[0] != 0.f, dome && c.dome.optics[2] != 0.f,
+                hdri && c.transfer[1] > 0.f,
+                !hdri && (c.config[0] & 4u), !hdri && (c.config[0] & 4u) && c.body[0] > 0.f,
+                !hdri && (c.config[0] & 8u),
+                !hdri && (c.config[0] & 2u), !hdri && (c.config[0] & 2u) && c.body[3] > 0.f,
+                !hdri && (c.config[0] & 64u), !hdri && (c.config[0] & 64u) && c.clouds.parameters[2] > 0.f};
+            for (std::size_t i = 0; i < current.maps.size(); ++i)
+                if (active[i] && maps[i]) current.maps[i] = {maps[i]->resourceView().identity(), maps[i]->resourceView().generation()};
+            if (sky->constants.config[0] & 128u)
+            {
+                std::copy_n(&sky->constants.hdri_rotation[0][0], current.hdri_rotation.size(), current.hdri_rotation.begin());
+                current.hdri_split = sky->constants.transfer[1];
+            }
+        }
+        const bool changed = !temporal_previous_sky || *temporal_previous_sky != current;
+        temporal_pending_sky = current;
+        return changed;
+    }
+
     void abandonTemporalFrame() noexcept
     {
         if (temporal_scaler && temporal_ticket) temporal_scaler->abandon(temporal_ticket);
@@ -20,6 +68,7 @@
         temporal_history.abandon();
         temporal_encoded = false;
         temporal_opaque_inputs.reset();
+        temporal_pending_sky.reset();
     }
 
     bool prepareTemporalFrame(const ALRenderResourceInputs& inputs,
@@ -34,6 +83,7 @@
         temporal_submitted = false;
         temporal_jitter = {};
         temporal_raw_output.reset(); temporal_resolved_output.reset(); temporal_motion.reset();
+        temporal_opaque_depth.reset();
         temporal_fallback.clear();
         if (!inputs.mainResolutionPolicy().usesTemporal())
         {
@@ -41,6 +91,7 @@
             temporal_scaler.reset();
             temporal_stream_selected=false;
             temporal_previous_camera_valid = false;
+            temporal_previous_sky.reset();
             return false;
         }
         temporal_stream_selected=true;
@@ -69,7 +120,8 @@
         temporal_resolved_output = renderer->prepareTemporalTarget(dimensions.mOutputWidth,
             dimensions.mOutputHeight,false,error);
         temporal_motion=renderer->prepareTemporalMotionTarget(width,height,error);
-        if (!temporal_raw_output || !temporal_resolved_output || !temporal_motion)
+        temporal_opaque_depth=renderer->prepareTemporalOpaqueDepth(width,height,error);
+        if (!temporal_raw_output || !temporal_resolved_output || !temporal_motion || !temporal_opaque_depth)
             return fail(error ? *error : "Temporal frame-input/output allocation failed");
         ALMetalTemporalWorldHistory::FrameInput frame;
         frame.world_id = ++temporal_world_serial;

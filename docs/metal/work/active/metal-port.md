@@ -10,19 +10,31 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `64023b8b1656dec297a2658ff546f35ad06efe36` is the corrected69501 application source.
-PPD608/609 are implemented and offline-verified: exact active downstream owners acquired before opacity;
-complete-current-presentation rule enforced at both normal/generic Temporal commit boundaries. Minimal12-world
-allocation2/reuse22/deferral0 versus preserved69494 24/0/132; optional effects also plateau with no post-warm growth.
-Pre-display missing dirt/grade cancellation, once-only settlement, actual retained background and reset recovery pass.
-Focused15 suites pass; Release build,346 ARM64 images/signature/import checks and fullscreen login-only smoke pass.
-Original17 settings files restored and viewer closed. Native/Spatial defaults and quality policies unchanged.
+Preserved69501 source64023b8b16/fetched949944f7a9 differ only in docs. PPD610 actual front-yard routing is
+proven: PBR MASK palms/dense leaves, generic/PBR BLEND grass. Original camera/poses are static with tiny
+motion, but sky/forward history is broadly rejected. Corrected sky direction/scoped layers and independent
+nearest foreground blend depth/motion preserve reliable history while retaining unsafe-layer MAX rejection.
+PPD611 removes immutable-wrapper address significance with exact bounded active material/resource semantics.
+Targeted54-world proof retains36/24equivalent publication changes with54/54valid poses; four opaque center
+rejection counts44/41/53/53→0/0/0/0. All72matched GBuffer and72pristine-depth file pairs are byte-identical.
+Generation/topology/duplicate/budget guards remain. Owner acceptance/push approval are still pending.
 
-The owner authorizes Temporal-review-only code/test/doc push and new private iCloud DMG/ZIP/checksums.
-Delivery receipts record upload completion and final branch commit separately from the app pin. Original69494,
-Spatial and usual branches are preserved. Next decision is owner live rendering review of Temporal67; use
-macOS captures because the viewer snapshot path is independent. No live FPS/quality claim or renewed profiling.
-[Existing Temporal report](../../research/metalfx-temporal-20261125.md) owns exact evidence and boundaries.
+All earlier live runs were WINDOWED2304x1278→3456x1916: macOS startup ignores FullScreen. Some also have
+illumination drift, so their descriptive image metrics are not isolated final quality/FPS claims. Root now
+uses actual native window fullscreen plus fixedMidday, verified2304x1446→3456x2168, for final original/
+corrected stationary and move-stop comparison. Original and69505 sessions are closed normally; saved login
+was explicitly authorized. No broad FPS campaign, mip tuning or unrelated shader work.
+
+52motion/history/presentation/orchestration/sky cases passed API/GPU validation before the semantic repair;
+44semantic/affected cases then passed435928assertions. Reserved inactive PBR UV lanes are now excluded,
+with active-lane changes still invalidating history;19history cases/1851assertions and14affected suites pass.20strict foliage quality
+bounds remain failed: thin detail and settling are open. Do not blur or weaken the test to call it fixed.
+Previous PPD608/609 allocation/cancellation corrections and optional pool plateaus are preserved.
+
+Next: finish the focused retest and matched fullscreen analysis, build a clean numbered review app, verify
+package/login smoke and deliver privately with precise limitations. Private capture hooks/mip counterfactual
+have been removed from pipeline source; diagnostic executables/evidence remain retained. No new push.
+Restore settings/shared environment, leave viewer closed. Never query an app-bound CUA object after Quit.
 
 ## Preserved Spatial parent checkpoint
 

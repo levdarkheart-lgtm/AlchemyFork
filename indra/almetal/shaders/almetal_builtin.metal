@@ -20828,19 +20828,28 @@ vertex ALMetalBenchmarkVaryings almetal_world_modern_sky_vertex(
     const float2 tc=float2((id<<1u)&2u,id&2u);
     ALMetalBenchmarkVaryings o;o.position=float4(tc.x*2.0-1.0,1.0-tc.y*2.0,c.config.z!=0u?0.0:1.0,1.0);o.texcoord=tc;return o;
 }
-fragment float4 almetal_world_modern_sky_fragment(ALMetalBenchmarkVaryings in [[stage_in]],
-    constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],
-    constant float4* meteor_data [[buffer(1)]],
-    texture2d<float> rainbow_map [[texture(0)]],texture2d<float> halo_map [[texture(1)]],
-    texture2d<float> hdri_map [[texture(2)]],texture2d<float> stars_map [[texture(3)]],
-    texture2d<float> sun_map [[texture(4)]],texture2d<float> sun_next [[texture(5)]],
-    texture2d<float> moon_map [[texture(6)]],texture2d<float> bloom_map [[texture(7)]],
-    texture2d<float> bloom_next [[texture(8)]],texture2d<float> cloud_map [[texture(9)]],
-    texture2d<float> cloud_next [[texture(10)]],
-    sampler optics_sampler [[sampler(0)]],sampler body_sampler [[sampler(1)]],
-    sampler point_sampler [[sampler(2)]],sampler hdri_sampler [[sampler(3)]])
+// Sky color and Temporal confidence share the exact layer samples and composition.
+// Reactive values follow MetalFX semantics: dynamic layer opacity proportionally
+// favors this frame; a clear directional dome/HDRI retains normal history.
+// This value is separate from color alpha, whose viewer contract is glow.
+struct ALMetalModernSkySample
 {
-    const float2 ndc=in.texcoord*2.0-1.0;
+    float4 color;
+    float reactive;
+};
+static ALMetalModernSkySample almetal_sample_modern_sky(float2 texcoord,
+    constant ALMetalWorldModernSkyConstants& c,
+    constant float4* meteor_data,
+    texture2d<float> rainbow_map,texture2d<float> halo_map,
+    texture2d<float> hdri_map,texture2d<float> stars_map,
+    texture2d<float> sun_map,texture2d<float> sun_next,
+    texture2d<float> moon_map,texture2d<float> bloom_map,
+    texture2d<float> bloom_next,texture2d<float> cloud_map,
+    texture2d<float> cloud_next,
+    sampler optics_sampler,sampler body_sampler,
+    sampler point_sampler,sampler hdri_sampler)
+{
+    const float2 ndc=texcoord*2.0-1.0;
     const float4 eye=c.inverse_projection*float4(ndc,0.5,1.0);
     const float3x3 eye_to_sky=float3x3(c.eye_to_sky[0].xyz,c.eye_to_sky[1].xyz,c.eye_to_sky[2].xyz);
     const float3 dir=normalize(eye_to_sky*(eye.xyz/eye.w));
@@ -20853,7 +20862,7 @@ fragment float4 almetal_world_modern_sky_fragment(ALMetalBenchmarkVaryings in [[
             const float2 uv=float2(atan2(pos.z,pos.x)+M_PI_F,acos(clamp(pos.y,-1.0,1.0)))/float2(2.0*M_PI_F,M_PI_F);
             color=clamp(hdri_map.sample(hdri_sampler,uv,level(0.0)).rgb*c.transfer.x,0.0,SKY_HDRI_MAX);
         }else color=almetal_srgb_to_linear(almetal_modern_sky_dome(dir,c.dome,rainbow_map,halo_map,optics_sampler))*c.transfer.z;
-        return float4(almetal_bounded_radiance(color*c.transfer.w,65504.0),0.0);
+        return {float4(almetal_bounded_radiance(color*c.transfer.w,65504.0),0.0), 0.0};
     }
     float4 clouds=0.0,bloom=0.0,sun=0.0,moon=0.0;
     if((layers&SKY_LAYER_CLOUDS)!=0u)clouds=almetal_modern_sky_clouds(dir,c.clouds,c.dome,cloud_map,cloud_next,optics_sampler);
@@ -20861,17 +20870,35 @@ fragment float4 almetal_world_modern_sky_fragment(ALMetalBenchmarkVaryings in [[
     if((layers&SKY_LAYER_SUN)!=0u)sun=almetal_modern_sky_body(dir,c.sun_quad,sun_map,sun_next,body_sampler,c.body.x);
     if((layers&SKY_LAYER_MOON)!=0u){moon=almetal_modern_sky_body(dir,c.moon_quad,moon_map,moon_map,body_sampler,0.0);if(moon.a<=2.0/255.0)moon=0.0;moon.rgb*=c.body.y;moon.a*=c.body.z;}
     float3 color=0.0;
+    float reactive=0.0;
     if(clouds.a<1.0){
         color=almetal_modern_sky_dome(dir,c.dome,rainbow_map,halo_map,optics_sampler);
-        if((layers&SKY_LAYER_STARS)!=0u){float3 stars=stars_map.sample(point_sampler,in.texcoord,level(0.0)).rgb;if(!emissive)stars=almetal_linear_to_srgb(stars);color+=stars;}
-        if((layers&SKY_LAYER_BLOOM)!=0u)color=mix(color,bloom.rgb,bloom.a);
-        if((layers&SKY_LAYER_SUN)!=0u)color=mix(color,sun.rgb,sun.a);
-        if((layers&SKY_LAYER_MOON)!=0u)color=mix(color,moon.rgb,moon.a);
-        if((layers&SKY_LAYER_METEORS)!=0u)color+=almetal_modern_sky_meteors(ndc,meteor_data,c.config.w,emissive);
-        if((layers&SKY_LAYER_AURORA)!=0u)color+=almetal_modern_sky_aurora(dir,c.aurora.x,c.aurora.y,emissive);
+        if((layers&SKY_LAYER_STARS)!=0u){float3 stars=stars_map.sample(point_sampler,texcoord,level(0.0)).rgb;if(!emissive)stars=almetal_linear_to_srgb(stars);color+=stars;reactive=any(stars!=0.0)?1.0:reactive;}
+        if((layers&SKY_LAYER_BLOOM)!=0u){color=mix(color,bloom.rgb,bloom.a);reactive=mix(reactive,1.0,saturate(bloom.a));}
+        if((layers&SKY_LAYER_SUN)!=0u){color=mix(color,sun.rgb,sun.a);reactive=mix(reactive,1.0,saturate(sun.a));}
+        if((layers&SKY_LAYER_MOON)!=0u){color=mix(color,moon.rgb,moon.a);reactive=mix(reactive,1.0,saturate(moon.a));}
+        if((layers&SKY_LAYER_METEORS)!=0u){const float3 meteors=almetal_modern_sky_meteors(ndc,meteor_data,c.config.w,emissive);color+=meteors;reactive=any(meteors!=0.0)?1.0:reactive;}
+        if((layers&SKY_LAYER_AURORA)!=0u){const float3 aurora=almetal_modern_sky_aurora(dir,c.aurora.x,c.aurora.y,emissive);color+=aurora;reactive=any(aurora!=0.0)?1.0:reactive;}
     }
-    if((layers&SKY_LAYER_CLOUDS)!=0u)color=mix(color,clouds.rgb,clouds.a);
-    return float4(almetal_bounded_radiance(almetal_srgb_to_linear(color)*c.transfer.z*c.transfer.w,65504.0),0.0);
+    if((layers&SKY_LAYER_CLOUDS)!=0u){color=mix(color,clouds.rgb,clouds.a);reactive=mix(reactive,1.0,saturate(clouds.a));}
+    return {float4(almetal_bounded_radiance(almetal_srgb_to_linear(color)*c.transfer.z*c.transfer.w,65504.0),0.0), saturate(reactive)};
+}
+fragment float4 almetal_world_modern_sky_fragment(ALMetalBenchmarkVaryings in [[stage_in]],
+    constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],
+    constant float4* meteor_data [[buffer(1)]],
+    texture2d<float> rainbow_map [[texture(0)]],texture2d<float> halo_map [[texture(1)]],
+    texture2d<float> hdri_map [[texture(2)]],texture2d<float> stars_map [[texture(3)]],
+    texture2d<float> sun_map [[texture(4)]],texture2d<float> sun_next [[texture(5)]],
+    texture2d<float> moon_map [[texture(6)]],texture2d<float> bloom_map [[texture(7)]],
+    texture2d<float> bloom_next [[texture(8)]],texture2d<float> cloud_map [[texture(9)]],
+    texture2d<float> cloud_next [[texture(10)]],
+    sampler optics_sampler [[sampler(0)]],sampler body_sampler [[sampler(1)]],
+    sampler point_sampler [[sampler(2)]],sampler hdri_sampler [[sampler(3)]])
+{
+    return almetal_sample_modern_sky(in.texcoord,c,meteor_data,
+        rainbow_map,halo_map,hdri_map,stars_map,sun_map,sun_next,moon_map,
+        bloom_map,bloom_next,cloud_map,cloud_next,
+        optics_sampler,body_sampler,point_sampler,hdri_sampler).color;
 }
 fragment float4 almetal_world_modern_sky_cube_fragment(ALMetalBenchmarkVaryings in [[stage_in]],
     constant ALMetalWorldModernSkyConstants& c [[buffer(0)]],
@@ -21079,27 +21106,72 @@ struct ALMetalTemporalMotionVaryings
     uint material_index [[flat]];
 };
 
+// Preserve the exact opaque device depth before forward color/depth auxiliaries
+// mutate the borrowed G-buffer attachment. This is frame-owned pooled storage.
+fragment float almetal_temporal_opaque_depth_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> depth_texture [[texture(32)]])
+{
+    return depth_texture.read(uint2(input.position.xy)).x;
+}
+
 fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> depth_texture [[texture(32)]],
-    constant ALMetalTemporalReprojectionConstants& c [[buffer(0)]])
+    texture2d<float> opaque_depth_texture [[texture(33)]],
+    constant ALMetalTemporalReprojectionConstants& c [[buffer(0)]],
+    constant ALMetalWorldModernSkyConstants& sky [[buffer(1)]],
+    constant float4* meteor_data [[buffer(2)]],
+    texture2d<float> rainbow_map [[texture(0)]],texture2d<float> halo_map [[texture(1)]],
+    texture2d<float> hdri_map [[texture(2)]],texture2d<float> stars_map [[texture(3)]],
+    texture2d<float> sun_map [[texture(4)]],texture2d<float> sun_next [[texture(5)]],
+    texture2d<float> moon_map [[texture(6)]],texture2d<float> bloom_map [[texture(7)]],
+    texture2d<float> bloom_next [[texture(8)]],texture2d<float> cloud_map [[texture(9)]],
+    texture2d<float> cloud_next [[texture(10)]],
+    sampler optics_sampler [[sampler(0)]],sampler body_sampler [[sampler(1)]],
+    sampler point_sampler [[sampler(2)]],sampler hdri_sampler [[sampler(3)]])
 {
     const float2 extent = c.extent_jitter.xy;
     const uint2 pixel = min(uint2(input.position.xy), uint2(extent) - 1u);
-    const float depth = depth_texture.read(pixel).x;
+    const float depth = opaque_depth_texture.read(pixel).x;
     // Native world raster flips clip Y before the top-left Metal viewport, retaining original GL row-zero storage.
     const float2 current_uv = (float2(pixel) + .5 - c.extent_jitter.zw) / extent;
     const float clip_depth = c.config.x != 0u ? depth : depth * 2.0 - 1.0;
     const float4 current_clip = float4(current_uv * 2.0 - 1.0, clip_depth, 1.0);
-    const float4 previous_clip = c.current_to_previous * current_clip;
-    bool valid = c.config.y == 0u && previous_clip.w > 1.e-7 && all(isfinite(previous_clip));
-    const float2 previous_uv = valid ? previous_clip.xy / previous_clip.w * .5 + .5 : current_uv;
+    const bool background = c.config.x != 0u ? depth <= 0.0 : depth >= 1.0;
+    const bool has_sky = (c.config.w & 1u) != 0u;
+    float4 reprojection_clip = current_clip;
+    bool direction_valid = true;
+    if (background && has_sky)
+    {
+        // Sky is a view direction, not a point on a finite far plane. Solve the
+        // unjittered eye-homogeneous W=0 plane before applying camera history.
+        // This also prevents translation parallax with finite-far projections.
+        const float denominator = c.inverse_projection[2].w;
+        direction_valid = isfinite(denominator) && abs(denominator) > 1.e-8;
+        if (direction_valid)
+            reprojection_clip.z = -(c.inverse_projection[0].w * current_clip.x +
+                c.inverse_projection[1].w * current_clip.y + c.inverse_projection[3].w) / denominator;
+    }
+    const float4 previous_clip = c.current_to_previous * reprojection_clip;
+    bool valid = c.config.y == 0u && direction_valid && previous_clip.w > 1.e-7 && all(isfinite(previous_clip));
+    // Without a sky producer this is the uniform clear color, whose history
+    // has no parallax or camera rotation. Independent fixture views use it too.
+    const float2 previous_uv = valid && !(background && !has_sky) ?
+        previous_clip.xy / previous_clip.w * .5 + .5 : current_uv;
     const float2 motion = (previous_uv - current_uv) * extent;
     valid = valid && all(isfinite(motion)) && all(abs(motion) <= 65504.0);
     ALMetalTemporalMotionOutput output;
     output.motion = valid ? motion : float2(0.0);
-    // Sky/clouds have no single finite surface motion; retain camera vectors but reject their unstable history.
-    const bool background = c.config.x != 0u ? depth <= 0.0 : depth >= 1.0;
+    // Evaluate neighboring sky lanes coherently so texture derivatives remain
+    // identical at mixed foliage/sky edges. Entirely opaque quads do no sky work.
+    float sky_reactive = 0.0;
+    if (has_sky && (c.config.w & 4u) != 0u && quad_any(background))
+        sky_reactive = almetal_sample_modern_sky(input.texcoord,sky,meteor_data,
+            rainbow_map,halo_map,hdri_map,stars_map,sun_map,sun_next,moon_map,
+            bloom_map,bloom_next,cloud_map,cloud_next,
+            optics_sampler,body_sampler,point_sampler,hdri_sampler).reactive;
+    if ((c.config.w & 2u) != 0u) sky_reactive = 1.0;
     bool water = false;
     if (c.config.z != 0u)
     {
@@ -21116,7 +21188,10 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
         const float t = abs(denominator) > 1.e-8 ? -nearest_plane / denominator : -1.0;
         water = inside_wave_band || (t > 0.0 && (background || t <= 1.00001));
     }
-    output.reactive = valid && !background && !water ? 0.0 : 1.0;
+    output.reactive = valid && !water ? (background ? sky_reactive : 0.0) : 1.0;
+    // Start the Temporal depth proxy at the opaque surface. Qualifying blended
+    // surfaces publish their own depth below; the viewer's depth attachment is
+    // retained independently for post-processing and occlusion.
     output.depth = depth;
     return output;
 }
@@ -21181,8 +21256,11 @@ vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
 
 fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     ALMetalTemporalMotionVaryings input [[stage_in]],
+    float2 underlying_motion [[color(0), raster_order_group(0)]],
+    float underlying_depth [[color(2), raster_order_group(0)]],
     array<texture2d<float>, 32> textures [[texture(0)]],
     texture2d<float> depth_texture [[texture(32)]],
+    texture2d<float> opaque_depth_texture [[texture(33)]],
     sampler material_sampler [[sampler(0)]],
     constant ALMetalTemporalMotionConstants& c [[buffer(1)]])
 {
@@ -21192,14 +21270,14 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     float alpha = material_index < c.coverage.x ?
         textures[material_index].sample(material_sampler, input.texcoord, bias(c.extent_bias.z)).a : 1.0;
     if (c.coverage.y == 2u) alpha *= input.vertex_alpha;
-    if (c.coverage.y == 0u && (c.coverage.w & 2u) != 0u) alpha *= input.vertex_alpha;
+    if (c.coverage.y == 0u && (c.coverage.w & (2u | 64u)) != 0u) alpha *= input.vertex_alpha;
     const bool masked = alpha_mask || (c.coverage.y == 1u && c.coverage.z == 2u);
     const float threshold = c.coverage.y ? c.thresholds[min(material_index, 7u)].x : c.raster.z;
     const float quantization_bias = c.coverage.y != 0u || (c.coverage.y == 0u && (c.coverage.w & 4u) != 0u)
         ? 1.0 / 512.0 : 0.0;
     if ((masked && alpha < threshold - quantization_bias) || (forward && alpha < c.raster.z)) discard_fragment();
     const uint2 pixel = min(uint2(input.position.xy), uint2(c.extent_bias.xy) - 1u);
-    const float reference_depth = depth_texture.read(pixel).x;
+    const float reference_depth = opaque_depth_texture.read(pixel).x;
     const float depth = input.position.z;
     const float epsilon = 2.e-6;
     if (forward ? (c.config.w != 0u ? depth < reference_depth - epsilon : depth > reference_depth + epsilon)
@@ -21212,7 +21290,24 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     ALMetalTemporalMotionOutput output;
     output.motion = valid ? motion : float2(0.0);
     output.reactive = max(c.extent_bias.w, valid ? 0.0 : 1.0);
+    // The rejection replay runs before surface-proxy writes, so every layer is
+    // checked against the same opaque motion. The later nearest-surface replay
+    // disables mask writes. MAX preserves invalid or differently moving layers.
     output.depth = reference_depth;
+    if (forward && (c.coverage.w & 128u) != 0u)
+    {
+        const bool coherent = valid && all(isfinite(underlying_motion)) && isfinite(underlying_depth);
+        output.reactive = (c.coverage.w & 32u) != 0u && coherent &&
+            all(abs(motion - underlying_motion) <= c.raster.w) ? 0.0 : 1.0;
+        // A blended leaf must not reconstruct from the background's depth and
+        // motion. Select the nearest contributing supported surface regardless
+        // of replay order. Farther transparent layers still contribute to the
+        // MAX rejection union when their motion disagrees with this surface.
+        const bool nearer = !isfinite(underlying_depth) ||
+            (c.config.w != 0u ? depth > underlying_depth : depth < underlying_depth);
+        output.motion = nearer ? (valid ? motion : float2(0.0)) : underlying_motion;
+        output.depth = nearer ? depth : underlying_depth;
+    }
     return output;
 }
 
@@ -21232,11 +21327,12 @@ fragment float4 almetal_world_temporal_color_fragment(
 fragment ALMetalTemporalMotionOutput almetal_temporal_impostor_reactive_fragment(
     ALMetalWorldImpostorVaryings input [[stage_in]],
     texture2d<float> albedo [[texture(0)]], texture2d<float> depth_texture [[texture(32)]],
+    texture2d<float> opaque_depth_texture [[texture(33)]],
     sampler point_sampler [[sampler(0)]])
 {
     if (albedo.sample(point_sampler, input.texcoord).a < .01) discard_fragment();
-    const float depth = depth_texture.read(uint2(input.position.xy)).x;
+    const float depth = opaque_depth_texture.read(uint2(input.position.xy)).x;
     if (abs(depth - input.position.z) > 2.e-6) discard_fragment();
-    ALMetalTemporalMotionOutput output; output.motion = 0; output.reactive = 1; output.depth = depth;
+    ALMetalTemporalMotionOutput output; output.motion = 0; output.reactive = 1; output.depth = depth_texture.read(uint2(input.position.xy)).x;
     return output;
 }

@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-610 -->
+<!-- next-defect-id: PPD-612 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14979,3 +14979,50 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-25: Owner authorizes scoped correction and recurrence coverage. Preserve last valid presentation, submitted-history/jitter semantics, generation/retirement rules and valid Native/Spatial partial commits. No live login/trace or FPS claim.
 
 - 2026-11-25 corrective verification: eee0f3d3ce/d638b2bf73 add the shared eligibility/finalization policy and actual retained-world fixture;64023b8b16 installs it at both viewer commit boundaries. Cancellation clears current pending products/reference/status and invalidates recovery history without touching the independently retained pre-UI world. Focused15-suite run and full69501 build/static checks/login-only smoke pass; private package receipts complete delivery qualification.
+
+
+## PPD-610 — Stationary Temporal foliage and grass detail crawls between frames
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Temporal image quality
+- Discovered: 2026-11-25
+- Original reference: Original Alchemy1eb44bb alpha-tested tree/grass/material color/depth coverage is the compatibility reference; Temporal jitter/reconstruction/history is new. Native and Spatial remain independent controls.
+- Evidence: [Temporal implementation and corrective investigation](research/metalfx-temporal-20261125.md). Owner Untitled.mov SHA6065598f44f2cbce37ae1693bb716ff4718402a38a4effb1cf075a4bde82da99 and failed69503 review are retained. Actual front-yard draw/face records identify PBR MASK palms/dense leaves and generic/PBR BLEND grass; static camera/poses, near-zero unjittered motion and broad rejection are directly observed.
+- Next action: Complete the actual native-fullscreen fixed-Midday original/corrected comparison and clean review packaging. Keep thin-detail and move-stop settling failures open; do not claim the whole scene fixed from mechanism or ownership tests.
+- Verification: Sky-only and forward-only interventions isolate excessive rejection. Corrected sky direction/layer handling and a separate foreground depth/motion proxy preserve conservative rejection for unreliable layers. Color/depth/motion coverage tests pass;20strict rendered quality bounds remain failed. Earlier live records were windowed2304x1278→3456x1916 and had illumination drift; final native-fullscreen records use2304x1446→3456x2168 and fixedMidday. PPD611 separately repairs proven semantic-publication history loss. No complete visual acceptance or FPS claim.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-25: Registered owner-reported Temporal quality defect before repair. Treat grass, dense leaf interiors and silhouettes separately; use pillar/trunk/fence as controls. Existing ownership/allocation tests do not close this rendered-quality defect. Preserve69501 app/evidence and Spatial/usual branches.
+
+- 2026-11-25 causal checkpoint: preserved baseline04 and single-variable sky/mip counterfactuals in private evidence. Sky-only acceptance is not safe production policy until infinity motion and dynamic sky-layer rejection are handled. Diagnostic69502 is prepared/open fullscreen at login; owner asked to match the reported camera for actual draw/mask/history attribution. No live capture collected yet.
+
+- 2026-11-25 scoped candidate: sky infinity motion/dynamic-layer rejection plus preserved opaque depth and valid generic transparent motion matching are implemented locally. Separate sky/forward interventions reduce rendered edge crawl~92%/~89% with identical input/depth/motion per comparison; forward detail reaches95%Native energy.26motion/sky cases pass294703assertions with API/GPU validation. Strict full quality fixture still fails20coverage/settling/variance bounds, and actual live material attribution remains pending. No closure or push approval inferred.
+
+- 2026-11-25 verification checkpoint: full private69503 Release build/346ARM64 inspection/login-only smoke pass;14selected regressions pass, and the repaired snapshot presentation suite passes381193assertions/7cases with API/GPU validation. Ordered same-allocation generation reuse is proven with distinct retained depth/motion results; original mistaken uniqueness assertion/failure retained. Strict quality20bounds and actual-scene attribution remain open. Owner exact-scene login requested with69503 prepared; no new live capture, commit or push.
+
+- 2026-11-25 owner follow-up: new Screen Recording2026-11-25at22.24.36.mov reports persistent visible jitter. Actual69503PID7230 scene is now logged in at the reported estate. The loaded file remains original-policy compatible librarybdfba6, not separate candidate3302; treat new clip as baseline evidence, not corrected-path validation. Begin actual ROI draw/history attribution before the in-place comparison. Defect remains open.
+
+- 2026-11-25 autonomous checkpoint: owner closed viewer and authorized saved login. Excluded pool-view preflight from front-yard attribution after full-output orientation/source check. Fresh QA-gated front-yard36world baseline confirms static camera, near-zero motion, no resets, valid grass/palm poses; grass is generic/PBR blended forward mesh and80–94%of grass ROI pixels reject history. Palms are PBR MASK; all surrounding sky rejects. Current actual dimensions2304x1278→3456x1916 differ from earlier display population. Private candidate launch1 failed before rendering because the helper addressed LLPanelLogin before construction; it is not a shader result. Preserve failure and wait for actual login readiness on retry.
+
+## PPD-611 — Equivalent immutable material republication can invalidate Temporal poses
+
+- Status: ready_for_owner
+- Confirmation: source_confirmed
+- Owner: Temporal history identity
+- Discovered: 2026-11-25
+- Original reference: Temporal is new; original Alchemy has no corresponding history identity. Preserve PPD604 producer/resource-generation safety.
+- Evidence: [Temporal corrective investigation](research/metalfx-temporal-20261125.md). The prior key included native_material_source.get(), although identical publish() calls can produce distinct wrappers. Targeted54-world records retain36/24 wrapper-address changes with exactly equal named material values and active texture identities/generations; corrected previous poses remain valid54/54. All72matched-phase GBuffer crop pairs and72pristine opaque-depth file pairs are byte-identical.
+- Next action: Owner review of the scoped history-identity correction in the new local build. PPD610 thin-detail/settling acceptance remains separate and open; no push approval.
+- Verification: Canonical active material/texture tokens replace wrapper-address significance. Exact owned equality verifies fingerprint matches; producer/resource generations, layout, topology and duplicate guards remain. Retained token capacity is charged to the64MiBframe bound.44focused cases pass435928assertions with API/GPU validation. At four stationary opaque centers, full rejection44/41/53/53 of54worlds falls to0/0/0/0, despite continued equivalent republication. Reserved-UV-lane refinement passes19history cases/1851assertions;14affected CTest suites pass Metal API/GPU validation. Clean review packaging remains pending.
+- Owner verification: pending
+- Push approval: not_granted
+
+### History
+
+- 2026-11-25: Registered during PPD610 investigation after source audit identified wrapper churn. Targeted static leaf/trunk capture retained before the semantic-key repair. Preserve both source-confirmed mechanism and uncertainty about full live slot equality.
+
+- 2026-11-26: Exact live semantic comparison establishes erroneous history rejection and its correction with unchanged same-phase color/depth inputs. This scopes611 to history identity; it does not assign all residual fine-detail instability to that mechanism. Active shader UV lanes are canonical; reserved lanes are excluded conservatively after source proof. Owner verification remains pending.

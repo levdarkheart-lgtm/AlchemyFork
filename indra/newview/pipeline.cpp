@@ -8954,6 +8954,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.temporal_previous_camera_position=capture.temporal_camera_position;
                         capture.temporal_previous_camera_direction=capture.temporal_camera_direction;
                         capture.temporal_previous_camera_valid=true;
+                        capture.temporal_previous_sky=std::move(capture.temporal_pending_sky);
                     }
                     else
                     {
@@ -9008,7 +9009,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         if (capture.temporal_effective)
         {
             if (!capture.temporal_opaque_inputs ||
-                !capture.temporal_history.stage(capture.temporal_opaque_inputs->scene(),scene,&error))
+                !capture.temporal_history.stage(capture.temporal_opaque_inputs->scene(),scene,&error) ||
+                !capture.temporal_opaque_depth || !capture.target ||
+                !capture.renderer->captureTemporalOpaqueDepth(*capture.target->depthStencilTexture(),
+                    *capture.temporal_opaque_depth,&error))
             {
                 capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
                 capture.markIncomplete(__LINE__); return;

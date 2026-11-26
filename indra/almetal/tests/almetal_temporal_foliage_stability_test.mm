@@ -1,0 +1,890 @@
+/**
+ * @file almetal_temporal_foliage_stability_test.mm
+ * @brief Stationary cutout/grass detail over complete production Temporal jitter cycles.
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
+#include "almetal_world_inputs_fixture.h"
+#include "../almetaltemporalworldhistory.h"
+
+#include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <numeric>
+#include <sstream>
+#include <string_view>
+
+namespace
+{
+constexpr unsigned InputWidth = 256, InputHeight = 128;
+constexpr unsigned OutputWidth = 384, OutputHeight = 192;
+constexpr unsigned Phases = 18, WarmFrames = 2 * Phases, StableFrames = 3 * Phases;
+using Color = std::array<float, 4>;
+using Texel = std::array<std::uint8_t, 4>;
+struct Region { const char* name; unsigned x, y; bool foliage, identifiable_coverage; };
+constexpr std::array<Region, 8> Regions{{
+    {"generic_mask_sky",0,0,true,true}, {"legacy_mask_opaque",96,0,true,true},
+    {"pbr_mask_sky",192,0,true,true}, {"blended_leaf_sky",288,0,true,true},
+    {"grass_sky",0,96,true,true}, {"dense_mask_opaque",96,96,true,false},
+    {"opaque_texture_control",192,96,false,false}, {"straight_edge_control",288,96,false,false}}};
+
+bool leaf(const Color& p) { return p[1] > p[0] * 1.4f && p[1] > p[2] * 1.4f; }
+float luminance(const Color& p) { return .2126f*p[0] + .7152f*p[1] + .0722f*p[2]; }
+
+struct FramePixels
+{
+    std::vector<Color> input, output;
+    std::vector<float> depth, motion_depth, opaque_depth;
+    std::vector<std::array<__fp16,2>> motion;
+    std::vector<std::uint8_t> reactive;
+    std::array<float,2> jitter{};
+    unsigned phase = 0;
+    std::size_t previous_valid = 0;
+    std::uint64_t resets = 0;
+};
+struct CoverageReference
+{
+    std::vector<Color> color,foreground;
+    std::vector<float> coverage;
+    std::array<Color,Regions.size()> backgrounds{};
+};
+struct Stability
+{
+    std::uint64_t comparisons = 0, pixels = 0, coverage_changes = 0;
+    double absolute_change = 0, maximum_change = 0, edge_energy = 0, leaf_coverage = 0;
+    double reference_error = 0;
+    std::uint64_t reactive_leaf = 0, leaf_pixels = 0, reactive_background = 0, background_pixels = 0;
+    double edge_band_change=0; std::uint64_t edge_band_pixels=0;
+    std::vector<double> frame_edge_changes;
+    double minimum_recall=1,minimum_precision=1,minimum_area=1.e9,maximum_area=0;
+    float maximum_stationary_motion = 0;
+    unsigned coverage_mismatches = 0;
+    std::uint64_t proxy_foreground=0,proxy_background=0,proxy_ambiguous=0;
+};
+
+std::vector<Color> readColors(const ALMetalTexture& texture, const ALMetalDevice& device, std::string& error)
+{
+    const auto width=texture.width(), height=texture.height();
+    std::vector<__fp16> half(width*height*4);
+    REQUIRE(texture.readback(device,0,0,{},half.data(),width*8,&error)); INFO(error);
+    std::vector<Color> result(width*height);
+    for(std::size_t i=0;i<result.size();++i)
+        for(unsigned c=0;c<4;++c) result[i][c]=float(half[4*i+c]);
+    return result;
+}
+void dumpRaw(const std::filesystem::path& path, const void* bytes, std::size_t size)
+{
+    std::ofstream file(path,std::ios::binary); REQUIRE(file.good());
+    file.write(static_cast<const char*>(bytes),static_cast<std::streamsize>(size)); REQUIRE(file.good());
+}
+void dumpImage(const std::filesystem::path& path,const std::vector<Color>& pixels,unsigned width,unsigned height)
+{
+    std::ofstream file(path,std::ios::binary); REQUIRE(file.good());
+    file<<"P6\n"<<width<<' '<<height<<"\n255\n";
+    for(const auto& pixel:pixels)
+    {
+        std::array<std::uint8_t,3> rgb;
+        for(unsigned c=0;c<3;++c)
+            rgb[c]=static_cast<std::uint8_t>(std::lround(std::pow(std::clamp(pixel[c],0.f,1.f),1.f/2.2f)*255.f));
+        file.write(reinterpret_cast<const char*>(rgb.data()),rgb.size());
+    }
+    REQUIRE(file.good());
+}
+
+struct FoliageFixture : Fixture
+{
+    ALMetalTemporalWorldHistory history;
+    std::unique_ptr<ALMetalTemporalScaler> scaler;
+    ALMetalTemporalScalerDescriptor descriptor{InputWidth,InputHeight,OutputWidth,OutputHeight};
+    std::unique_ptr<ALMetalRenderTarget> hdr, raw, resolved, current_gbuffer, opaque_depth;
+    unsigned opaque_depth_captures=0;
+    std::vector<ALMetalWorldSimpleBatch> opaque, forward;
+    ALMetalWorldAlphaEnvironment environment;
+    ALMetalWorldLegacyAlphaLighting alpha_lighting;
+    const ALMetalTexture* black_environment = nullptr;
+    std::filesystem::path output_dir;
+    float mip_bias = std::log2(float(InputWidth)/float(OutputWidth))-1.f;
+    bool freeze_jitter = false;
+
+    FoliageFixture()
+    {
+        if(const char* path=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_LIBRARY"))
+        { REQUIRE(renderer->reloadShaders(std::string(path),&error)); INFO(error); }
+        if(const char* path=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_OUTPUT"))
+        { output_dir=path; std::filesystem::create_directories(output_dir); }
+        if(const char* bias=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_MIP_BIAS")) mip_bias=std::stof(bias);
+        freeze_jitter=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_FREEZE_JITTER")!=nullptr;
+        scaler=ALMetalTemporalScaler::create(*device,&error); REQUIRE(scaler); INFO(error);
+        ALMetalTemporalScalerRequirements requirements;
+        REQUIRE(scaler->prepare(descriptor,requirements,&error)); INFO(error);
+        REQUIRE(renderer->prepareTemporalMotion(&error));
+        opaque_depth=renderer->prepareTemporalOpaqueDepth(InputWidth,InputHeight,&error);
+        REQUIRE(opaque_depth); INFO(error);
+        hdr=renderer->prepareTemporalTarget(InputWidth,InputHeight,false,&error); REQUIRE(hdr);
+        raw=renderer->prepareTemporalTarget(OutputWidth,OutputHeight,true,&error); REQUIRE(raw);
+        resolved=renderer->prepareTemporalTarget(OutputWidth,OutputHeight,false,&error); REQUIRE(resolved);
+        const auto* palm=foliageTexture(false,false,false);
+        const auto* grass=foliageTexture(true,false,false);
+        const auto* dense_palm=foliageTexture(false,false,true);
+        const auto* blended=foliageTexture(false,true,false);
+        const auto* detailed=detailTexture();
+        const std::uint8_t gray[4]{90,90,90,255}, edge[4]{180,180,180,255};
+        const auto* gray_texture=texture(ALMetalPixelFormat::rgba8_unorm,1,gray,4);
+        const auto* edge_texture=texture(ALMetalPixelFormat::rgba8_unorm,1,edge,4);
+        opaque.push_back(quad(1,100,4,188,92,.6f,gray_texture,0,false));
+        opaque.push_back(quad(2,100,100,188,188,.6f,gray_texture,0,false));
+        opaque.push_back(quad(10,4,4,92,92,-.35f,palm,0,true));
+        // Matches the classic-tree consumer's published alpha policy. This
+        // does not claim to exercise the separate LLFace CPU tree producer.
+        opaque.back().use_vertex_color=false; opaque.back().alpha_cutoff_bias=false;
+        opaque.push_back(quad(11,100,4,188,92,-.35f,palm,1,true));
+        opaque.push_back(quad(12,196,4,284,92,-.35f,grass,2,true));
+        opaque.push_back(quad(13,4,100,92,188,-.35f,grass,0,true));
+        opaque.push_back(quad(14,100,100,188,188,-.35f,dense_palm,0,true));
+        opaque.push_back(quad(15,196,100,284,188,-.35f,detailed,0,false));
+        opaque.push_back(quad(16,292,100,334.4f,188,-.35f,edge_texture,0,false));
+        auto color=quad(20,292,4,380,92,-.35f,blended,0,false);
+        color.post_water_alpha=true; color.pre_water_fullbright=true; color.pre_water_minimum_alpha=.004f;
+        color.double_sided=false; // Classic blended family has a front-facing production contract.
+
+        auto depth=color; depth.post_water_depth_only=true; depth.pre_water_minimum_alpha=.33f;
+        forward={color,depth};
+        environment.water_plane[2]=1.f; environment.water_plane[3]=-100.f;
+        environment.water_fog[0]=environment.water_fog[2]=1.f;
+        environment.glow_max_y[0]=1.f; environment.glow_max_y[2]=-1.f; environment.glow_max_y[3]=1.f;
+        environment.light_direction[2]=1.f;
+        environment.atmospheric[1]=environment.atmospheric[2]=environment.atmospheric[3]=1.f;
+        environment.atmos_sunlit[3]=environment.atmos_sunlit_linear[3]=1.f;
+        environment.environment[0]=1.f;
+        for(unsigned i=0;i<3;++i) environment.eye_to_sky[i][i]=1.f;
+        alpha_lighting.sun_direction[2]=1.f;
+        alpha_lighting.parameters[0]=128.f; alpha_lighting.parameters[1]=.004f; alpha_lighting.parameters[2]=1.f;
+        ALMetalTextureDescriptor cube; cube.type=ALMetalTextureType::texture_cube;
+        cube.format=ALMetalPixelFormat::rgba8_unorm; cube.usage=ALMetalTextureUsage::shader_read;
+        std::shared_ptr<ALMetalTexture> black=ALMetalTexture::create(*device,cube,&error); REQUIRE(black);
+        auto command=device->makeCommandBuffer("Foliage authored environment",&error); REQUIRE(command);
+        const Texel black_pixel{0,0,0,255};
+        for(unsigned face=0;face<6;++face) REQUIRE(black->upload(*command,0,face,{},black_pixel.data(),4,&error));
+        REQUIRE(command->commitAndWait(&error)); black_environment=black.get(); resources->textures.push_back(black);
+    }
+    ~FoliageFixture()
+    { renderer->cancelCommandBatch(); device->waitUntilIdle(); }
+
+    const ALMetalTexture* uploadMips(std::vector<Texel> pixels)
+    {
+        ALMetalTextureDescriptor desc; desc.width=desc.height=256; desc.mipmap_level_count=9;
+        desc.format=ALMetalPixelFormat::rgba8_unorm; desc.usage=ALMetalTextureUsage::shader_read;
+        std::shared_ptr<ALMetalTexture> result=ALMetalTexture::create(*device,desc,&error); REQUIRE(result);
+        auto command=device->makeCommandBuffer("Independently authored foliage mips",&error); REQUIRE(command);
+        unsigned extent=256;
+        for(unsigned level=0;level<9;++level)
+        {
+            REQUIRE(result->upload(*command,level,0,{},pixels.data(),extent*4,&error));
+            if(extent==1)break;
+            std::vector<Texel> next(extent*extent/4);
+            for(unsigned y=0;y<extent/2;++y) for(unsigned x=0;x<extent/2;++x)
+                for(unsigned c=0;c<4;++c)
+                {
+                    unsigned total=0;
+                    for(unsigned dy=0;dy<2;++dy)for(unsigned dx=0;dx<2;++dx)
+                        total+=pixels[(2*y+dy)*extent+2*x+dx][c];
+                    next[y*(extent/2)+x][c]=static_cast<std::uint8_t>((total+2)/4);
+                }
+            pixels=std::move(next); extent/=2;
+        }
+        REQUIRE(command->commitAndWait(&error)); resources->textures.push_back(result); return result.get();
+    }
+    const ALMetalTexture* foliageTexture(bool grass,bool blended,bool textured)
+    {
+        std::vector<Texel> pixels(256*256);
+        for(unsigned y=0;y<256;++y) for(unsigned x=0;x<256;++x)
+        {
+            const float u=float(x)+.5f,v=float(y)+.5f;
+            bool covered=false;
+            if(grass)
+            {
+                for(unsigned stem=0;stem<19;++stem)
+                {
+                    const float root=6.f+stem*13.1f;
+                    const float curve=root+(.14f+.012f*float(stem%4))*(255.f-v)+4.f*std::sin(v*.012f+stem);
+                    const float thickness=.7f+2.5f*v/256.f;
+                    covered|=v>12.f+float(stem%4)*15.f && std::abs(u-curve)<thickness;
+                }
+            }
+            else
+            {
+                const float stem=128.f+8.f*std::sin(v*.018f);
+                covered=std::abs(u-stem)<1.6f;
+                for(unsigned frond=0;frond<24;++frond)
+                {
+                    const float base=10.f+float(frond)*9.8f;
+                    const float dx=std::abs(u-stem),line=base+.29f*dx;
+                    covered|=dx<115.f-2.f*std::abs(float(frond)-11.f) && std::abs(v-line)<1.7f;
+                }
+            }
+            // Coverage ROIs have constant RGB on both sides of each alpha
+            // boundary, so color unmixing can identify reconstructed coverage.
+            // A separate dense masked ROI retains high-frequency RGB detail.
+            const float detail=textured?.72f+.18f*std::sin(u*.7f)*std::cos(v*.59f):1.f;
+            pixels[y*256+x]={static_cast<std::uint8_t>(20*detail),static_cast<std::uint8_t>(210*detail),
+                static_cast<std::uint8_t>(35*detail),static_cast<std::uint8_t>(covered?(blended?190:255):0)};
+        }
+        return uploadMips(std::move(pixels));
+    }
+    const ALMetalTexture* detailTexture()
+    {
+        std::vector<Texel> pixels(256*256);
+        for(unsigned y=0;y<256;++y)for(unsigned x=0;x<256;++x)
+        {
+            const unsigned value=80+unsigned(100.f*(.5f+.5f*std::sin((float(x)+.5f)*.69f)*std::cos((float(y)+.5f)*.53f)));
+            pixels[y*256+x]={static_cast<std::uint8_t>(value),static_cast<std::uint8_t>(value),static_cast<std::uint8_t>(value),255};
+        }
+        return uploadMips(std::move(pixels));
+    }
+    ALMetalWorldSimpleBatch quad(std::uint64_t id,float left,float top,float right,float bottom,
+        float z,const ALMetalTexture* image,unsigned family,bool mask)
+    {
+        auto b=batch(family); Geometry g=geometry;
+        const float positions[4][4]{{2*left/OutputWidth-1,2*top/OutputHeight-1,z,1},
+            {2*right/OutputWidth-1,2*top/OutputHeight-1,z,1},
+            {2*right/OutputWidth-1,2*bottom/OutputHeight-1,z,1},
+            {2*left/OutputWidth-1,2*bottom/OutputHeight-1,z,1}};
+        const float uv[4][2]{{0,0},{1,0},{1,1},{0,1}};
+        std::memcpy(g.positions,positions,sizeof(positions));std::memcpy(g.uv,uv,sizeof(uv));
+        std::memset(g.colors,255,sizeof(g.colors));
+        const std::array<std::uint16_t,6> order{0,1,2,0,2,3};
+        b.vertices=buffer(&g,sizeof(g));b.indices=buffer(order.data(),sizeof(order));
+        b.index_count=6;b.vertex_count=4;b.diffuse_textures[0]=image;
+        b.temporal_instance_id=id;b.temporal_generation=1;b.double_sided=true;
+        b.alpha_mask=mask && family!=1;b.alpha_cutoff=.5f;b.alpha_cutoff_bias=true;
+        identity(b.texture_matrix);
+        if(family==1){b.material_alpha_mode=2;b.materialSlots()[0].alpha_cutoff=.5f;b.materialSlots()[0].env_intensity=0;}
+        if(family==2)
+        {
+            b.pbrSlots()[0].alpha_cutoff=.5f;
+            b.pbrSlots()[0].emissive_texture=Fixture::color;
+            std::fill_n(b.pbrSlots()[0].emissive_color,3,0.f);
+        }
+        return b;
+    }
+    struct World
+    {
+        std::vector<ALMetalWorldSimpleBatch> opaque,forward;
+        ALMetalWorldGBufferScene gbuffer;
+        ALMetalWorldOpaquePostDeferredScene forward_scene;
+    };
+    World world(unsigned width,unsigned height,float camera_shift,float bias,std::array<float,2> jitter)
+    {
+        World w;w.opaque=opaque;w.forward=forward;
+        for(auto* list:{&w.opaque,&w.forward})for(auto& b:*list)b.modelview_projection[12]=camera_shift;
+        w.gbuffer=scene();w.gbuffer.width=width;w.gbuffer.height=height;
+        w.gbuffer.hdr=true;w.gbuffer.material_mip_bias=bias;w.gbuffer.clear_color[0]=.035f;
+        w.gbuffer.clear_color[1]=.075f;w.gbuffer.clear_color[2]=.21f;
+        std::copy(jitter.begin(),jitter.end(),w.gbuffer.temporal_jitter_pixels);
+        w.gbuffer.source_owner=resources;
+        w.forward_scene.width=width;w.forward_scene.height=height;w.forward_scene.hdr=true;
+        w.forward_scene.material_mip_bias=bias;w.forward_scene.source_owner=resources;
+        w.forward_scene.alpha_environment=&environment;w.forward_scene.alpha_lighting=&alpha_lighting;
+        w.forward_scene.legacy_environment=black_environment;
+        // Raw pointers are rebound after the movable World reaches its final storage.
+        return w;
+    }
+    static void bind(World& w)
+    {
+        w.gbuffer.batches=w.opaque.data();w.gbuffer.batch_count=w.opaque.size();
+        w.forward_scene.batches=w.forward.data();w.forward_scene.batch_count=w.forward.size();
+    }
+    std::unique_ptr<ALMetalRenderTarget> color(World& w,ALMetalRenderTarget& composed,
+        std::array<float,2> jitter)
+    {
+        bind(w);
+        auto gbuffer=renderer->render(w.gbuffer,&error); INFO(error); REQUIRE(gbuffer);
+        if(w.gbuffer.width==InputWidth && w.gbuffer.height==InputHeight)
+        {
+            // The main production owner snapshots opaque depth before its
+            // borrowed-depth continuation can write alpha-depth coverage.
+            REQUIRE(renderer->captureTemporalOpaqueDepth(*gbuffer->depthStencilTexture(),*opaque_depth,&error));
+            INFO(error); ++opaque_depth_captures;
+        }
+        // Unlit material fixture: production G-buffer color/depth/coverage is copied to HDR.
+        // This isolates reconstruction from lighting noise while retaining real masked material shaders.
+        REQUIRE(renderer->resolveTemporalColor(*gbuffer,*gbuffer,composed,&error)); INFO(error);
+        auto color_batches=w.forward;
+        for(auto& b:color_batches) alMetalApplyTemporalJitter(b.modelview_projection,jitter[0],jitter[1],
+            w.gbuffer.width,w.gbuffer.height);
+        // Production BASE carries borrowed G-buffer depth into the owned
+        // forward continuation. Reproduce that exact contract while keeping
+        // this fixture's color unlit: alpha-depth writes must be visible to
+        // the subsequent Temporal camera/motion pass, not a private depth copy.
+        auto continuation_descriptor=composed.descriptor();
+        continuation_descriptor.colors[0].texture=composed.colorTexture(0);
+        continuation_descriptor.depth_stencil_format=gbuffer->descriptor().depth_stencil_format;
+        continuation_descriptor.depth_stencil_shader_read=true;
+        continuation_descriptor.depth_stencil_texture=gbuffer->depthStencilTexture();
+        continuation_descriptor.label="Foliage production borrowed-depth continuation";
+        auto continuation=ALMetalRenderTarget::create(*device,continuation_descriptor,&error);
+        REQUIRE(continuation); INFO(error);
+        auto forward_color=w.forward_scene;forward_color.batches=color_batches.data();
+        forward_color.gbuffer=gbuffer.get();forward_color.composed_lighting=continuation.get();
+        auto result=renderer->renderOpaquePostDeferred(forward_color,std::move(continuation),&error);
+        INFO(error); REQUIRE(result);
+        REQUIRE(result->depthStencilTexture()==gbuffer->depthStencilTexture());
+        current_gbuffer=std::move(gbuffer);
+        return result;
+    }
+    std::vector<Color> native(float camera_shift)
+    {
+        data->beginFrame(10000);
+        auto composed=renderer->prepareTemporalTarget(OutputWidth,OutputHeight,false,&error); REQUIRE(composed);
+        REQUIRE(renderer->beginCommandBatch("Foliage independent native-detail reference",&error));
+        auto w=world(OutputWidth,OutputHeight,camera_shift,0.f,{0,0});
+        auto result=color(w,*composed,{0,0});
+        REQUIRE(renderer->commitCommandBatch(&error)); INFO(error);
+        return readColors(*result->colorTexture(0),*device,error);
+    }
+    CoverageReference coverageReference(float camera_shift)
+    {
+        // A single 4x-output render would need a positive material bias, which
+        // the production policy correctly rejects. Four 2x-output renders at
+        // quarter-pixel offsets produce the identical regular 4x sample grid
+        // with bias0. One-mip-coarser diagnostic sampling uses sixteen 1x
+        // renders; no production sampling validation is bypassed.
+        unsigned scale=2;
+        float reference_bias=mip_bias+std::log2(float(OutputWidth*scale)/float(InputWidth));
+        if(reference_bias>2.e-6f)
+        {scale=1;reference_bias=mip_bias+std::log2(float(OutputWidth)/float(InputWidth));}
+        REQUIRE(reference_bias<=2.e-6f);
+        reference_bias=std::min(reference_bias,0.f); // Theoretical zero may round positive by one float ULP.
+        const unsigned width=OutputWidth*scale,height=OutputHeight*scale,phases=4/scale;
+        CoverageReference truth;truth.color.resize(OutputWidth*OutputHeight);
+        truth.foreground.resize(OutputWidth*OutputHeight);truth.coverage.resize(OutputWidth*OutputHeight);
+        std::vector<unsigned> covered_samples(OutputWidth*OutputHeight);
+        std::array<Color,Regions.size()> foreground_sum{},background_sum{};
+        std::array<unsigned,Regions.size()> foreground_count{},background_count{};
+        Color blend_max{};
+        for(unsigned py=0;py<phases;++py)for(unsigned px=0;px<phases;++px)
+        {
+            const std::array<float,2> jitter{(float(px)+.5f)/float(phases)-.5f,
+                (float(py)+.5f)/float(phases)-.5f};
+            data->beginFrame(10001+py*phases+px);
+            auto composed=renderer->prepareTemporalTarget(width,height,false,&error); REQUIRE(composed);
+            REQUIRE(renderer->beginCommandBatch("Independent matched-LOD coverage supersamples",&error));
+            auto w=world(width,height,camera_shift,reference_bias,jitter);
+            auto target=color(w,*composed,jitter);
+            REQUIRE(renderer->commitCommandBatch(&error)); INFO(error);
+            const auto high=readColors(*target->colorTexture(0),*device,error);
+            std::vector<float> depth(width*height);
+            REQUIRE(current_gbuffer->depthStencilTexture()->readback(*device,0,0,{},depth.data(),width*4,&error));
+            for(unsigned y=0;y<height;++y)for(unsigned x=0;x<width;++x)
+            {
+                const auto sample=y*width+x,ox=x/scale,oy=y/scale,i=oy*OutputWidth+ox;
+                const auto region=(oy/96)*4+ox/96;const auto& r=Regions[region];
+                for(unsigned c=0;c<4;++c)truth.color[i][c]+=high[sample][c]/16.f;
+                if(depth[sample]<.5f)
+                {
+                    ++covered_samples[i];truth.coverage[i]+=1.f/16.f;
+                    for(unsigned c=0;c<4;++c)truth.foreground[i][c]+=high[sample][c];
+                }
+                if(ox>=r.x+6 && ox<r.x+90 && oy>=r.y+6 && oy<r.y+90)
+                {
+                    if(depth[sample]<.5f)
+                    {for(unsigned c=0;c<4;++c)foreground_sum[region][c]+=high[sample][c];++foreground_count[region];}
+                    else
+                    {for(unsigned c=0;c<4;++c)background_sum[region][c]+=high[sample][c];++background_count[region];}
+                }
+                if(region==3 && high[sample][1]>blend_max[1])blend_max=high[sample];
+            }
+        }
+        std::array<Color,Regions.size()> foreground{};
+        for(std::size_t region=0;region<Regions.size();++region)
+        {
+            if(foreground_count[region])for(unsigned c=0;c<4;++c)
+                foreground[region][c]=foreground_sum[region][c]/foreground_count[region];
+            if(background_count[region])for(unsigned c=0;c<4;++c)
+                truth.backgrounds[region][c]=background_sum[region][c]/background_count[region];
+        }
+        // This authored constant-color .745-alpha card has a separate RGB-linear
+        // coverage reference. The viewer's .33 alpha-depth auxiliary and the
+        // Temporal .004 contributing-surface proxy have distinct contracts.
+        truth.backgrounds[3]=truth.backgrounds[0];
+        const auto& sky=truth.backgrounds[3];
+        for(unsigned c=0;c<3;++c)foreground[3][c]=(blend_max[c]-sky[c]*(1.f-190.f/255.f))/(190.f/255.f);
+        for(unsigned y=0;y<OutputHeight;++y)for(unsigned x=0;x<OutputWidth;++x)
+        {
+            const auto i=y*OutputWidth+x,region=(y/96)*4+x/96;
+            if(covered_samples[i])for(float& value:truth.foreground[i])value/=covered_samples[i];
+            else truth.foreground[i]=foreground[region];
+            if(region==3)
+            {
+                truth.foreground[i]=foreground[region];float numerator=0,denominator=0;
+                for(unsigned c=0;c<3;++c)
+                {const float d=foreground[region][c]-sky[c];numerator+=(truth.color[i][c]-sky[c])*d;denominator+=d*d;}
+                truth.coverage[i]=denominator>1.e-6f?std::clamp(numerator/denominator,0.f,1.f):0.f;
+            }
+        }
+        return truth;
+    }
+    FramePixels render(unsigned frame_index,float camera_shift)
+    {
+        data->beginFrame(frame_index+1);
+        auto w=world(InputWidth,InputHeight,camera_shift,mip_bias,{0,0});bind(w);
+        ALMetalTemporalWorldHistory::FrameInput input;
+        input.world_id=frame_index+1;input.input_width=InputWidth;input.input_height=InputHeight;
+        input.output_width=OutputWidth;input.output_height=OutputHeight;input.mode=6;
+        input.reverse_z=false;identity(input.camera_mvp);input.camera_mvp[12]=camera_shift;
+        REQUIRE(history.beginFrame(input,&error)); INFO(error);
+        REQUIRE(history.stage(w.gbuffer,w.forward_scene,&error)); INFO(error);
+        FramePixels pixels;pixels.jitter=freeze_jitter?std::array<float,2>{0,0}:history.jitterPixels();
+        pixels.phase=history.stats().jitter_phase;pixels.previous_valid=history.stats().valid_previous_draws;
+        REQUIRE(history.jitterPhaseCount()==Phases);
+        if(frame_index) REQUIRE(pixels.previous_valid==opaque.size()+forward.size());
+        std::copy(pixels.jitter.begin(),pixels.jitter.end(),w.gbuffer.temporal_jitter_pixels);
+        REQUIRE(renderer->beginMainFrameBatch(frame_index+1,"Production stationary foliage Temporal67",&error));
+        auto color_target=color(w,*hdr,pixels.jitter);
+        ALMetalWorldTemporalMotionScene motion_scene;
+        motion_scene.width=InputWidth;motion_scene.height=InputHeight;
+        motion_scene.opaque_scene=&w.gbuffer;motion_scene.forward_scene=&w.forward_scene;
+        // Final viewer G-buffer depth remains authoritative for its own
+        // consumers; the Temporal output builds a separate foreground proxy.
+        motion_scene.depth=current_gbuffer->depthStencilTexture();motion_scene.reverse_z=false;
+        motion_scene.opaque_depth=opaque_depth->colorTexture(0);
+        motion_scene.reset=history.resetRequired();
+        std::copy(history.clipToPrevious().begin(),history.clipToPrevious().end(),motion_scene.clip_to_previous_clip);
+        std::copy(pixels.jitter.begin(),pixels.jitter.end(),motion_scene.jitter_pixels);
+        identity(motion_scene.inverse_projection);
+        const auto& previous_opaque=history.previousOpaque();const auto& previous_forward=history.previousForward();
+        motion_scene.previous_opaque=previous_opaque.data();motion_scene.previous_opaque_count=previous_opaque.size();
+        motion_scene.previous_forward=previous_forward.data();motion_scene.previous_forward_count=previous_forward.size();
+        auto motion_target=renderer->renderTemporalMotion(motion_scene,&error); INFO(error); REQUIRE(motion_target);
+        ALMetalTemporalScalerFrame frame;frame.depth_reversed=false;frame.reset=history.resetRequired();
+        frame.jitter_x=pixels.jitter[0];frame.jitter_y=pixels.jitter[1];ALMetalTemporalScaler::Ticket ticket=0;
+        REQUIRE(renderer->encodeTemporalUpscale(*scaler,descriptor,*color_target->colorTexture(0),*motion_target,*raw,frame,ticket,&error)); INFO(error);
+        REQUIRE(renderer->resolveTemporalColor(*color_target,*raw,*resolved,&error,pixels.jitter.data())); INFO(error);
+        REQUIRE(renderer->commitCommandBatch(&error)); INFO(error);
+        REQUIRE(scaler->submitted(ticket,&error));REQUIRE(history.commit(frame_index+1,&error));
+        pixels.resets=history.stats().resets;
+        pixels.input=readColors(*color_target->colorTexture(0),*device,error);
+        pixels.output=readColors(*resolved->colorTexture(0),*device,error);
+        pixels.depth.resize(InputWidth*InputHeight);pixels.motion_depth.resize(InputWidth*InputHeight);
+        pixels.opaque_depth.resize(InputWidth*InputHeight);
+        pixels.motion.resize(InputWidth*InputHeight);pixels.reactive.resize(InputWidth*InputHeight);
+        REQUIRE(current_gbuffer->depthStencilTexture()->readback(*device,0,0,{},pixels.depth.data(),InputWidth*4,&error));
+        REQUIRE(opaque_depth->colorTexture(0)->readback(*device,0,0,{},pixels.opaque_depth.data(),InputWidth*4,&error));
+        REQUIRE(motion_target->colorTexture(0)->readback(*device,0,0,{},pixels.motion.data(),InputWidth*4,&error));
+        REQUIRE(motion_target->colorTexture(1)->readback(*device,0,0,{},pixels.reactive.data(),InputWidth,&error));
+        REQUIRE(motion_target->colorTexture(2)->readback(*device,0,0,{},pixels.motion_depth.data(),InputWidth*4,&error));
+        return pixels;
+    }
+};
+
+double referenceEnergy(const std::vector<Color>& image,const Region& r)
+{
+    double energy=0;
+    for(unsigned y=r.y+6;y<r.y+90;++y)for(unsigned x=r.x+6;x<r.x+90;++x)
+    {
+        const auto i=y*OutputWidth+x;
+        energy+=std::abs(luminance(image[i])-luminance(image[i+1]));
+        energy+=std::abs(luminance(image[i])-luminance(image[i+OutputWidth]));
+    }
+    return energy/(84.*84.);
+}
+bool nearLeaf(const std::vector<Color>& image,unsigned x,unsigned y,unsigned radius=1)
+{
+    for(int dy=-int(radius);dy<=int(radius);++dy)for(int dx=-int(radius);dx<=int(radius);++dx)
+        if(leaf(image[(y+dy)*OutputWidth+x+dx]))return true;
+    return false;
+}
+struct MaskQuality {double recall=1,precision=1,area=1;};
+MaskQuality maskQuality(const std::vector<Color>& reference,const std::vector<Color>& current,const Region& r)
+{
+    std::uint64_t expected=0,actual=0,recalled=0,precise=0;
+    for(unsigned y=r.y+6;y<r.y+90;++y)for(unsigned x=r.x+6;x<r.x+90;++x)
+    {
+        const bool a=leaf(reference[y*OutputWidth+x]),b=leaf(current[y*OutputWidth+x]);
+        expected+=a; actual+=b;
+        recalled+=a && nearLeaf(current,x,y); precise+=b && nearLeaf(reference,x,y);
+    }
+    return {expected?double(recalled)/expected:1.,actual?double(precise)/actual:1.,
+        expected?double(actual)/expected:1.};
+}
+std::vector<float> recoveredCoverage(const CoverageReference& truth,const std::vector<Color>& image)
+{
+    std::vector<float> result(image.size());
+    for(unsigned y=0;y<OutputHeight;++y)for(unsigned x=0;x<OutputWidth;++x)
+    {
+        const auto i=y*OutputWidth+x,region=(y/96)*4+x/96;
+        const auto& foreground=truth.foreground[i];const auto& background=truth.backgrounds[region];
+        float numerator=0,denominator=0;
+        for(unsigned c=0;c<3;++c)
+        {const float d=foreground[c]-background[c];numerator+=(image[i][c]-background[c])*d;denominator+=d*d;}
+        result[i]=denominator>1.e-6f?std::clamp(numerator/denominator,0.f,1.f):0.f;
+    }
+    return result;
+}
+float nearCoverage(const std::vector<float>& mask,unsigned x,unsigned y,unsigned radius=1)
+{
+    float value=0;
+    for(int dy=-int(radius);dy<=int(radius);++dy)for(int dx=-int(radius);dx<=int(radius);++dx)
+        value=std::max(value,mask[(y+dy)*OutputWidth+x+dx]);
+    return value;
+}
+MaskQuality maskQuality(const CoverageReference& truth,const std::vector<float>& actual,const Region& r)
+{
+    double expected=0,covered=0,recalled=0,precise=0;
+    for(unsigned y=r.y+6;y<r.y+90;++y)for(unsigned x=r.x+6;x<r.x+90;++x)
+    {
+        const auto i=y*OutputWidth+x;expected+=truth.coverage[i];covered+=actual[i];
+        recalled+=std::min(truth.coverage[i],nearCoverage(actual,x,y));
+        precise+=std::min(actual[i],nearCoverage(truth.coverage,x,y));
+    }
+    return {expected?recalled/expected:1.,covered?precise/covered:1.,expected?covered/expected:1.};
+}
+bool nativeEdge(const std::vector<Color>& image,const Region& r,unsigned x,unsigned y)
+{
+    const auto& p=image[y*OutputWidth+x];
+    for(int dy=-2;dy<=2;++dy)for(int dx=-2;dx<=2;++dx)
+    {
+        const auto& q=image[(y+dy)*OutputWidth+x+dx];
+        if(r.foliage ? leaf(p)!=leaf(q) :
+            std::abs(p[0]-q[0])+std::abs(p[1]-q[1])+std::abs(p[2]-q[2])>.045f)return true;
+    }
+    return false;
+}
+std::vector<Color> blurredReference(const std::vector<Color>& image)
+{
+    auto result=image;
+    for(unsigned y=2;y+2<OutputHeight;++y)for(unsigned x=2;x+2<OutputWidth;++x)
+    {
+        Color sum{};
+        for(int dy=-2;dy<=2;++dy)for(int dx=-2;dx<=2;++dx)
+            for(unsigned c=0;c<4;++c)sum[c]+=image[(y+dy)*OutputWidth+x+dx][c]/25.f;
+        result[y*OutputWidth+x]=sum;
+    }
+    return result;
+}
+struct StopQuality
+{
+    double native_quality_error=0, phase_matched_error=0, old_history_fraction=0;
+};
+StopQuality stopQuality(const std::vector<Color>& initial_native,const std::vector<Color>& shifted_native,
+    const std::vector<Color>& initial_temporal,const std::vector<Color>& stationary_final,
+    const std::vector<Color>& current,const Region& r)
+{
+    double native_error=0,phase_error=0,old_history=0;
+    unsigned changed=0,disoccluded=0;
+    for(unsigned y=r.y+6;y<r.y+90;++y)for(unsigned x=r.x+6;x<r.x+90;++x)
+    {
+        const auto i=y*OutputWidth+x;float delta=0;
+        for(unsigned c=0;c<3;++c)delta+=std::abs(initial_native[i][c]-shifted_native[i][c])/3.f;
+        if(delta>.05f)
+        {
+            for(unsigned c=0;c<3;++c)
+            {
+                native_error+=std::abs(current[i][c]-shifted_native[i][c])/3.f;
+                phase_error+=std::abs(current[i][c]-stationary_final[i][c])/3.f;
+            }
+            ++changed;
+        }
+        // Old-only pixels use an independent, stationary Temporal reference at
+        // the final camera and the same jitter phase. Project residual color
+        // toward the original Temporal image; Native filtering differences
+        // therefore cannot be mistaken for retained old-world history.
+        if(leaf(initial_native[i]) && !nearLeaf(shifted_native,x,y))
+        {
+            float numerator=0,denominator=0;
+            for(unsigned c=0;c<3;++c)
+            {
+                const float old=initial_temporal[i][c]-stationary_final[i][c];
+                numerator+=(current[i][c]-stationary_final[i][c])*old;
+                denominator+=old*old;
+            }
+            if(denominator>.0004f)
+            {old_history+=std::clamp(numerator/denominator,0.f,1.f);++disoccluded;}
+        }
+    }
+    return {changed?native_error/changed:0.,changed?phase_error/changed:0.,
+        disoccluded?old_history/disoccluded:0.};
+}
+
+void measure(Stability& m,const FramePixels& previous,const FramePixels& current,
+    const std::vector<Color>& reference,const CoverageReference& coverage_reference,const Region& r)
+{
+    ++m.comparisons;
+    double frame_edge_change=0;unsigned frame_edge_pixels=0;
+    const auto current_coverage=recoveredCoverage(coverage_reference,current.output);
+    const auto quality=maskQuality(coverage_reference,current_coverage,r);
+    m.minimum_recall=std::min(m.minimum_recall,quality.recall);
+    m.minimum_precision=std::min(m.minimum_precision,quality.precision);
+    m.minimum_area=std::min(m.minimum_area,quality.area);
+    m.maximum_area=std::max(m.maximum_area,quality.area);
+    for(unsigned y=r.y+6;y<r.y+90;++y)for(unsigned x=r.x+6;x<r.x+90;++x)
+    {
+        const auto i=y*OutputWidth+x;const auto& a=previous.output[i];const auto& b=current.output[i];
+        float delta=0;for(unsigned c=0;c<3;++c)
+        {const float d=std::abs(a[c]-b[c]);delta+=d;m.reference_error+=std::abs(b[c]-reference[i][c]);}
+        delta/=3.f;m.absolute_change+=delta;m.maximum_change=std::max(m.maximum_change,double(delta));
+        if(nativeEdge(reference,r,x,y)){frame_edge_change+=delta;++frame_edge_pixels;}
+        m.coverage_changes+=leaf(a)!=leaf(b) && std::abs(a[1]-b[1])>.05f;
+        m.leaf_coverage+=leaf(b);++m.pixels;
+    }
+    m.edge_energy+=referenceEnergy(current.output,r);
+    m.edge_band_change+=frame_edge_change;m.edge_band_pixels+=frame_edge_pixels;
+    m.frame_edge_changes.push_back(frame_edge_pixels?frame_edge_change/frame_edge_pixels:0.);
+    const unsigned left=(r.x+6)*InputWidth/OutputWidth,right=(r.x+90)*InputWidth/OutputWidth;
+    const unsigned top=(r.y+6)*InputHeight/OutputHeight,bottom=(r.y+90)*InputHeight/OutputHeight;
+    for(unsigned y=top;y<bottom;++y)for(unsigned x=left;x<right;++x)
+    {
+        const auto i=y*InputWidth+x;
+        if(leaf(current.input[i])){++m.leaf_pixels;m.reactive_leaf+=current.reactive[i];}
+        else {++m.background_pixels;m.reactive_background+=current.reactive[i];}
+        m.maximum_stationary_motion=std::max(m.maximum_stationary_motion,std::max(std::abs(float(current.motion[i][0])),std::abs(float(current.motion[i][1]))));
+        const bool blended=std::string_view(r.name)=="blended_leaf_sky";
+        if(!blended)
+        {
+            m.coverage_mismatches+=std::abs(current.depth[i]-current.motion_depth[i])>2.e-6f;
+            // Authored masked cutouts are green at device depth .325;
+            // blue/gray backgrounds are clear or farther opaque surfaces.
+            if(r.foliage)m.coverage_mismatches+=leaf(current.input[i])!=(current.depth[i]<.5f);
+        }
+        else
+        {
+            // One known constant-RGB standard-alpha layer over a uniform sky:
+            // recover its actual current coverage from C = aF + (1-a)B.
+            // F/B are independently rendered known colors, not Temporal output.
+            // A 2/1024 alpha band accounts for the RGBA16F blend/readback and
+            // foreground-reference rounding; interior/background expectations
+            // remain exact on opposite sides of the color discard threshold.
+            const auto& foreground=coverage_reference.foreground[(r.y+10)*OutputWidth+r.x+10];
+            const auto& background=coverage_reference.backgrounds[3];
+            float numerator=0,denominator=0;
+            for(unsigned c=0;c<3;++c)
+            {
+                const float d=foreground[c]-background[c];
+                numerator+=(current.input[i][c]-background[c])*d;denominator+=d*d;
+            }
+            const float alpha=denominator>1.e-6f?numerator/denominator:0.f;
+            constexpr float cutoff=.004f,rounding=2.f/1024.f,foreground_depth=.325f;
+            const float opaque_depth=current.opaque_depth[i],proxy=current.motion_depth[i];
+            if(alpha>cutoff+rounding)
+            {++m.proxy_foreground;m.coverage_mismatches+=std::abs(proxy-foreground_depth)>2.e-6f;}
+            else if(alpha<cutoff-rounding)
+            {++m.proxy_background;m.coverage_mismatches+=std::abs(proxy-opaque_depth)>2.e-6f;}
+            else
+            {
+                ++m.proxy_ambiguous;
+                m.coverage_mismatches+=std::min(std::abs(proxy-foreground_depth),std::abs(proxy-opaque_depth))>2.e-6f;
+            }
+        }
+    }
+}
+}
+
+TEST_CASE("Temporal67 stationary foliage retains stable edge coverage and useful detail across jitter cycles",
+          "[metal][temporal][foliage-stability]")
+{
+    @autoreleasepool
+    {
+        FoliageFixture f;
+        const auto reference=f.native(0.f);
+        const auto shifted_reference=f.native(.05f);
+        const auto coverage_reference=f.coverageReference(0.f);
+        std::array<Stability,Regions.size()> metrics{};
+        std::array<double,3> stop_errors{};
+        std::array<std::array<StopQuality,Regions.size()>,3> stopped{};
+        std::array<std::vector<Color>,Phases> initial_temporal,stationary_final;
+        {
+            // This separate history is never exposed to the moved main stream.
+            // A warm stationary final-camera world provides an AA/mip/phase-
+            // matched reference, rather than an unattainable Native pixel match.
+            FoliageFixture independent;
+            for(unsigned i=0;i<WarmFrames+Phases;++i)
+            {
+                auto current=independent.render(i,.05f);
+                if(i>=WarmFrames)
+                {
+                    if(!f.output_dir.empty())
+                    {
+                        std::ostringstream phase;phase<<std::setw(2)<<std::setfill('0')<<current.phase;
+                        dumpImage(f.output_dir/("stationary-final-phase-"+phase.str()+".ppm"),
+                            current.output,OutputWidth,OutputHeight);
+                        dumpRaw(f.output_dir/("stationary-final-phase-"+phase.str()+".rgba32f"),
+                            current.output.data(),current.output.size()*sizeof(Color));
+                    }
+                    stationary_final[current.phase]=std::move(current.output);
+                }
+            }
+            REQUIRE(independent.scaler->stats().submitted_calls==WarmFrames+Phases);
+            REQUIRE(independent.history.stats().resets==1);
+            REQUIRE(independent.opaque_depth_captures==WarmFrames+Phases);
+        }
+        const auto blur=blurredReference(reference);
+        unsigned rejected_blurred_foliage=0;
+        for(const auto& r:Regions)if(r.foliage)
+        {
+            const auto q=maskQuality(reference,blur,r);
+            rejected_blurred_foliage+=q.recall<.9 || q.precision<.9 || q.area<.85 || q.area>1.15 ||
+                referenceEnergy(blur,r)<.5*referenceEnergy(reference,r);
+        }
+        REQUIRE(rejected_blurred_foliage>=3); // Independently reject an obvious blur, not only a bad candidate.
+        const auto blurred_coverage_reference=blurredReference(coverage_reference.color);
+        const auto blurred_coverage=recoveredCoverage(coverage_reference,blurred_coverage_reference);
+        unsigned rejected_coverage_blur=0;
+        for(const auto& r:Regions)if(r.identifiable_coverage)
+        {
+            const auto q=maskQuality(coverage_reference,blurred_coverage,r);
+            rejected_coverage_blur+=q.recall<.9 || q.precision<.9 || q.area<.85 || q.area>1.15 ||
+                referenceEnergy(blurred_coverage_reference,r)<.5*referenceEnergy(reference,r);
+        }
+        REQUIRE(rejected_coverage_blur>=3);
+
+        FramePixels previous;
+        std::ofstream trace;
+        if(!f.output_dir.empty())
+        {
+            dumpImage(f.output_dir/"native-reference.ppm",reference,OutputWidth,OutputHeight);
+            dumpImage(f.output_dir/"blur-negative-reference.ppm",blur,OutputWidth,OutputHeight);
+            dumpImage(f.output_dir/"coverage-matched-reference.ppm",coverage_reference.color,OutputWidth,OutputHeight);
+            dumpRaw(f.output_dir/"coverage-ground-truth.r32f",coverage_reference.coverage.data(),coverage_reference.coverage.size()*sizeof(float));
+            trace.open(f.output_dir/"frames.csv");
+            trace<<"frame,phase,jitter_x,jitter_y,history_resets,valid_previous,camera_shift\n";
+        }
+        constexpr unsigned MovingFrames=18, StoppedFrames=2*Phases;
+        const unsigned total=WarmFrames+StableFrames+MovingFrames+StoppedFrames;
+        for(unsigned i=0;i<total;++i)
+        {
+            const unsigned moving=i>=WarmFrames+StableFrames?i-(WarmFrames+StableFrames)+1:0;
+            const float shift=.05f*float(std::min(moving,MovingFrames))/float(MovingFrames);
+            auto current=f.render(i,shift);
+            REQUIRE(current.resets==1);
+            REQUIRE(current.phase==i%Phases);
+            if(i>=WarmFrames && i<WarmFrames+StableFrames)
+            {
+                if(i<WarmFrames+Phases)initial_temporal[current.phase]=current.output;
+                for(std::size_t region=0;region<Regions.size();++region)
+                    measure(metrics[region],previous,current,reference,coverage_reference,Regions[region]);
+            }
+            if(i==WarmFrames+StableFrames+MovingFrames ||
+                i==WarmFrames+StableFrames+MovingFrames+Phases-1 || i==total-1)
+            {
+                const unsigned sample=i==total-1?2:i==WarmFrames+StableFrames+MovingFrames?0:1;
+                for(std::size_t pixel=0;pixel<current.output.size();++pixel)for(unsigned c=0;c<3;++c)
+                    stop_errors[sample]+=std::abs(current.output[pixel][c]-shifted_reference[pixel][c]);
+                stop_errors[sample]/=double(current.output.size()*3);
+                for(std::size_t region=0;region<Regions.size();++region)
+                    stopped[sample][region]=stopQuality(reference,shifted_reference,
+                        initial_temporal[current.phase],stationary_final[current.phase],current.output,Regions[region]);
+            }
+            if(trace)trace<<i<<','<<current.phase<<','<<current.jitter[0]<<','<<current.jitter[1]<<','<<current.resets<<','<<current.previous_valid<<','<<shift<<'\n';
+            if(!f.output_dir.empty())
+            {
+                std::ostringstream filename;filename<<"output-"<<std::setw(4)<<std::setfill('0')<<i<<".ppm";
+                dumpImage(f.output_dir/filename.str(),current.output,OutputWidth,OutputHeight);
+                if(i>=WarmFrames && i<WarmFrames+Phases)
+                {
+                    std::ostringstream phase;phase<<std::setw(2)<<std::setfill('0')<<current.phase;
+                    dumpImage(f.output_dir/("input-phase-"+phase.str()+".ppm"),current.input,InputWidth,InputHeight);
+                    dumpRaw(f.output_dir/("input-phase-"+phase.str()+".rgba32f"),current.input.data(),current.input.size()*sizeof(Color));
+                    dumpRaw(f.output_dir/("motion-phase-"+phase.str()+".rg16f"),current.motion.data(),current.motion.size()*sizeof(current.motion[0]));
+                    dumpRaw(f.output_dir/("reactive-phase-"+phase.str()+".r8"),current.reactive.data(),current.reactive.size());
+                    dumpRaw(f.output_dir/("depth-phase-"+phase.str()+".r32f"),current.depth.data(),current.depth.size()*sizeof(float));
+                    dumpRaw(f.output_dir/("proxy-depth-phase-"+phase.str()+".r32f"),current.motion_depth.data(),current.motion_depth.size()*sizeof(float));
+                    dumpRaw(f.output_dir/("opaque-depth-phase-"+phase.str()+".r32f"),current.opaque_depth.data(),current.opaque_depth.size()*sizeof(float));
+                    dumpRaw(f.output_dir/("output-phase-"+phase.str()+".rgba32f"),current.output.data(),current.output.size()*sizeof(Color));
+                }
+            }
+            previous=std::move(current);
+        }
+        if(!f.output_dir.empty())dumpImage(f.output_dir/"native-move-stop-reference.ppm",shifted_reference,OutputWidth,OutputHeight);
+        double settled_error=0;
+        for(std::size_t i=0;i<shifted_reference.size();++i)for(unsigned c=0;c<3;++c)
+            settled_error+=std::abs(previous.output[i][c]-shifted_reference[i][c]);
+        settled_error/=double(shifted_reference.size()*3);
+        std::cout<<"Temporal foliage67 input="<<InputWidth<<'x'<<InputHeight<<", output="<<OutputWidth<<'x'<<OutputHeight
+            <<", bias="<<f.mip_bias<<", phases="<<Phases<<", measured_cycles=3, move_stop_mean_reference_error="<<settled_error
+            <<", stop_error_first="<<stop_errors[0]<<", stop_error_phase18="<<stop_errors[1]<<", stop_error_phase36="<<stop_errors[2]<<'\n';
+        std::ofstream summary;
+        if(!f.output_dir.empty())
+        {
+            summary.open(f.output_dir/"regions.csv");
+            summary<<"region,mean_rgb_change,large_coverage_change,edge_energy,reference_edge_energy,mean_reference_error,leaf_reactive,background_reactive,max_stationary_motion,depth_mismatches,edge_band_change,edge_band_frame_p95,minimum_recall,minimum_precision,minimum_area,maximum_area,stop18_native_quality_error,stop18_phase_matched_error,stop18_old_history_fraction,stop36_native_quality_error,stop36_phase_matched_error,stop36_old_history_fraction,proxy_foreground_samples,proxy_background_samples,proxy_threshold_ambiguous_samples\n";
+        }
+        for(std::size_t i=0;i<Regions.size();++i)
+        {
+            const auto& r=Regions[i];const auto& m=metrics[i];CAPTURE(r.name);
+            REQUIRE(m.pixels>0);const double change=m.absolute_change/m.pixels;
+            const double coverage=double(m.coverage_changes)/m.pixels;
+            const double energy=m.edge_energy/m.comparisons, reference_energy=referenceEnergy(reference,r);
+            const double reference_error=m.reference_error/(3.*m.pixels);
+            const double edge_change=m.edge_band_pixels?m.edge_band_change/m.edge_band_pixels:0.;
+            auto sorted=m.frame_edge_changes;std::sort(sorted.begin(),sorted.end());
+            const double edge_p95=sorted[std::min(sorted.size()-1,std::size_t(std::ceil(sorted.size()*.95)-1))];
+            std::cout<<"Temporal foliage ROI="<<r.name<<", mean_rgb_change="<<change<<", large_coverage_change="<<coverage
+                <<", edge_energy="<<energy<<", reference_edge_energy="<<reference_energy<<", mean_reference_error="<<reference_error
+                <<", leaf_reactive="<<(m.leaf_pixels?double(m.reactive_leaf)/(255.*m.leaf_pixels):0.)
+                <<", background_reactive="<<(m.background_pixels?double(m.reactive_background)/(255.*m.background_pixels):0.)
+                <<", max_stationary_motion="<<m.maximum_stationary_motion<<", depth_mismatches="<<m.coverage_mismatches
+                <<", edge_band_change="<<edge_change<<", edge_band_frame_p95="<<edge_p95
+                <<", minimum_recall="<<m.minimum_recall<<", minimum_precision="<<m.minimum_precision
+                <<", area_min="<<m.minimum_area<<", area_max="<<m.maximum_area
+                <<", hue_leaf_fraction="<<m.leaf_coverage/m.pixels
+                <<", stop18_native_quality_error="<<stopped[1][i].native_quality_error
+                <<", stop18_phase_matched_error="<<stopped[1][i].phase_matched_error
+                <<", stop18_old_history_fraction="<<stopped[1][i].old_history_fraction
+                <<", stop36_native_quality_error="<<stopped[2][i].native_quality_error
+                <<", stop36_phase_matched_error="<<stopped[2][i].phase_matched_error
+                <<", stop36_old_history_fraction="<<stopped[2][i].old_history_fraction
+                <<", proxy_foreground_samples="<<m.proxy_foreground<<", proxy_background_samples="<<m.proxy_background
+                <<", proxy_threshold_ambiguous_samples="<<m.proxy_ambiguous<<'\n';
+            if(summary)summary<<r.name<<','<<change<<','<<coverage<<','<<energy<<','<<reference_energy<<','<<reference_error<<','
+                <<(m.leaf_pixels?double(m.reactive_leaf)/(255.*m.leaf_pixels):0.)<<','
+                <<(m.background_pixels?double(m.reactive_background)/(255.*m.background_pixels):0.)<<','
+                <<m.maximum_stationary_motion<<','<<m.coverage_mismatches<<','<<edge_change<<','<<edge_p95<<','
+                <<m.minimum_recall<<','<<m.minimum_precision<<','<<m.minimum_area<<','<<m.maximum_area<<','
+                <<stopped[1][i].native_quality_error<<','<<stopped[1][i].phase_matched_error<<','
+                <<stopped[1][i].old_history_fraction<<','<<stopped[2][i].native_quality_error<<','
+                <<stopped[2][i].phase_matched_error<<','<<stopped[2][i].old_history_fraction<<','
+                <<m.proxy_foreground<<','<<m.proxy_background<<','<<m.proxy_ambiguous<<'\n';
+            // Authored image-quality bounds: less than one 8-bit linear level
+            // of average phase-to-phase change; no large binary edge toggles
+            // in >0.5% of ROI pixels. Detail must not be blurred away to pass.
+            CHECK(change<=1./255.);
+            CHECK(edge_change<=1./255.);
+            CHECK(edge_p95<=2./255.);
+            if(r.foliage)
+            {
+                CHECK(coverage<=.005);
+                if(r.identifiable_coverage)
+                {
+                    CHECK(m.minimum_recall>=.90);CHECK(m.minimum_precision>=.90);
+                    CHECK(m.minimum_area>=.85);CHECK(m.maximum_area<=1.15);
+                }
+                CHECK(stopped[1][i].old_history_fraction<=.02);
+                CHECK(stopped[2][i].old_history_fraction<=.02);
+            }
+            // Compare like reconstruction to like reconstruction for settling.
+            // Native0 absolute error remains separately reported as quality.
+            CHECK(stopped[1][i].phase_matched_error<=1./255.);
+            CHECK(stopped[2][i].phase_matched_error<=1./255.);
+            CHECK((reference_energy<1.e-5 || energy>=.5*reference_energy));
+            CHECK(reference_error<=.12);
+            CHECK(m.maximum_stationary_motion<=.025f);
+            CHECK(m.coverage_mismatches==0);
+            if(std::string_view(r.name)=="blended_leaf_sky")
+            {
+                // This is a coverage oracle, not merely a finite/member-depth
+                // test: both authored leaf and background must be exercised.
+                const auto samples=m.proxy_foreground+m.proxy_background+m.proxy_ambiguous;
+                REQUIRE(samples>0);
+                CHECK(m.proxy_foreground>samples/20);
+                CHECK(m.proxy_background>samples/20);
+            }
+        }
+        CHECK(settled_error<=.10);
+        CHECK(stop_errors[1]<=.10); // Broad Native0 quality guard; localized history is checked above.
+        CHECK(f.scaler->stats().submitted_calls==total);
+        CHECK(f.history.stats().submitted_worlds==total);
+        CHECK(f.opaque_depth_captures==total);
+        CHECK(f.history.stats().resets==1);
+    }
+}

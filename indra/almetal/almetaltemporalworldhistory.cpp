@@ -104,6 +104,85 @@ struct Hash
     }
 };
 
+// Canonical active material inputs, independent of transient immutable proof
+// addresses. Emit individual fields, never struct padding or CPU pointers.
+// The compact key uses a fingerprint only to select a map candidate; stage()
+// also compares these exact owned tokens before accepting any previous pose.
+template<class Emit> void materialTokens(const ALMetalWorldSimpleBatch& b, float mip_bias, Emit&& emit)
+{
+    const auto real = [&](float value)
+    { emit(std::uint64_t(std::bit_cast<std::uint32_t>(value == 0.f ? 0.f : value))); };
+    const auto texture = [&](const ALMetalTexture* value)
+    {
+        emit(value != nullptr);
+        if (!value) return;
+        emit(value->resourceView().identity()); emit(value->resourceView().generation());
+        const auto& descriptor = value->descriptor();
+        emit(static_cast<std::uint64_t>(descriptor.type)); emit(static_cast<std::uint64_t>(descriptor.format));
+        emit(descriptor.width); emit(descriptor.height); emit(descriptor.array_length);
+        emit(descriptor.mipmap_level_count); emit(descriptor.sample_count);
+        for (auto channel : descriptor.swizzle) emit(static_cast<std::uint64_t>(channel));
+    };
+    emit(b.texture_count); emit(b.material_slot_count); emit(b.pbr_slot_count);
+    emit(b.material_alpha_mode); real(mip_bias);
+    const std::uint64_t flags = std::uint64_t(b.alpha_mask) | (std::uint64_t(b.use_vertex_color) << 1u) |
+        (std::uint64_t(b.alpha_cutoff_bias) << 2u) | (std::uint64_t(b.double_sided) << 3u) |
+        (std::uint64_t(b.avatar_diffuse_srgb) << 4u) | (std::uint64_t(b.pre_water_alpha) << 5u) |
+        (std::uint64_t(b.post_water_alpha) << 6u) | (std::uint64_t(b.post_water_depth_only) << 7u) |
+        (std::uint64_t(b.post_water_glow) << 8u) | (std::uint64_t(b.pre_water_fullbright) << 9u) |
+        (std::uint64_t(b.pre_water_simple) << 10u) | (std::uint64_t(b.pre_water_material) << 11u) |
+        (std::uint64_t(b.pre_water_pbr) << 12u) | (std::uint64_t(b.pre_water_shadows) << 13u) |
+        (std::uint64_t(b.pre_water_particle) << 14u) | (std::uint64_t(b.pre_water_alpha_writes_coverage) << 15u) |
+        (std::uint64_t(b.legacy_glow) << 16u) | (std::uint64_t(b.pbr_glow) << 17u) |
+        (std::uint64_t(b.impostor) << 18u) | (std::uint64_t(b.impostor_fullbright) << 19u) |
+        (std::uint64_t(b.impostor_shiny) << 20u) | (std::uint64_t(b.impostor_emboss) << 21u);
+    emit(flags); real(b.alpha_cutoff); real(b.pre_water_minimum_alpha);
+    emit(static_cast<std::uint64_t>(b.pre_water_source_rgb));
+    emit(static_cast<std::uint64_t>(b.pre_water_destination_rgb));
+    for (std::size_t slot = 0; slot < b.texture_count; ++slot) texture(b.diffuse_textures[slot]);
+    if (!b.material_slot_count && !b.pbr_slot_count) texture(b.normal_texture);
+    for (std::size_t slot = 0; slot < b.material_slot_count; ++slot)
+    {
+        const auto& material = b.materialSlots()[slot];
+        texture(material.normal_texture); texture(material.specular_texture);
+        for (float value : material.specular_color) real(value);
+        real(material.env_intensity); real(material.alpha_cutoff); real(material.fullbright);
+    }
+    for (std::size_t slot = 0; slot < b.pbr_slot_count; ++slot)
+    {
+        const auto& material = b.pbrSlots()[slot];
+        texture(material.normal_texture); texture(material.orm_texture); texture(material.emissive_texture);
+        for (float value : material.base_color_factor) real(value);
+        // almetal_world_pbr_texcoord/tangent consume scale XY, rotation Z,
+        // and the next float4's offset XY. Packed lanes3/6/7 are unused.
+        constexpr unsigned active_transform_lanes[]{0u, 1u, 2u, 4u, 5u};
+        for (const auto& transform : material.texture_transform)
+            for (unsigned lane : active_transform_lanes) real(transform[lane]);
+        for (float value : material.emissive_color) real(value);
+        real(material.roughness_factor); real(material.metallic_factor); real(material.alpha_cutoff);
+    }
+    if (b.impostor) for (const auto* image : b.impostor_textures) texture(image);
+    if (b.terrain)
+    {
+        texture(b.terrain_height_texture); texture(b.terrain_composition_texture); texture(b.terrain_alpha_ramp_texture);
+        texture(b.terrain_paint_texture); texture(b.terrain_parcel_overlay_texture);
+        for (bool value : b.terrain_diffuse_srgb) emit(value);
+        for (bool value : b.terrain_emissive_srgb) emit(value);
+        emit(b.terrain_blend_wrap); emit(b.terrain_overlay_wrap); emit(b.terrain_overlay_srgb);
+        emit(b.terrain_smoothing); emit(b.terrain_triplanar); emit(b.terrain_hex); emit(b.terrain_pbr);
+        emit(b.terrain_flat_normals); emit(b.terrain_tessellation_pinned);
+        real(b.terrain_grid_scale); real(b.terrain_region_scale); real(b.terrain_detail_scale);
+        for (float value : b.terrain_detail_phase) real(value);
+        real(b.terrain_triplanar_blend);
+        for (const auto& transform : b.terrain_uv_transform) for (float value : transform) real(value);
+        for (const auto& offset : b.terrain_uv_offset) for (float value : offset) real(value);
+        for (const auto& axes : b.terrain_normal_axes) for (float value : axes) real(value);
+        for (const auto& fraction : b.terrain_hex_fraction) for (float value : fraction) real(value);
+        for (const auto& base : b.terrain_hex_base) for (auto value : base) emit(std::uint64_t(std::uint32_t(value)));
+        emit(std::uint64_t(std::uint32_t(b.terrain_pbr_detail))); emit(b.terrain_paint_type);
+    }
+}
+
 Key key(const ALMetalWorldDraw& draw, bool forward)
 {
     const auto& b = draw.source();
@@ -135,23 +214,8 @@ Key key(const ALMetalWorldDraw& draw, bool forward)
     // Source-publication identity distinguishes different logical sources over
     // a shared geometry range without retaining the publication itself.
     if (!v[1]) v[30] = reinterpret_cast<std::uintptr_t>(b.native_resource_source.get());
-    v[31] = reinterpret_cast<std::uintptr_t>(b.native_material_source.get());
-    // glTF UV animation can update per-material transforms without changing
-    // the legacy batch texture matrix. Reject history when that coverage input
-    // changes, including raw authored (not yet published) material tables.
-    std::uint64_t uv_revision = 1469598103934665603ull;
-    const auto mix = [&](float value)
-    { uv_revision = (uv_revision ^ std::bit_cast<std::uint32_t>(value)) * 1099511628211ull; };
-    for (std::size_t slot = 0; slot < std::min<std::size_t>(b.pbr_slot_count, b.max_material_slots); ++slot)
-    {
-        const auto& material = b.pbrSlots()[slot];
-        for (const auto& transform : material.texture_transform)
-            for (float value : transform) mix(value);
-        mix(material.alpha_cutoff); mix(material.base_color_factor[3]);
-    }
-    for (std::size_t slot = 0; slot < std::min<std::size_t>(b.material_slot_count, b.max_material_slots); ++slot)
-        mix(b.materialSlots()[slot].alpha_cutoff);
-    v[32] = uv_revision;
+    // Filled from the canonical active inputs in stage(). A publication wrapper
+    // can be replaced without changing any rendered material semantics.
     return k;
 }
 
@@ -211,7 +275,7 @@ void alMetalExpandTemporalCullProjection(float matrix[16], std::uint32_t width,
 
 struct ALMetalTemporalWorldHistory::Impl
 {
-    struct Entry { Key key; Pose pose; };
+    struct Entry { Key key; Pose pose; std::vector<std::uint64_t> material_tokens; };
     struct Frame
     {
         Input input;
@@ -307,6 +371,23 @@ bool ALMetalTemporalWorldHistory::stage(const ALMetalWorldGBufferScene& opaque,
                 return fail(error, "Temporal material table or diffuse texture count exceeds its layout");
             Impl::Entry entry;
             entry.key = key(draw, is_forward);
+            const float mip_bias = is_forward && forward ? forward->material_mip_bias : opaque.material_mip_bias;
+            std::size_t token_count = 0;
+            materialTokens(source, mip_bias, [&](std::uint64_t) { ++token_count; });
+            if (token_count > (state.limits.bytes_per_frame - next.bytes) / sizeof(std::uint64_t))
+                return fail(error, "Temporal material snapshots exceed the bounded frame-storage allowance");
+            entry.material_tokens.reserve(token_count);
+            if (entry.material_tokens.capacity() > (state.limits.bytes_per_frame - next.bytes) / sizeof(std::uint64_t))
+                return fail(error, "Temporal material snapshots exceed the bounded frame-storage allowance");
+            next.bytes += entry.material_tokens.capacity() * sizeof(std::uint64_t);
+            std::uint64_t fingerprint = 1469598103934665603ull;
+            materialTokens(source, mip_bias, [&](std::uint64_t value)
+            {
+                entry.material_tokens.push_back(value);
+                fingerprint = (fingerprint ^ value) * 1099511628211ull;
+            });
+            entry.key.values[31] = fingerprint;
+            entry.key.values[32] = token_count;
             const auto palette_count = draw.skinPaletteFloatCount();
             if (palette_count > (state.limits.bytes_per_frame - next.bytes) / (2u * sizeof(float)))
                 return fail(error, "Temporal deep palette snapshots exceed the bounded frame-storage allowance");
@@ -342,8 +423,11 @@ bool ALMetalTemporalWorldHistory::stage(const ALMetalWorldGBufferScene& opaque,
                 const auto found = state.committed->lookup.find(current.key);
                 if (found != state.committed->lookup.end())
                 {
-                    const auto& pose = state.committed->entries[found->second].pose;
-                    if (pose.valid)
+                    const auto& prior = state.committed->entries[found->second];
+                    const auto& pose = prior.pose;
+                    // Fingerprints are a lookup aid, never proof of equality.
+                    // A collision or genuinely edited material fails closed.
+                    if (pose.valid && prior.material_tokens == current.material_tokens)
                     {
                         *previous = pose;
                         previous->reactive = previous->reactive || current.pose.reactive ||

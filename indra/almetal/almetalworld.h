@@ -1939,6 +1939,14 @@ struct ALMetalWorldTemporalMotionScene
 {
     const ALMetalWorldGBufferScene* opaque_scene = nullptr;
     const ALMetalWorldOpaquePostDeferredScene* forward_scene = nullptr;
+    // The actual composited ray sky. Its directional camera motion and dynamic
+    // layer coverage are separate from opaque geometry and glow alpha.
+    const ALMetalWorldModernSkyScene* modern_sky = nullptr;
+    bool reject_sky_history = false;
+    // Immutable copy made before forward alpha/depth-only draws modify the
+    // borrowed G-buffer depth. Optional callers without it retain conservative
+    // forward rejection. MetalFX still receives final depth from `depth`.
+    const ALMetalTexture* opaque_depth = nullptr;
     const ALMetalTexture* depth = nullptr;
     const ALMetalWorldTemporalPreviousDraw* previous_opaque = nullptr;
     std::size_t previous_opaque_count = 0;
@@ -3124,6 +3132,12 @@ public:
     // still legal. Failure releases the partial pack through the normal pool.
     std::optional<ALMetalWorldTemporalPostTargets> prepareTemporalPostTargets(
         const ALMetalWorldTemporalPostConfig& config, std::string* error = nullptr);
+    // Pre-acquire while pooled generation reuse is legal, then copy within the
+    // main-post batch before any forward draw can write borrowed opaque depth.
+    std::unique_ptr<ALMetalRenderTarget> prepareTemporalOpaqueDepth(std::uint32_t width,
+        std::uint32_t height, std::string* error = nullptr);
+    bool captureTemporalOpaqueDepth(const ALMetalTexture& depth,
+        ALMetalRenderTarget& prepared_output, std::string* error = nullptr);
     std::unique_ptr<ALMetalRenderTarget> prepareTemporalMotionTarget(std::uint32_t width,
         std::uint32_t height, std::string* error = nullptr);
     bool prepareTemporalMotion(std::string* error = nullptr);

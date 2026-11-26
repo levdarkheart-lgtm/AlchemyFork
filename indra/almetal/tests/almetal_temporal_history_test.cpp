@@ -5,6 +5,7 @@
  */
 #include "almetaltemporalworldhistory.h"
 #include "alnativepublication.h"
+#include "almetalworldmaterialdata.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <algorithm>
@@ -396,6 +397,184 @@ TEST_CASE("Temporal glTF material UV animation cannot inherit static coverage hi
     REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, nullptr));
     CHECK_FALSE(history.previousOpaque()[0].valid);
     CHECK(history.previousOpaque()[0].reactive);
+}
+
+TEST_CASE("Temporal equal material republications preserve history without retaining proof identity", "[temporal-history][metal][material-semantics]")
+{
+    std::string error;
+    auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+    ALMetalWorldMaterialDataCache cache(*device);
+    ALMetalTextureDescriptor descriptor; descriptor.width = descriptor.height = 4;
+    auto image = ALMetalTexture::create(*device, descriptor, &error); REQUIRE(image);
+    for (unsigned family : {1u, 2u})
+    {
+        CAPTURE(family);
+        auto authored = batch(451); authored.texture_count = 1; authored.diffuse_textures[0] = image.get();
+        if (family == 1) { authored.material_slot_count = 1; authored.materialSlots()[0].alpha_cutoff = .4f; }
+        else
+        {
+            authored.pbr_slot_count = 1; authored.alpha_mask = true;
+            auto& slot = authored.pbrSlots()[0]; slot.alpha_cutoff = .4f;
+            slot.normal_texture = slot.orm_texture = slot.emissive_texture = image.get();
+        }
+        auto first = authored, second = authored;
+        auto first_source = ALMetalWorldMaterialSource::publish(*device, first, cache, &error); INFO(error); REQUIRE(first_source);
+        auto second_source = ALMetalWorldMaterialSource::publish(*device, second, cache, &error); INFO(error); REQUIRE(second_source);
+        REQUIRE(first_source != second_source);
+        CHECK((family == 1 ? first_source->materialLease() : first_source->pbrLease(true)) ==
+              (family == 1 ? second_source->materialLease() : second_source->pbrLease(true)));
+        History history;
+        auto opaque = scene(&first, 1);
+        REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque, nullptr)); REQUIRE(history.commit(1));
+        const std::weak_ptr<const ALMetalWorldMaterialSource> weak_first = first_source;
+        first.native_material_source.reset(); first_source.reset(); // History owns values, not this transient proof.
+        CHECK(weak_first.expired());
+        opaque.batches = &second;
+        REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, nullptr));
+        CHECK(history.previousOpaque()[0].valid); CHECK_FALSE(history.previousOpaque()[0].reactive);
+        CHECK(history.stats().valid_previous_draws == 1);
+        REQUIRE(history.commit(2));
+        // Returning to equal raw authored values also preserves the same material.
+        opaque.batches = &authored;
+        REQUIRE(history.beginFrame(input(3))); REQUIRE(history.stage(opaque, nullptr));
+        CHECK(history.previousOpaque()[0].valid); CHECK_FALSE(history.previousOpaque()[0].reactive);
+    }
+}
+
+TEST_CASE("Temporal material semantics reject independent authored channel and sampling changes", "[temporal-history][metal][material-semantics]")
+{
+    std::string error; auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+    ALMetalTextureDescriptor descriptor; descriptor.width = descriptor.height = 4;
+    auto image = ALMetalTexture::create(*device, descriptor, &error); REQUIRE(image);
+    auto replacement = ALMetalTexture::create(*device, descriptor, &error); REQUIRE(replacement);
+    for (unsigned family : {0u, 1u, 2u}) for (unsigned change = 0; change != (family == 2 ? 18u : family == 1 ? 11u : 7u); ++change)
+    {
+        CAPTURE(family, change);
+        auto b = batch(452); b.texture_count = 1; b.diffuse_textures[0] = image.get();
+        if (family == 1) b.material_slot_count = 1;
+        if (family == 2) b.pbr_slot_count = 1;
+        History history; auto opaque = scene(&b, 1);
+        REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque, nullptr)); REQUIRE(history.commit(1));
+        if (change == 0) b.diffuse_textures[0] = replacement.get();
+        else if (change == 1) b.use_vertex_color = !b.use_vertex_color;
+        else if (change == 2) b.alpha_cutoff_bias = !b.alpha_cutoff_bias;
+        else if (change == 3) b.pre_water_minimum_alpha = .1f;
+        else if (change == 4) b.pre_water_destination_rgb = ALMetalBlendFactor::one;
+        else if (family == 0)
+        {
+            if (change == 5) b.normal_texture = replacement.get();
+            else b.avatar_diffuse_srgb = !b.avatar_diffuse_srgb;
+        }
+        else if (family == 1)
+        {
+            auto& slot = b.materialSlots()[0];
+            switch (change)
+            {
+                case 5: slot.normal_texture = replacement.get(); break;
+                case 6: slot.specular_texture = replacement.get(); break;
+                case 7: slot.specular_color[3] = .2f; break;
+                case 8: slot.env_intensity = .3f; break;
+                case 9: slot.alpha_cutoff = .7f; break;
+                case 10: slot.fullbright = .4f; break;
+            }
+        }
+        else
+        {
+            auto& slot = b.pbrSlots()[0];
+            switch (change)
+            {
+                case 5: slot.normal_texture = replacement.get(); break;
+                case 6: slot.orm_texture = replacement.get(); break;
+                case 7: slot.emissive_texture = replacement.get(); break;
+                case 8: slot.base_color_factor[0] = .2f; break;
+                case 9: slot.base_color_factor[3] = .3f; break;
+                case 10: slot.texture_transform[0][2] = .1f; break;
+                case 11: slot.texture_transform[1][1] = .2f; break;
+                case 12: slot.texture_transform[2][4] = .3f; break;
+                case 13: slot.texture_transform[3][5] = .4f; break;
+                case 14: slot.emissive_color[2] = .5f; break;
+                case 15: slot.roughness_factor = .6f; break;
+                case 16: slot.metallic_factor = .7f; break;
+                case 17: slot.alpha_cutoff = .8f; break;
+            }
+        }
+        REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, nullptr));
+        CHECK_FALSE(history.previousOpaque()[0].valid); CHECK(history.previousOpaque()[0].reactive);
+    }
+}
+
+TEST_CASE("Temporal PBR transform history tracks used lanes without interpreting reserved packing", "[temporal-history][material-semantics]")
+{
+    for (unsigned channel = 0; channel != 4; ++channel) for (unsigned lane = 0; lane != 8; ++lane)
+    {
+        CAPTURE(channel, lane);
+        History history; auto b = batch(457); b.pbr_slot_count = 1;
+        auto opaque = scene(&b, 1);
+        REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque, nullptr)); REQUIRE(history.commit(1));
+        b.pbrSlots()[0].texture_transform[channel][lane] = .25f;
+        REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, nullptr));
+        const bool consumed = lane == 0 || lane == 1 || lane == 2 || lane == 4 || lane == 5;
+        CHECK(history.previousOpaque()[0].valid == !consumed);
+        CHECK(history.previousOpaque()[0].reactive == consumed);
+    }
+}
+
+TEST_CASE("Temporal main material mip-policy changes reject prior coverage history", "[temporal-history][material-semantics]")
+{
+    for (bool forward_changed : {false, true})
+    {
+        History history; auto b = batch(454), f = batch(455);
+        auto opaque = scene(&b, 1); opaque.material_mip_bias = -1.5f;
+        ALMetalWorldOpaquePostDeferredScene forward; forward.batches = &f; forward.batch_count = 1;
+        forward.material_mip_bias = opaque.material_mip_bias;
+        REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque, forward)); REQUIRE(history.commit(1));
+        if (forward_changed) forward.material_mip_bias = -1.f; else opaque.material_mip_bias = -1.f;
+        REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, forward));
+        CHECK(history.previousOpaque()[0].valid == forward_changed);
+        CHECK(history.previousForward()[0].valid != forward_changed);
+    }
+}
+
+TEST_CASE("Temporal texture wrapper aliases preserve history and pooled generation changes reject it", "[temporal-history][metal][material-semantics]")
+{
+    std::string error; auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+    auto pool = ALMetalRenderTargetPool::create(*device, 1024 * 1024); REQUIRE(pool);
+    ALMetalRenderTargetDescriptor descriptor; descriptor.width = descriptor.height = 4;
+    descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+    auto target = pool->acquire(descriptor, &error); INFO(error); REQUIRE(target);
+    const auto identity = target->colorTexture(0)->resourceView().identity();
+    const auto generation = target->colorTexture(0)->resourceView().generation();
+    auto alias = ALMetalTexture::retainSharedBacking(*target->colorTexture(0), &error); REQUIRE(alias);
+    auto b = batch(453); b.texture_count = 1; b.diffuse_textures[0] = target->colorTexture(0);
+    History history; auto opaque = scene(&b, 1);
+    REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque, nullptr)); REQUIRE(history.commit(1));
+    b.diffuse_textures[0] = alias.get();
+    REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, nullptr));
+    CHECK(history.previousOpaque()[0].valid); REQUIRE(history.commit(2));
+    alias.reset(); b.diffuse_textures[0] = nullptr; target.reset();
+    auto reused = pool->acquire(descriptor, &error); REQUIRE(reused);
+    REQUIRE(reused->colorTexture(0)->resourceView().identity() == identity);
+    REQUIRE(reused->colorTexture(0)->resourceView().generation() > generation);
+    b.diffuse_textures[0] = reused->colorTexture(0);
+    REQUIRE(history.beginFrame(input(3))); REQUIRE(history.stage(opaque, nullptr));
+    CHECK_FALSE(history.previousOpaque()[0].valid); CHECK(history.previousOpaque()[0].reactive);
+}
+
+TEST_CASE("Temporal canonical material payloads consume the existing bounded frame allowance", "[temporal-history][material-semantics]")
+{
+    auto b = batch(456); b.pbr_slot_count = b.max_material_slots;
+    auto opaque = scene(&b, 1); History measured;
+    REQUIRE(measured.beginFrame(input(1))); REQUIRE(measured.stage(opaque, nullptr)); REQUIRE(measured.commit(1));
+    const auto required = measured.stats().committed_bytes;
+    REQUIRE(required > 0);
+    History insufficient({1, required - 1}); std::string error;
+    REQUIRE(insufficient.beginFrame(input(1)));
+    CHECK_FALSE(insufficient.stage(opaque, nullptr, &error));
+    CHECK(error.find("material snapshots") != std::string::npos);
+    CHECK_FALSE(insufficient.pending()); CHECK(insufficient.committedWorld() == 0);
+    History exact({1, required});
+    REQUIRE(exact.beginFrame(input(1))); REQUIRE(exact.stage(opaque, nullptr)); REQUIRE(exact.commit(1));
+    CHECK(exact.stats().committed_bytes == required);
 }
 
 TEST_CASE("Temporal history bounds malformed input and frame storage without accepting partial snapshots", "[temporal-history]")

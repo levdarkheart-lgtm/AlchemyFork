@@ -3069,7 +3069,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> temporal_resolve_pipeline;
     std::shared_ptr<ALMetalRenderPipeline> temporal_motion_background, temporal_motion_reactive_background, temporal_motion_impostor;
-    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> temporal_motion_geometry;
+    std::shared_ptr<ALMetalRenderPipeline> temporal_opaque_depth_copy;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 3> temporal_motion_geometry;
     ALMetalWorldAnimatedStats animated_stats;
     ALMetalWorldLightingTileStats lighting_tile_stats;
     void noteLightingTiles(bool base, ALMetalRasterTileSize requested,

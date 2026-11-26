@@ -31,7 +31,7 @@ struct Fixture
     std::unique_ptr<ALMetalTemporalScaler> scaler;
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
     ALMetalTemporalScalerDescriptor desc;
-    std::unique_ptr<ALMetalRenderTarget> source, depth, motion, reconstructed, resolved;
+    std::unique_ptr<ALMetalRenderTarget> source, depth, motion, reconstructed, resolved, opaque_source_depth;
     Fixture()
     {
         device = ALMetalDevice::create(&error, ALMetalResourcePlanMode::enabled); REQUIRE(device); INFO(error);
@@ -112,6 +112,53 @@ struct Fixture
         scene.tan_pixel_angle = scene.magnification = 1.f; scene.max_cof = 4.f;
         scene.rgba16_blur = true; scene.reverse_z = true;
         auto result = renderer->renderDepthOfField(scene, &error); REQUIRE(result); INFO(error); return result;
+    }
+    std::unique_ptr<ALMetalRenderTarget> makeOpaqueDepthSource(float clear_depth)
+    {
+        // Preserve the authored depth32 input used by historical DoF/scaler
+        // checks. The new API consumes the actual main G-buffer format.
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = IW; descriptor.height = IH; descriptor.color_attachment_count = 0;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+        descriptor.depth_stencil_shader_read = true;
+        auto source = ALMetalRenderTarget::create(*device, descriptor, &error); REQUIRE(source);
+        auto command = device->makeCommandBuffer("Temporal ownership authored G-buffer depth", &error); REQUIRE(command);
+        ALMetalRenderPassConfig config; config.clear_depth = clear_depth; config.depth_store = ALMetalStoreAction::store;
+        auto pass = source->makeRenderPass(config, &error); REQUIRE(pass);
+        auto encoder = ALMetalRenderEncoder::begin(*command, *pass, "Temporal ownership clear G-buffer", &error);
+        REQUIRE(encoder); REQUIRE(encoder->end(&error)); REQUIRE(command->commitAndWait(&error));
+        return source;
+    }
+    void prepareOpaqueDepthSource()
+    {
+        REQUIRE_FALSE(opaque_source_depth);
+        opaque_source_depth = makeOpaqueDepthSource(0.f);
+    }
+    std::unique_ptr<ALMetalRenderTarget> opaqueDepth()
+    {
+        auto result = renderer->prepareTemporalOpaqueDepth(IW, IH, &error);
+        INFO(error); REQUIRE(result); return result;
+    }
+    void captureOpaqueMotion(ALMetalRenderTarget& snapshot,
+        const ALMetalRenderTarget* depth_source = nullptr, float depth_motion_scale = 0.f)
+    {
+        const auto* source = depth_source ? depth_source : opaque_source_depth.get();
+        REQUIRE(source);
+        REQUIRE(renderer->captureTemporalOpaqueDepth(*source->depthStencilTexture(), snapshot, &error)); INFO(error);
+        // The ownership fixture has an authored clear world rather than scene
+        // geometry. Consume the snapshot through the production motion API,
+        // reusing its already prepared pack just as the viewer does.
+        ALMetalWorldGBufferScene opaque;
+        opaque.width = IW; opaque.height = IH; opaque.reverse_z = true;
+        ALMetalWorldTemporalMotionScene scene;
+        scene.opaque_scene = &opaque; scene.depth = source->depthStencilTexture();
+        scene.opaque_depth = snapshot.colorTexture(0);
+        scene.width = IW; scene.height = IH; scene.reverse_z = true; scene.reset = false;
+        scene.clip_to_previous_clip[0] = scene.clip_to_previous_clip[5] =
+            scene.clip_to_previous_clip[10] = scene.clip_to_previous_clip[15] = 1.f;
+        scene.clip_to_previous_clip[8] = depth_motion_scale;
+        motion = renderer->renderTemporalMotion(scene, &error, std::move(motion));
+        INFO(error); REQUIRE(motion);
     }
     ALMetalTemporalScaler::Ticket temporal(const ALMetalRenderTarget& input, float jitter = 0.f)
     {
@@ -283,17 +330,41 @@ TEST_CASE("Temporal worlds submit and retain their post resources while two grou
     @autoreleasepool
     {
         Fixture f;
+        constexpr std::array<float, 2> depths{.625f, .375f};
+        constexpr float depth_motion_scale = .125f;
+        // Author immutable inputs and acquire retained per-world outputs before
+        // the gate. No setup wait may release or drain the two pending worlds.
+        std::array<std::unique_ptr<ALMetalRenderTarget>, 2> depth_sources, motions;
+        auto authored_motion = std::move(f.motion);
+        for (unsigned index = 0; index < 2; ++index)
+        {
+            depth_sources[index] = f.makeOpaqueDepthSource(depths[index]);
+            motions[index] = f.renderer->prepareTemporalMotionTarget(IW, IH, &f.error);
+            INFO(f.error); REQUIRE(motions[index]);
+        }
         PendingGate gate(f);
         std::array<std::shared_ptr<const ALMetalCommandCompletion>, 2> completion;
         std::array<std::shared_ptr<Fixture::Settlement>, 2> settlement;
         std::array<std::unique_ptr<ALMetalRenderTarget>, 2> outputs;
+        std::array<std::uint64_t, 2> opaque_identities{}, opaque_generations{};
         const auto submitted = ALMetalDevice::committedCommandBufferCount();
         for (unsigned index = 0; index < 2; ++index)
         {
             f.frame_data->beginFrame(index + 1);
+            auto snapshot = f.opaqueDepth();
+            opaque_identities[index] = snapshot->colorTexture(0)->resourceView().identity();
+            opaque_generations[index] = snapshot->colorTexture(0)->resourceView().generation();
+            f.motion = std::move(motions[index]);
             REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal pending required world", &f.error));
             auto targets = f.postTargets(f.postConfig());
+            f.captureOpaqueMotion(*snapshot, depth_sources[index].get(), depth_motion_scale);
+            motions[index] = std::move(f.motion);
+            // Preserve this existing image/history check's immutable zero-motion
+            // input. The extra retained pack separately tests depth-dependent
+            // snapshot ordering, without inventing motion for the static HDR image.
+            f.motion = std::move(authored_motion);
             auto ticket = f.temporal(*f.source);
+            authored_motion = std::move(f.motion);
             auto display = f.display(nullptr, std::move(targets.display));
             outputs[index] = f.present(*display, false, std::move(targets.presentation)); REQUIRE(outputs[index]);
             settlement[index] = f.observe(ticket); completion[index] = f.renderer->commandBatchCompletion();
@@ -305,8 +376,32 @@ TEST_CASE("Temporal worlds submit and retain their post resources while two grou
         REQUIRE(ALMetalDevice::committedCommandBufferCount() == submitted + 2);
         REQUIRE(f.scaler->stats().submitted_calls == 2); REQUIRE(f.scaler->stats().reset_calls == 1);
         REQUIRE(outputs[0]->colorTexture(0)->nativeHandle() != outputs[1]->colorTexture(0)->nativeHandle());
+        // ResourcePlan deliberately permits a new generation after commit:
+        // ordered GPU dependencies protect prior uses even before completion.
+        // A reused native allocation must advance generation; data below proves
+        // both pending worlds consumed their own snapshot before its overwrite.
+        if (opaque_identities[0] == opaque_identities[1])
+            REQUIRE(opaque_generations[1] > opaque_generations[0]);
+        std::cout << "Temporal pending snapshots: identities=" << opaque_identities[0] << ',' << opaque_identities[1]
+                  << ", generations=" << opaque_generations[0] << ',' << opaque_generations[1] << '\n';
         f.scaler.reset(); gate.release();
         for (const auto& token : completion) REQUIRE(token->waitUntilCompleted(&f.error));
+        for (unsigned index = 0; index < 2; ++index)
+        {
+            std::vector<float> depth(IW * IH);
+            std::vector<__fp16> motion(IW * IH * 2);
+            REQUIRE(motions[index]->colorTexture(2)->readback(*f.device,0,0,{},depth.data(),IW * 4,&f.error));
+            REQUIRE(motions[index]->colorTexture(0)->readback(*f.device,0,0,{},motion.data(),IW * 4,&f.error));
+            // Final depth is preserved independently; the nonzero x displacement
+            // is reconstructed specifically from the copied opaque depth.
+            const float expected_motion = depths[index] * depth_motion_scale * (.5f * IW);
+            for (unsigned pixel = 0; pixel < IW * IH; ++pixel)
+            {
+                REQUIRE(std::abs(depth[pixel] - depths[index]) < 1.e-6f);
+                REQUIRE(std::abs(float(motion[2 * pixel]) - expected_motion) < .002f);
+                REQUIRE(std::abs(float(motion[2 * pixel + 1])) < .002f);
+            }
+        }
         const auto first = f.readBytes(*outputs[0]), second = f.readBytes(*outputs[1]);
         // History is expected to refine the authored high-frequency blue
         // detail. Constant red/green interiors must remain stable; requiring
@@ -328,30 +423,38 @@ TEST_CASE("Temporal repeated post transactions reach steady-state pooled target 
         {
             Fixture f;
             auto config = f.postConfig();
-            const char* configuration = "display and presentation";
-            SECTION("same configuration as the historical 69494 twelve-world fixture") {}
+            const char* configuration = "display, presentation and per-world opaque depth";
+            bool capture_opaque_depth = true;
+            SECTION("same configuration as the historical 69494 twelve-world fixture")
+            { configuration = "display and presentation (historical no snapshot)"; capture_opaque_depth = false; }
+            SECTION("per-world pristine depth is reused after completion") {}
             SECTION("bloom pyramid without halation")
             {
-                configuration = "bloom"; config.bloom_mip_count = 4; config.bloom_resolution_scale = 2;
+                configuration = "bloom and per-world opaque depth"; config.bloom_mip_count = 4; config.bloom_resolution_scale = 2;
             }
             SECTION("halation cross filter and reference capture")
             {
-                configuration = "halation cross-filter reference";
+                configuration = "halation cross-filter reference and per-world opaque depth";
                 config.bloom_mip_count = 4; config.bloom_resolution_scale = 2;
                 config.bloom_halation = true; config.cross_filter = true; config.reference_capture = true;
             }
+            if (capture_opaque_depth) f.prepareOpaqueDepthSource();
             const auto created = alMetalResourceAllocationStats().textures_created;
             std::uint64_t warm_created = created, warm_reuses = 0, warm_deferrals = 0;
             std::size_t targets_per_world = 0;
+            const void* warm_opaque_backing = nullptr;
             for (unsigned index = 0; index < 12; ++index)
             {
                 f.frame_data->beginFrame(index + 1);
+                auto snapshot = capture_opaque_depth ? f.opaqueDepth() : nullptr;
+                const void* opaque_backing = snapshot ? snapshot->colorTexture(0)->nativeHandle() : nullptr;
                 REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal steady-state pool sequence", &f.error));
                 auto targets = f.postTargets(config);
-                targets_per_world = 2 + targets.bloom.levels.size() +
+                targets_per_world = 2 + (snapshot ? 1 : 0) + targets.bloom.levels.size() +
                     (config.cross_filter ? 3 : 0) + (config.reference_capture ? 1 : 0);
                 const auto display_backing = targets.display->colorTexture(0)->nativeHandle();
                 const auto presentation_backing = targets.presentation->colorTexture(0)->nativeHandle();
+                if (snapshot) f.captureOpaqueMotion(*snapshot);
                 auto ticket = f.temporal(*f.source);
                 std::unique_ptr<ALMetalRenderTarget> bloom, cross_filter, reference;
                 if (config.bloom_mip_count)
@@ -393,11 +496,13 @@ TEST_CASE("Temporal repeated post transactions reach steady-state pooled target 
                 {
                     warm_created = alMetalResourceAllocationStats().textures_created;
                     warm_reuses = pool.reuses; warm_deferrals = pool.dependency_deferrals;
+                    warm_opaque_backing = opaque_backing;
                 }
                 if (index > 3)
                 {
                     REQUIRE(alMetalResourceAllocationStats().textures_created == warm_created);
                     REQUIRE(pool.dependency_deferrals == warm_deferrals);
+                    REQUIRE(opaque_backing == warm_opaque_backing); // Specifically reuse the added R32 owner.
                 }
                 REQUIRE(pool.cached_bytes <= 2048ull * 1024ull * 1024ull);
             }
@@ -426,14 +531,21 @@ TEST_CASE("Temporal prepared post resources validate descriptors and survive aba
         @autoreleasepool
         {
             Fixture f;
+            f.prepareOpaqueDepthSource();
             auto config = f.postConfig();
             config.width = 129; config.height = 97;
             config.presentation_width = 133; config.presentation_height = 101;
             config.bloom_mip_count = 4; config.bloom_resolution_scale = 1;
             config.bloom_halation = true; config.cross_filter = true; config.reference_capture = true;
+            auto abandoned_snapshot = f.opaqueDepth();
+            const auto abandoned_backing = abandoned_snapshot->colorTexture(0)->nativeHandle();
+            const auto submitted_before_copy = ALMetalDevice::committedCommandBufferCount();
             REQUIRE(f.renderer->beginMainFrameBatch(1, "Temporal prepared resources abandoned before encoding", &f.error));
             {
                 auto targets = f.postTargets(config);
+                auto completion = f.renderer->commandBatchCompletion(); REQUIRE(completion);
+                f.captureOpaqueMotion(*abandoned_snapshot);
+                REQUIRE(f.scaler->stats().encoded_calls == 0);
                 REQUIRE(targets.display->descriptor().width == 129);
                 REQUIRE(targets.display->descriptor().height == 97);
                 REQUIRE(targets.presentation->descriptor().width == 133);
@@ -445,18 +557,30 @@ TEST_CASE("Temporal prepared post resources validate descriptors and survive aba
                 REQUIRE(targets.bloom.levels[3]->descriptor().width == 12);
                 REQUIRE(targets.bloom.cross_filter[0]->descriptor().width == 48);
                 f.renderer->cancelCommandBatch();
+                REQUIRE(completion->isComplete());
+                REQUIRE(completion->status() == ALMetalCommandStatus::unknown);
+                REQUIRE(ALMetalDevice::committedCommandBufferCount() == submitted_before_copy);
             }
+            abandoned_snapshot.reset();
             const auto created = alMetalResourceAllocationStats().textures_created;
+            auto reused_snapshot = f.opaqueDepth();
+            REQUIRE(reused_snapshot->colorTexture(0)->nativeHandle() == abandoned_backing);
             REQUIRE(f.renderer->beginMainFrameBatch(1, "Temporal reuses unsubmitted prepared resources", &f.error));
             {
                 auto targets = f.postTargets(config);
+                f.captureOpaqueMotion(*reused_snapshot);
                 REQUIRE(alMetalResourceAllocationStats().textures_created == created);
                 f.renderer->cancelCommandBatch();
             }
+            reused_snapshot.reset();
             const auto submitted = ALMetalDevice::committedCommandBufferCount();
+            auto rejected_snapshot = f.opaqueDepth();
+            const auto rejected_backing = rejected_snapshot->colorTexture(0)->nativeHandle();
             REQUIRE(f.renderer->beginMainFrameBatch(1, "Temporal supplied target descriptor rejection", &f.error));
             auto targets = f.postTargets(f.postConfig());
+            f.captureOpaqueMotion(*rejected_snapshot);
             auto ticket = f.temporal(*f.source); auto settlement = f.observe(ticket);
+            auto rejected_completion = f.renderer->commandBatchCompletion(); REQUIRE(rejected_completion);
             const auto before_rejection = alMetalResourceAllocationStats().textures_created;
             ALMetalWorldDisplayPostScene display; display.source = f.resolved.get(); display.hdr = true;
             // A BGRA presentation owner cannot silently become a fresh display
@@ -467,6 +591,12 @@ TEST_CASE("Temporal prepared post resources validate descriptors and survive aba
             REQUIRE_FALSE(f.renderer->commitCommandBatch(&f.error));
             REQUIRE(ALMetalDevice::committedCommandBufferCount() == submitted);
             REQUIRE(settlement->rejected == 1); REQUIRE(settlement->published == 0);
+            REQUIRE(rejected_completion->isComplete());
+            REQUIRE(rejected_completion->status() == ALMetalCommandStatus::unknown);
+            rejected_snapshot.reset();
+            auto recovered_snapshot = f.opaqueDepth();
+            REQUIRE(recovered_snapshot->colorTexture(0)->nativeHandle() == rejected_backing);
+            REQUIRE(alMetalResourceAllocationStats().textures_created == before_rejection);
         }
     }
     const auto after = alMetalResourceAllocationStats();

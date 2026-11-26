@@ -38,7 +38,7 @@ struct Fixture
     ALMetalTemporalWorldHistory history;
     ALMetalTemporalScalerDescriptor descriptor{IW, IH, OW, OH};
     std::shared_ptr<ALMetalWorldFrameData> frame_data;
-    std::unique_ptr<ALMetalRenderTarget> source, motion, raw, resolved;
+    std::unique_ptr<ALMetalRenderTarget> source, motion, raw, resolved, opaque_depth, opaque_source_depth;
     std::shared_ptr<const ALMetalRenderTarget> presentation, world_depth;
     ALMetalRetainedBackground retained;
     ALMetalRetainedBackground::Context context;
@@ -67,6 +67,8 @@ struct Fixture
         dd.width = IW; dd.height = IH; dd.color_attachment_count = 0;
         dd.depth_stencil_format = ALMetalPixelFormat::depth32_float; dd.depth_stencil_shader_read = true;
         world_depth = ALMetalRenderTarget::create(*device, dd, &error); REQUIRE(world_depth);
+        dd.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+        opaque_source_depth = ALMetalRenderTarget::create(*device, dd, &error); REQUIRE(opaque_source_depth);
         context = {device.get(), this, 1, OW, OH, true};
         ALMetalRenderTargetDescriptor pack;
         pack.width = IW; pack.height = IH; pack.color_attachment_count = 3;
@@ -94,6 +96,9 @@ struct Fixture
         auto pass = world_depth->makeRenderPass(clear, &error); REQUIRE(pass);
         auto encoder = ALMetalRenderEncoder::begin(*upload, *pass, "Temporal retained-world reversed depth", &error);
         REQUIRE(encoder); REQUIRE(encoder->end(&error));
+        auto opaque_pass = opaque_source_depth->makeRenderPass(clear, &error); REQUIRE(opaque_pass);
+        auto opaque_encoder = ALMetalRenderEncoder::begin(*upload, *opaque_pass, "Temporal authored pristine G-buffer depth", &error);
+        REQUIRE(opaque_encoder); REQUIRE(opaque_encoder->end(&error));
         REQUIRE(upload->commitAndWait(&error));
         pose.temporal_instance_id = 71; pose.temporal_generation = 1;
         pose.vertex_count = pose.index_count = 3;
@@ -117,8 +122,15 @@ struct Fixture
         REQUIRE(history.beginFrame(input, &error));
         REQUIRE(history.stage(opaque, nullptr, &error));
         frame_data->beginFrame(id);
+        // Viewer preflight reacquires the frame-owned R32 target before the
+        // main-post command becomes opaque; each transaction captures it anew.
+        opaque_depth.reset();
+        opaque_depth = renderer->prepareTemporalOpaqueDepth(IW, IH, &error);
+        INFO(error); REQUIRE(opaque_depth);
         REQUIRE(renderer->beginMainFrameBatch(id, "Temporal viewer orchestration", &error));
         post_active = opaque_active = true;
+        REQUIRE(renderer->captureTemporalOpaqueDepth(*opaque_source_depth->depthStencilTexture(), *opaque_depth, &error));
+        INFO(error);
         ALMetalTemporalScalerFrame frame;
         const auto jitter = history.jitterPixels();
         frame.jitter_x = jitter[0]; frame.jitter_y = jitter[1]; frame.reset = history.resetRequired();
@@ -143,6 +155,7 @@ struct Fixture
     {
         if (ticket) scaler->abandon(ticket);
         ticket = 0; history.abandon();
+        opaque_depth.reset();
     }
     bool finalize(bool temporal = true)
     {
@@ -243,6 +256,7 @@ TEST_CASE("Viewer rejects an encoded Temporal world before display without submi
             SECTION("required color grade is unavailable") { required.color_grade = false; }
             f.pose.modelview_projection[12] = .5f;
             f.begin(2);
+            REQUIRE(f.opaque_depth); // Actual captured owner is pending before display eligibility rejects it.
             REQUIRE_FALSE(f.history.resetRequired());
             const auto pending_phase = f.history.stats().jitter_phase;
             REQUIRE(pending_phase == 1);
@@ -263,6 +277,7 @@ TEST_CASE("Viewer rejects an encoded Temporal world before display without submi
             REQUIRE(f.settled_false == 1); REQUIRE(f.settled_true == 1); REQUIRE(f.canceled == 1);
             REQUIRE(f.successful_history_commits == 1); REQUIRE_FALSE(f.successful_mode_published);
             REQUIRE_FALSE(f.temporal_submitted); REQUIRE_FALSE(f.history.pending());
+            REQUIRE_FALSE(f.opaque_depth); // Cancellation releases the new pre-acquired/captured owner too.
             REQUIRE(f.history.stats().submitted_worlds == accepted_worlds);
             REQUIRE(f.history.stats().jitter_phase == accepted_phase); // Reset discarded the pending phase; it never advances.
             REQUIRE(f.history.stats().resets == accepted_resets);
@@ -279,6 +294,7 @@ TEST_CASE("Viewer rejects an encoded Temporal world before display without submi
             REQUIRE_FALSE(f.presentation);
             REQUIRE(f.pixels() == previous);
             f.begin(3);
+            REQUIRE(f.opaque_depth); // Recovery reacquires rather than retaining the rejected frame's owner.
             REQUIRE(f.history.resetRequired()); REQUIRE(f.history.stats().jitter_phase == 0);
             REQUIRE_FALSE(f.history.previousOpaque()[0].valid);
             f.displayIfEligible(eligible()); f.genericCleanup();

@@ -4,7 +4,13 @@
                 ALMetalWorldTemporalMotionScene motion;
                 motion.opaque_scene = capture.temporal_opaque_inputs ? &capture.temporal_opaque_inputs->scene() : nullptr;
                 motion.forward_scene = &scene;
+                // The ray sky is captured independently of the haze/sky-behind consumer.
+                // Motion/rejection must use the sky that actually produced this world's background.
+                motion.modern_sky = capture.modern_sky_valid && capture.modern_sky_drawn
+                    ? &capture.modern_sky.scene : nullptr;
+                motion.reject_sky_history = capture.stageTemporalSky(motion.modern_sky);
                 motion.depth = capture.target ? capture.target->depthStencilTexture() : nullptr;
+                motion.opaque_depth = capture.temporal_opaque_depth ? capture.temporal_opaque_depth->colorTexture(0) : nullptr;
                 const auto& previous_opaque=capture.temporal_history.previousOpaque();
                 const auto& previous_forward=capture.temporal_history.previousForward();
                 motion.previous_opaque=previous_opaque.data(); motion.previous_opaque_count=previous_opaque.size();

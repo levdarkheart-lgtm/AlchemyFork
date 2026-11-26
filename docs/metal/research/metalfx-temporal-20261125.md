@@ -238,3 +238,191 @@ blocker to owner review is known; live acceptance, broader content limitations a
 
 Corrected DMG SHA-256: `5f10e12ce4738be5727ee70c7e1df61940d6405f852a422b5872cdd2fb76cb1e`.
 Readonly-mounted executable/library hashes and deep/strict signature match the frozen69501 app.
+
+
+## Active stationary foliage investigation — PPD610
+
+Starting HEAD949944f7a9eb33da50d488a668d01622c8a523ac fetched unchanged; clean before edits.
+Compared with69501 application64023b8b16, only four documentation files differ. Primary owner reference is
+Untitled.mov SHA6065598f44f2cbce37ae1693bb716ff4718402a38a4effb1cf075a4bde82da99. Private evidence root:
+`artifacts/metal/temporal-foliage-20261125/`. Native/Spatial/usual branches and69501 artifacts are preserved.
+
+The5.826667s3440x1306 H264 MOV contains fine-change evidence in grass, dense leaves and palm silhouettes.
+Narrow fence/pillar edges also fluctuate, while broad pillar faces and trunk texture are much steadier.
+Registered trunk/fence framing stays within0.08pixel p95 approximate decoded-image translation. The215 declared
+versus213 displayed frames are explained by the MOV edit list, not established recording loss. Compression and
+lack of renderer metadata prohibit identifying draw paths, actual Temporal activation, or shader causality from
+this recording. Private ROI notes and consecutive decoded-frame strips preserve those boundaries.
+
+Source audit: built-in Linden tree and grass routes are opaque alpha tests; mesh foliage can use other paths.
+Actual objects in the recording remain unidentified. Sky pixels and all forward draws receive full rejection;
+Temporal67 bias is log2(input/output)-1. Classic/legacy/PBR color and motion coverage inspected so far agrees.
+The suspected extra PBR alpha-factor mismatch was retracted because vertex colors already carry that factor.
+Apple WWDC22/10103's sampling-offset example and the existing authored analytic fixture support the current
+positive apparent-feature-translation jitter convention; internal consistency alone is not a stability test.
+No jitter, mip or rejection change is accepted as a repair yet. Shared-buffer publication revisions are a measured
+history-validity candidate, not permission to weaken PPD604's generation safeguard.
+
+Next: production-path rendered Temporal67 stability fixture across complete jitter cycles, one-variable
+rejection/mip/frozen-jitter diagnostics, and a prepared private build for exact-scene input/mask/history/pick
+attribution. No broad FPS profiling, automatic live login, or claim of correction from encoding suites alone.
+
+### PPD610 rendered causal checkpoint
+
+Frozen baseline04 fixture exercises actual G-buffer alpha/depth, forward color, production motion/rejection,
+MetalFX and resolve at256x128→384x192 with18 jitter phases,36 warm-up/54 stationary/18 move/36 stop frames.
+Previous poses remain valid, stationary motion is below1.9e-6 input pixels, and color/motion depth agrees.
+Sky rejection alone changes the mean adjacent RGB variation from0.03405→0.002826 in masked sky-backed leaves
+and0.03167→0.002377 in grass; fixed straight-edge bands improve0.06969→0.003095. Recorded input PPMs and raw
+depth/motion are byte-identical over18 phases, while masks change. Detail energy increases, so this is not blur.
+All-forward rejection is unchanged and blended leaves remain0.01646→0.01648. The diagnostic is not a production
+fix: proper infinity/background motion and dynamic sky masks are being implemented separately.
+
+A one-variable coarser mip diagnostic (-1.585→-0.585) leaves masked sky/straight-edge crawl nearly unchanged;
+blended variation improves but detail energy and recall worsen. No mip-policy change is justified by that test.
+The test's original coverage oracle mixed effective LOD and binary AA fringes; a qualified supersampled matched-
+LOD coverage reference is being added, without relaxing strict flicker/edge/detail assertions. Initial authoring
+failures remain retained and do not count as production defects or successful measurements.
+
+Private diagnostic69502 retains original69501 shader bytes and adds one-shot bounded ROI readback/picks only.
+It is open fullscreen at the login screen, AutoLoginfalse, Temporal67, at the privately recorded scene destination. Owner login/camera
+assistance has been requested; actual palms/grass paths remain unknown until that step. Diagnostic hooks are
+private and must be removed before the review candidate. No Home FPS experiment or push occurs in this scope.
+
+### PPD610 scoped corrections and remaining gate
+
+The sky correction now uses direction-at-infinity camera reprojection and the actual composited modern-sky
+inputs. Shared layer evaluation preserves color/glow alpha while deriving scoped dynamic-layer rejection;
+only the final rejection union evaluates it, with coherent quad derivatives. A submit-owned sky identity
+rejects discontinuous active map/layer/HDRI changes without treating camera movement/cloud scroll as resets.
+
+The independent generic blended-leaf correction preserves pristine opaque depth in one pooled R32 target
+before the forward continuation can mutate borrowed depth. Valid standard-alpha generic layers retain history
+only when their motion agrees with underlying opaque motion within0.025input pixel. Invalid poses, UV
+animation, missing snapshot, differing motion, particles and unsupported material families remain rejected.
+MAX rejection is preserved; final visible depth still goes to MetalFX. No normal-frame CPU wait is added.
+Avatar-only depth rows retain their prior conservative behavior; no broader avatar policy is inferred.
+
+The matched sky-aware forward-reject control versus candidate comparison changes only the new acceptance
+block. All18 HDR, motion, final-depth and pristine-depth phases are byte-identical; masks differ. Blended edge
+variation falls0.0240313→0.0026645 (88.9%), large coverage toggles22.59%→0.0034%, and detail energy rises
+0.0848321→0.142943 (Native0.15044). This is rendered fixture evidence, not a live-scene or FPS result.
+
+Metal API/GPU validation passes26motion/sky cases and294703assertions, including a moving opaque object
+behind depth-writing stationary glass: the preserved motion disagrees and still rejects history. Stationary
+matching layers accept, UV animation/missing provenance reject, and final device depth remains unchanged.
+The authored full quality regression remains failed at20strict bounds: thin coverage retention, small residual
+variation and phase-matched settling. No thresholds were relaxed. Lossless output and labelled stationary/
+move-stop sequences, exact source/library identities, failure lists and controls remain private.
+
+Actual owner-recorded palm/grass material paths and live correction are still gated on the prepared exact-
+scene login/camera step. The current code is a scoped correction candidate, not a completed PPD610 fix.
+Do not substitute these offline improvements or passing ownership checks for that missing qualification.
+
+Offline straight-edge localization from18 raw output phases finds only0.063pixel right-edge position span;
+its regression against input jitter.x is-0.00747outputpixel/inputpixel with R²0.0138 (center R²0.0005).
+Together with the analytical motion tests this weakens a shared jitter-sign/magnitude error; it does not prove
+every material path. Remaining leaf modulation repeats by phase, with little same-phase drift, and is not
+explained by repeated history resets in this fixture. Local foliage full-cycle display spans remain~10–14code
+levels; the remaining coverage/settling failures are real qualification work, not discarded threshold noise.
+
+Diagnostic69503 is built from949944f7a9 plus the private capture hook and local correction, using an explicit
+version override (not a claim of a new Git commit). Full tools/metal/build.sh Release build and346ARM64
+inspections pass. It is ad-hoc signed, open fullscreen at login with AutoLoginfalse; no live login or capture
+has occurred. The initial library preserves69501 shader policy plus the new copy entry; candidate and source
+hashes/diff are frozen alongside it. Original69501 and earlier69502 diagnostic remain intact.
+
+The expanded snapshot lifecycle verification initially passes14/15selected suites; its new pending-world test
+incorrectly assumed different native handles were necessary after submission. Resource planning explicitly
+permits ordered generation reuse after commit. That test is being strengthened to check per-generation depth
+results under pending GPU work. No production guard is being weakened. Settled snapshots already plateau at
+three textures/reuse33/zero deferrals/110592cached bytes; optional arms plateau at7/11textures. Historical
+no-snapshot configuration still reports2textures/reuse22. The first failed run is retained, not called passed.
+
+The pending-generation ownership test is repaired and passes381193assertions/7cases with API/GPU validation.
+The same R32 allocation advances generation1→2 while pending; retained per-world outputs preserve separate
+0.625/0.375depth and analytically expected2.5/1.5pixel snapshot-derived motion. This verifies ordered reuse
+rather than requiring unnecessary allocation. The other14selected regressions passed the earlier run unchanged.
+No production code changed for this test repair. The authored quality fixture remains failed at20bounds.
+
+Updated diagnostic69503 is PID7230, fullscreen at the login screen, with actual OpenHTJ2K0.27.0 decode logged.
+Executable SHA4395d9bf88da90382d1dffeca353206cf4e86bcfbb4ad5de93dd8db881b0047d; initial compatible-original
+library bdfba6aa36c88774ad5f6da62dc1219fa1dc7b2a2ac7f6228a7bd59ab301de26; candidate library
+3302ce826403ddc4fb98864f1550633e4b52c9db43104fe5aaccf17f32b16f9f. Actual live paths, masks, pose stability
+and scene correction remain unobserved pending owner login/camera assistance. Normal graphics/login controls
+match the starting file; full17file restoration is deferred until this private-settings session exits.
+No commit, push, finished review package or defect closure is claimed at this checkpoint.
+
+Autonomous front-yard checkpoint (22:55UTC): the owner closed the viewer and authorized saved login.
+Fresh QA-gated69503 baseline matches the owner’s house/central palm/grass/pillars/fence; the earlier pool-view
+preflight is excluded from affected-pixel attribution.36consecutive Temporal worlds cover two18phase cycles,
+with unchanged camera, no resets and maximum ROI motion component<0.000081inputpixel. Grass-right is generic
+blended post-water mesh; grass-left also includes PBR BLEND. Their poses/MVP/UV remain valid/static36/36, yet
+79.82%/94.02%of left/right ROI samples reject history. Palm/dense leaves are PBR MASK; surrounding sky is
+fully rejected. Right-grass fixed-edge adjacent finalRGB MAE is0.02237232 (5.705/255), with frozen masks retained.
+Actual scene/output2304x1278→3456x1916 is a separate display population from the earlier3456x2168 setup.
+Private evidence lives under temporal-foliage-20261125/live/owner-view-original-stationary-1795646856960955.
+The first candidate launch failed before rendering: a premature private LLPanelLogin helper request created
+a duplicate event-pump name during panel construction. This is neither an activated shader comparison nor
+a rendering result. Retry only after actual login-panel readiness. No quality closure or new push approval.
+
+Verified actual-view3302 diagnostic: right-grass fixed-edge finalRGB variation falls58.39%, palm/sky81.44%,
+dense47.28%, left-grass27.88%; mean-image edge energy increases. Across all7ROIs/36same-phase pairs,
+G-bufferRGBA and pristine depth are byte-identical. This proves a real response to the rejection policy in
+the reported view. However all grass Temporal depth samples still equal background opaque depth. Treat
+3302 as causal/partial, not a finished transparent-input correction. The next local repair supplies nearest
+qualifying generic/one-slotPBR-alpha motion and depth in the existing Temporal target, keeping the actual
+viewer depth unchanged. A first mask replay compares all layers to fixed opaque motion; a second proxy
+replay has mask writes disabled and selects strict nearest depth. Separate replay avoids rolling-reference
+acceptance chains and epsilon depth drift found by independent review. Mip/jitter/quality policies stay unchanged.
+The preserved69503 bundle is restored to its original-compatiblebdf library after both processes exit.
+
+69504 verification:52focused motion/history/presentation/orchestration/sky cases pass678465assertions with
+API/GPU validation. Separate mask/proxy replays use the same3attachments and add no textures; snapshot pool
+plateaus remain3/7/11created,33/77/121reused,zero after warm4. The corrected strict fixture independently
+checks98304blended foreground and69876background samples with zero depth-contract errors; all20original
+image-quality bounds remain failed. The one coarser-mip counterfactual reduces blended detail energy95%→67%
+ofNative for modest stability gain, so production sampling stays unchanged.
+
+Actual69504raw inputs prove foreground proxies over78%/94%ofleft/right grass and rejection~2.45%/.88%,
+versus~79.82%/94.02%original rejection. Original/corrected108world move-stop sequences adopt the same25camera
+matrices exactly; final adoption differs2worlds. Grass and palm variation is lower over matched33stopped
+worlds, with no obvious displaced duplicates in retained stills, but detail settling remains measurable.
+Cross-session HDR illumination changes materially, so live MAE/gradient ratios are descriptive, not perfectly
+isolated photometric quality gains. Controlled fixtures provide the mechanism isolation. Dense masked detail
+remains a limitation; sparse opaque rejection spikes are not proof that all residual variation is vendor-only.
+
+PPD611 source audit finds native_material_source.get() in the Temporal key, although publish() may create
+distinct immutable wrappers for equal values. Earlier static producer80293 invalidates22/36times correlated
+with address changes and otherwise unchanged recorded fields; older metadata lacks full semantic contents.
+The scoped repair replaces address significance with canonical active material/texture tokens and exact
+equality, preserving producer/native-generation/layout/duplicate guards and charging retained capacity to
+the64MiBframe bound. Full semantic diagnostic capture and focused regression verification are in progress.
+
+
+### 2026-11-26 corrective source checkpoint (PPD610/611)
+
+The current code has three scoped corrections: directional sky motion with local dynamic-layer rejection;
+separate nearest foreground alpha depth/motion after fixed-anchor MAX rejection; and exact material/resource
+semantic history identity, independent of immutable wrapper addresses. No mip/sharpening/quality settings change.
+The actual grass is generic/PBR BLEND; palms/dense leaves are PBR MASK meshes, not appearance-inferred trees.
+
+Targeted54-world semantic proof retains36/24wrapper replacements with exactly equal named inputs/texture
+generations and54/54valid poses. Four opaque centers reject44/41/53/53→0/0/0/0worlds. All72GBuffer crop files
+and72pristine opaque-depth files are byte-identical at matched jitter phases. This validates PPD611, separately
+from every remaining leaf-quality question. Reserved PBR UV lanes3/6/7 are excluded; used0/1/2/4/5 remain guarded.
+
+Final correctness checks:14affected CTest suites pass API/GPU validation; focused history19cases/1851assertions
+pass. Existing12-world pool configurations create2/3/7/11textures and reuse22/33/77/121, with0newtextures after
+warm4 and0deferrals. The new snapshot is pooled; opaque generation guards and cancellation remain enforced.
+Strict rendered foliage regression retains20failures among6201assertions (exit42), including thin detail,
+phase variation and move-stop settling. It is a failing quality gate, not a passing encoding test or hidden skip.
+The rejected coarser-mip counterfactual and all private capture hooks are absent from production source.
+
+Earlier live records were windowed2304x1278→3456x1916 because macOS startup ignores the FullScreen control.
+Several earlier arms also changed illumination; their absolute image metrics are descriptive, not isolated
+final quality/FPS effects. Final original/corrected records use the actual native fullscreen window and fixed
+Midday at2304x1446→3456x2168, same camera/mode/mip policy.36stationary worlds cover two18phase cycles;108world
+move-stop arms adopt the same25actual camera states. Exact matched quality analysis and clean review package
+identities will follow in the handoff. No claim of fully fixed foliage, native parity, zero ghosting or FPS gain.
+Private source/video/metrics remain under artifacts/metal/temporal-foliage-20261125; no push authorization.
