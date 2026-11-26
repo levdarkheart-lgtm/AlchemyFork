@@ -1,31 +1,33 @@
-# Active Metal work — isolated Aurora reconstruction selection
+# Active Metal work — optional native Aurora review prototype
 
-Current scope is PPD610 algorithm selection on `codex/aurora-reconstruction-evaluation-20261126`;
-Temporal implementation `codex/metalfx-temporal-20261125` and original evidence remain preserved.
-Preserved Spatial candidate69464 uses `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5`.
-PPD591 is the historical owner-requested Spatial scope on `codex/metalfx-spatial-20261124`,
-pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
-3df7055a9d have identical gated quiet-output observations. Earlier research stays
-separate. Native remains default; combined lighting OFF. On 2026-11-25 the owner authorizes pushing this
-feature branch for AI review only. Private evidence stays local; no usual-branch merge or release.
+Current branch `codex/aurora-native-temporal-20261126`, parent318f0ac8b6. Owner explicitly
+authorizes implementation, offline tests, packaging and feature-branch push. Evaluation,
+Temporal, Spatial and usual branches remain unchanged. Native default, existingmodes,
+output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures remain.
 
 ## Immediate executable action
 
-Completed bounded actual-resolution cost/response follow-up under revised owner rule; PPD610 remains open.
-Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains productioncheckpoint; no viewer/source/settings change.
-[Evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) on isolated branch, parentc31ffd288b,
-recommends one optional67%native-MetalOFFprototype as quality tradeoff, not default/production acceptance.
-All quality bounds/failures and closednativeisolation preserved. Retainedpost-stop images are substantiallysteadier
-withAurora; slowdetailredistribution remains, Native-detailerrorslower, no broad retainedold-palmtrail demonstrated.
-M1Max2304x1446→3456x2168,360warm/360optimizedsamples/arm; commonmedian MFXA0/OFF/.8/MFXA1
-4.127750/10.996104/11.374166/4.146937ms;p955.702250/12.846334/13.104667/5.773333ms.
-Controlsmedian+0.465%; OFFpremium~6.86ms/2.66x. No NativeMSLspeedassumption or viewerFPS inference.
-Onecorrectivequiescentcomponentrun resolves prior-world latency ininitial3-inflightspan; allrawdata retained.
-Requiredformatadapterincluded;208Buniformupload hasseparateactualAPI observedupperenvelope, notexactGPUselftime.
-Footprintsplateau,butAuroraallocatesone208BMTLBuffer/world; MetalFXprivateallocationchurnnotexposed.
-No productionGPUwait/schedulingchange. No qualitysweep, newviewerbuild, login,DMG or prototype implementation.
-Checks:198tools(1skip),19analysis,5Rust/Naga pass; targetAPI/GPU validation passes. Publish evaluationbranch only.
-Native/Spatial/usual/Temporalbranches and allpriorartifacts preserved; PPD610actualscene remains unresolved.
+Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` identifies prior69507 renderer; the new
+native component and integration are uncommitted in this isolated worktree.
+[Native implementation record](../../research/aurora-native-temporal-20261126.md) owns
+source map, qualification and eventualdelivery. [Evaluation](../../research/aurora-reconstruction-evaluation-20261126.md)
+retains frozenquality and componentcost. No repeated Homeprofiling oralgorithmselection.
+
+| Item | State | Acceptance / next boundary |
+| --- | --- | --- |
+| Native pinnedAuroraOFF graph + mainID8 | doing | Exactalgorithm + correctopaque/final/motion/depth/glow; no wgpu runtime. |
+| PPD614 firstworldexact/historydivergence | doing | Findfirstdivergentintermediate; no tolerance/qualityboundrelaxation. |
+| Submission-owned history/resource safety | doing | Existingposeowner; abandon/failure/reset/inflight + reusefixtures. |
+| Port renderedquality/reference | doing | Full468main/414mature histories and originalbounds; retainfailures. |
+| Actualtarget componentcost | todo | WarmGPUtime inclopaque-preservation, adapters/fullgraph/glow; noFPSclaim. |
+| Release reviewdelivery | todo | Sourcepinnedapp, signing/ARM64/dependencies, login-onlysmoke, verifiediCloudupload. |
+
+FirstnativeAPI/GPU lifecyclechecks pass; nativequalityportmismatch is notaccepted.
+198tools(1skip) pass; initial missingPyYAML testenv and invalidnewregistermetadata
+are corrected with retainedfailurelogs. Buildusesexistingpublicvcpkg/OpenHTJ2K,
+separateNinjaRelease directory. OnlyoneNinjaprocessowns it atatime.
+The next action is PPD614 isolation while the fullbuildcontinues; then remaining
+focusedvalidation, benchmark, package and deliverautonomously. No viewerlogin.
 
 ## Preserved Spatial parent checkpoint
 

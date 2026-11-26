@@ -81,7 +81,7 @@ bool compatible(const Input& a, const Input& b) noexcept
 {
     return a.input_width == b.input_width && a.input_height == b.input_height &&
         a.output_width == b.output_width && a.output_height == b.output_height &&
-        a.mode == b.mode && a.reverse_z == b.reverse_z && a.origin == b.origin;
+        a.mode == b.mode && a.jitter_phase_count == b.jitter_phase_count && a.reverse_z == b.reverse_z && a.origin == b.origin;
 }
 
 // An explicit producer instance+generation supplements the exact native
@@ -321,7 +321,8 @@ bool ALMetalTemporalWorldHistory::beginFrame(const FrameInput& in, std::string* 
         auto pending = std::make_unique<Impl::Frame>();
         pending->input = in;
         state.reset = in.force_reset || !state.committed || !compatible(in, state.committed->input);
-        pending->phase_count = recommendedJitterPhaseCount(in.input_width,in.input_height,in.output_width,in.output_height);
+        pending->phase_count = in.jitter_phase_count ? std::clamp(in.jitter_phase_count,1u,128u) :
+            recommendedJitterPhaseCount(in.input_width,in.input_height,in.output_width,in.output_height);
         pending->phase = state.reset ? 0u : (state.committed->phase + 1u) % pending->phase_count;
         if (!state.reset && !previousClip(in.camera_mvp, state.committed->input.camera_mvp, clip))
             return fail(error, "Temporal current-to-previous camera projection could not be formed");

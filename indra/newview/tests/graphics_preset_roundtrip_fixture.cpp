@@ -184,8 +184,8 @@ void run()
         CHECK(!manager.mIgnoreChangedSignal);
     }
 
-    // Standard, linear, Spatial and Temporal modes round-trip without remapping their saved IDs.
-    for (S32 mode : {0, 1, 3, 4, 5, 6, 7})
+    // Standard, linear, Spatial, MetalFX Temporal and Aurora modes round-trip without remapping their saved IDs.
+    for (S32 mode : {0, 1, 3, 4, 5, 6, 7, 8})
     {
         gSavedSettings.setS32(MODE, mode);
         const auto name = "Explicit mode " + std::to_string(mode);

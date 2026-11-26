@@ -98,6 +98,7 @@ target_sources(
     almetaldevice.mm
     almetalspatialscaler.mm
     almetaltemporalscaler.mm
+    almetalaurora.mm
     almetaltemporalworldhistory.cpp
     almetalresourceplan.cpp
     almetalresourceplan.h
@@ -144,6 +145,8 @@ target_sources(
       almetaldevice.h
       almetalspatialscaler.h
       almetaltemporalscaler.h
+      almetalaurora.h
+      almetalauroraconventions.h
       almetaltemporalworldhistory.h
       almetaldiagnostictelemetry.h
       almetalavatarresources.h
@@ -237,6 +240,26 @@ set_source_files_properties(
 )
 
 if(AL_BUILD_TESTS)
+  # Evaluation of the production native Aurora component. Complete retained
+  # replay streams are external evidence, so this is not an ordinary CTest.
+  add_executable(almetal_aurora_validation
+    ../../tools/metal/aurora-native/native_validation.mm
+    ../../tools/metal/aurora-evaluation/workload/input_workload.c)
+  # Match the retained shared-producer compiler contract; viewer arithmetic
+  # flags must not alter the input bytes used by the component comparison.
+  set_source_files_properties(
+    ../../tools/metal/aurora-evaluation/workload/input_workload.c
+    PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+  # Retained workload fingerprints require IEEE producer arithmetic, independently
+  # of the viewer's normal CPU optimization flags. This affects only the fixture.
+  set_source_files_properties(../../tools/metal/aurora-evaluation/workload/input_workload.c
+    PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+  set_target_properties(almetal_aurora_validation PROPERTIES
+    OBJCXX_STANDARD 23 OBJCXX_STANDARD_REQUIRED YES)
+  target_include_directories(almetal_aurora_validation PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_options(almetal_aurora_validation PRIVATE
+    "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+  target_link_libraries(almetal_aurora_validation PRIVATE almetal al::flags "-framework Foundation")
   # External complete-sequence reproducer, intentionally not an ordinary CTest:
   # it needs the foliage fixture's exported inputs, including initial warm-up.
   # Link only the native SDK so pool/wrapper/history code cannot affect replay.
@@ -261,7 +284,8 @@ if(AL_BUILD_TESTS)
   al_add_test_binary(
     almetal_tests
     PROJECT almetal
-    SOURCES tests/almetal_temporal_visibility_test.mm
+    SOURCES tests/almetal_aurora_inputs_test.mm
+            tests/almetal_temporal_visibility_test.mm
             tests/almetal_temporal_foliage_stability_test.mm
             tests/almetal_temporal_presentation_test.mm
             tests/almetal_temporal_orchestration_test.mm
@@ -372,6 +396,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_temporal_visibility_test.mm
+                              tests/almetal_aurora_inputs_test.mm
                               tests/almetal_temporal_foliage_stability_test.mm
                               tests/almetal_temporal_presentation_test.mm
                               tests/almetal_temporal_orchestration_test.mm

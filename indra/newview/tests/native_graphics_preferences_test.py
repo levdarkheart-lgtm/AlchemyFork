@@ -91,6 +91,8 @@ def verify_packaging(read, advanced):
                 "MainResolutionMetalFX67": "3", "MainResolutionMetalFX75": "4"}
             if "MainResolutionTemporal50" in controls:
                 expected_modes.update(MainResolutionTemporal50="5", MainResolutionTemporal67="6", MainResolutionTemporal75="7")
+            if "MainResolutionAurora67" in controls:
+                expected_modes.update(MainResolutionAurora67="8")
             assert {node.get("name"): node.get("value") for node in controls["main resolution mode"]} == expected_modes, "saved resolution choice IDs changed"
             mode = llsd_map(settings["RenderMetalMainResolutionMode"])
             assert mode["Type"].text == "S32" and mode["Persist"].text == "1" and mode["Value"].text == "0", "Standard must stay the persistent default"
@@ -159,6 +161,7 @@ def main():
         "{" + json.dumps(key) + ", " + json.dumps(value) + "}" for key, value in strings.items()))
     generated = generated.replace("// @RESOLUTION_STATUS_TESTS@", "checkResolutionStatus();" if has_resolution_status else "")
     generated = "#define HAS_RESOLUTION_STATUS " + str(int(has_resolution_status)) + "\n" + generated
+    generated = "#define HAS_AURORA_RESOLUTION " + str(int("main_resolution_aurora" in strings)) + "\n" + generated
     generated = "#define HAS_TEMPORAL_RESOLUTION " + str(int("main_resolution_temporal" in strings)) + "\n" + generated
     generated = "#define HAS_SCALED_RESOLUTION " + str(int("ALRenderResourceInputs::mainResolutionPolicy(choice)" in source)) + "\n" + generated
     hookups = "\n".join(statement(source, name + " =") for name in

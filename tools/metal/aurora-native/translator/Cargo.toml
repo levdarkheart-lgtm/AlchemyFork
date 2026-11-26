@@ -1,0 +1,12 @@
+[package]
+name = "alchemy-aurora-msl"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+[workspace]
+[dependencies]
+naga = { version = "=30.0.1", features = ["wgsl-in", "msl-out"] }
+[patch.crates-io]
+naga = { git = "https://github.com/Aurora-Viewer/wgpu", rev = "6c13013b3f9c8a7e45154d45d120ada0cbe55a23" }
+naga-types = { git = "https://github.com/Aurora-Viewer/wgpu", rev = "6c13013b3f9c8a7e45154d45d120ada0cbe55a23" }

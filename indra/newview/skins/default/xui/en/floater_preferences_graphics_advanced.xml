@@ -14,9 +14,10 @@
   <string name="main_resolution_linear">[SCALE]% Linear</string>
   <string name="main_resolution_metalfx">[SCALE]% MetalFX Spatial</string>
   <string name="main_resolution_temporal">[SCALE]% MetalFX Temporal</string>
+  <string name="main_resolution_aurora">[SCALE]% Aurora Temporal (Experimental)</string>
   <string name="main_resolution_active">Active: [MODE]</string>
   <string name="main_resolution_fallback">Active: [MODE] — [REASON]</string>
-  <string name="main_resolution_unavailable">MetalFX is unavailable for this view</string>
+  <string name="main_resolution_unavailable">Reconstruction is unavailable for this view</string>
   <string name="main_resolution_dimensions">Scene [SCENE] → [OUTPUT]</string>
   <string name="main_resolution_mip_adjustment">World material mip adjustment: [BIAS]</string>
 
@@ -522,7 +523,7 @@
     name="main resolution mode"
     top_delta="0"
     width="175"
-    tool_tip="Standard follows the existing resolution controls. Scaled modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. 67% uses two-thirds of each output dimension; 75% uses three-quarters. Spatial requires FXAA or SMAA and supplies its own sharpening instead of CAS. Temporal supplies antialiasing without additional CAS sharpening; saved FXAA/SMAA and sharpening preferences are preserved for other modes. Unsupported views use the reported fallback. Spatial with antialiasing off uses linear scaling and normal CAS. Same-size ordinary snapshots in scaled modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
+    tool_tip="Standard follows the existing resolution controls. Scaled modes reduce world image detail while keeping the interface at native resolution and preserving full-size shadow budgets. 67% uses two-thirds of each output dimension; 75% uses three-quarters. Spatial requires FXAA or SMAA and supplies its own sharpening instead of CAS. Temporal supplies antialiasing without additional CAS sharpening; saved FXAA/SMAA and sharpening preferences are preserved for other modes. Aurora Temporal is an experimental FSR 3.1 reconstruction with sharpening off. Unsupported views use the reported fallback. Spatial with antialiasing off uses linear scaling and normal CAS. Same-size ordinary snapshots in scaled modes render at full scene resolution; explicit-size and cutout captures keep their existing settings.">
     <combo_box.item
       label="Standard"
       name="MainResolutionStandard"
@@ -555,6 +556,10 @@
       label="75% (MetalFX Temporal)"
       name="MainResolutionTemporal75"
       value="7" />
+    <combo_box.item
+      label="67% (Aurora Temporal · Experimental)"
+      name="MainResolutionAurora67"
+      value="8" />
   </combo_box>
   <text
     follows="left|top"

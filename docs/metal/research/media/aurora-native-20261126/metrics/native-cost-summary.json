@@ -1,0 +1,122 @@
+{
+  "scope": "Native production component; complete command GPU envelope, opaque HDR preservation copy+adapters+history clears+all upstream passes+display depth+Alchemy glow resolve. No upload, input producer, file IO/readback or deliberate CPU completion waits inside GPU time. Quiescent isolated benchmark only; viewer execution remains asynchronous.",
+  "input_identity": {
+    "name": "cost.json",
+    "bytes": 127017,
+    "sha256": "3d27a61c0f1c44564cd978ae6731358d126c90b5a550bf5fbd342e367aa37e67"
+  },
+  "input": [
+    2304,
+    1446
+  ],
+  "output": [
+    3456,
+    2168
+  ],
+  "gpu": {
+    "count": 360,
+    "median_ms": 10.925625,
+    "p95_ms": 12.392208,
+    "min_ms": 10.838875,
+    "max_ms": 13.671166999999999,
+    "mean_ms": 11.172020275
+  },
+  "cpu_encode": {
+    "count": 360,
+    "median_ms": 0.29416699999999996,
+    "p95_ms": 0.7204579999999999,
+    "min_ms": 0.08320799999999999,
+    "max_ms": 2.237,
+    "mean_ms": 0.34250821666666664
+  },
+  "cpu_submit": {
+    "count": 360,
+    "median_ms": 0.011084,
+    "p95_ms": 0.022,
+    "min_ms": 0.0031249999999999997,
+    "max_ms": 0.145833,
+    "mean_ms": 0.011955344444444443
+  },
+  "excluded_completion_wait": {
+    "count": 360,
+    "median_ms": 11.298874999999999,
+    "p95_ms": 12.717792,
+    "min_ms": 11.1045,
+    "max_ms": 13.920584,
+    "mean_ms": 11.522089569444443
+  },
+  "after_warmup": {
+    "textures_created": 81,
+    "metal_allocated_bytes": 1580679168,
+    "texture_bytes_live": 1489299840,
+    "buffers_destroyed": 0,
+    "buffer_bytes_live": 44345344,
+    "buffers_created": 3,
+    "textures_destroyed": 0
+  },
+  "after_measurement": {
+    "textures_created": 81,
+    "metal_allocated_bytes": 1580679168,
+    "texture_bytes_live": 1489299840,
+    "buffers_destroyed": 0,
+    "buffer_bytes_live": 44345344,
+    "buffers_created": 3,
+    "textures_destroyed": 0
+  },
+  "owned_memory": {
+    "input_color_bytes": 26652672,
+    "opaque_before_transparency_preservation_bytes": 26652672,
+    "input_motion_bytes": 13326336,
+    "component_texture_payload_bytes": 389904768,
+    "shared_constant_arena_pages_created": 1,
+    "note": "Descriptor-derived component payload and explicit integration surfaces; device physical footprint is separate. Existing live viewer color/depth/motion and shared arena already serve other render stages.",
+    "shared_constant_arena_pages_reused": 719,
+    "component_buffer_payload_bytes": 43296768,
+    "resolved_output_bytes": 59940864,
+    "input_depth_bytes": 13326336
+  },
+  "execution": {
+    "device": "Apple M1 Max",
+    "registry_id": 4294970133,
+    "os": "Version 26.5.2 (Build 25F84)",
+    "thermal_state_before": 0,
+    "thermal_state_after": 0,
+    "wall_start_unix_seconds": 1795713969.513462,
+    "wall_end_unix_seconds": 1795713978.363272
+  },
+  "steady_state_changes": {
+    "textures_created": 0,
+    "metal_allocated_bytes": 0,
+    "texture_bytes_live": 0,
+    "buffers_destroyed": 0,
+    "buffer_bytes_live": 0,
+    "buffers_created": 0,
+    "textures_destroyed": 0
+  },
+  "input_fingerprints": [
+    "cb2e837da0c1dde1",
+    "4cebfd00d0705721",
+    "8bdfbd56782c25d4",
+    "521ca07bfd8be8fa",
+    "5a4c8c723b1e2fb1",
+    "9981e4b41037bf3e",
+    "90ca1e48b6a52b44",
+    "91dd308a9bb9347f",
+    "ce0ee0cc16854f1f",
+    "88b66540da9474e7",
+    "5b6ad4ab6eddb585",
+    "0d8b12d50e06132b",
+    "30edcbc6abae7162",
+    "300bfb108a66062f",
+    "f556aeb9182eb061",
+    "671cf5781027c079",
+    "0434db7151e1524b",
+    "cc043af7230408d1"
+  ],
+  "limitations": [
+    "Isolated, one-world-outstanding component cost; not viewer FPS.",
+    "Complete command GPU envelope includes all native conversion, reconstruction, output-depth and glow passes; no overlapping pass durations summed.",
+    "CPU completion gates and untimed resident producer are outside GPU/host encode timers.",
+    "Typed allocation counts cover explicit owned wrappers; Metal compiler/driver internal allocations are opaque."
+  ]
+}

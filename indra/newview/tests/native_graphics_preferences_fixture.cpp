@@ -209,7 +209,7 @@ void checkResolutionStatus()
     }
     gPipeline.status = {2, 1, true, ""};
     floater.draw();
-    CHECK(text.text == "Active: 50% Linear — MetalFX is unavailable for this view");
+    CHECK(text.text == "Active: 50% Linear — Reconstruction is unavailable for this view");
     gPipeline.status = {2, 9, true, ""};
     floater.draw();
     CHECK(text.text == "Pending next world frame");
@@ -264,9 +264,20 @@ void checkResolutionStatus()
     gPipeline.status = {6, 3, true, "", 2305, 1446, 3457, 2169, -1.58f};
     floater.draw();
     CHECK(text.text == "Active: 67% MetalFX Temporal\nScene 2305×1446 → 3457×2169");
+
+#if HAS_AURORA_RESOLUTION
+    gSavedSettings.resolution_mode = 8;
+    gPipeline.status = {8, 4, true, "", 2305, 1446, 3457, 2169, -1.5845f};
+    floater.refreshMainResolutionStatus();
+    CHECK(text.text == "Active: 67% Aurora Temporal (Experimental)\nScene 2305×1446 → 3457×2169");
+    gPipeline.status.effective = 1;
+    gPipeline.status.reason = "Aurora preparation failed";
+    floater.refreshMainResolutionStatus();
+    CHECK(text.text == "Active: 67% Linear — Aurora preparation failed\nScene 2305×1446 → 3457×2169");
+#endif
     CHECK(text.tooltip == text.text + "\nWorld material mip adjustment: -1.58");
 #endif
-    for (S32 invalid : {-1, 8, 99})
+    for (S32 invalid : {-1, 9, 99})
     {
         gSavedSettings.resolution_mode = invalid;
         gPipeline.status = {0, 0, true, ""};

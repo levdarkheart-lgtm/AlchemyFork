@@ -241,6 +241,14 @@ bool LLFloaterAbout::postBuild()
     {
         LL_WARNS("AboutInit") << "Could not read licenses file at " << licenses_path << LL_ENDL;
     }
+    licenses_widget->appendText(
+        "\nExperimental Aurora reconstruction: Aurora's WGSL port of FSR 3.1, "
+        "revision ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f.\n"
+        "Copyright 2026 the Aurora Viewer contributors. Modified by the Alchemy Viewer Project "
+        "for native Metal execution, inputs and submission-owned history. GPL-3.0-or-later; "
+        "FidelityFX algorithm portions retain MIT notices. Full notices, licenses, provenance "
+        "and generated source are in Resources/aurora-reconstruction.\n", false,
+        LLStyle::Params().color(about_color));
     licenses_widget->setEnabled(false);
     licenses_widget->startOfDoc();
 

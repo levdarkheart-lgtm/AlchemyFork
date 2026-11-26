@@ -17179,6 +17179,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         setError(error, "Metal world opaque post-deferred scene is incomplete");
         return nullptr;
     }
+    if (scene.reconstruction_opaque)
+    {
+        const auto& d = scene.reconstruction_opaque->descriptor();
+        if (!scene.hdr || d.width != scene.width || d.height != scene.height ||
+            d.color_attachment_count != 1 || d.sample_count != 1 ||
+            d.colors[0].format != ALMetalPixelFormat::rgba16_float ||
+            !scene.reconstruction_opaque->colorTexture(0))
+        { setError(error, "Aurora opaque preservation requires a prepared matching linear HDR target"); return nullptr; }
+    }
     if (scene.highlight_batch_count != 0 && !scene.highlight_batches)
     {
         setError(error,
@@ -21123,10 +21132,40 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         census.underwater = scene.water_surface->underwater;
         census.uses_shadows = scene.water_surface->uses_shadows;
     }
+    bool reconstruction_opaque_captured = scene.reconstruction_opaque == nullptr;
+    const auto preserve_reconstruction_opaque = [&]()
+    {
+        if (reconstruction_opaque_captured) return true;
+        if (!scene.reconstruction_opaque->copyColorFrom(
+                *command, 0, *output->colorTexture(0), {}, error)) return false;
+        reconstruction_opaque_captured = true;
+        return true;
+    };
+    const auto capture_reconstruction_opaque = [&]()
+    {
+        if (reconstruction_opaque_captured) return true;
+        if (!encoder->end(error) || !preserve_reconstruction_opaque()) return false;
+        auto continuation = pass_config;
+        continuation.stencil_load = ALMetalLoadAction::load;
+        auto next = output->makeRenderPass(continuation, error);
+        encoder = next ? ALMetalRenderEncoder::begin(*command, *next,
+            "Alchemy Aurora compositing after opaque preservation", error) : nullptr;
+        if (!encoder) return false;
+        reconstruction_opaque_captured = true;
+        return mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error) &&
+            encoder->setViewport(viewport, error) && encoder->setScissor(scissor, error) &&
+            encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+            encoder->setTriangleFillMode(ALMetalTriangleFillMode::fill, error) &&
+            encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
+            bind_forward_resources(*encoder);
+    };
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        if (!reconstruction_opaque_captured &&
+            (batch.pre_water_alpha || batch.post_water_alpha || batch.avatar_alpha))
+            if (!capture_reconstruction_opaque()) return fail_command();
         if (split_initial_families && is_pass_boundary(batch))
             split_initial_families = false; // Existing owner performs its original boundary.
         if (split_initial_families && index == diagnostic_run_end)
@@ -21154,7 +21193,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (batch.water_haze)
         {
             const ALMetalWorldWaterHaze& haze = *scene.water_haze;
-            if (!encoder->end(error) || !haze_depth_snapshot ||
+            if (!encoder->end(error) || !preserve_reconstruction_opaque() || !haze_depth_snapshot ||
                 !haze_depth_snapshot->copyDepthStencilFrom(
                     *command, *output->depthStencilTexture(), {}, error))
             {
@@ -21271,7 +21310,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             const ALMetalWorldAtmosphericHaze& haze =
                 *scene.atmospheric_haze;
-            if (!encoder->end(error) || !haze_depth_snapshot ||
+            if (!encoder->end(error) || !preserve_reconstruction_opaque() || !haze_depth_snapshot ||
                 !haze_depth_snapshot->copyDepthStencilFrom(
                     *command, *output->depthStencilTexture(), {}, error))
             {
@@ -21384,7 +21423,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             const ALMetalWorldWaterSurface& water =
                 *scene.water_surface;
             const ALMetalWorldWaterHaze& field = water.field;
-            if (!encoder->end(error) ||
+            if (!encoder->end(error) || !preserve_reconstruction_opaque() ||
                 (water.refracts &&
                  (!water_color_snapshot ||
                   !water_color_snapshot->copyColorFrom(
@@ -22832,6 +22871,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
+    encoded = encoded && capture_reconstruction_opaque();
     encoded = encoded && seed_cutout_coverage();
 
     const ALMetalDepthStencilState* highlight_depth = scene.reverse_z

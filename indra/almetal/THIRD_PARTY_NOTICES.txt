@@ -855,3 +855,14 @@ Source (original + asset snapshot): indra/newview/app_settings/shaders/class1/ob
  *
  * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
  * $/LicenseInfo$
+
+
+Experimental Aurora reconstruction (optional mode only)
+-------------------------------------------------------
+Aurora's WGSL port of FSR 3.1, revision ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f.
+Copyright 2026 the Aurora Viewer contributors. Modified: deterministic offline
+Naga translation to MSL and native Metal host/input/lifetime integration by the
+Alchemy Viewer Project. Aurora code is GPL-3.0-or-later; FidelityFX-derived
+algorithm portions retain their MIT notice. Full original notices, licences,
+trademark terms, generated source and provenance are in aurora-reconstruction/.
+This prototype is not Aurora Viewer and is not endorsed by its contributors.

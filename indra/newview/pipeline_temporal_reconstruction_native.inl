@@ -36,19 +36,40 @@
                 temporal_frame.jitter_x=capture.temporal_jitter[0]; temporal_frame.jitter_y=capture.temporal_jitter[1];
                 temporal_frame.depth_reversed=capture.reverse_z;
                 temporal_frame.reset=capture.temporal_history.resetRequired();
-                const bool reconstructed=capture.temporal_motion && capture.temporal_raw_output &&
-                    capture.temporal_resolved_output &&
-                    capture.renderer->encodeTemporalUpscale(*capture.temporal_scaler,capture.temporal_descriptor,
-                        *post_source->colorTexture(0),*capture.temporal_motion,*capture.temporal_raw_output,
-                        temporal_frame,capture.temporal_ticket,&temporal_error) &&
-                    capture.renderer->resolveTemporalColor(*post_source,*capture.temporal_raw_output,
-                        *capture.temporal_resolved_output,&temporal_error,capture.temporal_jitter.data());
+                bool reconstructed=false;
+                if (capture.aurora_selected)
+                {
+                    ALMetalAuroraFrame aurora_frame;
+                    aurora_frame.jitter_x=capture.temporal_jitter[0];
+                    aurora_frame.jitter_y=capture.temporal_jitter[1];
+                    aurora_frame.reset=capture.temporal_history.resetRequired();
+                    aurora_frame.jitter_phase_count=capture.temporal_history.jitterPhaseCount();
+                    alMetalAuroraSetViewerCamera(aurora_frame,
+                        LLViewerCamera::getCurrent().getProjection().getF32ptr(),
+                        capture.temporal_history.clipToPrevious().data());
+                    reconstructed=capture.temporal_motion && capture.temporal_resolved_output &&
+                        capture.aurora_opaque_color &&
+                        capture.renderer->encodeAuroraUpscale(*capture.aurora_reconstructor,capture.aurora_descriptor,
+                            *post_source->colorTexture(0),*capture.aurora_opaque_color->colorTexture(0),
+                            *capture.temporal_motion,*capture.temporal_resolved_output,aurora_frame,
+                            capture.aurora_ticket,&temporal_error);
+                }
+                else
+                {
+                    reconstructed=capture.temporal_motion && capture.temporal_raw_output &&
+                        capture.temporal_resolved_output &&
+                        capture.renderer->encodeTemporalUpscale(*capture.temporal_scaler,capture.temporal_descriptor,
+                            *post_source->colorTexture(0),*capture.temporal_motion,*capture.temporal_raw_output,
+                            temporal_frame,capture.temporal_ticket,&temporal_error) &&
+                        capture.renderer->resolveTemporalColor(*post_source,*capture.temporal_raw_output,
+                            *capture.temporal_resolved_output,&temporal_error,capture.temporal_jitter.data());
+                }
                 if (!reconstructed)
                 {
                     capture.renderer->cancelCommandBatch();
                     capture.abandonTemporalFrame();
                     capture.temporal_history.invalidate();
-                    capture.temporal_scaler->invalidate();
+                    capture.invalidateReconstruction();
                     capture.markIncomplete(__LINE__);
                     LL_WARNS("Metal") << "Temporal world publication canceled; retaining the previous display: "
                         << temporal_error << LL_ENDL;

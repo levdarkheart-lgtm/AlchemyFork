@@ -43,18 +43,18 @@ struct ALRenderResourceInputs
     F32 mResolutionMultiplier = 1.f;
 
     /// Stable saved choices. Every scaled choice keeps a full-output shadow reference and overrides the legacy
-    /// divisor/multiplier for main geometry. Only ordinary main views use MetalFX; special views use the selected
+    /// divisor/multiplier for main geometry. Only ordinary main views use reconstruction; special views use the selected
     /// scene scale with linear reconstruction. Ordinary snapshots own independent full-size scene capture;
     /// explicit-size/cutout overrides and probe/hero packs retain their existing contracts.
     enum class MainResolutionMode : U32
     {
         Native = 0, Half = 1, MetalFX = 2, MetalFX67 = 3, MetalFX75 = 4,
-        Temporal50 = 5, Temporal67 = 6, Temporal75 = 7
+        Temporal50 = 5, Temporal67 = 6, Temporal75 = 7, Aurora67 = 8
     };
     MainResolutionMode mMainResolutionMode = MainResolutionMode::Native;
 
     /// Reconstruction method is distinct from the saved scale choice. Values are stable effective-status IDs.
-    enum class MainResolutionMethod : U32 { Native = 0, Linear = 1, MetalFX = 2, Temporal = 3 };
+    enum class MainResolutionMethod : U32 { Native = 0, Linear = 1, MetalFX = 2, Temporal = 3, Aurora = 4 };
     struct MainResolutionPolicy
     {
         MainResolutionMethod method = MainResolutionMethod::Native;
@@ -62,15 +62,17 @@ struct ALRenderResourceInputs
 
         constexpr bool isScaled() const { return method != MainResolutionMethod::Native; }
         constexpr bool usesSpatial() const { return method == MainResolutionMethod::MetalFX; }
-        constexpr bool usesTemporal() const { return method == MainResolutionMethod::Temporal; }
-        constexpr bool usesMetalFX() const { return usesSpatial() || usesTemporal(); }
+        constexpr bool usesMetalFXTemporal() const { return method == MainResolutionMethod::Temporal; }
+        constexpr bool usesAurora() const { return method == MainResolutionMethod::Aurora; }
+        constexpr bool usesTemporal() const { return usesMetalFXTemporal() || usesAurora(); }
+        constexpr bool usesMetalFX() const { return usesSpatial() || usesMetalFXTemporal(); }
         /// The UI rounds two thirds to 67%; geometry always uses the exact rational scale below.
         constexpr U32 percentage() const { return (100u * numerator + denominator / 2u) / denominator; }
     };
 
     static constexpr MainResolutionMode mainResolutionModeFromSetting(S32 choice)
     {
-        return choice >= 0 && choice <= 7 ? static_cast<MainResolutionMode>(choice) : MainResolutionMode::Native;
+        return choice >= 0 && choice <= 8 ? static_cast<MainResolutionMode>(choice) : MainResolutionMode::Native;
     }
 
     static constexpr MainResolutionPolicy mainResolutionPolicy(MainResolutionMode mode)
@@ -84,6 +86,7 @@ struct ALRenderResourceInputs
             case MainResolutionMode::Temporal50: return {MainResolutionMethod::Temporal, 1, 2};
             case MainResolutionMode::Temporal67: return {MainResolutionMethod::Temporal, 2, 3};
             case MainResolutionMode::Temporal75: return {MainResolutionMethod::Temporal, 3, 4};
+            case MainResolutionMode::Aurora67: return {MainResolutionMethod::Aurora, 2, 3};
             default: return {};
         }
     }
@@ -96,10 +99,12 @@ struct ALRenderResourceInputs
                                bool ordinary_main_view)
     {
         if (!ordinary_main_view || !scene_width || !output_width ||
-            (method != MainResolutionMethod::MetalFX && method != MainResolutionMethod::Temporal))
+            (method != MainResolutionMethod::MetalFX && method != MainResolutionMethod::Temporal &&
+             method != MainResolutionMethod::Aurora))
             return 0.f;
         const F32 scale_bias = std::log2(static_cast<F32>(scene_width) / static_cast<F32>(output_width));
-        return method == MainResolutionMethod::Temporal ? scale_bias - 1.f : scale_bias;
+        return (method == MainResolutionMethod::Temporal || method == MainResolutionMethod::Aurora)
+            ? scale_bias - 1.f : scale_bias;
     }
 
     static F32 materialMipBias(MainResolutionMode mode, U32 scene_width, U32 output_width,

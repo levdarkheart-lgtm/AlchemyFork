@@ -1,5 +1,47 @@
 /** One ordinary main-world Temporal stream; included inside MetalWorldSimpleCapture. */
     std::unique_ptr<ALMetalTemporalScaler> temporal_scaler;
+    std::unique_ptr<ALMetalAuroraReconstructor> aurora_reconstructor;
+    ALMetalAuroraDescriptor aurora_descriptor;
+    ALMetalAuroraReconstructor::Ticket aurora_ticket = 0;
+    bool aurora_selected = false;
+    std::unique_ptr<ALMetalRenderTarget> aurora_opaque_color;
+
+    void invalidateReconstruction() noexcept
+    {
+        if (temporal_scaler) temporal_scaler->invalidate();
+        if (aurora_reconstructor) aurora_reconstructor->invalidate();
+    }
+    bool submitReconstruction(std::string* error)
+    {
+        if (aurora_selected)
+        {
+            if (!aurora_reconstructor || !aurora_ticket || !aurora_reconstructor->submitted(aurora_ticket,error)) return false;
+            aurora_ticket = 0;
+            return true;
+        }
+        if (!temporal_scaler || !temporal_ticket || !temporal_scaler->submitted(temporal_ticket,error)) return false;
+        temporal_ticket = 0;
+        return true;
+    }
+    ALMetalTemporalScalerStats reconstructionStats() const noexcept
+    {
+        if (aurora_selected && aurora_reconstructor)
+        {
+            const auto source=aurora_reconstructor->stats();
+            ALMetalTemporalScalerStats result;
+            result.creation_successes=source.creation_successes;
+            result.prepare_reuses=source.prepare_reuses;
+            result.encoded_calls=source.encoded_calls;
+            result.submitted_calls=source.submitted_calls;
+            result.abandoned_calls=source.abandoned_calls;
+            result.reset_calls=source.reset_calls;
+            result.gpu_failures=source.gpu_failures;
+            result.pending_submissions=source.pending_submissions;
+            result.history_valid=source.history_valid;
+            return result;
+        }
+        return temporal_scaler ? temporal_scaler->stats() : ALMetalTemporalScalerStats{};
+    }
     ALMetalTemporalWorldHistory temporal_history;
     ALMetalTemporalScalerDescriptor temporal_descriptor;
     std::shared_ptr<const ALMetalWorldViewInputs> temporal_opaque_inputs;
@@ -64,6 +106,8 @@
     void abandonTemporalFrame() noexcept
     {
         if (temporal_scaler && temporal_ticket) temporal_scaler->abandon(temporal_ticket);
+        if (aurora_reconstructor && aurora_ticket) aurora_reconstructor->abandon(aurora_ticket);
+        aurora_ticket = 0;
         temporal_ticket = 0;
         temporal_history.abandon();
         temporal_encoded = false;
@@ -83,12 +127,12 @@
         temporal_submitted = false;
         temporal_jitter = {};
         temporal_raw_output.reset(); temporal_resolved_output.reset(); temporal_motion.reset();
-        temporal_opaque_depth.reset();
+        temporal_opaque_depth.reset(); aurora_opaque_color.reset();
         temporal_fallback.clear();
         if (!inputs.mainResolutionPolicy().usesTemporal())
         {
             temporal_history.invalidate();
-            temporal_scaler.reset();
+            temporal_scaler.reset(); aurora_reconstructor.reset(); aurora_selected=false;
             temporal_stream_selected=false;
             temporal_previous_camera_valid = false;
             temporal_previous_sky.reset();
@@ -99,35 +143,70 @@
         {
             temporal_fallback = reason.empty() ? "Temporal preparation is unavailable" : reason;
             temporal_history.invalidate();
-            if (temporal_scaler) temporal_scaler->invalidate();
+            invalidateReconstruction();
             return false;
         };
         if (!ordinary || !ineligible.empty()) return fail(ineligible.empty()
             ? "This independent view does not use main-world Temporal history" : ineligible);
-        if (!temporal_scaler) temporal_scaler = ALMetalTemporalScaler::create(*device, error);
-        if (!temporal_scaler) return fail(error ? *error : "Temporal is unsupported on this device");
-        temporal_descriptor = {width, height, dimensions.mOutputWidth, dimensions.mOutputHeight};
-        ALMetalTemporalScalerRequirements requirements;
-        if (!temporal_scaler->prepare(temporal_descriptor, requirements, error) ||
-            !renderer->prepareTemporalMotion(error)) return fail(error ? *error : "Temporal resources are unavailable");
-        if (temporal_scaler->stats().gpu_failures != temporal_gpu_failures)
+        const bool wants_aurora = inputs.mainResolutionPolicy().usesAurora();
+        if (aurora_selected != wants_aurora)
         {
-            temporal_gpu_failures = temporal_scaler->stats().gpu_failures;
+            temporal_history.invalidate(); invalidateReconstruction();
+            temporal_scaler.reset(); aurora_reconstructor.reset();
+            temporal_previous_camera_valid=false; temporal_previous_sky.reset();
+        }
+        aurora_selected = wants_aurora;
+        bool output_shader_write = false;
+        if (aurora_selected)
+        {
+            const auto* p=camera.getProjection().getF32ptr();
+            const bool perspective=std::all_of(p,p+16,[](F32 v){return std::isfinite(v);}) &&
+                std::abs(p[11]+1.f)<1.e-4f && std::abs(p[15])<1.e-6f && p[14]>0.f;
+            if (!LLRender::sReverseZ || !perspective)
+                return fail("Aurora requires reverse-Z perspective depth");
+            if (!aurora_reconstructor) aurora_reconstructor = ALMetalAuroraReconstructor::create(*device,error);
+            if (!aurora_reconstructor) return fail(error ? *error : "Aurora preparation failed");
+            aurora_descriptor = {width,height,dimensions.mOutputWidth,dimensions.mOutputHeight};
+            if (!aurora_reconstructor->prepare(aurora_descriptor,error))
+                return fail(error ? *error : "Aurora resources are unavailable");
+            aurora_opaque_color=renderer->prepareTemporalTarget(width,height,false,error);
+            if (!aurora_opaque_color) return fail(error ? *error : "Aurora opaque HDR preservation is unavailable");
+        }
+        else
+        {
+            if (!temporal_scaler) temporal_scaler = ALMetalTemporalScaler::create(*device, error);
+            if (!temporal_scaler) return fail(error ? *error : "Temporal is unsupported on this device");
+            temporal_descriptor = {width, height, dimensions.mOutputWidth, dimensions.mOutputHeight};
+            ALMetalTemporalScalerRequirements requirements;
+            if (!temporal_scaler->prepare(temporal_descriptor, requirements, error))
+                return fail(error ? *error : "Temporal resources are unavailable");
+            output_shader_write=alMetalHasUsage(requirements.output_usage,ALMetalTextureUsage::shader_write);
+        }
+        if (!renderer->prepareTemporalMotion(error)) return fail(error ? *error : "Temporal motion is unavailable");
+        if (reconstructionStats().gpu_failures != temporal_gpu_failures)
+        {
+            temporal_gpu_failures = reconstructionStats().gpu_failures;
             temporal_history.invalidate();
         }
-        temporal_raw_output = renderer->prepareTemporalTarget(dimensions.mOutputWidth,
-            dimensions.mOutputHeight, alMetalHasUsage(requirements.output_usage,ALMetalTextureUsage::shader_write),error);
+        if (!aurora_selected)
+            temporal_raw_output = renderer->prepareTemporalTarget(dimensions.mOutputWidth,
+                dimensions.mOutputHeight,output_shader_write,error);
         temporal_resolved_output = renderer->prepareTemporalTarget(dimensions.mOutputWidth,
             dimensions.mOutputHeight,false,error);
         temporal_motion=renderer->prepareTemporalMotionTarget(width,height,error);
         temporal_opaque_depth=renderer->prepareTemporalOpaqueDepth(width,height,error);
-        if (!temporal_raw_output || !temporal_resolved_output || !temporal_motion || !temporal_opaque_depth)
+        if ((!aurora_selected && !temporal_raw_output) || !temporal_resolved_output || !temporal_motion || !temporal_opaque_depth)
             return fail(error ? *error : "Temporal frame-input/output allocation failed");
         ALMetalTemporalWorldHistory::FrameInput frame;
         frame.world_id = ++temporal_world_serial;
         frame.input_width = width; frame.input_height = height;
         frame.output_width = dimensions.mOutputWidth; frame.output_height = dimensions.mOutputHeight;
         frame.mode = static_cast<U32>(inputs.mMainResolutionMode);
+        if (aurora_selected)
+        {
+            const F32 ratio=F32(dimensions.mOutputWidth)/F32(width);
+            frame.jitter_phase_count=std::clamp(U32(8.f*ratio*ratio),1u,128u);
+        }
         frame.reverse_z = LLRender::sReverseZ;
         LLMatrix4a camera_mvp;
         camera_mvp.setMul(camera.getModelview(),camera.getProjection());

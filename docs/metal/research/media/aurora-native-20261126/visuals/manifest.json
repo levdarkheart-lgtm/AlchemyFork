@@ -1,0 +1,56 @@
+{
+  "scope": "Synthetic shared perspective MASK fixture, not live scene or viewer FPS.",
+  "columns": [
+    "retained MetalFX control",
+    "native Aurora component OFF"
+  ],
+  "display_conversion": "linear RGB clamp[0,1], gamma1/2.2, uint8; original float outputs and metrics authoritative",
+  "clips": {
+    "playback_fps": 12,
+    "worlds_per_clip": 54,
+    "playback_seconds": 4.5,
+    "note": "12fps is deliberate playback, not renderer timing. Stationary is world361..414. Movement is415..432, stopped433..468."
+  },
+  "files": [
+    {
+      "file": "move18-stop36-12fps-metalfx-left-native-aurora-right.mp4",
+      "bytes": 526544,
+      "sha256": "0bd545256637bbfaf7d62396847e3b089029ef5f226a7c7981e4e11d7b3b3479"
+    },
+    {
+      "file": "stationary-phase17-metalfx-left-native-aurora-right.png",
+      "bytes": 127132,
+      "sha256": "62752534a04ea090ac31671670d62c1600a4546dc53c77c3e6a4cd03e52630e7"
+    },
+    {
+      "file": "stationary-phase17-palm-1to1.png",
+      "bytes": 20438,
+      "sha256": "22d3a9833d14a97fc6e3c2f5ac239246606c56f2df53d75b463eea32d1339c6c"
+    },
+    {
+      "file": "stationary54-12fps-metalfx-left-native-aurora-right.mp4",
+      "bytes": 263360,
+      "sha256": "d3b1806e09fd791f3d0e14bb68c9d7ffe509afbd5a22aae675d62002e2d9292b"
+    },
+    {
+      "file": "stop18-phase17-metalfx-left-native-aurora-right.png",
+      "bytes": 140182,
+      "sha256": "64a97d0d3ab3a955da6ff2b822fa8e77f9e446ef6281a7b1595860c174562f19"
+    },
+    {
+      "file": "stop18-phase17-palm-1to1.png",
+      "bytes": 21488,
+      "sha256": "c704ad18d6a056774ed6362e637b2fd1fcd3c584027d8b9ec8383b317d9a94df"
+    },
+    {
+      "file": "stop36-phase17-metalfx-left-native-aurora-right.png",
+      "bytes": 137981,
+      "sha256": "21301ff93a9a02da1ab7d62c4d0f02009c7a7027ec9eb6e6d2a62ab9f41aa99b"
+    },
+    {
+      "file": "stop36-phase17-palm-1to1.png",
+      "bytes": 21206,
+      "sha256": "165697382bc985a322631cfca7f70a252a222082b20354dfce39b250f3076891"
+    }
+  ]
+}

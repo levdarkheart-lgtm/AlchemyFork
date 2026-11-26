@@ -12,6 +12,7 @@
 
 #include "almetalspatialscaler.h"
 #include "almetaltemporalscaler.h"
+#include "almetalaurora.h"
 
 #include "almetalworlddiagnostics.h"
 #include "almetalprobeworkload.h"
@@ -1623,6 +1624,10 @@ struct alignas(16) ALMetalWorldAtmosphericHaze
 // Post-water alpha and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
+    // Aurora autogen-reactive compares this genuine pre-transparency HDR image
+    // with final color. Preacquired by the main-world owner, copied at the first
+    // ordered compositing boundary after opaque-forward draws. Other modes leave it null.
+    ALMetalRenderTarget* reconstruction_opaque = nullptr;
     float temporal_jitter_pixels[2]{};
 
     // Per-view material sampling only; cached material/source packets remain immutable. Zero for independent
@@ -3123,6 +3128,11 @@ public:
         const ALMetalRenderTarget& motion_inputs, ALMetalRenderTarget& output,
         const ALMetalTemporalScalerFrame& frame, ALMetalTemporalScaler::Ticket& ticket,
         std::string* error = nullptr);
+    bool encodeAuroraUpscale(ALMetalAuroraReconstructor& reconstructor,
+        const ALMetalAuroraDescriptor& descriptor, const ALMetalTexture& color,
+        const ALMetalTexture& opaque, const ALMetalRenderTarget& motion_inputs,
+        ALMetalRenderTarget& output, const ALMetalAuroraFrame& frame,
+        ALMetalAuroraReconstructor::Ticket& ticket, std::string* error = nullptr);
     bool resolveTemporalColor(const ALMetalRenderTarget& original,
         const ALMetalRenderTarget& reconstructed, ALMetalRenderTarget& preallocated_output,
         std::string* error = nullptr, const float* jitter_pixels = nullptr);

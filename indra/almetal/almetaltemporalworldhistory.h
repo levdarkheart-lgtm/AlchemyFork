@@ -39,6 +39,10 @@ public:
         std::uint32_t input_width = 0, input_height = 0;
         std::uint32_t output_width = 0, output_height = 0;
         std::uint32_t mode = 0;
+        // Zero keeps the existing MetalFX recommendation. Other main-view
+        // algorithms may provide their documented phase count, owned by this
+        // same submission transaction rather than a second jitter sequence.
+        std::uint32_t jitter_phase_count = 0;
         // Column-major, unjittered viewer clip matrix. Native rasterization
         // negates clip Y; storage UV is original clip.xy / w * .5 + .5.
         float camera_mvp[16]{};

@@ -128,6 +128,7 @@ void LLFloaterPreferenceGraphicsAdvanced::refreshMainResolutionStatus()
             case 1: args["[MODE]"] = getString("main_resolution_linear", args); break;
             case 2: args["[MODE]"] = getString("main_resolution_metalfx", args); break;
             case 3: args["[MODE]"] = getString("main_resolution_temporal", args); break;
+            case 4: args["[MODE]"] = getString("main_resolution_aurora", args); break;
             default:
                 // An unrecognized producer state cannot establish an active mode.
                 text = getString("main_resolution_pending");

@@ -1,0 +1,40 @@
+{
+  "reactive_peak" : 229,
+  "cases" : [
+    "MASK identical opaque\/final yields zero generated mask",
+    "genuine blended contribution generates upstream mask",
+    "glow resolve preserves RGB and foreground glow alpha",
+    "nonzero jitter glow edges match independent bilinear oracle",
+    "output depth keeps finite foreground and clear sky",
+    "fixed configuration texture+constant allocation plateau",
+    "abandon idempotent and does not submit or advance parity",
+    "previous valid output retained after abandonment",
+    "recovery resets",
+    "invalid required input rejects before transaction",
+    "three worlds submitted before completion preserve history",
+    "resize and return invalidate and reset"
+  ],
+  "glow_jittered_edge_max_error" : 0.00081361131742596626,
+  "glow_jittered_edge_bound" : 0.002,
+  "after_steady_state" : {
+    "textures_created" : 27,
+    "metal_allocated_bytes" : 86032384,
+    "texture_bytes_live" : 325760,
+    "buffers_destroyed" : 0,
+    "buffer_bytes_live" : 1075200,
+    "buffers_created" : 3,
+    "textures_destroyed" : 0
+  },
+  "glow_interior_max_error" : 0,
+  "complete" : true,
+  "after_warmup" : {
+    "textures_created" : 27,
+    "metal_allocated_bytes" : 45137920,
+    "texture_bytes_live" : 325760,
+    "buffers_destroyed" : 0,
+    "buffer_bytes_live" : 1075200,
+    "buffers_created" : 3,
+    "textures_destroyed" : 0
+  },
+  "rgb_resolve_max_error" : 0
+}

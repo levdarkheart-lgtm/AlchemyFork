@@ -156,6 +156,25 @@ if(DARWIN)
     DESTINATION "${AL_INSTALL_DATADIR}"
     COMPONENT viewer
   )
+  # The experimental Aurora component executes generated native MSL embedded
+  # in the executable. Ship its auditable source and original notices alongside
+  # the existing builtin library; no Rust/wgpu runtime is installed.
+  set(al_aurora_vendor "${INDRA_SOURCE_DIR}/../tools/metal/aurora-evaluation/vendor/aurora")
+  install(DIRECTORY "${INDRA_SOURCE_DIR}/almetal/shaders/aurora/"
+          DESTINATION "${AL_INSTALL_DATADIR}/aurora-reconstruction" COMPONENT viewer)
+  set(al_aurora_provenance "${INDRA_SOURCE_DIR}/../tools/metal/aurora-native/translator/PROVENANCE.json")
+  set_property(TARGET ${AL_VIEWER_BINARY_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${al_aurora_provenance}" "${INDRA_SOURCE_DIR}/almetal/shaders/aurora/NOTICE.md")
+  install(FILES "${al_aurora_provenance}"
+          DESTINATION "${AL_INSTALL_DATADIR}/aurora-reconstruction" COMPONENT viewer)
+  install(FILES "${al_aurora_vendor}/fsr.rs"
+          DESTINATION "${AL_INSTALL_DATADIR}/aurora-reconstruction/upstream" COMPONENT viewer)
+  install(DIRECTORY "${al_aurora_vendor}/shaders/fsr/"
+          DESTINATION "${AL_INSTALL_DATADIR}/aurora-reconstruction/upstream/fsr" COMPONENT viewer)
+  install(FILES "${al_aurora_vendor}/LICENSE" "${al_aurora_vendor}/NOTICE.md"
+                "${al_aurora_vendor}/TRADEMARKS.md"
+                "${al_aurora_vendor}/shaders/fsr/LICENSE-FidelityFX.txt"
+          DESTINATION "${AL_INSTALL_DATADIR}/aurora-reconstruction/upstream" COMPONENT viewer)
   if(AL_METAL_BUILTIN_LIBRARY)
     set_property(TARGET ${AL_VIEWER_BINARY_NAME} APPEND PROPERTY
                  LINK_DEPENDS "${AL_METAL_BUILTIN_LIBRARY}")

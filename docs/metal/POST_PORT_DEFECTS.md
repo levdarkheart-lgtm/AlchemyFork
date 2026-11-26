@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-614 -->
+<!-- next-defect-id: PPD-615 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14989,8 +14989,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-25
 - Original reference: Original Alchemy1eb44bb alpha-tested tree/grass/material color/depth coverage is the compatibility reference; Temporal jitter/reconstruction/history is new. Native and Spatial remain independent controls.
 - Evidence: [Temporal implementation and corrective investigation](research/metalfx-temporal-20261125.md). Owner Untitled.mov SHA6065598f44f2cbce37ae1693bb716ff4718402a38a4effb1cf075a4bde82da99 and failed69503 review are retained. Actual front-yard draw/face records identify PBR MASK palms/dense leaves and generic/PBR BLEND grass; static camera/poses, near-zero unjittered motion and broad rejection are directly observed.
-- Next action: Bounded cost/response follow-up complete. Recommend one optional native-Metal67%AuroraOFF prototype for owner-scene stationary/move-stop quality, explicitly budgeted at current~11ms GPU reconstruction rather than an assumed MSLspeedup. This is a separate next work item, not implemented here. Keep all quality failures, Native/Spatial/MetalFX/defaults and closed native-isolation result unchanged; PPD610 stays open.
-- Verification: [Paired quality/cost report](research/aurora-reconstruction-evaluation-20261126.md) preserves all prior scores/bounds and adds Native-detail/residue response data. Retained Aurora remains substantially steadier and closer to Native detail, with gradual detail redistribution after stopping; area+18/36own-reference bounds stillfail. M1Max2304x1446→3456x2168 optimized360warm/360sample bracket MFXA0/OFF/.8/MFXA1 commonGPUmedians4.127750/10.996104/11.374166/4.146937ms;p955.702250/12.846334/13.104667/5.773333. Controlsmedian+0.465%. One justified quiescent correction separates service cost from prior-world waits; initialtimestamps retained. Requiredadapterincluded;208Bupload separatelybounded, not falsely added as exclusiveGPUtime. No netGPUfootprintgrowth, but one wGPUstagingMTLBuffer/world remains. All algorithms/settings/production source unchanged; no nativeMSL/FPS/owner-quality acceptance or DMG.
+- Next action: Finish the isolated experimental native67%AuroraOFF viewer build/package, then owner reviews the actual palm/grass scene. Preserve Native/Spatial/MetalFX/defaults and all original failures; PPD610 remains open.
+- Verification: [Native prototype](research/aurora-native-temporal-20261126.md) matches all195,084,288retainedAuroraOFF RGB components across468main+414mature worlds. Frozen area.821401<.85 and18/36own-reference errors.015886/.012319>1/255 stillfail. Actualtarget native graph inclopaque preservation/adapters/displaydepth/glow costs10.926median/12.392p95ms; no viewerFPS claim. Correctness and port parity justify only an experimental owner review, not closure of the original live complaint. Earlier quality/cost populations remain in the [evaluation](research/aurora-reconstruction-evaluation-20261126.md).
 - Owner verification: pending
 - Push approval: granted
 
@@ -15035,6 +15035,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-26 cost/response decision: exact retained own-mature/Native/residue errors distinguish slowdetail recovery from persistenttrailing; originalquality bounds unchanged. SharedC targetinputs, optimizedGPUresident360warm/360sample bracket onM1Max passes validation separately. First3-world stage spans include prior-world WARwaits; one declared quiescent correction yields~11msOFF vs~4.14msMetalFX,controls stable. Source/API guard prevents unsupportednativeencoderinspection; supportedstagequeries observe FSR terminals withoutshaderchanges. Complete shader/conversion graph timed;208Bparametertransfer separatelybounded with64actualAPI samples. Worth only a separately scoped optional native67%OFFprototype to judge actualscene benefit at measuredpremium. No prototype implementation, production change, login,package orFPSclaim. Source/evidence publication authorized on evaluationbranch only.
+
+- 2026-11-26 native prototype authorized: isolated `codex/aurora-native-temporal-20261126` starts at318f0ac8b6. Owner requests optional67%AuroraOFF main-world implementation, nativeMetal only, preserving existinghistory/visibility/ownership fixes and defaults. Port/reference quality parity and transaction correctness precede packaging. Originalarea/settling failures remain; no live scene orFPSclaim.
 
 ## PPD-611 — Equivalent immutable material republication can invalidate Temporal poses
 
@@ -15103,3 +15105,26 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 exact-zero contribution counterexample: qualified standard BLEND with minimum alpha0 and sampled alpha0 changes no RGB, but replay replaces visible-background proxy inputs/rejection. Coherent pre-fix native/shader produces24 failures/894 assertions across generic/PBR and normal/reversed depth. Preserve real pre-water depth writes while leaving visible-background color inputs unchanged; tiny positive1/1024 controls prevent inventing a new cutoff.
 
 - 2026-11-26 final corrective verification:15/15focused suites pass with Metal API/GPU validation; repeated12world targets reach a plateau after warm4, including the new visibility pack (45reuses,0deferrals,0newtextures afterwarm4). The private report retains exact source/library identities, failed controls and fixed bounds. Owner explicitly authorizes Temporal-only publication and experimental packaging; owner scene acceptance is pending.
+
+## PPD-614 — Initial native Aurora port diverges after the first history world
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Experimental Aurora native reconstruction
+- Discovered: 2026-11-26
+- Original reference: Byte-identical pinned Aurora ee458fb WGSL and retained full perspective palm sequences on the M1 Max; the native host is a new implementation.
+- Evidence: [Native prototype verification](research/aurora-native-temporal-20261126.md) retains private `artifacts/metal/aurora-native-20261126/` native replay preserves the first468-world comparison: world0 matches exactly but subsequent RGB differs (overall MAE approximately.0021,max.2933). This is a port-correctness gate, not a new quality threshold.
+- Next action: Complete the viewer integration regressions and pinned build/package verification. The port output mismatch is corrected by authoritative reflection; original PPD610 quality failures and owner live review remain separate.
+- Verification: Corrected468main+414independent mature worlds match all195,084,288referenceRGB components exactly with API/GPU validation. Generated reflection and mandatory shader-function validation prevent the original nil-fragment clear-only passes. Frozen area/settling failures remain unchanged.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered initial rendered port mismatch. Native first implementation used MSL3.1 while evaluated wgpu used4.0; version alignment is an isolated configuration check, not yet an established cause. Preserve the failed output and all original PPD610 quality bounds.
+
+- 2026-11-26 PPD614 follow-up: matching native shader language4.0 to the evaluated backend preserves the same468-world discrepancy exactly (MAE.0021012185290915733,max.2933349609375). Languageversion is ruled out as its cause. Locate the first divergent world1 intermediate; no quality bound or tolerance change is accepted.
+
+- 2026-11-26 PPD614 localization: two-frame intermediate comparison finds preceding motion/depth/luma exact. Naga emitted `fs_farthest_depth_mip1_` and `fs_shading_change_mip0_`, but initial native lookups used names without underscores; nil fragment functions yielded accepted vertex-only pipelines and cleared-zero pyramid targets. Generate/use reflection names and reject missing functions before pipeline creation. Full corrected histories are the next verification gate.
+
+- 2026-11-26 PPD614 corrective verification: full882world sequences are bit-exact to retainedWGSL OFF; every frozen metric is identical. Three reflection/embedding checks pass. Missing-entry failure is repaired; no live quality orFPS inference follows. Owner-review disposition remains separate from automated port evidence.

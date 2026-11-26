@@ -92,6 +92,7 @@
 #include "../almetal/almetalshadowcache.h"
 #include "../almetal/almetalworldinputs.h"
 #include "../almetal/almetaltemporalworldhistory.h"
+#include "../almetal/almetalauroraconventions.h"
 #include "pipeline_main_post_transaction_native.h"
 #include "../almetal/almetalworldvisibility.h"
 #include "alnativeframebudget.h"
@@ -2719,7 +2720,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
     if (capture.device != device)
     {
         capture.abandonTemporalFrame(); capture.temporal_history.invalidate();
-        capture.temporal_scaler.reset(); capture.temporal_raw_output.reset();
+        capture.temporal_scaler.reset(); capture.aurora_reconstructor.reset(); capture.aurora_opaque_color.reset(); capture.temporal_raw_output.reset();
         capture.temporal_resolved_output.reset(); capture.temporal_motion.reset();
         capture.temporal_effective=false; capture.temporal_previous_camera_valid=false;
 
@@ -4152,7 +4153,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.prepareTemporalFrame(mResourceInputs,mResourcePlan.mainViewDimensions(),ordinary_material_view,
         temporal_ineligible,*LLViewerCamera::getInstance(),&temporal_error);
     // Freeze one method-specific material policy BEFORE any world rasterization.
-    const auto sampling_method = capture.temporal_effective ? ALRenderResourceInputs::MainResolutionMethod::Temporal :
+    const auto sampling_method = capture.temporal_effective ? mResourceInputs.mainResolutionPolicy().method :
         mResourceInputs.mainResolutionPolicy().usesTemporal() ? ALRenderResourceInputs::MainResolutionMethod::Linear :
         mResourceInputs.mainResolutionPolicy().method;
     capture.material_mip_bias = ALRenderResourceInputs::materialMipBias(sampling_method,capture_width,
@@ -4486,7 +4487,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     if (capture.device != device)
     {
         capture.abandonTemporalFrame(); capture.temporal_history.invalidate();
-        capture.temporal_scaler.reset(); capture.temporal_raw_output.reset();
+        capture.temporal_scaler.reset(); capture.aurora_reconstructor.reset(); capture.aurora_opaque_color.reset(); capture.temporal_raw_output.reset();
         capture.temporal_resolved_output.reset(); capture.temporal_motion.reset();
         capture.temporal_effective=false; capture.temporal_previous_camera_valid=false;
 
@@ -8944,9 +8945,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             if (!capture.renderer->observeCommandBatchSettlement([&capture,world](bool committed)
                 {
                     std::string error;
-                    if (committed && capture.temporal_encoded && capture.temporal_ticket &&
+                    if (committed && capture.temporal_encoded &&
                         capture.presentation_target && capture.presentation_frame==gFrameCount &&
-                        capture.temporal_scaler->submitted(capture.temporal_ticket,&error) &&
+                        capture.submitReconstruction(&error) &&
                         capture.temporal_history.commit(world,&error))
                     {
                         capture.temporal_ticket=0;
@@ -8959,7 +8960,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     else
                     {
                         capture.abandonTemporalFrame();
-                        if (committed) { capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate(); }
+                        if (committed) { capture.temporal_history.invalidate(); capture.invalidateReconstruction(); }
                     }
                 },&temporal_observer_error))
             {
@@ -9003,6 +9004,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         std::string error;
         U32 encoded_water_draws = 0;
         auto color_scene=scene;
+        color_scene.reconstruction_opaque = capture.aurora_selected && capture.temporal_effective ? capture.aurora_opaque_color.get() : nullptr;
         std::vector<ALMetalWorldSimpleBatch> temporal_color_batches;
         ALMetalWorldWaterSurface temporal_water;
         ALMetalWorldWaterHaze temporal_water_haze;
@@ -9316,7 +9318,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.renderer->cancelCommandBatch();
                         capture.abandonTemporalFrame();
                         capture.temporal_history.invalidate();
-                        capture.temporal_scaler->invalidate();
+                        capture.invalidateReconstruction();
                         pending_reference_still.reset();
                         pending_resolution_status.reset();
                         // capture.ui_background owns the last committed pre-UI world independently.
@@ -9582,7 +9584,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     capture.renderer->cancelCommandBatch();
                     capture.abandonTemporalFrame();
                     capture.temporal_history.invalidate();
-                    capture.temporal_scaler->invalidate();
+                    capture.invalidateReconstruction();
                     capture.markIncomplete(__LINE__);
                     LL_WARNS("Metal") << "Temporal post resource preparation canceled this world: "
                         << prepare_error << LL_ENDL;
@@ -10194,7 +10196,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     if (ALRenderResourceInputs::mainResolutionPolicy(requested_resolution).usesSpatial() &&
                         !ordinary_scaled_view)
                         spatial_fallback = "This view does not support MetalFX reconstruction";
-                    capture.presentation_resolution_mode = capture.temporal_effective && capture.temporal_encoded ? 3u : fixed_scaled_scene ? 1u : 0u;
+                    capture.presentation_resolution_mode = capture.temporal_effective && capture.temporal_encoded ? (capture.aurora_selected ? 4u : 3u) : fixed_scaled_scene ? 1u : 0u;
 
                     // MetalFX owns reconstruction sharpening. Keep the configured
                     // CAS value for Standard/linear modes and creation fallback,
@@ -10423,12 +10425,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             *capture.reported_resolution_state != resolution_state))
                         {
                             capture.reported_resolution_state = resolution_state;
-                            const auto stats = capture.renderer->spatialUpscaleStats();
+                            const auto creations = capture.temporal_effective
+                                ? capture.reconstructionStats().creation_successes
+                                : capture.renderer->spatialUpscaleStats().creation_successes;
                             LL_INFOS("Metal") << "Native scene scaling: requested=" << resolution_state[0]
                                 << ", effective=" << resolution_state[1] << ", scene=" << capture.width << 'x' << capture.height
                                 << ", output=" << dimensions.mOutputWidth << 'x' << dimensions.mOutputHeight
                                 << ", shadow_reference=" << dimensions.mShadowReferenceWidth << 'x'
-                                << dimensions.mShadowReferenceHeight << ", scaler_creations=" << stats.creation_successes
+                                << dimensions.mShadowReferenceHeight << ", scaler_creations=" << creations
                                 << ", material_mip_bias=" << capture.material_mip_bias
                                 << ", fallback=" << spatial_fallback << LL_ENDL;
                         }
@@ -10762,7 +10766,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     capture.presentation_frame = std::numeric_limits<U32>::max();
                     pending_reference_still.reset();
                     final_presentation_available=false; pending_resolution_status.reset();
-                    capture.temporal_history.invalidate(); capture.temporal_scaler->invalidate();
+                    capture.temporal_history.invalidate(); capture.invalidateReconstruction();
                     capture.markIncomplete(__LINE__);
                 }
                 // Standalone capture committed itself; a failed batch has
@@ -10775,14 +10779,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         mMetalMainResolutionStatus = std::move(*pending_resolution_status);
                     if (capture.temporal_effective && capture.temporal_submitted)
                     {
-                        const auto temporal_stats=capture.temporal_scaler->stats();
+                        const auto temporal_stats=capture.reconstructionStats();
                         if (ALMetalDiagnosticTelemetry::enabled())
                             ALMetalDiagnosticTelemetry::recordMetrics(
-                                {gFrameCount,ALMetalDiagnosticTelemetry::ViewKind::main,-1},"main_temporal_scaler",
+                                {gFrameCount,ALMetalDiagnosticTelemetry::ViewKind::main,-1},capture.aurora_selected ? "main_aurora_reconstructor" : "main_temporal_scaler",
                                 {capture.temporal_world_serial,temporal_stats.submitted_calls,temporal_stats.reset_calls,
                                  temporal_stats.creation_successes,temporal_stats.gpu_failures,capture.width,capture.height,
                                  static_cast<U32>(mResourceInputs.mMainResolutionMode)});
-                        LL_INFOS_ONCE("Metal") << "Native MetalFX Temporal main-world reconstruction submitted: HDR before tone mapping, "
+                        LL_INFOS_ONCE("Metal") << (capture.aurora_selected ? "EXPERIMENTAL Aurora FSR 3.1 67% sharpening OFF submitted: " : "Native MetalFX Temporal main-world reconstruction submitted: ") << "HDR before tone mapping, "
                             "object/avatar motion and reactive rejection, saved FXAA/SMAA/CAS bypassed" << LL_ENDL;
                     }
                     LL_INFOS_ONCE("Metal")
@@ -18660,7 +18664,7 @@ bool LLPipeline::reloadMetalShaders(std::string* error)
     {
         if (!owner) continue;
         owner->abandonTemporalFrame(); owner->temporal_history.invalidate();
-        if (owner->temporal_scaler) owner->temporal_scaler->invalidate();
+        owner->invalidateReconstruction();
         owner->temporal_effective=false; owner->temporal_previous_camera_valid=false;
         // Only the successful shared-epoch commit retires asynchronous builds.
         // A failed second owner leaves both old renderers and build epochs live.

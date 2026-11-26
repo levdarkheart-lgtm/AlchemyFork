@@ -1,0 +1,30 @@
+{
+  "algorithm": "Aurora WGSL port of FSR 3.1 (FidelityFX SDK 1.1.4)",
+  "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+  "naga": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23",
+  "msl_version": "4.0",
+  "evaluated_wgpu_msl_version": "4.0 on macOS26",
+  "runtime_compile_options": {
+    "preserveInvariance": true,
+    "floating_point": "Metal defaults (same as evaluated wgpu Metal backend)"
+  },
+  "rcas": "OFF (no pipeline created or executed)",
+  "sha256": {
+    "tools/metal/aurora-native/translator/Cargo.toml": "9d72cb7d60d86d2d6911273477c4bbedd4c68a54bd67f2926c90dd074271daf0",
+    "tools/metal/aurora-native/translator/rust-toolchain.toml": "515c80a149c1e927d497dbebc399e241822aa0197e8f778c21bf5c136c90afd2",
+    "tools/metal/aurora-native/translator/Cargo.lock": "704e8e9a6c0d6b7c66222413cecedb72349e8392ae86191794fdbfe8a2c9f5a1",
+    "tools/metal/aurora-native/translator/src/main.rs": "fd013d49e3fde3a33363bde354e62c4203cd2ff9980d5f507995d6ad2fe666c3",
+    "indra/almetal/almetalaurora.h": "253c557cde33ecf2df36672fb6f18640bd7aa853b1f81832cb8e132a727a3f15",
+    "indra/almetal/almetalaurora.mm": "c2164698b1b0b79a3edb15c3d24d2ecdcef92c84bce04e6db1782e260ab3497c",
+    "tools/metal/aurora-evaluation/vendor/aurora/shaders/fsr/common.wgsl": "328b2d8d367f0e7280a385ecf7a59e9299af3f8e00dc8461ec6ddf88e0e7abf5",
+    "tools/metal/aurora-evaluation/vendor/aurora/shaders/fsr/prepare_inputs.wgsl": "987b93e3c20b53c94902fea13b2ae5192a2c60768e1a6e8fc05276546213c486",
+    "tools/metal/aurora-evaluation/vendor/aurora/shaders/fsr/pyramids.wgsl": "4b6fe2f7c1d375c54d93a5a9e1c8ad0faeccae77f8f6ce816ca29992746759e9",
+    "tools/metal/aurora-evaluation/vendor/aurora/shaders/fsr/reactivity.wgsl": "93147d1514ddf246fff19cc14f4df6a9a17415eef94b548ca66e7a07ca265d96",
+    "tools/metal/aurora-evaluation/vendor/aurora/shaders/fsr/accumulate.wgsl": "261a55bfe459a133ca2a67e951fad0a6b99944ea11c7e5351d2d10b18d98f807",
+    "indra/almetal/shaders/aurora/prepare_inputs.metal": "2d4e371e0290836e7a110a8309c0e8a58ea8772c20b806d75b7c3ede4b9597cf",
+    "indra/almetal/shaders/aurora/pyramids.metal": "d9dc80768093e261acc9102902d16638813d1a95816032e611cc9305955a443b",
+    "indra/almetal/shaders/aurora/reactivity.metal": "846340ea23f978862a03b61b88821625a8d8b88c7d87b14b6a1d710b6de0bc68",
+    "indra/almetal/shaders/aurora/accumulate.metal": "aa8f84e72b8713bb5b4f251101daf8f57198ec245007538864a6da71d61278b8",
+    "indra/almetal/shaders/aurora/sources.h": "9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070"
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "complete": true,
+  "population": "Unchanged shared reverse-Z perspective MASK fixture, 468 main +414 independently matured final-camera worlds;18 jitter phases,360warmup. No live login or owner-scene claim.",
+  "rgb_components": 195084288,
+  "streams": [
+    {
+      "frames": 468,
+      "rgb_max_bound": 0.001,
+      "rgb_differences": 0,
+      "parity_passed": true,
+      "comparison": "Native component immediate RGB versus retained unchanged Aurora WGSL OFF; alpha assessed separately because Alchemy glow resolve is intentional",
+      "components": 103514112,
+      "complete": true,
+      "rgb_max_error": 0,
+      "rgb_mean_absolute_error": 0,
+      "rgb_mae_bound": 1e-05,
+      "private_complete_record": "artifacts/metal/aurora-native-20261126/replay-main-04-final/parity.json",
+      "record_identity": {
+        "name": "parity.json",
+        "bytes": 64543,
+        "sha256": "dc12982406ca31823a59848b17f729acb0925d4f2af26b57dfe09e672d43679e"
+      }
+    },
+    {
+      "frames": 414,
+      "rgb_max_bound": 0.001,
+      "rgb_differences": 0,
+      "parity_passed": true,
+      "comparison": "Native component immediate RGB versus retained unchanged Aurora WGSL OFF; alpha assessed separately because Alchemy glow resolve is intentional",
+      "components": 91570176,
+      "complete": true,
+      "rgb_max_error": 0,
+      "rgb_mean_absolute_error": 0,
+      "rgb_mae_bound": 1e-05,
+      "private_complete_record": "artifacts/metal/aurora-native-20261126/replay-reference-01/parity.json",
+      "record_identity": {
+        "name": "parity.json",
+        "bytes": 57120,
+        "sha256": "e1ac1ed5d1154c63a7284d428819fa0d7c81d7795c9c5ecb2cd42be12bb178b5"
+      }
+    }
+  ],
+  "component_sources": {
+    "indra/almetal/almetalaurora.h": {
+      "name": "almetalaurora.h",
+      "bytes": 3722,
+      "sha256": "253c557cde33ecf2df36672fb6f18640bd7aa853b1f81832cb8e132a727a3f15"
+    },
+    "indra/almetal/almetalaurora.mm": {
+      "name": "almetalaurora.mm",
+      "bytes": 41698,
+      "sha256": "c2164698b1b0b79a3edb15c3d24d2ecdcef92c84bce04e6db1782e260ab3497c"
+    },
+    "indra/almetal/shaders/aurora/sources.h": {
+      "name": "sources.h",
+      "bytes": 119860,
+      "sha256": "9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070"
+    }
+  },
+  "failed_port_attempt": {
+    "observed_rgb_mae": 0.00210122,
+    "observed_rgb_max": 0.293335,
+    "cause": "Two Naga entry-point names acquired trailing underscores. Unsuffixed lookup returned nil fragment functions and Metal accepted vertex-only PSOs, leaving pyramid outputs zero. Actual reflection names and mandatory fragment/vertex existence now prevent silent omission.",
+    "proof": "Private first0/1 intermediate comparison: native farthest_mip1/shading_change zero, preceding depth/motion/luma exact. Corrected entire streams are RGB bit-exact."
+  },
+  "executed_identities": {
+    "main_normal_cmake_executable": {
+      "name": "almetal_aurora_validation",
+      "bytes": 448904,
+      "sha256": "d90e36201cdda7164953dd8e4bbc1cb8fbef1644086411e5f772a8e4d6d270ba"
+    },
+    "reference_private_link": {
+      "indra/almetal/almetalaurora.mm": "c2164698b1b0b79a3edb15c3d24d2ecdcef92c84bce04e6db1782e260ab3497c",
+      "tools/metal/aurora-native/native_validation.mm": "0ac3347f111a29c7f2b4603ba531943225ac019e4fe125de4196a0b6e8584668",
+      "executable": "b49a7c416321bcc058bdb94a86dd31de5b67eb26a52db7523927927605b32a67"
+    },
+    "same_component_source": "Both execution paths compiled almetalaurora.mm c2164698b1b0b79a3edb15c3d24d2ecdcef92c84bce04e6db1782e260ab3497c; generated MSL sources.h9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070. Main was rerun with the final normal CMake driver after removing temporary diagnostic getters. The reference private link used the same final component source and existing native archive, as its retained command receipt records."
+  },
+  "focused_correctness": {
+    "component_checks": {
+      "name": "checks.json",
+      "bytes": 1415,
+      "sha256": "d0e5825d7b7c8ed554dc5e1c4e8c9ddf4468ef70758ba90a9f37ca0f1554bc2b"
+    },
+    "teardown": {
+      "name": "teardown.json",
+      "bytes": 76,
+      "sha256": "881c1c1aae6311e3fdb4baefcdd6c558c9ffe2c8928986e5e69e5704466c47b8"
+    },
+    "production_orchestration": {
+      "log": {
+        "name": "aurora-inputs-01.log",
+        "bytes": 353,
+        "sha256": "4c63352945af807085e7a56b864f66e9a878ee72d93511d091f3c598f3d8384d"
+      },
+      "cases": 2,
+      "assertions": 204,
+      "passed": true
+    },
+    "target_validation": {
+      "log": {
+        "name": "target-validation-01.log",
+        "bytes": 188,
+        "sha256": "7e7229928e730c9e59011a040a502a827ff537bb81df5dc134065e89217fe679"
+      },
+      "worlds": 36,
+      "passed": true
+    },
+    "validation": "Metal API + GPU Validation enabled for all rendered checks; disabled for optimized cost."
+  }
+}

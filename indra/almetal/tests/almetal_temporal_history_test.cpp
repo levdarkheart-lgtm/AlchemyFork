@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 #include "almetaltemporalworldhistory.h"
+#include "almetalauroraconventions.h"
 #include "alnativepublication.h"
 #include "almetalworldmaterialdata.h"
 #include <catch2/catch_test_macros.hpp>
@@ -171,6 +172,37 @@ TEST_CASE("Temporal jitter cycle follows rounded upscale extents and only submit
     CHECK(History::recommendedJitterPhaseCount(1,1,100,100)==128);
     CHECK(History::recommendedJitterPhaseCount(0,1,2,2)==0);
     CHECK(History::recommendedJitterPhaseCount(2,1,1,2)==0);
+}
+
+TEST_CASE("Aurora phase policy shares submission-only pose history and resets on policy change", "[temporal-history][aurora]")
+{
+    History history;
+    auto in=input(1);
+    in.input_width=2305; in.input_height=1446;
+    in.output_width=3457; in.output_height=2169; in.mode=8;
+    in.jitter_phase_count=17;
+    ALMetalWorldGBufferScene empty;
+    std::array<float,2> first{};
+    for (std::uint32_t phase=0;phase<17;++phase)
+    {
+        in.world_id=phase+1;
+        REQUIRE(history.beginFrame(in));
+        CHECK(history.jitterPhaseCount()==17);
+        CHECK(history.stats().jitter_phase==phase);
+        if (!phase) first=history.jitterPixels();
+        REQUIRE(history.stage(empty,nullptr)); REQUIRE(history.commit(in.world_id));
+    }
+    in.world_id=18;
+    REQUIRE(history.beginFrame(in));
+    CHECK(history.jitterPixels()==first);
+    history.abandon();
+    CHECK(history.committedWorld()==17);
+    in.world_id=19; REQUIRE(history.beginFrame(in));
+    CHECK(history.jitterPixels()==first); history.abandon();
+    // Same dimensions, but a different reconstruction phase contract: reset.
+    in.world_id=20; in.jitter_phase_count=18;
+    REQUIRE(history.beginFrame(in)); CHECK(history.resetRequired());
+    CHECK(history.stats().jitter_phase==0); CHECK(history.jitterPhaseCount()==18);
 }
 
 TEST_CASE("Temporal camera reprojection has analytical sign and preserves independent object motion", "[temporal-history]")
@@ -604,4 +636,29 @@ TEST_CASE("Temporal history bounds malformed input and frame storage without acc
     REQUIRE(invalid_palette.beginFrame(input(1)));
     CHECK_FALSE(invalid_palette.stage(opaque, nullptr, &error));
     CHECK_FALSE(invalid_palette.pending());
+}
+
+TEST_CASE("Aurora camera bridge preserves viewer pixel reprojection without remapping reverse depth", "[temporal-history][aurora]")
+{
+    const std::array<float,16> projection{.5f,0,0,0, 0,1.3f,0,0, 0,0,0,-1, 0,0,.1f,0};
+    std::array<float,16> reprojection{}; identity(reprojection.data());
+    reprojection[12]=.2f; reprojection[13]=.3f;
+    ALMetalAuroraFrame frame;
+    alMetalAuroraSetViewerCamera(frame,projection.data(),reprojection.data());
+    const auto mul=[](const auto& m,const std::array<float,4>& p)
+    {
+        std::array<float,4> result{};
+        for (unsigned r=0;r<4;++r) for (unsigned c=0;c<4;++c) result[r]+=m[c*4+r]*p[c];
+        return result;
+    };
+    const std::array<float,4> point{.4f,.25f,-2.f,1.f};
+    const auto viewer=mul(projection,point), aurora=mul(frame.projection,point);
+    CHECK((viewer[0]/viewer[3]*.5f+.5f)==Approx(aurora[0]/aurora[3]*.5f+.5f));
+    CHECK((viewer[1]/viewer[3]*.5f+.5f)==Approx(.5f-aurora[1]/aurora[3]*.5f));
+    CHECK(aurora[2]/aurora[3]==Approx(.05f));
+    const std::array<float,4> current{.1f,-.2f,.05f,1.f};
+    const auto previous=mul(frame.motion_reprojection,current);
+    CHECK((previous[0]-current[0])*.5f==Approx(.1f));
+    CHECK(-(previous[1]-current[1])*.5f==Approx(.15f));
+    CHECK(previous[2]==current[2]);
 }

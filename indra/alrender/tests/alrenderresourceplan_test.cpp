@@ -169,6 +169,8 @@ namespace
               [](const Plan&) { return of({ Id::MainGBuffer, Id::MainScreen }); } },
             { "Spatial half to Temporal half", [](Inputs& in) { in.mMainResolutionMode = Mode::MetalFX; },
               [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal50; }, nothing },
+            { "MetalFX Temporal to Aurora two thirds", [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal67; },
+              [](Inputs& in) { in.mMainResolutionMode = Mode::Aurora67; }, nothing },
             { "Temporal half to two thirds", [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal50; },
               [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal67; },
               [](const Plan&) { return of({ Id::MainGBuffer, Id::MainScreen }); } },
@@ -304,6 +306,7 @@ namespace
             { "ordinary main Temporal-half mode", [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal50; } },
             { "ordinary main Temporal two-thirds mode", [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal67; } },
             { "ordinary main Temporal three-quarters mode", [](Inputs& in) { in.mMainResolutionMode = Mode::Temporal75; } },
+            { "ordinary main Aurora two-thirds mode", [](Inputs& in) { in.mMainResolutionMode = Mode::Aurora67; } },
             { "the window's size", [](Inputs& in) { in.mWidth = 3840; in.mHeight = 2160; } },
             { "RenderResolutionDivisor", [](Inputs& in) { in.mResolutionDivisor = 2; } },
             { "RenderResolutionMultiplier", [](Inputs& in) { in.mResolutionMultiplier = 0.5f; } },
@@ -495,7 +498,7 @@ namespace
         for (const auto& c : { Case{0, Method::Native, 1, 1, 100}, Case{1, Method::Linear, 1, 2, 50},
                               Case{2, Method::MetalFX, 1, 2, 50}, Case{3, Method::MetalFX, 2, 3, 67},
                               Case{4, Method::MetalFX, 3, 4, 75}, Case{5, Method::Temporal, 1, 2, 50},
-                              Case{6, Method::Temporal, 2, 3, 67}, Case{7, Method::Temporal, 3, 4, 75} })
+                              Case{6, Method::Temporal, 2, 3, 67}, Case{7, Method::Temporal, 3, 4, 75}, Case{8, Method::Aurora, 2, 3, 67} })
         {
             const auto mode = Inputs::mainResolutionModeFromSetting(c.choice);
             CHECK(static_cast<S32>(mode) == c.choice);
@@ -505,18 +508,20 @@ namespace
             CHECK(policy.denominator == c.denominator);
             CHECK(policy.percentage() == c.percentage);
             CHECK(policy.isScaled() == (c.choice != 0));
-            CHECK(policy.usesMetalFX() == (c.choice >= 2));
+            CHECK(policy.usesMetalFX() == (c.choice >= 2 && c.choice <= 7));
             CHECK(policy.usesSpatial() == (c.choice >= 2 && c.choice <= 4));
             CHECK(policy.usesTemporal() == (c.choice >= 5));
+            CHECK(policy.usesMetalFXTemporal() == (c.choice >= 5 && c.choice <= 7));
+            CHECK(policy.usesAurora() == (c.choice == 8));
         }
-        for (S32 invalid : {-1, 8, 99, std::numeric_limits<S32>::min(), std::numeric_limits<S32>::max()})
+        for (S32 invalid : {-1, 9, 99, std::numeric_limits<S32>::min(), std::numeric_limits<S32>::max()})
             CHECK(Inputs::mainResolutionModeFromSetting(invalid) == Mode::Native);
     }
 
     TEST_CASE("alrenderresourceplan: Spatial material bias uses actual widths and remains view-scoped",
               "[alrenderresourceplan]")
     {
-        for (Mode mode : {Mode::Native, Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75})
+        for (Mode mode : {Mode::Native, Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75, Mode::Aurora67})
         {
             Inputs in = defaults(); in.mMainResolutionMode = mode; in.mWidth = 3457; in.mHeight = 2169;
             const auto d = in.mainViewDimensions();
@@ -541,9 +546,10 @@ namespace
             const F32 spatial = std::log2(static_cast<F32>(scene) / output);
             CHECK(Inputs::materialMipBias(Method::MetalFX, scene, output, true) == spatial);
             CHECK(Inputs::materialMipBias(Method::Temporal, scene, output, true) == spatial - 1.f);
+            CHECK(Inputs::materialMipBias(Method::Aurora, scene, output, true) == spatial - 1.f);
             for (Method method : {Method::Native, Method::Linear})
                 CHECK(Inputs::materialMipBias(method, scene, output, true) == 0.f);
-            for (Method method : {Method::MetalFX, Method::Temporal})
+            for (Method method : {Method::MetalFX, Method::Temporal, Method::Aurora})
             {
                 CHECK(Inputs::materialMipBias(method, scene, output, false) == 0.f);
                 CHECK(Inputs::materialMipBias(method, 0, output, true) == 0.f);
@@ -566,7 +572,7 @@ namespace
             {4294967295u, 4294967295u, 2147483648u, 2147483648u,
                 2863311530u, 2863311530u, 3221225472u, 3221225472u}
         };
-        for (Mode mode : { Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75 })
+        for (Mode mode : { Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75, Mode::Aurora67 })
         {
             for (const auto& c : cases)
             {
@@ -576,9 +582,9 @@ namespace
                 const auto size = in.mainViewDimensions();
                 CHECK(size.mOutputWidth == std::max(c.width, 1u));
                 CHECK(size.mOutputHeight == std::max(c.height, 1u));
-                CHECK(size.mSceneWidth == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67) ? c.two_thirds_width :
+                CHECK(size.mSceneWidth == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67 || mode == Mode::Aurora67) ? c.two_thirds_width :
                     (mode == Mode::MetalFX75 || mode == Mode::Temporal75) ? c.three_quarters_width : c.half_width));
-                CHECK(size.mSceneHeight == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67) ? c.two_thirds_height :
+                CHECK(size.mSceneHeight == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67 || mode == Mode::Aurora67) ? c.two_thirds_height :
                     (mode == Mode::MetalFX75 || mode == Mode::Temporal75) ? c.three_quarters_height : c.half_height));
                 CHECK(size.mShadowReferenceWidth == size.mOutputWidth);
                 CHECK(size.mShadowReferenceHeight == size.mOutputHeight);
@@ -602,7 +608,7 @@ namespace
     TEST_CASE("alrenderresourceplan: ordinary snapshots capture native scene detail without changing the live plan",
               "[alrenderresourceplan]")
     {
-        for (Mode mode : { Mode::Native, Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75, static_cast<Mode>(99) })
+        for (Mode mode : { Mode::Native, Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75, Mode::Aurora67, static_cast<Mode>(99) })
         {
             for (U32 divisor : { 1u, 2u, 4u })
             {
@@ -619,8 +625,8 @@ namespace
                 {
                     CHECK(snapshot.mSceneWidth == 3457);
                     CHECK(snapshot.mSceneHeight == 2169);
-                    CHECK(live.mSceneWidth == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67) ? 2305u : (mode == Mode::MetalFX75 || mode == Mode::Temporal75) ? 2593u : 1729u));
-                    CHECK(live.mSceneHeight == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67) ? 1446u : (mode == Mode::MetalFX75 || mode == Mode::Temporal75) ? 1627u : 1085u));
+                    CHECK(live.mSceneWidth == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67 || mode == Mode::Aurora67) ? 2305u : (mode == Mode::MetalFX75 || mode == Mode::Temporal75) ? 2593u : 1729u));
+                    CHECK(live.mSceneHeight == ((mode == Mode::MetalFX67 || mode == Mode::Temporal67 || mode == Mode::Aurora67) ? 1446u : (mode == Mode::MetalFX75 || mode == Mode::Temporal75) ? 1627u : 1085u));
                 }
                 else
                 {
@@ -686,7 +692,7 @@ namespace
             Inputs native = defaults();
             native.mWidth = 3457; native.mHeight = 2169; native.mShadowScale = shadow_scale;
             const auto reference = Plan::make(native);
-            for (Mode mode : {Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75})
+            for (Mode mode : {Mode::Half, Mode::MetalFX, Mode::MetalFX67, Mode::MetalFX75, Mode::Temporal50, Mode::Temporal67, Mode::Temporal75, Mode::Aurora67})
             {
                 Inputs scaled = native;
                 scaled.mMainResolutionMode = mode;

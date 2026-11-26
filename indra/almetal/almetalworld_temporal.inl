@@ -104,6 +104,29 @@ bool ALMetalWorldGBufferRenderer::encodeTemporalUpscale(ALMetalTemporalScaler& s
     return encoded;
 }
 
+bool ALMetalWorldGBufferRenderer::encodeAuroraUpscale(ALMetalAuroraReconstructor& reconstructor,
+    const ALMetalAuroraDescriptor& descriptor, const ALMetalTexture& color,
+    const ALMetalTexture& opaque, const ALMetalRenderTarget& motion,
+    ALMetalRenderTarget& output, const ALMetalAuroraFrame& frame,
+    ALMetalAuroraReconstructor::Ticket& ticket, std::string* error)
+{
+    Impl::GBufferFailureScope transaction(mImpl.get(), error);
+    if (!mImpl || !mImpl->command_batch || !mImpl->command_batch_valid)
+    { setError(error, "Aurora reconstruction requires the active main-world transaction"); return false; }
+    ALMetalAuroraInputs inputs;
+    inputs.color = &color;
+    inputs.opaque = &opaque;
+    inputs.motion = motion.colorTexture(0);
+    inputs.composition = motion.colorTexture(1);
+    inputs.depth = motion.colorTexture(2);
+    inputs.output = output.colorTexture(0);
+    reconstructor.setFrameData(mImpl->frame_data);
+    const bool encoded = reconstructor.encode(*mImpl->command_batch, descriptor, inputs, frame, ticket, error);
+    if (encoded) mImpl->command_batch_temporal_encoded = true;
+    transaction.succeeded = encoded;
+    return encoded;
+}
+
 bool ALMetalWorldGBufferRenderer::resolveTemporalColor(const ALMetalRenderTarget& original,
     const ALMetalRenderTarget& reconstructed, ALMetalRenderTarget& output,
     std::string* error, const float* jitter_pixels)
