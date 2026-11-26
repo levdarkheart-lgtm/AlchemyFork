@@ -15193,7 +15193,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Delivery requires Foundation URL metadata uploaded=true, uploading=false and no upload error; a local copy alone is insufficient.
 - Evidence: [69516 delivery](research/aurora-native-temporal-20261126.md). All three iCloud Desktop files match the verified local package hashes, but fresh metadata returns NSCocoaErrorDomain 4355, could not access the iCloud account. Retained older 69507 files still report uploaded. Read-only brctl status/quota return BRCloudDocsErrorDomain 141 access denied.
-- Next action: Owner downloads confirmed-uploaded69520 or retained69516 artifacts. No account/service repair, rebuild or recopy is needed; preserve transient/recovery history.
+- Next action: Owner downloads confirmed-uploaded69523 or retained69520/69516. Preserve the transient/recovery history; no account/service repair is required.
 - Verification:69516 upload was confirmed18:16:49UTC. Current69520 source/mounted checks match8293entries, deep/strict signing and346ARM64 checks pass, ZIP CRC/per-file hashes pass. At20:57:47UTC all three69520files report uploaded=true, uploading=false and no error; destination hashes match. Raw service/account details remain private.
 - Owner verification: pending
 - Push approval: granted
@@ -15208,6 +15208,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 20:55:42UTC recurrence for newly verified69520 DMG/ZIP/checksums: local/destination hashes match and mounted app entries match8293, but Foundation metadata initially reports4355 with uploaded=false/uploading=true for all three. Delivery remains pending. Perform bounded metadata rechecks; no account/service changes or remote-ready claim.
 
 - 2026-11-26 20:57:47UTC69520 recovery: second bounded unchanged-file recheck confirms all three uploads and matching hashes. No account/service change, rebuild or recopy; remote readiness is reported only after this observation.
+
+- 2026-11-26 22:49:57UTC69523 recurrence: mounted8293-entry/signature/346ARM64 and ZIP93-file checks pass; local/iCloud hashes match. New DMG/ZIP/checksum metadata initially reports4355 with uploaded=false/uploading=true. Keep delivery pending; bounded read-only rechecks only, no account/service changes.
+
+- 2026-11-26 22:51:34UTC69523 recovery: second bounded recheck confirms all three unchanged files uploaded=true, uploading=false, no error and matching hashes. No account/service change, recopy or rebuild.
 
 ## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
 
@@ -15316,7 +15320,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Original SSR projects rays into its color/depth source using matching projection and camera transforms; native history publication is a new owner.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Current fillMetalImpostorScreenSpaceReflections uses current-jitter projection/inverse and previous-app-frame camera delta, while retained raw history can belong to a different submitted generation.
-- Next action: Preserve the passing paired-history regression; finish affected regressions and package the source-pinned experimental candidate. Owner pool-contribution attribution remains separate.
+- Next action: Owner reviews experimental69523 in the original scene, preserving69520; retain the passing source-contract regressions and keep PPD624/625 quality/attribution separate.
 - Verification: Baseline69520 reproducesRGB coordinate-oracle MAE.0028287795 and.0039654968 with actual SSR contribution. Corrected typed publisher/consumer matches both oracles exactly; final1987assertions/four cases pass API/GPU validation including asymmetric depth rows, skips/rejections, transforms, origins, resize and reset.
 - Owner verification: pending
 - Push approval: granted
@@ -15327,6 +15331,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-26: Current corrective evidence recorded in the linked water/history report; preserve all failed/invalid setup receipts and keep source defects separate from unproved owner-region attribution.
+
+- 2026-11-26 experimental69523/sourcec72fafcd3b:19Metal suites and finalizer CPU pass, full Release/signature/346ARM64 pass, login-only smoke closes normally and restores original settings. Mounted8293entries and ZIP93hashes match. iCloud upload confirmation remains separate; no live water-shimmer or FPS acceptance is claimed.
+
+- 2026-11-26 22:51:34UTC: experimental69523 DMG, source/evidence ZIP and checksums are confirmed uploaded and hash-matched. Original69520 remains unchanged. Original-scene water quality/attribution remains PPD624/625; no FPS claim.
 
 ## PPD-624 — Background water fine pattern shimmers in Temporal output
 
@@ -15372,7 +15380,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Original water haze clip4 and depth reconstruction use the inverse of the projection producing those samples; preserve PPD013 homogeneous interpolation and row-orientation repairs.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). ALWaterSurface::fillMetalWaterHaze builds an unjittered MVP/inverse pair; Temporal copies jitter only the MVP for water field and haze. Actual haze and above-water refraction shaders reconstruct current jittered depth with that stale inverse.
-- Next action: Preserve the passing perspective/production-water inverse tests and complete experimental build verification. Keep PPD624/625 open; coordinate parity alone does not establish visual acceptance.
+- Next action: Owner reviews experimental69523 in the original scene, preserving69520; retain the passing source-contract regressions and keep PPD624/625 quality/attribution separate.
 - Verification: First valid water baseline03 fails306analytical plus two rendered oracle bounds. Corrected paired inverse yields raw/output oracle error0 with normal animation active. Fixed-water variation is essentially unchanged; this is a matrix-contract repair, not qualification of the owner water complaint.
 - Owner verification: pending
 - Push approval: granted
@@ -15384,6 +15392,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Current corrective evidence recorded in the linked water/history report; preserve all failed/invalid setup receipts and keep source defects separate from unproved owner-region attribution.
 
+- 2026-11-26 experimental69523/sourcec72fafcd3b:19Metal suites and finalizer CPU pass, full Release/signature/346ARM64 pass, login-only smoke closes normally and restores original settings. Mounted8293entries and ZIP93hashes match. iCloud upload confirmation remains separate; no live water-shimmer or FPS acceptance is claimed.
+
+- 2026-11-26 22:51:34UTC: experimental69523 DMG, source/evidence ZIP and checksums are confirmed uploaded and hash-matched. Original69520 remains unchanged. Original-scene water quality/attribution remains PPD624/625; no FPS claim.
+
 ## PPD-627 — Temporal water uses opaque depth and an infinite-plane rejection proxy
 
 - Status: ready_for_owner
@@ -15392,7 +15404,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Dedicated water color writes actual depth and stencil2 only for visible nonexcluded surface; Temporal inputs should describe that contribution rather than an assumed infinite plane.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Motion replay skips water and seeds opaque depth. Plane/wave-band rejection does not encode actual field/cell/exclusion coverage. Fixed-water diagnostic only9.3%less variation after localized rejection relaxation; it does not justify trusting background depth/motion or animated water history.
-- Next action: Preserve actual-water capture/visibility and plateau tests; complete affected regressions and experimental delivery. Owner water-pattern quality remains PPD624/625.
+- Next action: Owner reviews experimental69523 in the original scene, preserving69520; retain the passing source-contract regressions and keep PPD624/625 quality/attribution separate.
 - Verification: Actual-water capture/replay tests pass, including102659 empty-water/input assertions and4311 water/pane assertions with API/GPU validation. Maximum depth/blend errors9.94653e-7/.000427246. Settled8+8worlds allocate0newtextures with56poolreuses,0deferrals,509952cachedbytes. Glass8cases/68498assertions pass. Full affected suite/build and owner scene remain separate.
 - Owner verification: pending
 - Push approval: granted
@@ -15404,3 +15416,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 first actual-input run: four rendered/analytic cases pass, including exact color parity and real-water depth. The new empty-water check hit a fixture-only empty-vector read because its readback still excluded the no-water arm; fixed the readback condition and added explicit size requirements before pixel checks. This is not an application failure or water-quality result. Historical run retained.
 
 - 2026-11-26: Current corrective evidence recorded in the linked water/history report; preserve all failed/invalid setup receipts and keep source defects separate from unproved owner-region attribution.
+
+- 2026-11-26 experimental69523/sourcec72fafcd3b:19Metal suites and finalizer CPU pass, full Release/signature/346ARM64 pass, login-only smoke closes normally and restores original settings. Mounted8293entries and ZIP93hashes match. iCloud upload confirmation remains separate; no live water-shimmer or FPS acceptance is claimed.
+
+- 2026-11-26 22:51:34UTC: experimental69523 DMG, source/evidence ZIP and checksums are confirmed uploaded and hash-matched. Original69520 remains unchanged. Original-scene water quality/attribution remains PPD624/625; no FPS claim.

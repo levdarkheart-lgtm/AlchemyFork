@@ -8,22 +8,19 @@ login or whole-viewer FPS claim. Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Current task — PPD623–627:** owner confirms69520 glass fixed; preserve its
-repair and foliage. Investigate background water outside pool separately from
-warm pool highlights. [Water/history report](../research/temporal-water-history-20261126.md)
-owns source audit, coordinate-generation regression and production water checks.
-Startbc09268714 clean/matched remote. Root owns pipeline/shaders/docs/build;
-native history API and focused test have exclusive delegated ownership. No
-active viewer session; source/offline work proceeds without login. Preserve69520.
-Typed SSR tests now pass1987assertions/four cases, matching exact-coordinate
-oracles after baseline failures. Water inverse pairing matches independently
-inverted P exactly but alone does not reduce dominant water variation. Actual
-water depth/coverage now replaces the opaque/plane proxy while preserving
-animated-water rejection. Focused empty-water and4311assertion forward-pane checks pass after fixture-only
-vector-read correction. Settled8+8worlds reuse56targets without new textures;
-18affected regressions and Release packaging are next. Do not claim the background-water complaint fixed.
+**Current task — PPD623–627:** experimental Water69523 is delivered; owner-confirmed
+69520 glass and foliage behavior are preserved. [Water/history report](../research/temporal-water-history-20261126.md)
+records paired SSR coordinates, water raster/inverse jitter and actual visible-water
+inputs. SSR4cases/1,987assertions and water/pane4,311assertions pass; settled8+8worlds
+reuse56targets without new textures.19Metal suites, finalizer CPU, full Release,
+346ARM64, login-only smoke and mounted8,293-entry/ZIP93-file checks pass. All three
+iCloud uploads are confirmed22:51:34UTC with matching hashes/no error. Original
+settings restored; viewer closed. Initial4355 transient/recovery is retained.
+Water variation is essentially flat; PPD624/625 actual producer attribution and
+quality remain open. Do not claim the original water complaints fixed.
 
-**Renderer code checkpoint:** `2af7ebba82b6bfd15886069f1eb9613f34fcef18` — corrected glass69520 application source; verified private delivery complete.
+**Renderer code checkpoint:** `c72fafcd3b6191134e861f37939e21f975eac938` — experimental Water69523 application source; Release, smoke, mounted package and iCloud delivery verified.
+Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 The [native report](../research/aurora-native-temporal-20261126.md) records the preserved69516 port;
 the glass report owns corrected69520 qualification and delivery. New saved ID8 /effective4 selects exact2/3 Aurora
@@ -124,11 +121,9 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Finish the18affected Metal suites and actual finalizer CPU check; pin source,
-complete the new Water Experimental Release, exact-library/package checks and
-login-screen-only smoke. Restore preferences, close viewer and verify all three
-iCloud uploads before reporting ready. Preserve69520 and publish only this feature
-branch as authorized. SSR coordinate and water-input correctness are demonstrated;
-PPD624/625 owner-region attribution and material shimmer improvement remain open.
-The owner will review the original background-water/pool regions and accepted
-glass/foliage controls using macOS screen capture, not independent snapshots.
+Owner reviews experimental69523 in the original water/pool view, preserving69520
+for comparison. Select67% Aurora Experimental and verify Active; use macOS capture.
+Keep PPD624/625 open until material shimmer improvement and actual contributors are
+established. Native/Spatial remain available; no new broad FPS campaign requested.
+No implementation/build/package/upload work remains. Final delivery documentation
+is separate from application sourcec72fafcd3b; feature-branch publication is authorized.

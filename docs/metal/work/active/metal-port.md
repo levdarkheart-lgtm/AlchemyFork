@@ -7,20 +7,21 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-PPD619glass is owner-confirmed fixed in69520. Preserve its code, packages and
-foliage behavior. Current work PPD623–627: pair SSR textures with exact stored
-jitter/camera coordinates; reproduce background water separately from pool
-highlights and correct demonstrated Temporal-input defects. No broad FPS audit.
-Root owns pipeline/shader/docs/build, native agent owns paired history API,
-validation agent owns focused publisher/consumer regression; source audit is
-read-only. [Water/history report](../../research/temporal-water-history-20261126.md)
-records results and attribution limits. Startbc09268714 was clean and remote-matched.
-SSR4cases/1987assertions, water/pane4311assertions and fixed8+8world pool plateau
-pass. Full affected regressions and source-pinned Water Experimental packaging
-are next; actual owner water/streak producers and material quality gain remain
-unverified. The fixture-only empty-read crash is corrected with retained failure.
+Experimental Water69523 is delivered. Preserve owner-confirmed PPD619 glass repair
+and successful foliage. PPD623/626/627 coordinate/input corrections pass rendered
+regressions; PPD624/625 original background-water/pool-highlight quality and producer
+attribution remain open. [Water/history report](../../research/temporal-water-history-20261126.md)
+records exact before/after values and limits. Stationary water variation is flat;
+this is not a demonstrated fix for both video regions or an FPS improvement.
 
-Commit `2af7ebba82b6bfd15886069f1eb9613f34fcef18` pins corrected glass69520 application source; verified private delivery complete.
+Commit `c72fafcd3b6191134e861f37939e21f975eac938` pins application source, build69523.
+19Metal suites, finalizer CPU, Release,346ARM64 and login-only smoke pass.
+Mounted8,293entries/signatures and ZIP93hashes match. All three iCloud files are
+confirmed uploaded22:51:34UTC without error and with matching hashes. Initial4355
+cleared on bounded read-only recheck; original settings restored, viewer closed.
+Owner original-scene review is next; use macOS capture, not independent snapshots.
+Final documentation follows application source; only this feature branch is pushed.
+Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
 Preserved69516 remains at `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 [Glass report](../../research/aurora-temporal-glass-20261126.md) owns69520 delivery;
 [native report](../../research/aurora-native-temporal-20261126.md) preserves69516;

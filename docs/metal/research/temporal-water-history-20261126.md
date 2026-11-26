@@ -1,140 +1,158 @@
-# Temporal water and reflection history — PPD623–PPD627
+# Experimental water/history review 69523 — PPD623–627
 
-Start: `codex/aurora-native-temporal-20261126` at
-`bc09268714d7f4cb851310b202c73c989502fa76`; preserved69520 renderer source
-`2af7ebba82b6bfd15886069f1eb9613f34fcef18`. Owner confirms the glass fence is fixed;
-preserve that correction and successful foliage behavior. Aurora algorithm remains unchanged.
+Three source-contract defects are corrected and rendered regressions pass.
+**The original water complaints are not established as fixed.** Coordinate/input
+correctness improved; stationary water-pattern variation is essentially flat.
 
-The two reported regions remain separate: blue background water outside the pool,
-and warm bright broken pool streaks provisionally described as reflected/specular
-highlights. A video alone cannot establish their material or contribution paths.
-Primary local reference is Desktop/WaterJigglingLightsJiggling.mov, located by filename
-search (owner referred to the attachment as mp4). No viewer session is active.
+| Owner region | Actual producer/contribution | Disposition |
+| --- | --- | --- |
+| Blue background water outside the pool | Dedicated world water versus object/material is unconfirmed | PPD624 remains open |
+| Warm broken pool streaks under the lights | SSR, environment reflection, refraction or material lighting is unconfirmed | PPD625 remains open |
 
-Source audit confirms current-jitter SSR constants are assembled independently
-of retained color/depth publication. Pair exact stored projection/inverse/camera
-metadata with successful history generation; include skipped/failed publication,
-row orientation and no CPU waits. Inspect fixed-animation and naturally animated
-water separately, including the water-haze inverse-projection pairing. Rendered
-baseline, corrective results and delivery will be recorded here as obtained.
+The primary reference is the owner's `WaterJigglingLightsJiggling.mov` (referred
+to as mp4), retained privately. A video does not identify material/draw families.
+No account login or new Home/Club recording occurred. Authored fixtures use the
+actual dedicated-water producer and BASE SSR; that does not attribute the video.
+Owner-confirmed glass repair and successful foliage behavior are preserved.
 
+## Corrections and source boundaries
 
-## Source findings before rendered verification
+**PPD623 — paired SSR history.** `ALMetalWorldScreenSpaceReflectionHistory` in
+`indra/almetal/almetalworld.h/.cpp` owns the raw color/depth pair, accepted
+publication command and exact projection/inverse/modelview/origin/source identity.
+The viewer stamps this metadata alongside owned G-buffer inputs. Consumer rays
+use storedModelview × inverse(currentModelview), then the stored projection;
+the depth inverse and dimensions belong to those same textures. Skipped/rejected
+publication retains the previous complete generation. Known GPU errors hide
+failed history; origin changes fail closed until coherent publication. Reset
+preserves the monotonic generation serial. No previous-application-frame assumption
+or CPU wait is introduced. Existing lower-row storage orientation is unchanged.
 
-PPD626: water field/haze matrices originate as a matching unjittered pair in
-ALWaterSurface::fillMetalWaterHaze (alwatersurface.cpp), reused by the dedicated
-water producer. The Temporal color scene jitters field/haze MVP but previously
-retained the unjittered inverse used by haze depth reconstruction and above-water
-refraction rejection. A shared water-jitter helper now composes both. The motion
-inverse stays unjittered: its shader first subtracts the known sample offset.
-PPD013's homogeneous clip4 interpolation and earlier row-orientation correction
-are preserved. This is source-confirmed independently of scene attribution.
+**PPD626 — paired water raster/inverse jitter.**
+`alMetalApplyTemporalWaterJitter()` in `almetaltemporalworldhistory.cpp` applies
+Pj=J×P and inverse(Pj)=inverse(P)×inverse(J) together to copied field/haze inputs.
+The motion inverse remains unjittered because its consumer subtracts jitter first.
+The original reference is upstream/develop `408fd6c014e6` waterHazeV/F: homogeneous
+clip4 interpolation and its matching inverse are preserved (including PPD013).
+The rendered counterexample concerns full-XYZ haze reconstruction. Ordinary
+projection jitter changes XY, while current refraction rejection compares Z;
+no separate visible refraction-Z gain is claimed.
 
-SSR history is now a typed owner for the raw color/depth pair and exact raster
-projection/inverse/modelview/origin/source identities. The source snapshot is
-captured with owned GBuffer inputs and transfers only on accepted history
-publication. Consumer rays use stored_modelview * inverse(current_modelview),
-then that stored projection. A skipped/rejected publisher retains the preceding
-pair, not an assumed preceding application frame. Origin changes fail closed
-until coherent publication; known GPU errors hide failed history without waiting.
-The actual publisher/consumer regression now verifies that contract below.
+**PPD627 — actual visible-water inputs.** `prepareTemporalWaterInputs()` and the
+water boundary in `almetalworld.cpp` capture actual water device depth/coverage
+in R32F/R8 targets after water/exclusion depth-stencil testing, before later alpha.
+The extraction samples a distinct depth snapshot, avoiding attachment feedback.
+`almetalworld_motion.inl` and textures42/43 seed actual water depth/motion and
+prevent hidden opaque replay from replacing it. Mask-zero pixels do not use the
+old infinite-plane proxy. Valid full foreground replaces hidden water; partial
+coverage selects foreground depth/motion but retains the visible water's unsafe
+confidence; zero/invisible foreground preserves water. Invalid poses stay unsafe.
+Animated water remains rejected; non-camera wave motion is not modeled.
 
+Inputs are prepared before opaque MetalFX/Aurora work, owned by the existing world
+transaction and retained through ordinary completion/abandonment. Settled reuse
+is verified. Active Temporal water adds one depth/stencil copy and one extraction
+pass plus 5 input-pixel bytes (16.66 MB at2304×1446). Existing refraction snapshot
+storage is reused; nonrefracting water additionally requires that snapshot.
+Native/Spatial null paths add no water targets/passes. No new queue or normal-frame
+CPU wait; Aurora algorithm, mip bias, sharpening and graphics defaults are unchanged.
 
-## Retained rendered checks before final qualification
+## Matched rendered results
 
-SSR baseline69520 and corrected native tests use genuine asymmetric raw history
-publication plus the production BASE SSR consumer. Isolated-history raster RGB
-MAE against its exact-coordinate oracle is.0028287795313623673→0. With actual
-current receiver raster jitter, it is.003965496844887561→0. Baseline and corrected
-oracles match; no-hit guards exclude empty SSR. Final asymmetric color/depth row,
-negative depth-flip, skipped/rejected publication, matrix/order, origin, resize
-and reset recovery tests pass1987assertions/four cases with API/GPU validation.
-Private matched PNGs/crops and two18-phase6fps clips are in ssr-review-evidence.
-These are shader-output/coordinate results, not owner-scene attribution or FPS.
+Baseline is preserved69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18`.
 
-Water baseline03 is the first valid rendered baseline. It has306analytical
-inverse-pair failures and two rendered oracle failures (max mean rawRGB
-.0001151134363, reconstructedRGB.00009788544044). Earlier marker-order and invalid
-legacy-cube-format setup failures are retained and excluded. Correct inverse
-composition matches whole-jittered-projection inversion exactly in raw and
-reconstructed output; genuine normal animation remains active.
+| Check | Baseline | Corrected | Meaning |
+| --- | ---: | ---: | --- |
+| SSR isolated-history RGB oracle MAE | .002828779531 | 0 | Exact stored-coordinate sampling |
+| SSR current-raster RGB oracle MAE | .003965496845 | 0 | Current and stored jitter remain distinct |
+| Water raw/output inverse-oracle maximum mean error | .000115113436/.000097885440 | 0/0 | Paired inverse correctness |
+| Fixed-water successive RGB variation, 6,542 output texels | .003109148333 | .003108803499 | −.01109%; essentially flat |
+| Same-region horizontal RGB detail | .016823110470 | .016824930287 | No material detail change |
+| Actual-water proxy-depth error, recorded ROI | .009043594822 | 0 | Actual surface replaces opaque proxy |
 
-That coordinate repair alone does **not** materially stabilize the reproduced
-fixed water: successive RGB variation.0031091483→.0031088035. A test-only localized
-unsafe-confidence override, with identical color/depth/motion, reduces variation
-9.30% (.0034223493→.0031042177) and slightly increases detail. It does not justify
-shipping relaxed water history: it initially retained underlying opaque inputs.
-The override is confined to the test; no reconstruction algorithm is changed.
+The paired input-policy run has bit-identical output RGB in its 54-texel water
+interior and 3,098-texel eroded clear interior over36 worlds. This is **not whole-frame
+equality**: the maximum whole-image policy MAE/pixel differences are .000264225/
+.258545. No positive-depth dry-hole output pair was retained; the missing-cell
+input regression proves correctness, not a missing output-quality benefit.
+A test-only localized rejection override reduced one interior variation by9.30%,
+with identical inputs; it does not justify globally trusting animated water and
+is not enabled in production.
 
-PPD627 therefore captures actual current water depth/coverage after real field,
-exclusion and depth testing, before subsequent alpha. The frame-owned R32F/R8
-pair seeds camera/surface proxy depth and prevents hidden opaque geometry from
-overwriting it. Animated water remains maximally unsafe; non-camera wave motion
-is not claimed modeled. Non-water holes use actual opaque inputs instead of a
-hypothetical infinite water plane. This adds one depth/stencil copy and one
-stencil-filtered fullscreen pass in active Temporal water views,5input-pixel bytes
-of target storage (about16.66MB at2304×1446). The existing refraction-depth snapshot
-is reused; nonrefracting water additionally needs that snapshot. Native/Spatial
-null paths add no targets/passes.
+SSR tests use real asymmetric bright geometry, the production history publisher
+and BASE SSR consumer, with active-contribution guards. Final four cases pass
+1,987 assertions, including asymmetric depth rows, negative row-flip controls,
+skipped/rejected publication, noncommuting matrices, origins, resize and reset.
+Water/pane visibility passes4,311 assertions: maximum depth/blend error
+9.94653e-7/.000427246. Settled8warm+8measured worlds allocate0 new textures,
+reuse56 pooled targets, add0 dependency deferrals and retain509,952 cached bytes.
+These are fixed-descriptor component observations, not total GPU memory or FPS.
 
-The first new empty-water test crashed on a fixture-only empty vector read. Its
-readback condition is corrected and size requirements precede pixel assertions;
-the focused retest passes102659assertions. The viewer was never launched. Current
-actual-water input policy comparison retains all water rejection and has identical
-raw color; it does not establish a material stationary-water variation gain.
-The background-water and pool producers in the primary video are still unknown:
-older retained water_present observations cannot join those exact pixels.
+All19 selected Metal suites pass API/GPU validation: SSR, water, Temporal
+history/motion/visibility/presentation/orchestration/scaler, glass, Aurora inputs,
+Spatial, resource planning/resources and material sampling. Finalizer CPU passes.
+Glass remains8 cases/68,498 assertions. Existing PPD610 quality failures remain.
 
+Earlier invalid marker-order/cube-format fixture attempts are retained/excluded.
+First valid water baseline failed306 analytical and two rendered oracle bounds.
+A later empty-water fixture read an empty vector and caused the macOS GlassFixture
+crash notice; this was not the viewer. Readback/size guards are corrected; its
+focused retest passes102,659 assertions. The normal water suite subsequently passes.
 
-The water field inverse is also used by refraction depth reconstruction. For
-ordinary perspective jitter, only reconstructedXY changes while that consumer
-currently comparesZ; no separate visible refraction-Z improvement is claimed.
-The fullXYZ haze reconstruction is the rendered inverse-pair counterexample.
+## Review evidence and playback
 
-## Actual-water visibility and reuse
+Private `artifacts/metal/temporal-water-20261126/ssr-review-evidence` and
+`water-review-evidence` retain authored PNGs, 1:1 crops, clips, exact metrics,
+source/build receipts, failed attempts and hash manifests. No owner footage or
+account data is pushed. Water inputs96×64→144×96 use18 production jitter phases,
+72 warm worlds,18 stationary,18 moving,36 stopped and18 restored normal-animation
+worlds. Clips play at6 or12 fixture worlds/s as labelled, not viewer cadence.
+Matched phase17 stills remain; no mature stopped-water reference is claimed.
+The ZIP preserves these authored comparisons and exact application source/diff.
 
-The actual-input comparison keeps raw color, color depth and jitter identical.
-In its fixed-water interior the old proxy and actual-input arms have identical
-successive RGB variation **.00384100768794** and gradient **.0207678607781**.
-Correct inputs therefore do not demonstrate a water-pattern quality fix.
+## Delivered identity and verification
 
-The post-water transparency regression passes4311assertions under Metal API/GPU
-validation. It checks actual generic forward color, depth, motion and rejection
-for zero, partial and fully covering panes, a pane behind water, a dry control,
-invalid pose and recovery. Maximum water/pane depth error is9.94653e-7 and maximum
-blend error is.000427246. A zero-contribution or invisible pane preserves water;
-partial transparency selects the nearest surface but retains the visible water's
-unsafe confidence; valid full coverage supplies the foreground and can accept
-history. No unconditional water-history acceptance is introduced.
+Branch `codex/aurora-native-temporal-20261126`; start checkpoint
+`bc09268714d7f4cb851310b202c73c989502fa76`.
+Application source **c72fafcd3b6191134e861f37939e21f975eac938**, version **26.4.0.69523**.
+Later delivery documentation is separate from this pinned application source.
 
-With completion settled, the same8warm+8measured worlds allocate **0additional
-textures**, reuse56pooled targets, add0dependency deferrals and retain509952cached
-bytes. This is an allocation/visibility check, not a timing or FPS result.
-The glass suite still passes68498assertions/eight cases with the new library.
+| Identity | SHA-256 |
+| --- | --- |
+| Executable | `826181006b635768029dc3aa4b999b3d477ff5972c100a3744c82993c7eb2b3a` |
+| almetal_builtin.metallib | `175f26640fbc3ebf52972b93ec0281e1daaf44c244ffae939ecb90ad23a585a1` |
+| Embedded Aurora sources.h | `9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070` |
 
-The macOS GlassFixture crash notice came from the earlier empty-vector fixture
-failure, not the viewer. Its failed run remains retained; the corrected empty-water
-test and the subsequent pane test complete normally. No owner account was used.
+Full Release exits0. The builtin library exactly matches rendered validation;
+all four unchanged Aurora MSL source blocks are found byte-for-byte in the
+executable. Deep/strict ad-hoc signing and346 ARM64 checks pass. macOS26.0 deployment
+target; **not notarized**. Full-screen login-only smoke reaches69523 login, then
+quits with no STATE_STARTED. All18 original preference files/24 entries and
+restorable metadata are verified restored; viewer remains closed.
 
-## Qualification boundary
+Mounted DMG matches8,293 app entries, exact executable/shader hashes, signatures
+and346 ARM64 checks. ZIP CRC/all93 regular-file hashes pass. Preserved69520
+DMG/ZIP/checksum hashes are unchanged. All three iCloud Desktop files are confirmed
+uploaded, not uploading, no error, matching hashes at **2026-11-26T22:51:34Z**.
+Initial22:49:57UTC error4355 cleared on the second bounded unchanged-file recheck;
+no account/service change, recopy or rebuild (PPD618).
 
-PPD623 and PPD626 have rendered coordinate counterexamples and corrections.
-PPD627 repairs actual-water input visibility and passes targeted ownership checks.
-**PPD624 and PPD625 remain unresolved owner-scene image-quality reports.** The
-source and authored fixtures do not identify which producer creates the two video
-regions, or establish that both share a cause. In particular, maximum rejection
-is retained for genuinely changing water; non-camera wave motion is not modeled.
-The experimental package must not be described as a demonstrated water-shimmer
-fix. Owner-scene review and a localized producer/input observation remain the
-specific missing evidence. Preserved69520 is the comparison build.
+- `Alchemy-Aurora-Water-Experimental-69523-AppleSilicon.dmg`
+- `Alchemy-Aurora-Water-Experimental-69523-Review.zip`
+- `Alchemy-Aurora-Water-Experimental-69523-SHA256SUMS.txt`
 
-## Correctness qualification before Release
+DMG SHA-256 `1e52bb71e739b75f04fb1bbb0424b22836277bd442d14f78605b514a3e78034f`.
+ZIP SHA-256 `fb16067717b9617cac307467eb17bd785fe8a00ea69344cbced161db3507b2cf`.
+The compact ZIP comparison predates upload confirmation; final delivery receipts
+are retained privately and this current report records the completed gates.
 
-The normal Release almetal_tests binary (not the private GlassFixture runner)
-passes all18selected suites with Metal API and GPU validation in102.60seconds:
-SSR paired history/isolation; water inputs/haze/normals; Temporal glass, history,
-motion, visibility, presentation, orchestration and scaler; Spatial scaler and
-presentation; resource-plan CPU/native, world resources and material sampling.
-The actual viewer finalizer CPU suite and two Aurora borrowed-transaction/opaque-input cases also pass (19selected Metal suites total). Exact commands and complete
-logs are retained privately under artifacts/metal/temporal-water-20261126.
-No broad profiler, scene login, quality-setting change or FPS claim is involved.
+## Owner review
+
+Advanced Graphics → World resolution → **67% (Aurora Temporal · Experimental)**;
+confirm Active identifies Aurora, not Pending/fallback. Native stays default;
+Spatial/MetalFX, output-based shadows and native UI remain intact; combined main
+lighting staysOFF. Use macOS screenshots/recording, not independent snapshots.
+Compare original background water and pool highlights separately, with normal
+animation, camera movement/stop, shoreline/exclusions and accepted glass/foliage
+controls. Their actual producers and material shimmer improvement remain the
+specific unresolved boundary. No live quality acceptance or FPS improvement claimed.
