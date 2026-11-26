@@ -15193,8 +15193,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Delivery requires Foundation URL metadata uploaded=true, uploading=false and no upload error; a local copy alone is insufficient.
 - Evidence: [69516 delivery](research/aurora-native-temporal-20261126.md). All three iCloud Desktop files match the verified local package hashes, but fresh metadata returns NSCocoaErrorDomain 4355, could not access the iCloud account. Retained older 69507 files still report uploaded. Read-only brctl status/quota return BRCloudDocsErrorDomain 141 access denied.
-- Next action: Owner downloads the confirmed-uploaded review artifacts. No service/account repair, recopy or rebuild is needed. Preserve initial failure history rather than presenting local copy as the original proof of remote delivery.
-- Verification: Read-only DMG content comparison matches all 8293 app entries; deep/strict signing, 346 ARM64 checks, ZIP CRC and per-file hashes pass. At 18:16:49 UTC all three files report uploaded=true, uploading=false and no error; destination hashes match. Raw service diagnostics remain private; no account identifier or credential is published.
+- Next action: Owner downloads confirmed-uploaded69520 or retained69516 artifacts. No account/service repair, rebuild or recopy is needed; preserve transient/recovery history.
+- Verification:69516 upload was confirmed18:16:49UTC. Current69520 source/mounted checks match8293entries, deep/strict signing and346ARM64 checks pass, ZIP CRC/per-file hashes pass. At20:57:47UTC all three69520files report uploaded=true, uploading=false and no error; destination hashes match. Raw service/account details remain private.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15204,6 +15204,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26 recovery: Second bounded metadata recheck confirms complete upload of all three unchanged files. The transient condition cleared without an intervention. Review build and bundle are available for owner download; no remote availability claim preceded that observation.
 
+
+- 2026-11-26 20:55:42UTC recurrence for newly verified69520 DMG/ZIP/checksums: local/destination hashes match and mounted app entries match8293, but Foundation metadata initially reports4355 with uploaded=false/uploading=true for all three. Delivery remains pending. Perform bounded metadata rechecks; no account/service changes or remote-ready claim.
+
+- 2026-11-26 20:57:47UTC69520 recovery: second bounded unchanged-file recheck confirms all three uploads and matching hashes. No account/service change, rebuild or recopy; remote readiness is reported only after this observation.
 
 ## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
 
@@ -15225,6 +15229,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Rendered correction qualified for experimental owner review; exact fence acceptance remains pending. Final source/build/package identity will be recorded in the glass report.
 
+- 2026-11-26 final69520/source2af7ebba82: all eight glass cases/68498assertions and23history cases/2099assertions pass under API/GPU validation. Full Release,346ARM64 checks and deep/strict ad-hoc signing pass. Full-screen login-only smoke closes normally and verifies original settings restoration. Package/upload and owner-scene acceptance are separate boundaries.
+
+- 2026-11-26 delivery complete: experimental69520/source2af7ebba82 is mounted-package verified and all three iCloud uploads are confirmed20:57:47UTC.69516 is retained. Source/shader identities and matched output are in the glass report. Owner live fence/palm/grass review remains pending; no FPS claim.
+
 ## PPD-620 — Temporal material selector clamps differ from forward color
 
 - Status: ready_for_owner
@@ -15245,6 +15253,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Rendered correction qualified for experimental owner review; exact fence acceptance remains pending. Final source/build/package identity will be recorded in the glass report.
 
+- 2026-11-26 final69520/source2af7ebba82: all eight glass cases/68498assertions and23history cases/2099assertions pass under API/GPU validation. Full Release,346ARM64 checks and deep/strict ad-hoc signing pass. Full-screen login-only smoke closes normally and verifies original settings restoration. Package/upload and owner-scene acceptance are separate boundaries.
+
+- 2026-11-26 delivery complete: experimental69520/source2af7ebba82 is mounted-package verified and all three iCloud uploads are confirmed20:57:47UTC.69516 is retained. Source/shader identities and matched output are in the glass report. Owner live fence/palm/grass review remains pending; no FPS claim.
+
 ## PPD-621 — In-place published texture changes can retain Temporal material history
 
 - Status: ready_for_owner
@@ -15262,6 +15274,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Registered during glass safety review before packaging. Newly qualifying static glass must distinguish real changing content, not rely only on stable allocation identity. This focused repair reuses the existing source publication protocol and preserves PPD611 semantic-material equality.
 
+
+- 2026-11-26 final69520/source2af7ebba82: all eight glass cases/68498assertions and23history cases/2099assertions pass under API/GPU validation. Full Release,346ARM64 checks and deep/strict ad-hoc signing pass. Full-screen login-only smoke closes normally and verifies original settings restoration. Package/upload and owner-scene acceptance are separate boundaries.
+
+- 2026-11-26 delivery complete: experimental69520/source2af7ebba82 is mounted-package verified and all three iCloud uploads are confirmed20:57:47UTC.69516 is retained. Source/shader identities and matched output are in the glass report. Owner live fence/palm/grass review remains pending; no FPS claim.
 
 ## PPD-622 — Numerical motion from identical stationary poses triggers layered history rejection
 
@@ -15284,3 +15300,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 PPD622 background follow-through: short static modern-sky probes reproduce the same false motion (128×64/18phases:23296 nonzero pixel observations;127×63/two phases:4714; maximum≈1.85e−6 input pixels). Clear/non-sky is exactly zero. The camera MVPs are identical, but inverse/multiply leaves tiny C2P entries and the UV round trip also contributes error. Canonicalize exactly identical validated camera transforms and preserve exact-zero camera motion; no tolerance or dynamic-sky rejection change.
 
 - 2026-11-26: Rendered correction qualified for experimental owner review; exact fence acceptance remains pending. Final source/build/package identity will be recorded in the glass report.
+
+- 2026-11-26 final69520/source2af7ebba82: all eight glass cases/68498assertions and23history cases/2099assertions pass under API/GPU validation. Full Release,346ARM64 checks and deep/strict ad-hoc signing pass. Full-screen login-only smoke closes normally and verifies original settings restoration. Package/upload and owner-scene acceptance are separate boundaries.
+
+- 2026-11-26 delivery complete: experimental69520/source2af7ebba82 is mounted-package verified and all three iCloud uploads are confirmed20:57:47UTC.69516 is retained. Source/shader identities and matched output are in the glass report. Owner live fence/palm/grass review remains pending; no FPS claim.

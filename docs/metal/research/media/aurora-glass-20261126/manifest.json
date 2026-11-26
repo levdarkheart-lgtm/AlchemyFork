@@ -13,97 +13,155 @@
   "phase_count": 18,
   "clip_playback_fps": 12,
   "baseline_application_source": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f",
-  "candidate_scope": "Corrected native forward coverage/history policy, algorithm unchanged",
+  "baseline_private_dataset": "baseline-output-03",
+  "candidate_private_dataset": "qualified-output-01",
+  "candidate_scope": "PPD619-622 forward coverage/content and exact stationary motion repairs; reconstruction algorithm unchanged. The sky-only retest additionally corrects fixture command-batch setup; final app/package identity is recorded separately.",
+  "input_parity": "One saved stationary input pixel differs; see input-difference-scope.json. Do not claim bit-exact final input identity.",
   "files": [
     {
+      "file": ".gitattributes",
+      "bytes": 26,
+      "sha256": "00acd5cd4e8810a5d6b6e1675e0eb2fe185e997b8efccc52178d61d43307077d"
+    },
+    {
+      "file": "analysis-tests.log",
+      "bytes": 1072,
+      "sha256": "3b3f94d2deff6ce54a7916fe4192c6c47ab8297112ffcc09dd8ae9883b8fa8bc"
+    },
+    {
+      "file": "baseline-fixture-identity.json",
+      "bytes": 460,
+      "sha256": "b65b3ab0ef29461980ddb09c232cc5cebc29cf198a81c6c74771549f8d098db8"
+    },
+    {
+      "file": "content-publication-tests.log",
+      "bytes": 367,
+      "sha256": "44464e14c0ee6b0dfd76ba6c1b4a9ea2f4755efcd44e672c81e771ea472c561a"
+    },
+    {
+      "file": "cpu-regressions.log",
+      "bytes": 695,
+      "sha256": "047afbce3c0a70a54e84c356d4f5f16701cadc3481c359ecd70903a271b035fd"
+    },
+    {
+      "file": "final-linked-glass-history.log",
+      "bytes": 530,
+      "sha256": "8a36a1ff82d4a1972d60e9d192f21da73df3b2dcc3fe9a5c048b10774ef07a57"
+    },
+    {
+      "file": "final-linked-glass-history.xml",
+      "bytes": 1503,
+      "sha256": "912f71b7d58082b78cc4af5e3d0e6905c08e6a9cbb7f0244c33634cca2c9019b"
+    },
+    {
+      "file": "final-linked-identities.json",
+      "bytes": 1606,
+      "sha256": "76071f9fcc26723b83b98e20d8700adf1bd3d7b217fc1c1f1c63c9c74bb4cbbc"
+    },
+    {
       "file": "glass-comparison.json",
-      "bytes": 505809,
-      "sha256": "c8ff16033b70b9fbefa33b6bfd59f7baf3edae67e6d6c68b63a84907e2f4feb2"
+      "bytes": 506218,
+      "sha256": "e13e96d9032d3cb78ccff6ea1ee9d8dceb47bfff0891d83cc8afda762a7d0691"
+    },
+    {
+      "file": "gpu-regressions.log",
+      "bytes": 3109,
+      "sha256": "be3200d0281fb4e6307cdf2c26b94aba253e52994e5c5e1b2825c84a7f0b6e6d"
+    },
+    {
+      "file": "input-difference-scope.json",
+      "bytes": 61087,
+      "sha256": "bbf8d5d45dc329ec6533bf5266e1eadb90f278ed3d6ad80b16687ae0b2721a19"
     },
     {
       "file": "legacy-metalfx-move18-stop36-12fps.mp4",
-      "bytes": 173847,
-      "sha256": "ab56fbcad40074f68a623859555237841e6df99ec57593f978e803d6be17de50"
+      "bytes": 173416,
+      "sha256": "15eabdf004b4f3b0aeed7e7d1f1c680f88441107b8e8f8eeeb5085988b4cadb8"
     },
     {
       "file": "legacy-metalfx-stationary-phase17-baseline-left-candidate-right.png",
-      "bytes": 57077,
-      "sha256": "1193e4504283615e8072560b1fe871d1d4a173b6ce4e35b6f8e5a79e2447fc30"
+      "bytes": 57087,
+      "sha256": "9d147487f45ec5e7a9044ad27dd9d93d386245e4352e01c7b803f172efe4a7b9"
     },
     {
       "file": "legacy-metalfx-stationary-phase17-pane-1to1.png",
-      "bytes": 13463,
-      "sha256": "89a4edf97799f9e4081a783c80d1e0c6e57d446964b4afb350c622b21dcdd905"
+      "bytes": 13470,
+      "sha256": "f869aac6e967e02fbe8f3c4db601a2ae08da42938ef7797e6a027756816bec73"
     },
     {
       "file": "legacy-metalfx-stationary54-12fps.mp4",
-      "bytes": 130286,
-      "sha256": "d5cbab5a255afb910d0c626d9cfa27d627c42498aa6b583e1c2f139ba14ee13c"
+      "bytes": 129518,
+      "sha256": "2b2b537bdac9124858ab01dc224ffd77232b672d2dd2f893de17e8bf8583f1eb"
     },
     {
       "file": "legacy-metalfx-stop18-phase17-baseline-left-candidate-right.png",
-      "bytes": 57008,
-      "sha256": "26eb11f15ee7096f1220ada7382b8642e9b380b0efb0d3b3bd999b16ad4fa3d2"
+      "bytes": 57075,
+      "sha256": "c80d3f0036cc50aaeda8d0e0550559b56d572d7c0477d2534ad2f618061ac4df"
     },
     {
       "file": "legacy-metalfx-stop18-phase17-pane-1to1.png",
-      "bytes": 13186,
-      "sha256": "73b440148666ee3a0ba901ad708f35d3d6562619f24dc967e7d4c3ce2b7ac535"
+      "bytes": 13203,
+      "sha256": "f6fe9c79e750f5813e4cb1ec9970376c67c86a3118980728a6227c43c1727eee"
     },
     {
       "file": "legacy-metalfx-stop36-phase17-baseline-left-candidate-right.png",
-      "bytes": 56709,
-      "sha256": "6c2a77313ceffd8b1359d310c16a8fabee0a8531fe48d80f8c95c85c5fc9ab4c"
+      "bytes": 56670,
+      "sha256": "93266b37eb3bc90406c43de0b4508e276b260f4eedc4417d8f21cbd28e0e970f"
     },
     {
       "file": "legacy-metalfx-stop36-phase17-pane-1to1.png",
-      "bytes": 13337,
-      "sha256": "64428853ea942052d46b8828cdb53a7141edd6f58ac037eb6e360a98d7ca977b"
+      "bytes": 13335,
+      "sha256": "346b402d9247a45a4af3e8bb61e1433c1dd2353bc34387f0e68eb01a33a41879"
     },
     {
       "file": "legacy-production-move18-stop36-12fps.mp4",
-      "bytes": 173239,
-      "sha256": "e370ed50525ed3735cdb26d52f19868c8e2385f179c7674bcce654580dfa9d7f"
+      "bytes": 173626,
+      "sha256": "e41f4f82ff9de31ab10f03dea604f3cdf6881db243e2b2e8c917bfba4a03c800"
     },
     {
       "file": "legacy-production-stationary-phase17-baseline-left-candidate-right.png",
       "bytes": 48722,
-      "sha256": "5f84a132c348a7befa84589c26bda8dfcae5ed6f78e92a433bde20beebe5c00b"
+      "sha256": "04d830efe16c1befbb341b076d1b195a2cdc56846a3f2e5028caec6a9c65fde6"
     },
     {
       "file": "legacy-production-stationary-phase17-pane-1to1.png",
-      "bytes": 13011,
-      "sha256": "590e921e3c1aacbd679157e4a462794db462a2aafb3bec2d51e4e72bbe2162a5"
+      "bytes": 13010,
+      "sha256": "6aa18601db8a88591201c02350294fa3275895a0cad8a1b337a9f7a37fb9e37e"
     },
     {
       "file": "legacy-production-stationary54-12fps.mp4",
-      "bytes": 97178,
-      "sha256": "069cdd5328130f90f60c0eecca4442fbb8ff12378412d8dfdcd54eee3d241291"
+      "bytes": 97152,
+      "sha256": "66a052b80809f0d11726271478833eba78dba7dc58518a1021725b3ac4683a71"
     },
     {
       "file": "legacy-production-stop18-phase17-baseline-left-candidate-right.png",
       "bytes": 47795,
-      "sha256": "5a19389345d0be707b968e100260d1aac6c66b5d28f8f6bdefb560bae4833864"
+      "sha256": "4dee71ceeab64f3838c67d0c91a2f12e8fc55f421519f358d9dc7d63f4abcd26"
     },
     {
       "file": "legacy-production-stop18-phase17-pane-1to1.png",
-      "bytes": 12696,
-      "sha256": "b4bc9c6055870bddac18cc7dcde84676dd72ed9d8f09fd6fc8058e2cc99435a7"
+      "bytes": 12698,
+      "sha256": "e86de68a9a61e7054032cfddcc9efa8780b319f4a78a1c4a99d2b7337872f8e2"
     },
     {
       "file": "legacy-production-stop36-phase17-baseline-left-candidate-right.png",
-      "bytes": 48165,
-      "sha256": "3343fbd91426a6c6fa307e71c5b555410b8fab25aa3f79f19035f7bdc6a86752"
+      "bytes": 48169,
+      "sha256": "422a599f2d4891c9d9e285459fde80c826bc392bfa308251964537c150b74857"
     },
     {
       "file": "legacy-production-stop36-phase17-pane-1to1.png",
-      "bytes": 12879,
-      "sha256": "9a4ff0b35ed5a5efdbaaabfcebcc7e70e9676f309bf4e89801bbe785a66cc8ca"
+      "bytes": 12880,
+      "sha256": "d3ebf9fd7f8aa1ad8ed40895739f2fde0c763c2ca8c796d39507acdb578c1953"
+    },
+    {
+      "file": "output-control-parity.json",
+      "bytes": 532,
+      "sha256": "742f9c1eaa7fe7e629ad9b40866d50da4a1a32e311467b1edb0cbcf2ead77c2c"
     },
     {
       "file": "pbr-multi-production-move18-stop36-12fps.mp4",
-      "bytes": 176279,
-      "sha256": "6578501103d7e90e40cfa43aed9e05cd1d9b479f9d2a59a7d6351bc94a62b911"
+      "bytes": 175899,
+      "sha256": "2d4a43a75921af3078926ca7a02760a4c6e9337240694cbb5c64bb391e6414fa"
     },
     {
       "file": "pbr-multi-production-stationary-phase17-baseline-left-candidate-right.png",
@@ -133,17 +191,17 @@
     {
       "file": "pbr-multi-production-stop36-phase17-baseline-left-candidate-right.png",
       "bytes": 52035,
-      "sha256": "5cda6f77508fb71290e85698f8b8d21a36e3bbc72c086b78ac4cf2235a9d5d9d"
+      "sha256": "ef00a62e11ef905eca2314fb17545a6fe227d20cb0d62af4c7c390d64b0b36cd"
     },
     {
       "file": "pbr-multi-production-stop36-phase17-pane-1to1.png",
-      "bytes": 13660,
-      "sha256": "88437d7f894b6a829dfe3644b5a95fe7caa6cfb726ceb11645694392910909b8"
+      "bytes": 13661,
+      "sha256": "2f0b7428c0cb066c3d2b0b7cfb2e40c42e992dd5b8c17d502647807fd99db7cc"
     },
     {
       "file": "pbr-single-production-move18-stop36-12fps.mp4",
-      "bytes": 177895,
-      "sha256": "2a75a02bf176028b801f52eb5a1f3ddc7f5526d5cc7eaf6bfa396c2d58c8d72c"
+      "bytes": 178073,
+      "sha256": "3d4ab710d94935b0ef80ffd22afdab3ad6ecad9216620690239594eaf161155d"
     },
     {
       "file": "pbr-single-production-stationary-phase17-baseline-left-candidate-right.png",
@@ -172,13 +230,38 @@
     },
     {
       "file": "pbr-single-production-stop36-phase17-baseline-left-candidate-right.png",
-      "bytes": 35357,
-      "sha256": "ddce6879652222c6f72bf522b83017e8d0abbf119d1960840da2f9f215e6e298"
+      "bytes": 35367,
+      "sha256": "ded4ab6ce88f4ce36172223203b177fe643c19c475621fe7352e5ab17540adb2"
     },
     {
       "file": "pbr-single-production-stop36-phase17-pane-1to1.png",
-      "bytes": 7471,
-      "sha256": "4aaae0cd3dfe3086a263d5a6ed0aac82f82701442a0eba2971d00babae562873"
+      "bytes": 7487,
+      "sha256": "8889cbe2b5aa4652c71762ef5f7fd778b62f613552b94b66ef5232854c3b719b"
+    },
+    {
+      "file": "qualified-glass-history.log",
+      "bytes": 1384,
+      "sha256": "858e2cfd9bf8edb3b478ff9172d01c097d2454f1f1d743059c86610aed6f02b2"
+    },
+    {
+      "file": "sky-retest-fixture-identity.json",
+      "bytes": 429,
+      "sha256": "dc44f6f68ff79d60228e6bdfe2d9fee99be55792db3e6b9b31dc60a18bbf6bc6"
+    },
+    {
+      "file": "static-motion-fixture-identity.json",
+      "bytes": 436,
+      "sha256": "b9e198d0a35424812ed2bb53d2e65c1c727e499df12131cbed0bf0ce5db8127e"
+    },
+    {
+      "file": "static-motion-inputs.log",
+      "bytes": 395,
+      "sha256": "f15d755e96c3d9e57f1ea041656bfd90e2251453efa130b5fefb8ad78bdbc68e"
+    },
+    {
+      "file": "static-sky-retest.log",
+      "bytes": 363,
+      "sha256": "ce52514e5309e1f8a1f0928b875b9b234c35693be5cb8b79706f5b025f7979df"
     }
   ]
 }

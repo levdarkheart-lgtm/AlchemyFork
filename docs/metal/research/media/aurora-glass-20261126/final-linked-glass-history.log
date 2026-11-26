@@ -1,0 +1,12 @@
+Test project /Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/aurora-native-temporal/build-aurora-native-release
+    Start 55: almetal_tests/almetal_temporal_glass_test
+1/2 Test #55: almetal_tests/almetal_temporal_glass_test .....   Passed   35.36 sec
+    Start 62: almetal_tests/almetal_temporal_history_test
+2/2 Test #62: almetal_tests/almetal_temporal_history_test ...   Passed    0.05 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+almetal    =  35.41 sec*proc (2 tests)
+
+Total Test time (real) =  35.46 sec

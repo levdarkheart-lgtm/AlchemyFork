@@ -7,20 +7,18 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-PPD619 glass correction is active following owner69516 review: reproduce actual
-legacy/multi-slot PBR glass color/motion/rejection/Aurora output; retain a failing
-baseline and implement exact color coverage before qualifying valid history.
-Root owns builds/docs/integration; delegated shader/host and new rendered fixture
-paths have exclusive ownership. No broad FPS campaign, algorithm tuning or login.
-The unqualified bf90c0dd72/69519 build was interrupted after PPD622 localized
-settled-overlap failure to tiny numerical surface/camera motion with identical
-poses. Final exact-zero proofs pass surface/sky/tiny-real-motion controls without
-loosening layer equality. Qualified quality output improves Aurora glass variation
-about21% and detail about21%; original foliage bounds remain unchanged. Eighteen
-GPU suites pass, plus content/publication, history and focused rendered checks.
-Pin final source, then complete Release/login-only smoke/package/upload/push.
+PPD619/620/621/622 corrections are complete for experimental owner review.
+Corrected69520/source2af7ebba82 passes31final glass/history cases,18affected GPU
+suites, content-publication and CPU checks. Full Release,346ARM64/deep-strict
+signing and full-screen login-only smoke pass; original settings are restored and
+viewer closed. Mounted DMG matches8293entries, ZIP CRC/hashes pass, all three
+69520iCloud uploads confirmed20:57:47UTC.69516 is retained. Publish evidence/docs
+on the authorized Aurora branch; owner live fence/palm/grass review is next.
+The intermediate bf90/69519 build was stopped before packaging after PPD622;
+its history and initial fixture failures remain, without weaker quality bounds.
 
-Commit `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` pins experimentalAurora69516 application source.
+Commit `2af7ebba82b6bfd15886069f1eb9613f34fcef18` pins corrected glass69520 application source; verified private delivery complete.
+Preserved69516 remains at `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 [Native report](../../research/aurora-native-temporal-20261126.md) is authoritative;
 [evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) retainsoldquality/cost.
 
@@ -31,7 +29,7 @@ Commit `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` pins experimentalAurora69516 a
 | Submission/resource safety | complete |12componentcases +2actualrenderer cases/204assertions API/GPU pass. |
 | PPD610 quality | open | Area.821401<.85;stop18/36.015886/.012319>1/255; ownerliveacceptancepending. |
 | Actualtarget nativecost | complete |10.926median/12.392p95ms, allintegrationpasses included; noFPSclaim. |
-| Release review delivery | complete | 69516 full build, regressions, login smoke, mounted package checks and all three iCloud uploads verified; owner live review next. |
+| Preserved69516 delivery | complete | 69516 full build, regressions, login smoke, mounted package checks and all three iCloud uploads verified; owner live review next. |
 
 Release build69516, deep/strict ad-hoc signing and 346 ARM64 checks pass. All three
 CPU and fifteen affected Metal suites pass after the inherited PPD616 test-only

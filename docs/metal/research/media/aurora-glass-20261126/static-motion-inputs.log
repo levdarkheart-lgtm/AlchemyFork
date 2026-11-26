@@ -1,0 +1,7 @@
+Filters: [temporal-glass-stationary-motion],[temporal-glass-inputs]
+Randomness seeded to: 2418175170
+2026-11-26 19:51:46.403 GlassFixture[15486:6506541] Metal API Validation Enabled
+2026-11-26 19:51:46.404 GlassFixture[15486:6506541] Metal GPU Validation Enabled
+===============================================================================
+All tests passed (8684 assertions in 2 test cases)
+

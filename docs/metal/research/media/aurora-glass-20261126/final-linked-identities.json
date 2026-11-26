@@ -1,0 +1,36 @@
+{
+  "verified_utc": "2026-11-26T20:50:38.990576+00:00",
+  "source_commit": "2af7ebba82b6bfd15886069f1eb9613f34fcef18",
+  "build_number": 69520,
+  "version": "26.4.0.69520",
+  "bundle_version": "26.4.0d69520",
+  "executable": "/Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/aurora-native-temporal/build-aurora-native-release/newview/Release/Alchemy Aurora Glass Experimental Review.app/Contents/MacOS/Alchemy Aurora Glass Experimental Review",
+  "executable_sha256": "210e71ca74849ebacc889304d1ce3c35435808e9e805d1b982b4d760b0c34f72",
+  "shader_library_sha256": "47e1500f1717ad3c5c19a569b7316a2d45dcdea4ba3d7b4f29825f301d3e1b55",
+  "test_library_sha256": "47e1500f1717ad3c5c19a569b7316a2d45dcdea4ba3d7b4f29825f301d3e1b55",
+  "aurora_source_header_sha256": "9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070",
+  "embedded_aurora_source_blocks": [
+    {
+      "bytes": 18913,
+      "sha256": "2d4e371e0290836e7a110a8309c0e8a58ea8772c20b806d75b7c3ede4b9597cf",
+      "present_in_viewer_executable": true
+    },
+    {
+      "bytes": 26053,
+      "sha256": "d9dc80768093e261acc9102902d16638813d1a95816032e611cc9305955a443b",
+      "present_in_viewer_executable": true
+    },
+    {
+      "bytes": 28394,
+      "sha256": "846340ea23f978862a03b61b88821625a8d8b88c7d87b14b6a1d710b6de0bc68",
+      "present_in_viewer_executable": true
+    },
+    {
+      "bytes": 45017,
+      "sha256": "aa8f84e72b8713bb5b4f251101daf8f57198ec245007538864a6da71d61278b8",
+      "present_in_viewer_executable": true
+    }
+  ],
+  "all_production_sources_match_commit": true,
+  "full_release_build_exit": 0
+}

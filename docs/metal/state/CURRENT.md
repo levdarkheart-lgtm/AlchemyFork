@@ -19,10 +19,14 @@ more detail; generated transparency reactivity stays zero. Exact static surface
 and camera motion prevents numerical false rejection while tiny actual movement
 remains protected. Eighteen affected GPU suites pass; new sky fixture setup was
 corrected and passes1076assertions separately. Intermediate bf90c0dd72/69519 full
-build was interrupted and never packaged. Pin corrected source, complete Release,
-login-only smoke, package/upload verification and authorized branch push next.
+build was interrupted and never packaged. Corrected69520 is built and delivered:31final glass/history cases pass,346ARM64
+checks/signing pass, login-only smoke closes normally and original settings are
+restored. Mounted8293-entry comparison/ZIP CRC/hashes pass. All three iCloud
+uploads confirmed20:57:47UTC. Authorized branch publication is the final step;
+owner live fence/palm/grass review remains pending.
 
-**Renderer code checkpoint:** `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` — experimental build69516 source.
+**Renderer code checkpoint:** `2af7ebba82b6bfd15886069f1eb9613f34fcef18` — corrected glass69520 application source; verified private delivery complete.
+Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 The [native report](../research/aurora-native-temporal-20261126.md) owns the source
 map, qualification and delivery. New saved ID8 /effective4 selects exact2/3 Aurora
 OFF. IDs0–7, output-sized shadows and native UI remain unchanged. The component
@@ -57,7 +61,7 @@ unsubmitted cancellation, retained presentation and recovery. Glow-edge error
 .000813611<.002; owned payload returns to zero at teardown.198tool tests pass with
 one existing skip; seven translation/analysis checks pass.
 
-## Current executable action
+## Preserved69516 delivery
 
 Release 26.4.0.69516 is complete at application source b6f18c24f4. All three CPU
 and fifteen affected Metal suites pass, including the PPD616 test-only oracle

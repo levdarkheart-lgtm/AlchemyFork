@@ -1,0 +1,8 @@
+{
+  "variant": "sky-verified-01",
+  "test_source_sha256": "c205b85c8d0f668667222c5d51f5350ea1c7a53e1e1856f5b86e9fff45443fa8",
+  "almetal_sha256": "3382c06430fa8273bf5460684f836455db0c8d478a6e97700ed793038519a06d",
+  "metallib_sha256": "47e1500f1717ad3c5c19a569b7316a2d45dcdea4ba3d7b4f29825f301d3e1b55",
+  "executable_sha256": "e0d1c4861244ba72dcc9a4614bff7af5c4f9145c952a1fd9a6ea4108b0646c82",
+  "pinned_baseline_source": null
+}

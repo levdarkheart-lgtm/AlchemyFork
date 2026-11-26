@@ -1,0 +1,11 @@
+test_detail_is_not_uniform_brightness_or_sharpness_assumption (test_glass_analysis.GlassAnalysisTests.test_detail_is_not_uniform_brightness_or_sharpness_assumption) ... ok
+test_file_dimension_validation_distinguishes_input_and_output (test_glass_analysis.GlassAnalysisTests.test_file_dimension_validation_distinguishes_input_and_output) ... ok
+test_output_roi_does_not_accept_input_stride (test_glass_analysis.GlassAnalysisTests.test_output_roi_does_not_accept_input_stride) ... ok
+test_rgb_and_rms_regions_are_separate_from_uncovered_control (test_glass_analysis.GlassAnalysisTests.test_rgb_and_rms_regions_are_separate_from_uncovered_control) ... ok
+test_sequence_counts_and_phase_protocol_are_required (test_glass_analysis.GlassAnalysisTests.test_sequence_counts_and_phase_protocol_are_required) ... ok
+test_zero_denominator_is_explicit_not_a_claimed_improvement (test_glass_analysis.GlassAnalysisTests.test_zero_denominator_is_explicit_not_a_claimed_improvement) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.019s
+
+OK

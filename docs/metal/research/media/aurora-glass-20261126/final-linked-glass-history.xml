@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Darwin-c++"
+	tests="2"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="Dejans-MacBook-Pro.local"
+	time="35"
+	timestamp="2026-11-26T20:50:37"
+	>
+	<testcase name="almetal_tests/almetal_temporal_glass_test" classname="almetal_tests/almetal_temporal_glass_test" time="35.3558" status="run">
+		<properties>
+			<property name="cmake_labels" value="almetal"/>
+		</properties>
+		<system-out>Filters: [#almetal_temporal_glass_test] ~[.]
+Randomness seeded to: 1259208517
+2026-11-26 20:50:37.811 almetal_tests[30112:6597879] Metal API Validation Enabled
+2026-11-26 20:50:37.811 almetal_tests[30112:6597879] Metal GPU Validation Enabled
+===============================================================================
+All tests passed (68498 assertions in 8 test cases)
+
+</system-out>
+	</testcase>
+	<testcase name="almetal_tests/almetal_temporal_history_test" classname="almetal_tests/almetal_temporal_history_test" time="0.05292" status="run">
+		<properties>
+			<property name="cmake_labels" value="almetal"/>
+		</properties>
+		<system-out>Filters: [#almetal_temporal_history_test] ~[.]
+Randomness seeded to: 11973715
+2026-11-26 20:51:13.163 almetal_tests[38705:6615395] Metal API Validation Enabled
+2026-11-26 20:51:13.164 almetal_tests[38705:6615395] Metal GPU Validation Enabled
+===============================================================================
+All tests passed (2099 assertions in 23 test cases)
+
+</system-out>
+	</testcase>
+</testsuite>

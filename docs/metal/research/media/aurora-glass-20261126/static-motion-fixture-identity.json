@@ -1,0 +1,8 @@
+{
+  "variant": "static-motion-fixed-01",
+  "test_source_sha256": "c0ea14d4cb85f25d616e1d926b28e80be3567cea4d9ad1d7952898745668df0c",
+  "almetal_sha256": "0d1460b9b8c91d64ce1790e7a113f7fd54daef6326392e0f7426865a97f14bef",
+  "metallib_sha256": "bcb9358556bfacca7307342c6eb36c1f71f1b8826870d3f121196d4fc90d7a38",
+  "executable_sha256": "69491ba5a5023aa4e0c99bfe7c06ccc1d00b309a17334ba328de9f280b2948cb",
+  "pinned_baseline_source": null
+}

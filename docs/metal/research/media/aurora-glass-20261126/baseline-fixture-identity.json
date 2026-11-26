@@ -1,0 +1,8 @@
+{
+  "variant": "baseline",
+  "test_source_sha256": "d5199733de9151cdf4eb42dd8d7c7a1a02fde2846057b281c4cd7580b6de8d08",
+  "almetal_sha256": "9a6d6f8d7b58cec846afddb19d44b3694ec649c867d60e90838930b41b2f79a9",
+  "metallib_sha256": "5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a",
+  "executable_sha256": "888f13f7f9dbf5ae5e9d2acdc56c748ee975e1544088e3bddda623bd7cd7f182",
+  "pinned_baseline_source": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f"
+}

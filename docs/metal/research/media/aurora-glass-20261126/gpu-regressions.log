@@ -1,0 +1,44 @@
+Test project /Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/aurora-native-temporal/build-aurora-native-release
+      Start  54: almetal_tests/almetal_aurora_inputs_test
+ 1/18 Test  #54: almetal_tests/almetal_aurora_inputs_test ................   Passed    0.86 sec
+      Start  56: almetal_tests/almetal_temporal_visibility_test
+ 2/18 Test  #56: almetal_tests/almetal_temporal_visibility_test ..........   Passed    8.68 sec
+      Start  58: almetal_tests/almetal_temporal_presentation_test
+ 3/18 Test  #58: almetal_tests/almetal_temporal_presentation_test ........   Passed    5.44 sec
+      Start  59: almetal_tests/almetal_temporal_orchestration_test
+ 4/18 Test  #59: almetal_tests/almetal_temporal_orchestration_test .......   Passed    1.39 sec
+      Start  60: almetal_tests/almetal_temporal_scaler_test
+ 5/18 Test  #60: almetal_tests/almetal_temporal_scaler_test ..............   Passed    1.83 sec
+      Start  61: almetal_tests/almetal_temporal_motion_test
+ 6/18 Test  #61: almetal_tests/almetal_temporal_motion_test ..............   Passed   15.13 sec
+      Start  62: almetal_tests/almetal_temporal_history_test
+ 7/18 Test  #62: almetal_tests/almetal_temporal_history_test .............   Passed    0.05 sec
+      Start  63: almetal_tests/almetal_spatial_scaler_test
+ 8/18 Test  #63: almetal_tests/almetal_spatial_scaler_test ...............   Passed    0.11 sec
+      Start  64: almetal_tests/almetal_spatial_presentation_test
+ 9/18 Test  #64: almetal_tests/almetal_spatial_presentation_test .........   Passed    4.28 sec
+      Start  66: almetal_tests/almetal_resource_plan_test
+10/18 Test  #66: almetal_tests/almetal_resource_plan_test ................   Passed    0.01 sec
+      Start  67: almetal_tests/almetal_resource_plan_native_test
+11/18 Test  #67: almetal_tests/almetal_resource_plan_native_test .........   Passed    0.12 sec
+      Start  68: almetal_tests/almetal_surface_resource_native_test
+12/18 Test  #68: almetal_tests/almetal_surface_resource_native_test ......   Passed    0.42 sec
+      Start  75: almetal_tests/almetal_postchain_legacy_admission_test
+13/18 Test  #75: almetal_tests/almetal_postchain_legacy_admission_test ...   Passed    1.98 sec
+      Start 107: almetal_tests/almetal_world_material_source_test
+14/18 Test #107: almetal_tests/almetal_world_material_source_test ........   Passed    3.23 sec
+      Start 108: almetal_tests/almetal_world_resources_test
+15/18 Test #108: almetal_tests/almetal_world_resources_test ..............   Passed    6.52 sec
+      Start 110: almetal_tests/almetal_material_sampling_test
+16/18 Test #110: almetal_tests/almetal_material_sampling_test ............   Passed    3.09 sec
+      Start 111: almetal_tests/almetal_world_inputs_test
+17/18 Test #111: almetal_tests/almetal_world_inputs_test .................   Passed    1.27 sec
+      Start 143: almetal_tests/almetal_gbuffer_constants_test
+18/18 Test #143: almetal_tests/almetal_gbuffer_constants_test ............   Passed    1.50 sec
+
+100% tests passed out of 18
+
+Label Time Summary:
+almetal    =  55.91 sec*proc (18 tests)
+
+Total Test time (real) =  55.96 sec

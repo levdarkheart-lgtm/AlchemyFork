@@ -1,0 +1,30 @@
+Filters: [temporal-glass],[temporal-history]
+Randomness seeded to: 2172278209
+2026-11-26 20:04:44.707 almetal_tests[17025:6518727] Metal API Validation Enabled
+2026-11-26 20:04:44.707 almetal_tests[17025:6518727] Metal GPU Validation Enabled
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+almetal_tests is a Catch2 v3.16.1 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+Stationary modern sky agrees exactly with partial glass motion without
+accepting dynamic sky
+-------------------------------------------------------------------------------
+/Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/aurora-native-temporal/indra/almetal/tests/almetal_temporal_glass_test.mm:881
+...............................................................................
+
+/Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/aurora-native-temporal/indra/almetal/tests/almetal_temporal_glass_test.mm:843: FAILED:
+  REQUIRE( renderer->captureTemporalOpaqueDepth(*gbuffer->depthStencilTexture(), *opaque_depth, &error) )
+with expansion:
+  false
+with messages:
+  width := 128
+  height := 64
+  glass := false
+
+
+===============================================================================
+test cases:    31 |    30 passed | 1 failed
+assertions: 74132 | 74131 passed | 1 failed
+

@@ -1,0 +1,35 @@
+{
+  "legacy-production": {
+    "worlds": 216,
+    "roi": [
+      150,
+      18,
+      36,
+      60
+    ],
+    "different_rgb_components": 0,
+    "max_abs_difference": 0.0
+  },
+  "pbr-single-production": {
+    "worlds": 216,
+    "roi": [
+      150,
+      18,
+      36,
+      60
+    ],
+    "different_rgb_components": 0,
+    "max_abs_difference": 0.0
+  },
+  "pbr-multi-production": {
+    "worlds": 216,
+    "roi": [
+      150,
+      18,
+      36,
+      60
+    ],
+    "different_rgb_components": 0,
+    "max_abs_difference": 0.0
+  }
+}
