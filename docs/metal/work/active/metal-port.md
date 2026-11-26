@@ -33,7 +33,7 @@ Previous PPD608/609 allocation/cancellation corrections and optional pool platea
 
 Clean69506/sourcef969bd5324 builds/signs and passes346ARM64 checks/login smoke. Fullscreen grass/palm
 variation falls≈85%/77%; settling remains. Quiet sanity observes8%lower rate without restoredcontrol. Next:
-DMG content/signature verification passes; deliver privately with precise limitations. Hooks/mip counterfactual
+DMG/signature/content checks pass; DMG/ZIP/checksums uploaded to iCloudDesktop. Next: owner quality/cost review. Hooks/mip counterfactual
 have been removed from pipeline source; diagnostic executables/evidence remain retained. No new push.
 Restore settings/shared environment, leave viewer closed. Never query an app-bound CUA object after Quit.
 

@@ -476,3 +476,9 @@ with346ARM64Mach-O checks and deep/strict signature passing. Native fullscreen l
 Home sanity session both finish normally. Original normal/custom graphics settings are byte-restored and
 shared environment is restored; no viewer remains running. The correction source commit above differs from
 the later documentation-only handoff commit. No push or usual/Spatial branch modification is performed.
+
+Delivery metadata confirms all three privately copied iCloudDesktop files uploaded with no uploaderror at
+2026-11-26T00:20:24UTC. The initial4355account-access error recovered without account/settings changes.
+Files: Alchemy-MetalFX-Temporal-Foliage-69506-AppleSilicon.dmg, MetalFX-Temporal-Foliage-69506-Review.zip and
+MetalFX-Temporal-Foliage-69506-SHA256SUMS.txt. Checksums/final delivery receipt remain beside private evidence.
+Ready for owner review of the demonstrated correction and residual limits; no new push approval or FPS claim.

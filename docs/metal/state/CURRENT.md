@@ -24,7 +24,7 @@ Earlier live runs were windowed2304x1278→3456x1916 despite FullScreen setting;
 Final actualfullscreen fixedMidday2304x1446→3456x2168 shows grass≈85%/palm77%less adjacent variation.
 20strict quality bounds remain failed; detail/settling stay open. Quiet sanity observes8%lower rate, unisolated.
 Final14affected suites pass API/GPU validation; strict fixture retains20failures/6201assertions.
-Clean69506/sourcef969bd5324: Release/signature/346ARM64/DMGcontent checks pass; settings restored, appclosed.
+69506/sourcef969bd5324: Release/signature/346ARM64/DMGchecks pass; iCloud packages uploaded, settings restored/appclosed.
 See [Temporal report](../research/metalfx-temporal-20261125.md). No new push approval.
 
 Preserved PPD608/609 correction source64023b8b16/build69501 passes15 suites, Release/static/signature checks,
