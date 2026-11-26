@@ -48,6 +48,11 @@ bool fail(std::string* error, const std::string& message)
 }
 // These two small integration adapters are not changes to the reconstruction.
 // They convert Alchemy's public input conventions and preserve its glow contract.
+// The producer's history-unsafe signal is deliberately converted to the pinned
+// algorithm's binary composition marker (normal.x > 1.5). This is a conservative
+// invalid-history policy, NOT a direct copy of material opacity or MetalFX's
+// proportional reactive contract. Ordinary valid glass leaves this marker clear;
+// Aurora independently derives transparency reactivity from opaque/final HDR.
 constexpr const char* adapter_source = R"MSL(
 #include <metal_stdlib>
 using namespace metal;
@@ -55,8 +60,8 @@ struct U { float4x4 reproj; int2 size,prev_size,out_size,prev_out,max_size,max_o
 struct V { float4 pos [[position]]; };
 vertex V aurora_vertex(uint i [[vertex_id]]) { return {float4(float((i<<1)&2)*2-1,float(i&2)*2-1,0,1)}; }
 struct A { float4 motion [[color(0)]]; float depth [[depth(any)]]; };
-A adapt(uint2 p, float d, float2 m, float marker, constant U& u) {
- A a; a.motion=float4(marker>0 ? 2.0f:0.0f,0,-m/float2(u.size)); a.depth=d; return a;
+A adapt(uint2 p, float d, float2 m, float history_unsafe, constant U& u) {
+ A a; a.motion=float4(history_unsafe>0 ? 2.0f:0.0f,0,-m/float2(u.size)); a.depth=d; return a;
 }
 fragment A aurora_adapter_r32(V v [[stage_in]], texture2d<float,access::read> d [[texture(0)]], texture2d<float,access::read> m [[texture(1)]], texture2d<float,access::read> c [[texture(2)]], constant U& u [[buffer(0)]]) {
  uint2 p=uint2(v.pos.xy); return adapt(p,d.read(p).r,m.read(p).xy,c.read(p).r,u);
@@ -446,8 +451,8 @@ bool ALMetalAuroraReconstructor::encode(ALMetalCommandBuffer& command, const ALM
         !compatible(input.motion, d.input_width, d.input_height, ALMetalPixelFormat::rg16_float) ||
         !compatible(input.output, d.output_width, d.output_height, ALMetalPixelFormat::rgba16_float) ||
         !(tex(input.output).usage & MTLTextureUsageRenderTarget) ||
-        (input.composition && !compatible(input.composition, d.input_width, d.input_height, ALMetalPixelFormat::r8_unorm)))
-        return fail(error, "Aurora requires compatible HDR opaque/final, reverse depth, pixel motion, composition and output textures");
+        (input.history_unsafe && !compatible(input.history_unsafe, d.input_width, d.input_height, ALMetalPixelFormat::r8_unorm)))
+        return fail(error, "Aurora requires compatible HDR opaque/final, reverse depth, pixel motion, history confidence and output textures");
     if (input.output->nativeHandle() == input.color->nativeHandle() || input.output->nativeHandle() == input.opaque->nativeHandle())
         return fail(error, "Aurora reconstruction output must not alias its scene inputs");
     if (command.isCommitted() || command.nativeDevice() != (__bridge void*)impl.native)
@@ -507,7 +512,7 @@ bool ALMetalAuroraReconstructor::encode(ALMetalCommandBuffer& command, const ALM
     for (auto t : { input.color, input.opaque, input.depth, input.motion })
         if (!command.useResource(t->resourceView(), RP::Access::read, error))
             return false;
-    if (input.composition && !command.useResource(input.composition->resourceView(), RP::Access::read, error))
+    if (input.history_unsafe && !command.useResource(input.history_unsafe->resourceView(), RP::Access::read, error))
         return false;
     if (!command.useResource(input.output->resourceView(), RP::Access::write, error) ||
         !command.useResource(constants.buffer->resourceView(), RP::Access::read, error))
@@ -629,7 +634,7 @@ bool ALMetalAuroraReconstructor::encode(ALMetalCommandBuffer& command, const ALM
             [blit fillBuffer:buf(e->new_locks.get()) range:NSMakeRange(0, e->new_locks->length()) value:0];
         [blit endEncoding];
         const auto motion = tex(e->adapted_motion.get()), depth = tex(e->adapted_depth.get());
-        const auto composition = tex(input.composition ? input.composition : e->empty_composition.get());
+        const auto composition = tex(input.history_unsafe ? input.history_unsafe : e->empty_composition.get());
         bool       ok          = run("Aurora input convention adapter",
                       input.depth->descriptor().format == ALMetalPixelFormat::r32_float ? impl.adapter_r32 : impl.adapter_depth, { motion },
                                      { { 0, tex(input.depth) }, { 1, tex(input.motion) }, { 2, composition } }, {}, depth);

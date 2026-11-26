@@ -123,6 +123,11 @@ template<class Emit> void materialTokens(const ALMetalWorldSimpleBatch& b, float
         emit(descriptor.mipmap_level_count); emit(descriptor.sample_count);
         for (auto channel : descriptor.swizzle) emit(static_cast<std::uint64_t>(channel));
     };
+    // A resource generation identifies storage, not every in-place pixel write.
+    // The existing producer dependency epoch also changes when an LLImageGL
+    // publishes new contents into that same storage, and stays fixed across
+    // cache-only eviction/republication of equal authored facts.
+    emit(b.temporal_material_revision);
     emit(b.texture_count); emit(b.material_slot_count); emit(b.pbr_slot_count);
     emit(b.material_alpha_mode); real(mip_bias);
     const std::uint64_t flags = std::uint64_t(b.alpha_mask) | (std::uint64_t(b.use_vertex_color) << 1u) |

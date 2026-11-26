@@ -7,6 +7,12 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
+PPD619 glass correction is active following owner69516 review: reproduce actual
+legacy/multi-slot PBR glass color/motion/rejection/Aurora output; retain a failing
+baseline and implement exact color coverage before qualifying valid history.
+Root owns builds/docs/integration; delegated shader/host and new rendered fixture
+paths have exclusive ownership. No broad FPS campaign, algorithm tuning or login.
+
 Commit `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` pins experimentalAurora69516 application source.
 [Native report](../../research/aurora-native-temporal-20261126.md) is authoritative;
 [evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) retainsoldquality/cost.

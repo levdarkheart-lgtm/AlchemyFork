@@ -8,6 +8,13 @@ login or whole-viewer FPS claim. Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
+**Current task — PPD619:** owner reports substantial foliage improvement in69516,
+but strong through-glass jitter. The [glass investigation](../research/aurora-temporal-glass-20261126.md)
+owns focused production-path reproduction and exact legacy/PBR coverage repair.
+No active viewer session; offline work does not wait for login. Preserve69516 and
+all existing foliage/history/ownership corrections. Source74c07274bb matched remote
+at task start; new correction, tests and packaging are in progress, not yet qualified.
+
 **Renderer code checkpoint:** `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` — experimental build69516 source.
 The [native report](../research/aurora-native-temporal-20261126.md) owns the source
 map, qualification and delivery. New saved ID8 /effective4 selects exact2/3 Aurora
@@ -16,8 +23,10 @@ uses existing motion/poses, jitter, main-post transactions and retirement. Genui
 opaque/final HDR drives upstream reactivity; the final resolve preserves glow.
 No runtime Rust/wgpu, new history scheduler or normal-frame CPU wait is added.
 
-PPD610 stays open: the owner’s palm/grass scene has not been reviewed with this
-prototype. All original67/75 and Aurora quality failures remain. The native port
+PPD610 stays open: the owner reports substantial live foliage improvement with
+69516, and separately reports glass instability tracked by PPD619. This is useful
+live feedback, not acceptance of all quality bounds. All original67/75 and Aurora
+quality failures remain. The native port
 matches **195,084,288 RGB components across468main+414mature worlds exactly**.
 Edge variation.0008673, contrast.820113, recall.936028; area.821401<.85 and stop18/36
 errors.0158863/.0123194>1/255 still fail. Matched previews use fixture worlds at12fps,

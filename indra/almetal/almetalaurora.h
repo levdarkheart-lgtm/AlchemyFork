@@ -23,9 +23,13 @@ struct ALMetalAuroraInputs
     const ALMetalTexture* opaque = nullptr; // genuine pre-transparency HDR
     const ALMetalTexture* depth  = nullptr; // reverse-Z R32F or Depth32F
     const ALMetalTexture* motion = nullptr; // RG16F previous-current input pixels
-    // Optional R8 history/composition invalidation. Static material value is 0.
-    // This does not replace Aurora's generated before/after transparency mask.
-    const ALMetalTexture* composition = nullptr;
+    // Optional producer confidence mask: zero means the visible contributions have
+    // valid content/pose history and a representable layered motion. Positive
+    // means history is unsafe (animation, invalid pose or mixed-layer motion).
+    // Transparency alone is NOT unsafe. This is not an upstream composition map
+    // or opacity: the adapter explicitly maps unsafe history to Aurora's binary
+    // composition marker, separately from its opaque/final transparency reactivity.
+    const ALMetalTexture* history_unsafe = nullptr;
     const ALMetalTexture* output      = nullptr; // RGBA16F output; RGB reconstructed, glow resolved
 };
 struct ALMetalAuroraFrame

@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-619 -->
+<!-- next-defect-id: PPD-622 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -14989,12 +14989,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-25
 - Original reference: Original Alchemy1eb44bb alpha-tested tree/grass/material color/depth coverage is the compatibility reference; Temporal jitter/reconstruction/history is new. Native and Spatial remain independent controls.
 - Evidence: [Temporal implementation and corrective investigation](research/metalfx-temporal-20261125.md). Owner Untitled.mov SHA6065598f44f2cbce37ae1693bb716ff4718402a38a4effb1cf075a4bde82da99 and failed69503 review are retained. Actual front-yard draw/face records identify PBR MASK palms/dense leaves and generic/PBR BLEND grass; static camera/poses, near-zero unjittered motion and broad rejection are directly observed.
-- Next action: Finish the isolated experimental native67%AuroraOFF viewer build/package, then owner reviews the actual palm/grass scene. Preserve Native/Spatial/MetalFX/defaults and all original failures; PPD610 remains open.
+- Next action: Preserve owner-reported substantial foliage improvement in69516 while correcting the separate glass integration defect PPD619. Keep all original quality failures and Native/Spatial/MetalFX/defaults; broader owner quality acceptance remains open.
 - Verification: [Native prototype](research/aurora-native-temporal-20261126.md) matches all195,084,288retainedAuroraOFF RGB components across468main+414mature worlds. Frozen area.821401<.85 and18/36own-reference errors.015886/.012319>1/255 stillfail. Actualtarget native graph inclopaque preservation/adapters/displaydepth/glow costs10.926median/12.392p95ms; no viewerFPS claim. Correctness and port parity justify only an experimental owner review, not closure of the original live complaint. Earlier quality/cost populations remain in the [evaluation](research/aurora-reconstruction-evaluation-20261126.md).
 - Owner verification: pending
 - Push approval: granted
 
 ### History
+
+- 2026-11-26 owner69516 review: substantial foliage improvement reported with native Aurora. Strong through-glass jitter remains and is separately registered as PPD619. This positive scoped observation does not waive the frozen recovered-area or movement-stop failures or close PPD610.
+
 
 - 2026-11-25: Registered owner-reported Temporal quality defect before repair. Treat grass, dense leaf interiors and silhouettes separately; use pillar/trunk/fence as controls. Existing ownership/allocation tests do not close this rendered-quality defect. Preserve69501 app/evidence and Spatial/usual branches.
 
@@ -15200,3 +15203,57 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26: Registered external delivery failure immediately after local package verification/copy. No Apple ID changes, daemon reset or security bypass attempted. This is separate from viewer correctness and PPD610 image-quality acceptance.
 
 - 2026-11-26 recovery: Second bounded metadata recheck confirms complete upload of all three unchanged files. The transient condition cleared without an intervention. Review build and bundle are available for owner download; no remote availability claim preceded that observation.
+
+
+## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Main-view transparency integration
+- Discovered: 2026-11-26
+- Original reference: Original Alchemy upstream/develop 408fd6c014e6 class3/deferred/materialF.glsl preserves lighting-dependent max(diffuse.a,glare)*vertexAlpha coverage. Temporal reconstruction is new; pinned Aurora ee458fb consumes actual opaque/final HDR and an independent composition marker.
+- Evidence: [Glass investigation](research/aurora-temporal-glass-20261126.md). Owner reports improved foliage in69516 but strong jitter through a glass fence, also observed with earlier MetalFX modes. Source b6f18c24f4 excludes legacy material and multi-slot PBR forward BLEND from valid-history qualification; surviving draws force rejection1. Exact owner-fence family is not established by retained older fence observations.
+- Next action: Reproduce legacy and multi-slot PBR glass through actual color/motion/jitter/Aurora paths; retain failing masks/output, isolate composition causality and implement exact color coverage plus valid-history policy. Preserve movement/disocclusion protection and existing foliage reconstruction.
+- Verification: Source audit establishes the exclusion and legacy raw-alpha coverage mismatch, not their attribution to the new owner scene. No corrective rendered result yet. Retain69516 and all unrelated quality failures; no broad FPS investigation or algorithm tuning.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered owner regression before repair. Current branch74c07274bb is clean and matches remote. No active local viewer session; offline production-path reproduction proceeds without login. Owner explicitly authorizes corrected experimental package, private iCloud delivery and branch publication.
+
+
+## PPD-620 — Temporal material selector clamps differ from forward color
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Temporal material coverage
+- Discovered: 2026-11-26
+- Original reference: Actual native PBR color clamps the streamed selector to the last populated material slot before texture and per-slot UV selection.
+- Evidence: [Glass input audit](research/aurora-temporal-glass-20261126.md). Temporal clamps to7, then only its UV lookup clamps to the active count; alpha sampling still uses the unclamped slot. With selector5 and two populated slots, color samples slot1 while Temporal can sample the slot0 fallback binding.
+- Next action: Use one matched populated-slot clamp before Temporal UV and texture selection; add a rendered out-of-range multi-slot counterexample. Preserve generic32-texture semantics.
+- Verification: Discovered during review of the newly generalized glass path before packaging. Rendered counterexample and corrected retest are pending; no quality threshold changes.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered source-confirmed coverage discrepancy. It is distinct from the legacy coverage/family exclusion in PPD619 and is repaired within the same bounded glass integration task.
+
+
+## PPD-621 — In-place published texture changes can retain Temporal material history
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Temporal material content identity
+- Discovered: 2026-11-26
+- Original reference: LLImageGL touchContents/nativePublication and ALScenePublicationNative DependencyRelay already invalidate actual authored texture content; same native backing can be reused safely after readers settle.
+- Evidence: [Glass content audit](research/aurora-temporal-glass-20261126.md). Temporal material tokens compare native texture allocation identity/generation, but not the existing source producer revision. Rebuilding a packet after an in-place media/image update can keep those allocation tokens and geometry publication revision unchanged, allowing old material history.
+- Next action: Carry the existing exact authored producer revision as transient per-draw material-history data. Preserve valid history across equivalent republication/cache eviction; do not add another resource lifetime system or reject ordinary object motion.
+- Verification: Source path identified from LLImageGL markMetalRenderTextureUpdated through DependencyRelay and source Payload.producer_revision. Corrective implementation and content/eviction/republication regressions are pending.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered during glass safety review before packaging. Newly qualifying static glass must distinguish real changing content, not rely only on stable allocation identity. This focused repair reuses the existing source publication protocol and preserves PPD611 semantic-material equality.

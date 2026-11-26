@@ -1,0 +1,184 @@
+{
+  "source": "Deterministic authored production-path glass fixture; no owner scene captures",
+  "dimensions": {
+    "scene": [
+      128,
+      64
+    ],
+    "output": [
+      192,
+      96
+    ]
+  },
+  "phase_count": 18,
+  "clip_playback_fps": 12,
+  "baseline_application_source": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f",
+  "candidate_scope": "Corrected native forward coverage/history policy, algorithm unchanged",
+  "files": [
+    {
+      "file": "glass-comparison.json",
+      "bytes": 505809,
+      "sha256": "c8ff16033b70b9fbefa33b6bfd59f7baf3edae67e6d6c68b63a84907e2f4feb2"
+    },
+    {
+      "file": "legacy-metalfx-move18-stop36-12fps.mp4",
+      "bytes": 173847,
+      "sha256": "ab56fbcad40074f68a623859555237841e6df99ec57593f978e803d6be17de50"
+    },
+    {
+      "file": "legacy-metalfx-stationary-phase17-baseline-left-candidate-right.png",
+      "bytes": 57077,
+      "sha256": "1193e4504283615e8072560b1fe871d1d4a173b6ce4e35b6f8e5a79e2447fc30"
+    },
+    {
+      "file": "legacy-metalfx-stationary-phase17-pane-1to1.png",
+      "bytes": 13463,
+      "sha256": "89a4edf97799f9e4081a783c80d1e0c6e57d446964b4afb350c622b21dcdd905"
+    },
+    {
+      "file": "legacy-metalfx-stationary54-12fps.mp4",
+      "bytes": 130286,
+      "sha256": "d5cbab5a255afb910d0c626d9cfa27d627c42498aa6b583e1c2f139ba14ee13c"
+    },
+    {
+      "file": "legacy-metalfx-stop18-phase17-baseline-left-candidate-right.png",
+      "bytes": 57008,
+      "sha256": "26eb11f15ee7096f1220ada7382b8642e9b380b0efb0d3b3bd999b16ad4fa3d2"
+    },
+    {
+      "file": "legacy-metalfx-stop18-phase17-pane-1to1.png",
+      "bytes": 13186,
+      "sha256": "73b440148666ee3a0ba901ad708f35d3d6562619f24dc967e7d4c3ce2b7ac535"
+    },
+    {
+      "file": "legacy-metalfx-stop36-phase17-baseline-left-candidate-right.png",
+      "bytes": 56709,
+      "sha256": "6c2a77313ceffd8b1359d310c16a8fabee0a8531fe48d80f8c95c85c5fc9ab4c"
+    },
+    {
+      "file": "legacy-metalfx-stop36-phase17-pane-1to1.png",
+      "bytes": 13337,
+      "sha256": "64428853ea942052d46b8828cdb53a7141edd6f58ac037eb6e360a98d7ca977b"
+    },
+    {
+      "file": "legacy-production-move18-stop36-12fps.mp4",
+      "bytes": 173239,
+      "sha256": "e370ed50525ed3735cdb26d52f19868c8e2385f179c7674bcce654580dfa9d7f"
+    },
+    {
+      "file": "legacy-production-stationary-phase17-baseline-left-candidate-right.png",
+      "bytes": 48722,
+      "sha256": "5f84a132c348a7befa84589c26bda8dfcae5ed6f78e92a433bde20beebe5c00b"
+    },
+    {
+      "file": "legacy-production-stationary-phase17-pane-1to1.png",
+      "bytes": 13011,
+      "sha256": "590e921e3c1aacbd679157e4a462794db462a2aafb3bec2d51e4e72bbe2162a5"
+    },
+    {
+      "file": "legacy-production-stationary54-12fps.mp4",
+      "bytes": 97178,
+      "sha256": "069cdd5328130f90f60c0eecca4442fbb8ff12378412d8dfdcd54eee3d241291"
+    },
+    {
+      "file": "legacy-production-stop18-phase17-baseline-left-candidate-right.png",
+      "bytes": 47795,
+      "sha256": "5a19389345d0be707b968e100260d1aac6c66b5d28f8f6bdefb560bae4833864"
+    },
+    {
+      "file": "legacy-production-stop18-phase17-pane-1to1.png",
+      "bytes": 12696,
+      "sha256": "b4bc9c6055870bddac18cc7dcde84676dd72ed9d8f09fd6fc8058e2cc99435a7"
+    },
+    {
+      "file": "legacy-production-stop36-phase17-baseline-left-candidate-right.png",
+      "bytes": 48165,
+      "sha256": "3343fbd91426a6c6fa307e71c5b555410b8fab25aa3f79f19035f7bdc6a86752"
+    },
+    {
+      "file": "legacy-production-stop36-phase17-pane-1to1.png",
+      "bytes": 12879,
+      "sha256": "9a4ff0b35ed5a5efdbaaabfcebcc7e70e9676f309bf4e89801bbe785a66cc8ca"
+    },
+    {
+      "file": "pbr-multi-production-move18-stop36-12fps.mp4",
+      "bytes": 176279,
+      "sha256": "6578501103d7e90e40cfa43aed9e05cd1d9b479f9d2a59a7d6351bc94a62b911"
+    },
+    {
+      "file": "pbr-multi-production-stationary-phase17-baseline-left-candidate-right.png",
+      "bytes": 51716,
+      "sha256": "aef198b9b2749220499664f46494f69b3d4afcaa24095f4b7509c17b99624f45"
+    },
+    {
+      "file": "pbr-multi-production-stationary-phase17-pane-1to1.png",
+      "bytes": 13738,
+      "sha256": "d5b862d55b18f6bb29cb230add578a15dc56d580adf07c532fb3819f3ee1b44d"
+    },
+    {
+      "file": "pbr-multi-production-stationary54-12fps.mp4",
+      "bytes": 96611,
+      "sha256": "4291e93ff8bb2442a42f5904c2e598247e17406f6fff20823220a88c9978c719"
+    },
+    {
+      "file": "pbr-multi-production-stop18-phase17-baseline-left-candidate-right.png",
+      "bytes": 52008,
+      "sha256": "b19535556cb1e45849fec774931ba9f503e21ca831c4fc0d51a6695627ce8aa8"
+    },
+    {
+      "file": "pbr-multi-production-stop18-phase17-pane-1to1.png",
+      "bytes": 13611,
+      "sha256": "96e1fd52a44ebca9be3f9ff618be2dbfeec59ba18a53e9f81428426323b6e4e9"
+    },
+    {
+      "file": "pbr-multi-production-stop36-phase17-baseline-left-candidate-right.png",
+      "bytes": 52035,
+      "sha256": "5cda6f77508fb71290e85698f8b8d21a36e3bbc72c086b78ac4cf2235a9d5d9d"
+    },
+    {
+      "file": "pbr-multi-production-stop36-phase17-pane-1to1.png",
+      "bytes": 13660,
+      "sha256": "88437d7f894b6a829dfe3644b5a95fe7caa6cfb726ceb11645694392910909b8"
+    },
+    {
+      "file": "pbr-single-production-move18-stop36-12fps.mp4",
+      "bytes": 177895,
+      "sha256": "2a75a02bf176028b801f52eb5a1f3ddc7f5526d5cc7eaf6bfa396c2d58c8d72c"
+    },
+    {
+      "file": "pbr-single-production-stationary-phase17-baseline-left-candidate-right.png",
+      "bytes": 36701,
+      "sha256": "f4a0f5946ffe27708b0195957c18658353b5d9aebd01f99898fb51bb82ec054d"
+    },
+    {
+      "file": "pbr-single-production-stationary-phase17-pane-1to1.png",
+      "bytes": 7563,
+      "sha256": "44ff0a31a09329255548e0d703855d43cd70ddc04b9be1628ee65e39c04f00db"
+    },
+    {
+      "file": "pbr-single-production-stationary54-12fps.mp4",
+      "bytes": 96112,
+      "sha256": "bcf679909e481deaf63cdc5770fa466ec411c563a6b16a86c00c220162e061e4"
+    },
+    {
+      "file": "pbr-single-production-stop18-phase17-baseline-left-candidate-right.png",
+      "bytes": 35189,
+      "sha256": "f8f95e4b3d928d112ba2d2c6f8af56f37c512ee1071f2e1ace63f13dbe6e91ef"
+    },
+    {
+      "file": "pbr-single-production-stop18-phase17-pane-1to1.png",
+      "bytes": 7417,
+      "sha256": "60c6c8a75d66ba781f531132715a336b89427d23c666c1b9325555124cdfb026"
+    },
+    {
+      "file": "pbr-single-production-stop36-phase17-baseline-left-candidate-right.png",
+      "bytes": 35357,
+      "sha256": "ddce6879652222c6f72bf522b83017e8d0abbf119d1960840da2f9f215e6e298"
+    },
+    {
+      "file": "pbr-single-production-stop36-phase17-pane-1to1.png",
+      "bytes": 7471,
+      "sha256": "4aaae0cd3dfe3086a263d5a6ed0aac82f82701442a0eba2971d00babae562873"
+    }
+  ]
+}

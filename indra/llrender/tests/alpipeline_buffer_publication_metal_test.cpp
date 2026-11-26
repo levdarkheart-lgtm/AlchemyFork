@@ -3695,3 +3695,94 @@ static void visibilityCostMesh(Inputs::LLDrawInfo& info,U32 count,bool outside)
 #include "alpipeline_producer_drain_native.inl"
 
 #include "alpipeline_producer_owner_cost_native.inl"
+
+TEST_CASE("Actual image content publications distinguish in-place edits from cache-only world rebuilds",
+          "[almetal][pipeline-buffer-publication][scene-publication][temporal-material-content]")
+{
+    Publication f; Inputs::LLDrawInfo info;
+    info.mVertexBuffer = f.buffer(); info.mTexture.value = &f.image;
+    // A rejected lookup cache leaves no hidden image lease after the caller
+    // releases its packet, matching the media producer's valid in-place case.
+    ALNativeSourceWorkingSet transient_cache(1, 1, 0);
+    Inputs::ALScenePublicationNative::WorldFlavor flavor;
+    flavor.family = Inputs::ALScenePublicationNative::WorldFamily::legacy;
+    flavor.material_alpha_mode = 1; flavor.native_materials = false;
+    const auto capture = [&]
+    {
+        return Inputs::ALScenePublicationNative::world(info, flavor, transient_cache,
+            Inputs::sNativeSceneSerial, Inputs::gFrameCount);
+    };
+    auto first = capture(); REQUIRE(first);
+    const auto revision = first.owner->producer_revision;
+    const auto geometry_revision = first.prototype->temporal_generation;
+    const auto serial = first.owner->serial;
+    REQUIRE(first.prototype->temporal_material_revision == revision);
+    REQUIRE(revision == info.state->revision());
+    CHECK_FALSE(info.state->publication());
+    first = {}; info.state->evict();
+    auto republished = capture(); REQUIRE(republished);
+    CHECK(republished.owner->serial != serial);
+    CHECK(republished.owner->producer_revision == revision);
+    CHECK(republished.prototype->temporal_material_revision == revision);
+    CHECK(republished.prototype->temporal_generation == geometry_revision);
+    republished = {}; info.state->evict();
+    gGL.frameFences().release();
+
+    auto* backing = f.white->getMetalTexture(); REQUIRE(backing);
+    const auto allocation_identity = backing->resourceView().identity();
+    const auto allocation_generation = backing->resourceView().generation();
+    const auto content_stamp = f.white->getContentStamp();
+    REQUIRE_FALSE(f.white->hasMetalTextureLeases());
+    // This is the accelerated media contract: invalidate publisher cache
+    // leases, perform a real same-allocation GPU write, then publish contents.
+    f.white->nativePublication().willWrite();
+    const std::array<U8,4> changed{37, 173, 91, 128};
+    auto command = f.device->makeCommandBuffer("In-place Temporal material-content regression", &f.error);
+    REQUIRE(command);
+    REQUIRE(backing->upload(*command, 0, 0, {}, changed.data(), changed.size(), &f.error));
+    REQUIRE(command->commitAndWait(&f.error));
+    f.white->markMetalRenderTextureUpdated();
+    REQUIRE(f.white->getMetalTexture() == backing);
+    CHECK(backing->resourceView().identity() == allocation_identity);
+    CHECK(backing->resourceView().generation() == allocation_generation);
+    CHECK(f.white->getContentStamp() != content_stamp);
+    REQUIRE(info.state->revision() != revision);
+    std::array<U8,4> actual{};
+    REQUIRE(backing->readback(*f.device, 0, 0, {}, actual.data(), actual.size(), &f.error));
+    CHECK(actual == changed);
+    auto edited = capture(); REQUIRE(edited);
+    CHECK(edited.prototype->diffuse_textures[0] == backing);
+    CHECK(edited.prototype->temporal_generation == geometry_revision);
+    CHECK(edited.prototype->temporal_material_revision == edited.owner->producer_revision);
+    CHECK(edited.prototype->temporal_material_revision != revision);
+}
+
+TEST_CASE("Actual material restoration retains Temporal content epochs after child cache eviction",
+          "[almetal][pipeline-buffer-publication][static-restoration][temporal-material-content]")
+{
+    for (U32 family : {1u, 2u})
+    {
+        CAPTURE(family); MaterialGroupPublication f(family);
+        f.materialDraw(false); f.materialDraw(true);
+        auto packet = f.sealMaterial(); REQUIRE(packet);
+        std::vector<U64> epochs;
+        for (const auto& row : packet->sources)
+        {
+            REQUIRE(row.prototype->temporal_material_revision == row.owner->revision);
+            epochs.push_back(row.prototype->temporal_material_revision);
+        }
+        const auto rows = f.group_layout->sources;
+        packet.reset(); f.group->evict();
+        for (const auto& info : f.infos) info->state->evict();
+        gGL.frameFences().release();
+        const auto before = Inputs::ALSceneGroupPublicationNative::statistics.restore_tuple_expansions;
+        auto restored = f.sealMaterial(); REQUIRE(restored);
+        REQUIRE(restored->sources.size() == epochs.size());
+        CHECK(Inputs::ALSceneGroupPublicationNative::statistics.restore_tuple_expansions == before + epochs.size());
+        for (std::size_t row = 0; row < epochs.size(); ++row)
+        {
+            CHECK(restored->sources[row].owner == rows[row]);
+            CHECK(restored->sources[row].prototype->temporal_material_revision == epochs[row]);
+        }
+    }
+}

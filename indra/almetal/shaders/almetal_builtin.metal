@@ -5736,16 +5736,16 @@ vertex ALMetalWorldShinyVaryings almetal_world_shiny_skinned_vertex(
     return output;
 }
 
-vertex ALMetalWorldLegacyAlphaVaryings almetal_world_legacy_alpha_vertex(
-    const device float4* positions [[buffer(0)]],
-    const device float4* normals [[buffer(1)]],
-    const device float2* texcoords [[buffer(2)]],
-    const device uchar4* colors [[buffer(3)]],
-    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
-    const device float4* tangents [[buffer(8)]],
-    const device float2* texcoords1 [[buffer(9)]],
-    const device float2* texcoords2 [[buffer(10)]],
-    uint vertex_id [[vertex_id]])
+static ALMetalWorldLegacyAlphaVaryings almetal_world_legacy_alpha_vertex_impl(
+    const device float4* positions,
+    const device float4* normals,
+    const device float2* texcoords,
+    const device uchar4* colors,
+    constant ALMetalWorldShinyConstants& constants,
+    const device float4* tangents,
+    const device float2* texcoords1,
+    const device float2* texcoords2,
+    uint vertex_id)
 {
     const float4 object_position = float4(positions[vertex_id].xyz, 1.0);
     float4 clip_position = constants.modelview_projection * object_position;
@@ -5783,20 +5783,34 @@ vertex ALMetalWorldLegacyAlphaVaryings almetal_world_legacy_alpha_vertex(
     return output;
 }
 
-vertex ALMetalWorldLegacyAlphaVaryings
-almetal_world_legacy_alpha_skinned_vertex(
+vertex ALMetalWorldLegacyAlphaVaryings almetal_world_legacy_alpha_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
     const device float2* texcoords [[buffer(2)]],
     const device uchar4* colors [[buffer(3)]],
     constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
-    const device float4* skin_palette [[buffer(5)]],
-    const device float4* encoded_weights [[buffer(6)]],
-    constant uint& joint_count [[buffer(7)]],
     const device float4* tangents [[buffer(8)]],
     const device float2* texcoords1 [[buffer(9)]],
     const device float2* texcoords2 [[buffer(10)]],
     uint vertex_id [[vertex_id]])
+{
+    return almetal_world_legacy_alpha_vertex_impl(positions, normals, texcoords, colors, constants, tangents, texcoords1, texcoords2, vertex_id);
+}
+
+static ALMetalWorldLegacyAlphaVaryings
+almetal_world_legacy_alpha_skinned_vertex_impl(
+    const device float4* positions,
+    const device float4* normals,
+    const device float2* texcoords,
+    const device uchar4* colors,
+    constant ALMetalWorldShinyConstants& constants,
+    const device float4* skin_palette,
+    const device float4* encoded_weights,
+    uint joint_count,
+    const device float4* tangents,
+    const device float2* texcoords1,
+    const device float2* texcoords2,
+    uint vertex_id)
 {
     const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
         positions[vertex_id], normals[vertex_id],
@@ -5837,6 +5851,24 @@ almetal_world_legacy_alpha_skinned_vertex(
     output.material_index = constants.config.y > 1
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
     return output;
+}
+
+vertex ALMetalWorldLegacyAlphaVaryings
+almetal_world_legacy_alpha_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    const device float2* texcoords2 [[buffer(10)]],
+    uint vertex_id [[vertex_id]])
+{
+    return almetal_world_legacy_alpha_skinned_vertex_impl(positions, normals, texcoords, colors, constants, skin_palette, encoded_weights, joint_count, tangents, texcoords1, texcoords2, vertex_id);
 }
 
 static bool almetal_probe_holds(
@@ -8781,30 +8813,30 @@ fragment float4 almetal_world_pre_water_simple_shadow_candidates_fragment(
 
 
 
-fragment float4 almetal_world_pre_water_material_fragment(
-    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
-    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
-    array<texture2d<float>, 8> normal_textures [[texture(8)]],
-    array<texture2d<float>, 8> specular_textures [[texture(16)]],
-    texturecube_array<float> reflection_radiance [[texture(32)]],
-    texture2d_array<float> shadow_maps [[texture(33)]],
-    texturecube<float> hero_probe [[texture(34)]],
-    texture2d<float> ssr_scene_color [[texture(35)]],
-    texture2d<float> ssr_scene_depth [[texture(36)]],
-    texture2d<uint> reflection_irradiance [[texture(37)]],
-    texturecube<float> legacy_sky [[texture(39)]],
-    sampler material_sampler [[sampler(0)]],
-    sampler probe_sampler [[sampler(1)]],
-    sampler ssr_color_sampler [[sampler(2)]],
-    sampler ssr_depth_sampler [[sampler(3)]],
-    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
-    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
-    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
-    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
-    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
-    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
-    constant float4& material_sampling [[buffer(10)]])
+static float4 almetal_world_pre_water_material_shade(
+    ALMetalWorldLegacyAlphaVaryings input,
+    array<texture2d<float>, 8> diffuse_textures,
+    array<texture2d<float>, 8> normal_textures,
+    array<texture2d<float>, 8> specular_textures,
+    texturecube_array<float> reflection_radiance,
+    texture2d_array<float> shadow_maps,
+    texturecube<float> hero_probe,
+    texture2d<float> ssr_scene_color,
+    texture2d<float> ssr_scene_depth,
+    texture2d<uint> reflection_irradiance,
+    texturecube<float> legacy_sky,
+    sampler material_sampler,
+    sampler probe_sampler,
+    sampler ssr_color_sampler,
+    sampler ssr_depth_sampler,
+    constant ALMetalWorldMaterialConstants& constants,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldLegacyAlphaLighting& lighting,
+    constant ALMetalWorldDirectionalShadowConstants& shadows,
+    constant ALMetalWorldHeroProbeConstants& hero,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr,
+    constant ALMetalWorldAlphaEnvironment& environment,
+    constant float4& material_sampling)
 {
     // Receiver and normal derivatives must remain outside all non-uniform
     // alpha and water discards, matching materialF.glsl's shadow and
@@ -9082,6 +9114,34 @@ fragment float4 almetal_world_pre_water_material_fragment(
         discard_fragment();
     }
     return max(float4(color, coverage), float4(0.0));
+}
+
+fragment float4 almetal_world_pre_water_material_fragment(
+    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    texturecube<float> legacy_sky [[texture(39)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler ssr_color_sampler [[sampler(2)]],
+    sampler ssr_depth_sampler [[sampler(3)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
+    constant float4& material_sampling [[buffer(10)]])
+{
+    return almetal_world_pre_water_material_shade(input, diffuse_textures, normal_textures, specular_textures, reflection_radiance, shadow_maps, hero_probe, ssr_scene_color, ssr_scene_depth, reflection_irradiance, legacy_sky, material_sampler, probe_sampler, ssr_color_sampler, ssr_depth_sampler, constants, probes, lighting, shadows, hero, ssr, environment, material_sampling);
 }
 
 
@@ -21259,7 +21319,12 @@ vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
     output.position = c.config.w != 0u ? current_clip : almetal_clip_from_gl(current_clip);
     const bool avatar = (c.coverage.w & 16u) != 0u;
     const uint material_index = c.coverage.x > 1u && !avatar ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0u;
-    output.material_index = c.coverage.y == 0u ? min(material_index, 31u) : min(material_index, 7u);
+    // Material color owners clamp the selector to their populated slot prefix,
+    // not merely the eight-slot capacity. Select once before BOTH UV transform
+    // and alpha sampling so an out-of-prefix selector cannot use different maps.
+    const uint material_count = c.coverage.y == 2u ? pbr.config.x : c.coverage.x;
+    output.material_index = c.coverage.y == 0u ? min(material_index, 31u) :
+        min(material_index, min(max(material_count, 1u) - 1u, 7u));
     output.texcoord = avatar ? texcoords[vertex_id] : (c.texture_matrix * float4(texcoords[vertex_id], 0.0, 1.0)).xy;
     if (c.coverage.y == 2u)
         output.texcoord = almetal_world_pbr_texcoord(texcoords[vertex_id], c.texture_matrix,
@@ -21268,38 +21333,14 @@ vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
     return output;
 }
 
-fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
-    ALMetalTemporalMotionVaryings input [[stage_in]],
-    float2 underlying_motion [[color(0), raster_order_group(0)]],
-    float underlying_reactive [[color(1), raster_order_group(0)]],
-    float underlying_depth [[color(2), raster_order_group(0)]],
-    array<texture2d<float>, 32> textures [[texture(0)]],
-    texture2d<float> depth_texture [[texture(32)]],
-    texture2d<float> opaque_depth_texture [[texture(33)]],
-    sampler material_sampler [[sampler(0)]],
-    constant ALMetalTemporalMotionConstants& c [[buffer(1)]],
-    constant ALMetalTemporalReprojectionConstants& view [[buffer(0)]])
+static ALMetalTemporalMotionOutput almetal_temporal_resolve_surface(
+    ALMetalTemporalMotionVaryings input, float alpha,
+    float2 underlying_motion, float underlying_reactive, float underlying_depth,
+    texture2d<float> opaque_depth_texture,
+    constant ALMetalTemporalMotionConstants& c,
+    constant ALMetalTemporalReprojectionConstants& view)
 {
     const bool forward = (c.coverage.w & 8u) != 0u;
-    if (forward && (c.coverage.w & 256u) != 0u)
-    {
-        const float side = dot(input.eye_position, c.water_plane.xyz) + c.water_plane.w;
-        if ((c.raster.w > 0.0 && side < 0.0) || (c.raster.w <= 0.0 && side > 0.0)) discard_fragment();
-    }
-    const bool alpha_mask = (c.coverage.w & 1u) != 0u;
-    const uint material_index = input.material_index;
-    float alpha = material_index < c.coverage.x ?
-        textures[material_index].sample(material_sampler, input.texcoord, bias(c.extent_bias.z)).a : 1.0;
-    if (c.coverage.y == 2u) alpha *= input.vertex_alpha;
-    if (c.coverage.y == 0u && ((!forward && (c.coverage.w & 2u) != 0u) ||
-        ((c.coverage.w & 512u) != 0u && (c.coverage.w & (2u | 64u)) != 0u)))
-        alpha *= input.vertex_alpha;
-    const bool masked = alpha_mask || (c.coverage.y == 1u && c.coverage.z == 2u);
-    const float threshold = c.coverage.y ? c.thresholds[min(material_index, 7u)].x : c.raster.z;
-    const float quantization_bias = c.coverage.y != 0u || (c.coverage.y == 0u && (c.coverage.w & 4u) != 0u)
-        ? 1.0 / 512.0 : 0.0;
-    if ((masked && alpha < threshold - quantization_bias) ||
-        ((c.coverage.w & 512u) != 0u && alpha < c.raster.z)) discard_fragment();
     const uint2 pixel = min(uint2(input.position.xy), uint2(c.extent_bias.xy) - 1u);
     const float reference_depth = opaque_depth_texture.read(pixel).x;
     const float depth = input.position.z;
@@ -21352,6 +21393,151 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
         output.depth = replace ? depth : underlying_depth;
     }
     return output;
+}
+
+fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
+    ALMetalTemporalMotionVaryings input [[stage_in]],
+    float2 underlying_motion [[color(0), raster_order_group(0)]],
+    float underlying_reactive [[color(1), raster_order_group(0)]],
+    float underlying_depth [[color(2), raster_order_group(0)]],
+    array<texture2d<float>, 32> textures [[texture(0)]],
+    texture2d<float> depth_texture [[texture(32)]],
+    texture2d<float> opaque_depth_texture [[texture(33)]],
+    sampler material_sampler [[sampler(0)]],
+    constant ALMetalTemporalMotionConstants& c [[buffer(1)]],
+    constant ALMetalTemporalReprojectionConstants& view [[buffer(0)]])
+{
+    const bool forward = (c.coverage.w & 8u) != 0u;
+    if (forward && (c.coverage.w & 256u) != 0u)
+    {
+        const float side = dot(input.eye_position, c.water_plane.xyz) + c.water_plane.w;
+        if ((c.raster.w > 0.0 && side < 0.0) || (c.raster.w <= 0.0 && side > 0.0)) discard_fragment();
+    }
+    const bool alpha_mask = (c.coverage.w & 1u) != 0u;
+    const uint material_index = input.material_index;
+    float alpha = material_index < c.coverage.x ?
+        textures[material_index].sample(material_sampler, input.texcoord, bias(c.extent_bias.z)).a : 1.0;
+    if (c.coverage.y == 2u) alpha *= input.vertex_alpha;
+    if (c.coverage.y == 0u && ((!forward && (c.coverage.w & 2u) != 0u) ||
+        ((c.coverage.w & 512u) != 0u && (c.coverage.w & (2u | 64u)) != 0u)))
+        alpha *= input.vertex_alpha;
+    const bool masked = alpha_mask || (c.coverage.y == 1u && c.coverage.z == 2u);
+    const float threshold = c.coverage.y ? c.thresholds[min(material_index, 7u)].x : c.raster.z;
+    const float quantization_bias = c.coverage.y != 0u || (c.coverage.y == 0u && (c.coverage.w & 4u) != 0u)
+        ? 1.0 / 512.0 : 0.0;
+    if ((masked && alpha < threshold - quantization_bias) ||
+        ((c.coverage.w & 512u) != 0u && alpha < c.raster.z)) discard_fragment();
+    return almetal_temporal_resolve_surface(input, alpha, underlying_motion,
+        underlying_reactive, underlying_depth, opaque_depth_texture, c, view);
+}
+
+
+// Legacy BLEND coverage includes reflected glare. Reusing the actual color
+// helper prevents diffuse-only replay from discarding visible clear-glass glints.
+struct ALMetalTemporalLegacyVaryings
+{
+    float4 position [[position, invariant]];
+    float mirror_clip_distance [[clip_distance]];
+    float3 eye_position;
+    float3 normal, tangent, bitangent;
+    float4 color;
+    float2 texcoord, texcoord1, texcoord2;
+    uint material_index [[flat]];
+    float4 current_clip, previous_clip;
+};
+vertex ALMetalTemporalLegacyVaryings almetal_temporal_legacy_motion_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalTemporalMotionConstants& c [[buffer(4)]],
+    const device float4* current_palette [[buffer(5)]],
+    const device float4* weights [[buffer(6)]],
+    const device float4* previous_palette [[buffer(7)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    const device float2* texcoords2 [[buffer(10)]],
+    constant ALMetalWorldShinyConstants& world [[buffer(12)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalWorldLegacyAlphaVaryings color;
+    float4 current_clip, previous_clip;
+    const float4 position = float4(positions[vertex_id].xyz, 1.0);
+    if (c.config.x == 1u)
+    {
+        color = almetal_world_legacy_alpha_skinned_vertex_impl(positions, normals,
+            texcoords, colors, world, current_palette, weights, c.config.y,
+            tangents, texcoords1, texcoords2, vertex_id);
+        const auto current = almetal_object_skin_vertex(position, normals[vertex_id],
+            weights[vertex_id], current_palette, c.config.y);
+        const auto previous = almetal_object_skin_vertex(position, normals[vertex_id],
+            weights[vertex_id], previous_palette, c.config.z);
+        current_clip = almetal_object_skin_transform(c.current_mvp, current.position, current_palette[0].xyz);
+        previous_clip = almetal_object_skin_transform(c.previous_mvp, previous.position, previous_palette[0].xyz);
+    }
+    else
+    {
+        color = almetal_world_legacy_alpha_vertex_impl(positions, normals, texcoords,
+            colors, world, tangents, texcoords1, texcoords2, vertex_id);
+        current_clip = c.current_mvp * position;
+        previous_clip = c.previous_mvp * position;
+    }
+    ALMetalTemporalLegacyVaryings output;
+    output.position=color.position; output.mirror_clip_distance=color.mirror_clip_distance;
+    output.eye_position=color.eye_position; output.normal=color.normal;
+    output.tangent=color.tangent; output.bitangent=color.bitangent; output.color=color.color;
+    output.texcoord=color.texcoord; output.texcoord1=color.texcoord1; output.texcoord2=color.texcoord2;
+    output.material_index=color.material_index;
+    output.current_clip=current_clip; output.previous_clip=previous_clip;
+    return output;
+}
+fragment ALMetalTemporalMotionOutput almetal_temporal_legacy_motion_fragment(
+    ALMetalTemporalLegacyVaryings input [[stage_in]],
+    float2 underlying_motion [[color(0), raster_order_group(0)]],
+    float underlying_reactive [[color(1), raster_order_group(0)]],
+    float underlying_depth [[color(2), raster_order_group(0)]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    texturecube<float> legacy_sky [[texture(39)]],
+    texture2d<float> opaque_depth_texture [[texture(41)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler ssr_color_sampler [[sampler(2)]],
+    sampler ssr_depth_sampler [[sampler(3)]],
+    constant ALMetalWorldMaterialConstants& material [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
+    constant float4& material_sampling [[buffer(10)]],
+    constant ALMetalTemporalReprojectionConstants& view [[buffer(12)]],
+    constant ALMetalTemporalMotionConstants& c [[buffer(13)]])
+{
+    ALMetalWorldLegacyAlphaVaryings color;
+    color.position=input.position; color.mirror_clip_distance=input.mirror_clip_distance;
+    color.eye_position=input.eye_position; color.normal=input.normal;
+    color.tangent=input.tangent; color.bitangent=input.bitangent; color.color=input.color;
+    color.texcoord=input.texcoord; color.texcoord1=input.texcoord1; color.texcoord2=input.texcoord2;
+    color.material_index=input.material_index;
+    const float alpha = almetal_world_pre_water_material_shade(color, diffuse_textures,
+        normal_textures, specular_textures, reflection_radiance, shadow_maps,
+        hero_probe, ssr_scene_color, ssr_scene_depth, reflection_irradiance, legacy_sky,
+        material_sampler, probe_sampler, ssr_color_sampler, ssr_depth_sampler, material,
+        probes, lighting, shadows, hero, ssr, environment, material_sampling).a;
+    ALMetalTemporalMotionVaryings motion = {};
+    motion.position=input.position; motion.current_clip=input.current_clip;
+    motion.previous_clip=input.previous_clip; motion.eye_position=input.eye_position;
+    return almetal_temporal_resolve_surface(motion, alpha, underlying_motion,
+        underlying_reactive, underlying_depth, opaque_depth_texture, c, view);
 }
 
 fragment float4 almetal_world_temporal_color_fragment(

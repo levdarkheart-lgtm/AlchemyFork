@@ -117,7 +117,7 @@ bool ALMetalWorldGBufferRenderer::encodeAuroraUpscale(ALMetalAuroraReconstructor
     inputs.color = &color;
     inputs.opaque = &opaque;
     inputs.motion = motion.colorTexture(0);
-    inputs.composition = motion.colorTexture(1);
+    inputs.history_unsafe = motion.colorTexture(1);
     inputs.depth = motion.colorTexture(2);
     inputs.output = output.colorTexture(0);
     reconstructor.setFrameData(mImpl->frame_data);

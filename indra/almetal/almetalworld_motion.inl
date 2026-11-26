@@ -24,7 +24,8 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     if (!mImpl || !mImpl->device || !mImpl->library)
     { setError(error, "Temporal motion renderer is unavailable"); return false; }
     if (mImpl->temporal_motion_background && mImpl->temporal_motion_geometry[0] &&
-        mImpl->temporal_motion_geometry[1] &&
+        mImpl->temporal_motion_geometry[1] && mImpl->temporal_motion_legacy_geometry[0] &&
+        mImpl->temporal_motion_legacy_geometry[1] &&
         mImpl->temporal_motion_reactive_background &&
         mImpl->temporal_motion_impostor && mImpl->temporal_opaque_depth_copy &&
         mImpl->temporal_motion_seed_depth && mImpl->temporal_motion_overlay_depth) return true;
@@ -46,9 +47,20 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     descriptor.label = "Alchemy Temporal object/skin motion and matched coverage";
     geometry[0] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
     if (!geometry[0]) return false;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> legacy_geometry;
+    descriptor.vertex_function = "almetal_temporal_legacy_motion_vertex";
+    descriptor.fragment_function = "almetal_temporal_legacy_motion_fragment";
+    descriptor.label = "Alchemy Temporal legacy glass with actual color coverage";
+    legacy_geometry[0] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
+    if (!legacy_geometry[0]) return false;
     descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
     descriptor.colors[2].write_mask = ALMetalColorWriteMask::none;
     descriptor.colors[1].write_mask = ALMetalColorWriteMask::none;
+    descriptor.label = "Alchemy Temporal legacy glass depth-only visibility";
+    legacy_geometry[1] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
+    if (!legacy_geometry[1]) return false;
+    descriptor.vertex_function = "almetal_temporal_motion_vertex";
+    descriptor.fragment_function = "almetal_temporal_motion_fragment";
     descriptor.label = "Alchemy Temporal alpha depth-only visibility";
     geometry[1] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
     if (!geometry[1]) return false;
@@ -90,6 +102,7 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     mImpl->temporal_motion_reactive_background = std::move(reactive_background);
     mImpl->temporal_motion_background = std::move(background);
     mImpl->temporal_motion_geometry = std::move(geometry);
+    mImpl->temporal_motion_legacy_geometry = std::move(legacy_geometry);
     mImpl->temporal_motion_seed_depth = std::move(seed_depth);
     mImpl->temporal_motion_overlay_depth = std::move(overlay_depth);
     return true;
@@ -268,6 +281,12 @@ try
         const bool bound = encoder->setVertexBuffer(slot, *buffer, 0, error);
         palette_storage.push_back(std::move(buffer)); return bound;
     };
+    // One immutable lighting pack for every legacy replay consumer in this
+    // command, matching the forward color owner's publication contract.
+    ALMetalWorldDataSlice legacy_probe_slice;
+    const ALMetalWorldReflectionProbeConstants legacy_probe_constants =
+        scene.forward_scene && scene.forward_scene->reflection_probes
+            ? scene.forward_scene->reflection_probes->constants : ALMetalWorldReflectionProbeConstants{};
     const auto draw_motion = [&](const ALMetalWorldDraw& draw,
         const ALMetalWorldTemporalPreviousDraw* previous, bool forward) -> bool
     {
@@ -315,7 +334,7 @@ try
         std::memcpy(constants.previous_gravity, valid ? previous->avatar_gravity : batch.avatar_gravity, sizeof(constants.previous_gravity));
         std::memcpy(constants.previous_cloth_depth, valid ? previous->avatar_cloth_depth : batch.avatar_cloth_depth, sizeof(constants.previous_cloth_depth));
         constants.extent_bias[0] = float(scene.width); constants.extent_bias[1] = float(scene.height);
-        constants.extent_bias[2] = opaque.material_mip_bias;
+        constants.extent_bias[2] = forward && scene.forward_scene ? scene.forward_scene->material_mip_bias : opaque.material_mip_bias;
         constants.extent_bias[3] = valid && !previous->reactive ? 0.f : 1.f;
         constants.raster[0] = scene.jitter_pixels[0]; constants.raster[1] = scene.jitter_pixels[1];
         constants.raster[2] = alpha_family ? batch.pre_water_minimum_alpha : batch.alpha_cutoff;
@@ -348,18 +367,26 @@ try
             !batch.avatar_alpha && !body && !batch.avatar_rigid && !batch.alpha_mask &&
             !batch.impostor_fullbright && !batch.impostor_shiny && !batch.impostor_emboss;
         if (generic_alpha) constants.coverage[3] |= 64u; // actual forward color always multiplies vertex alpha
-        // The verified static glTF foliage path has one base-color slot. Its
-        // alpha is texture * encoded vertex alpha, already handled by family2;
+        // Every validated glTF slot uses texture alpha * encoded vertex alpha.
+        // The vertex path selects the same per-slot base UV transform as color;
         // LLFace baked baseColorFactor into that vertex attribute exactly once.
-        // Keep legacy glare, particles, avatar alpha and unqualified slot layouts
-        // conservative rather than inheriting this coverage contract.
-        const bool pbr_alpha = forward && family == 2 && batch.pbr_slot_count == 1 && batch.texture_count == 1 &&
+        const bool pbr_alpha = forward && family == 2 && batch.pbr_slot_count >= 1 &&
+            batch.pbr_slot_count <= batch.max_material_slots && batch.texture_count == batch.pbr_slot_count &&
             (batch.pre_water_alpha || batch.post_water_alpha) && batch.pre_water_pbr &&
             !batch.material_slot_count && !batch.pre_water_material && !batch.pre_water_simple &&
             !batch.pre_water_fullbright && !batch.pre_water_particle && !batch.avatar_alpha &&
             !body && !batch.avatar_rigid && !batch.alpha_mask &&
             !batch.impostor_fullbright && !batch.impostor_shiny && !batch.impostor_emboss;
-        if ((generic_alpha || pbr_alpha) && scene.opaque_depth &&
+        // Legacy BLEND has lighting-dependent coverage. Its dedicated shader
+        // calls the actual rigid/object-skinned material color helper instead
+        // of guessing raw diffuse alpha. Avatar/particle/special color families
+        // have different shading contracts and retain conservative rejection.
+        const bool legacy_alpha = forward && family == 1 && batch.pre_water_material &&
+            batch.material_alpha_mode == 1 && (batch.pre_water_alpha || batch.post_water_alpha) &&
+            !batch.pre_water_pbr && !batch.pre_water_simple && !batch.pre_water_fullbright &&
+            !batch.pre_water_particle && !batch.avatar_alpha && !body && !batch.avatar_rigid &&
+            !batch.alpha_mask && !batch.impostor_fullbright && !batch.impostor_shiny && !batch.impostor_emboss;
+        if ((generic_alpha || pbr_alpha || legacy_alpha) && scene.opaque_depth &&
             batch.pre_water_source_rgb == ALMetalBlendFactor::source_alpha &&
             batch.pre_water_destination_rgb == ALMetalBlendFactor::one_minus_source_alpha)
         {
@@ -384,7 +411,21 @@ try
         const auto* depth_state = !forward ? mImpl->temporal_motion_overlay_depth.get() : scene.reverse_z
             ? (writes_depth ? mImpl->reverse_depth.get() : mImpl->reverse_readonly_depth.get())
             : (writes_depth ? mImpl->forward_depth.get() : mImpl->forward_readonly_depth.get());
-        bool encoded = encoder->setPipeline(*mImpl->temporal_motion_geometry[motion_pipeline], error) &&
+        if (legacy_alpha && (!scene.forward_scene || !scene.forward_scene->alpha_environment ||
+            !validLegacyAlphaLighting(scene.forward_scene->alpha_lighting) ||
+            batch.material_slot_count != batch.texture_count ||
+            batch.material_slot_count > batch.max_material_slots ||
+            (scene.forward_scene->reflection_probes && !validPBRReflectionProbes(scene.forward_scene->reflection_probes)) ||
+            (scene.forward_scene->legacy_environment && !validLegacyEnvironment(scene.forward_scene->legacy_environment)) ||
+            (batch.pre_water_shadows && (!scene.forward_scene->alpha_directional_shadows ||
+                !validDirectionalShadows(scene.forward_scene->alpha_directional_shadows))) ||
+            (scene.forward_scene->hero_probe && !validHeroProbe(scene.forward_scene->hero_probe)) ||
+            (scene.forward_scene->screen_space_reflections && !validScreenSpaceReflections(scene.forward_scene->screen_space_reflections)) ||
+            (validPBRReflectionProbes(scene.forward_scene->reflection_probes) ==
+             validLegacyEnvironment(scene.forward_scene->legacy_environment))))
+        { setError(error, "Temporal legacy coverage requires the actual forward material/environment inputs"); return false; }
+        bool encoded = encoder->setPipeline(*(legacy_alpha ? mImpl->temporal_motion_legacy_geometry[motion_pipeline] :
+            mImpl->temporal_motion_geometry[motion_pipeline]), error) &&
             encoder->setDepthStencilState(depth_state, error) &&
             encoder->setCullMode(forward ? worldAlphaCullMode(batch) : batch.double_sided ? ALMetalCullMode::none :
                 (body || batch.avatar_rigid) ? batch.avatar_cull_mode : ALMetalCullMode::back, error) &&
@@ -398,17 +439,82 @@ try
             bind_palette(5, palette, palette_count, *batch.vertices) &&
             bind_palette(7, valid && !previous->skin_palette.empty() ? previous->skin_palette.data() : palette,
                 valid && !previous->skin_palette.empty() ? previous->skin_palette.size() : palette_count, *batch.vertices) &&
-            mImpl->setVertexAndFragmentData(*encoder, *command, 4, 1, &constants, sizeof(constants), error) &&
+            mImpl->setVertexAndFragmentData(*encoder, *command, 4, legacy_alpha ? 13u : 1u, &constants, sizeof(constants), error) &&
+            mImpl->setFragmentData(*encoder, *command, legacy_alpha ? 12u : 0u, &reprojection, sizeof(reprojection), error) &&
             encoder->setFragmentTextureLinear(32, scene.depth, error) &&
             encoder->setFragmentTextureLinear(33, scene.opaque_depth ? scene.opaque_depth : scene.depth, error) &&
             encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
         WorldPBRConstants pbr{};
         if (family == 2) pbr = buildWorldPBRConstants(opaque, batch);
         encoded = encoded && mImpl->setVertexData(*encoder, *command, 11, &pbr, sizeof(pbr), error);
-        for (unsigned t = 0; encoded && t < 32; ++t)
+        for (unsigned t = 0; encoded && !legacy_alpha && t < 32; ++t)
         {
             const auto* texture = t < batch.texture_count ? batch.diffuse_textures[t] : batch.diffuse_textures[0];
             encoded = encoder->setFragmentTexture(t, texture, error);
+        }
+        if (encoded && legacy_alpha)
+        {
+            const auto& forward_scene = *scene.forward_scene;
+            const bool normal_map = materialHasNormalMap(batch);
+            const bool specular_map = materialHasSpecularMap(batch);
+            WorldShinyConstants world{};
+            std::copy_n(draw.modelviewProjection(),16,world.modelview_projection);
+            alMetalApplyTemporalJitter(world.modelview_projection, scene.jitter_pixels[0], scene.jitter_pixels[1],
+                scene.width,scene.height);
+            std::copy_n(draw.modelview(),16,world.modelview);
+            std::memcpy(world.normal_matrix,draw.normalMatrix(),sizeof(world.normal_matrix));
+            std::memcpy(world.rigged_normal_matrix,draw.riggedNormalMatrix(),sizeof(world.rigged_normal_matrix));
+            std::copy_n(draw.textureMatrix(),16,world.texture_matrix);
+            world.config[0]=scene.reverse_z; world.config[1]=batch.texture_count;
+            world.config[2]=forward_scene.mirror_clip;
+            std::copy_n(forward_scene.mirror_clip_plane,4,world.mirror_clip_plane);
+            const auto material = buildWorldMaterialConstants(opaque,batch,normal_map,specular_map);
+            auto environment = *forward_scene.alpha_environment;
+            environment.environment_config[0]=validLegacyEnvironment(forward_scene.legacy_environment) ? 1u : 0u;
+            if (batch.post_water_alpha) environment.water_fog[2]*=-1.f;
+            environment.water_fog[3]=batch.pre_water_minimum_alpha;
+            const auto& shadows = batch.pre_water_shadows ? forward_scene.alpha_directional_shadows->constants :
+                mImpl->unshadowed_constants;
+            const auto* shadow_map = batch.pre_water_shadows ? forward_scene.alpha_directional_shadows->depth_texture :
+                mImpl->unshadowed_depth.get();
+            const auto& hero = forward_scene.hero_probe ? forward_scene.hero_probe->constants : mImpl->inactive_hero_constants;
+            const auto& ssr = forward_scene.screen_space_reflections ? forward_scene.screen_space_reflections->constants :
+                mImpl->inactive_ssr_constants;
+            if (!legacy_probe_slice.buffer && !mImpl->publishLightingData(*command,&legacy_probe_constants,
+                sizeof(legacy_probe_constants),legacy_probe_slice,error,true)) return false;
+            encoded = encoder->setVertexBuffer(8,*batch.vertices,normal_map ? batch.tangent_offset : batch.normal_offset,error) &&
+                encoder->setVertexBuffer(9,*batch.vertices,normal_map ? batch.texcoord1_offset : batch.texcoord_offset,error) &&
+                encoder->setVertexBuffer(10,*batch.vertices,specular_map ? batch.texcoord2_offset : batch.texcoord_offset,error) &&
+                mImpl->setVertexData(*encoder,*command,12,&world,sizeof(world),error) &&
+                mImpl->setFragmentData(*encoder,*command,0,&material,sizeof(material),error,true) &&
+                encoder->setFragmentBuffer(1,*legacy_probe_slice.buffer,legacy_probe_slice.offset,error) &&
+                mImpl->setFragmentData(*encoder,*command,2,forward_scene.alpha_lighting,sizeof(*forward_scene.alpha_lighting),error) &&
+                mImpl->setFragmentData(*encoder,*command,3,&shadows,sizeof(shadows),error) &&
+                mImpl->setFragmentData(*encoder,*command,4,&hero,sizeof(hero),error) &&
+                mImpl->setFragmentData(*encoder,*command,5,&ssr,sizeof(ssr),error) &&
+                mImpl->setFragmentData(*encoder,*command,6,&environment,sizeof(environment),error) &&
+                encoder->setFragmentSampler(1,mImpl->probe_sampler.get(),error) &&
+                encoder->setFragmentSampler(2,mImpl->linear_clamp_sampler.get(),error) &&
+                encoder->setFragmentSampler(3,mImpl->point_clamp_sampler.get(),error) &&
+                encoder->setFragmentTexture(32,forward_scene.reflection_probes ? forward_scene.reflection_probes->radiance_texture :
+                    mImpl->inactive_probe_radiance.get(),error) &&
+                encoder->setFragmentTexture(33,shadow_map,error) &&
+                encoder->setFragmentTexture(34,forward_scene.hero_probe ? forward_scene.hero_probe->radiance_texture :
+                    mImpl->inactive_hero_probe.get(),error) &&
+                encoder->setFragmentTexture(35,forward_scene.screen_space_reflections ? forward_scene.screen_space_reflections->scene_color :
+                    mImpl->inactive_ssr_color.get(),error) &&
+                encoder->setFragmentTexture(36,forward_scene.screen_space_reflections ? forward_scene.screen_space_reflections->scene_depth :
+                    mImpl->inactive_ssr_depth.get(),error) &&
+                encoder->setFragmentTexture(37,forward_scene.reflection_probes ? forward_scene.reflection_probes->irradiance_texture :
+                    mImpl->inactive_probe_irradiance.get(),error) &&
+                encoder->setFragmentTexture(39,forward_scene.legacy_environment ? forward_scene.legacy_environment :
+                    mImpl->inactive_hero_probe.get(),error) &&
+                encoder->setFragmentTextureLinear(41,scene.opaque_depth ? scene.opaque_depth : scene.depth,error) &&
+                mImpl->setMaterialSampling(*encoder,forward_scene.material_mip_bias,error);
+            for (std::uint32_t slot=0; encoded && slot<batch.material_slot_count; ++slot)
+                encoded = encoder->setFragmentTexture(slot,batch.diffuse_textures[slot],error) &&
+                    encoder->setFragmentTextureLinear(8+slot,normal_map ? batch.materialSlots()[slot].normal_texture : batch.diffuse_textures[0],error) &&
+                    encoder->setFragmentTexture(16+slot,specular_map ? batch.materialSlots()[slot].specular_texture : batch.diffuse_textures[0],error);
         }
         return encoded && encoder->drawIndexed(ALMetalPrimitiveType::triangle, batch.index_count,
             batch.index_type, *batch.indices, batch.index_offset, 1, error);

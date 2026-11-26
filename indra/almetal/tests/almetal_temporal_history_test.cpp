@@ -442,6 +442,7 @@ TEST_CASE("Temporal equal material republications preserve history without retai
     {
         CAPTURE(family);
         auto authored = batch(451); authored.texture_count = 1; authored.diffuse_textures[0] = image.get();
+        authored.temporal_material_revision = 17; // Stable authored epoch survives distinct immutable wrappers.
         if (family == 1) { authored.material_slot_count = 1; authored.materialSlots()[0].alpha_cutoff = .4f; }
         else
         {
@@ -564,6 +565,58 @@ TEST_CASE("Temporal main material mip-policy changes reject prior coverage histo
         REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, forward));
         CHECK(history.previousOpaque()[0].valid == forward_changed);
         CHECK(history.previousForward()[0].valid != forward_changed);
+    }
+}
+
+TEST_CASE("Temporal in-place material content epochs reject local history without replacing storage", "[temporal-history][metal][material-semantics]")
+{
+    std::string error;
+    auto device = ALMetalDevice::create(&error); INFO(error); REQUIRE(device);
+    ALMetalTextureDescriptor descriptor; descriptor.width = descriptor.height = 4;
+    auto image = ALMetalTexture::create(*device, descriptor, &error); REQUIRE(image);
+    const auto identity = image->resourceView().identity();
+    const auto generation = image->resourceView().generation();
+    for (unsigned family : {1u, 2u})
+    {
+        CAPTURE(family);
+        auto authored = batch(457);
+        authored.texture_count = 1; authored.diffuse_textures[0] = image.get();
+        authored.temporal_material_revision = 31;
+        authored.pre_water_alpha = true;
+        if (family == 1)
+        {
+            authored.material_slot_count = 1; authored.material_alpha_mode = 1;
+            authored.pre_water_material = true;
+        }
+        else
+        {
+            authored.pbr_slot_count = 1; authored.pre_water_pbr = true;
+            auto& slot = authored.pbrSlots()[0];
+            slot.normal_texture = slot.orm_texture = slot.emissive_texture = image.get();
+        }
+        ALMetalWorldGBufferScene opaque;
+        ALMetalWorldOpaquePostDeferredScene forward; forward.batches = &authored; forward.batch_count = 1;
+        History history;
+        REQUIRE(history.beginFrame(input(1))); REQUIRE(history.stage(opaque, &forward)); REQUIRE(history.commit(1));
+        // Republishing the identical authored dependency epoch is still the
+        // same material; a transient source wrapper is not a content change.
+        auto republished = authored; forward.batches = &republished;
+        REQUIRE(history.beginFrame(input(2))); REQUIRE(history.stage(opaque, &forward));
+        REQUIRE(history.previousForward().size() == 1);
+        CHECK(history.previousForward()[0].valid); CHECK_FALSE(history.previousForward()[0].reactive);
+        REQUIRE(history.commit(2));
+        // The producer reports a real pixel edit to the same native backing.
+        // Local material history must fail, while camera/jitter history stays
+        // continuous and the geometry/texture allocation keys do not change.
+        ++republished.temporal_material_revision;
+        REQUIRE(image->resourceView().identity() == identity);
+        REQUIRE(image->resourceView().generation() == generation);
+        REQUIRE(history.beginFrame(input(3))); CHECK_FALSE(history.resetRequired());
+        REQUIRE(history.stage(opaque, &forward));
+        CHECK_FALSE(history.previousForward()[0].valid); CHECK(history.previousForward()[0].reactive);
+        REQUIRE(history.commit(3));
+        REQUIRE(history.beginFrame(input(4))); REQUIRE(history.stage(opaque, &forward));
+        CHECK(history.previousForward()[0].valid); CHECK_FALSE(history.previousForward()[0].reactive);
     }
 }
 

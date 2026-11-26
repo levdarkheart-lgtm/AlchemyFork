@@ -3087,7 +3087,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> temporal_resolve_pipeline;
     std::shared_ptr<ALMetalRenderPipeline> temporal_motion_background, temporal_motion_reactive_background, temporal_motion_impostor;
     std::shared_ptr<ALMetalRenderPipeline> temporal_opaque_depth_copy;
-    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> temporal_motion_geometry;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> temporal_motion_geometry, temporal_motion_legacy_geometry;
     std::unique_ptr<ALMetalDepthStencilState> temporal_motion_seed_depth, temporal_motion_overlay_depth;
     ALMetalWorldAnimatedStats animated_stats;
     ALMetalWorldLightingTileStats lighting_tile_stats;

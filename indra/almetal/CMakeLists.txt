@@ -285,6 +285,7 @@ if(AL_BUILD_TESTS)
     almetal_tests
     PROJECT almetal
     SOURCES tests/almetal_aurora_inputs_test.mm
+            tests/almetal_temporal_glass_test.mm
             tests/almetal_temporal_visibility_test.mm
             tests/almetal_temporal_foliage_stability_test.mm
             tests/almetal_temporal_presentation_test.mm
@@ -396,6 +397,7 @@ if(AL_BUILD_TESTS)
   set_source_files_properties(tests/almetal_resource_plan_test.cpp tests/almetal_resource_plan_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_surface_resource_native_test.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
   set_source_files_properties(tests/almetal_temporal_visibility_test.mm
+                              tests/almetal_temporal_glass_test.mm
                               tests/almetal_aurora_inputs_test.mm
                               tests/almetal_temporal_foliage_stability_test.mm
                               tests/almetal_temporal_presentation_test.mm

@@ -850,6 +850,10 @@ inline ALScenePublicationNative::WorldLease restoreMaterial(
         restore.expand(variant.prototype);++statistics.restore_tuple_expansions;
     }
     auto& prototype = variant.prototype;
+    // Restoration retains the same authored/dependency epoch even when the
+    // child cache/proof wrapper was evicted. Do not turn a cache-only rebuild
+    // into a Temporal material edit, or erase a genuine in-place pixel edit.
+    prototype.temporal_material_revision = value->producer_revision;
     prototype.native_material_source = source.material_source.lock();
     prototype.native_resource_source = source.resource_source.lock();
     auto* device = LLImageGL::getMetalDevice();if (!device) return {};

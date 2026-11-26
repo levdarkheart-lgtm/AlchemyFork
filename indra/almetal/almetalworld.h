@@ -629,6 +629,11 @@ public:
     // Zero asks the caller to use an exact resource-generation/index-range key; reused instances must change generation.
     std::uint64_t temporal_instance_id = 0;
     std::uint64_t temporal_generation = 0;
+    // Captured authored/dependency epoch, not a material-proof address or a
+    // cache-publication serial. In-place image updates can preserve the exact
+    // native texture generation while changing the visible material contents.
+    // Zero leaves independently authored fixture/capture inputs unchanged.
+    std::uint64_t temporal_material_revision = 0;
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
@@ -3120,9 +3125,13 @@ public:
         std::unique_ptr<ALMetalRenderTarget> prepared_output = {});
 
     // Temporal-only reduced-resolution motion/depth/rejection pack: RG16F current-to-previous input-pixel
-    // displacement, R8 normalized reactive mask, R32F device depth. Terrain/background use depth reprojection;
+    // displacement, R8 unsafe-history confidence, R32F device depth. Terrain/background use depth reprojection;
     // rigid, attachment and skeletal geometry override motion, using previous submitted transforms/palettes.
-    // Blended/animated content rejects history conservatively without replacing opaque depth or motion.
+    // Standard-alpha surfaces with matched color coverage supply visible foreground depth/motion. Valid
+    // static transparent contributions retain history; invalid poses, changing content and incompatible
+    // contributing layer motion reject it conservatively. Zero contribution preserves background inputs.
+    // MetalFX consumes confidence as reactive weight; Aurora explicitly adapts unsafe history to its
+    // composition marker and independently generates transparency reactivity from opaque/final HDR.
     bool encodeTemporalUpscale(ALMetalTemporalScaler& scaler,
         const ALMetalTemporalScalerDescriptor& descriptor, const ALMetalTexture& color,
         const ALMetalRenderTarget& motion_inputs, ALMetalRenderTarget& output,
