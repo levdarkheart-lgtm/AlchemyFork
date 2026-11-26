@@ -10,26 +10,22 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `f969bd53245a26b79df3abcb41c047f28558f455` is69506application source. New task starts from
-publicationf2f841305c; fetched remote has no subsequent commits. Preserve its semantic equality, corrected
-sky and qualified foreground inputs, submission/cancellation and pooling corrections. Native default,
-Spatial and combined-lighting OFF remain. No live login/capture/FPS campaign; owner reviews the new app.
+Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` implements PPD612/613 visibility repairs;
+experimental69507 Release is verified. Started from publicationf2f841305c, no remote advancement; reviewed69506
+sourcef969bd5324 and prior artifacts remain. Semantic equality, sky motion, submit/cancel ownership and
+Native/Spatial behavior are preserved. Native default/combined-lighting OFF remain. No live login.
 
-[Frozen69506quality baseline](../../research/temporal-foliage-quality-69506-baseline.md) recovers all20failed
-bounds from retained logs/CSV before implementation:16MASK,3BLEND,1control. PBR MASK uses grass texture;
-add an explicit PBR palm case. Stationary color/depth/motion coverage agrees in retained inputs; MASK
-coverage/detail and18/36-world settling remain failures, not a demonstrated PBR-only sampling mismatch.
+[69507review](../../research/temporal-foliage-69507-review.md) and
+[frozen69506baseline](../../research/temporal-foliage-quality-69506-baseline.md) retain exact quality results.
+Correctness:15/15suites and10visibility cases/19777assertions pass API/GPU validation. Pool reuse plateaus.
+Quality:original20bounds/6972assertions and explicit PBR palm16bounds/23684assertions STILL fail.
+MASK inputs/history pass independent checks; current-frame contrast loss and remaining settling are
+reproduced, without an established quality-preserving repair. No production jitter/mip tuning retained.
+PPD610 remains investigating; owner scene acceptance is unclaimed. PPD612/613 are ready for owner review.
 
-PPD612 registers forward color/replay culling mismatch; share actual color policy and render backface
-counterexamples. PPD613 registers hidden-background parallax/sky/water rejection; resolve visible full/partial
-contributions with correct motion/depth and overlap controls. PPD610 remains the independent MASK quality
-task. Root owns shared native/shader/integration/docs, agents own disjoint baseline/fixture/visibility files.
-GPU/Ninja use is serialized. First reproduce new targeted failures on old code, then apply bounded repairs,
-compare every frozen bound and retain unresolved precise cases without weakening criteria.
-
-Finish affected Native/Spatial/history/ownership tests, clean source-pinned review build, active shader and
-mounted-package identity checks, login-screen-only smoke, private iCloud delivery/upload confirmation, and
-commit/push on Temporal branch as owner explicitly requests. Usual/Spatial branches and prior69506 preserved.
+Build/signature/346ARM64 checks, fullscreenlogin-only smoke and8272entry mounted equality pass.
+Test/app/mounted shader is identical;17XMLsettings restored and appclosed. Finish private iCloud upload.
+Commit/push Temporal-only code/tests/report as owner authorizes; do not rewrite or change usual/Spatial.
 
 ## Preserved Spatial parent checkpoint
 

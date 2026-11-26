@@ -12,25 +12,26 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
-## Active image-quality work — PPD610/611
+## Active image-quality work — PPD610/611/612/613
 
-**Renderer code checkpoint:** `f969bd53245a26b79df3abcb41c047f28558f455` (foliage corrections;69501 preserved).
-Actual palms/dense leaves use PBR MASK mesh; grass uses generic/PBR BLEND. Original front-yard sequences
-show static camera/poses, near-zero unjittered motion and broad history rejection. Local corrections use
-infinite-direction/scoped sky history and true foreground blend depth/motion with fixed-anchor rejection.
-PPD611 semantic identity retains valid poses through equal publication churn:54/54valid, four rejection
-centers44/41/53/53→0/0/0/0,72matched color/depth pairs each byte-identical. Generation/budget guards remain.
-Earlier live runs were windowed2304x1278→3456x1916 despite FullScreen setting; some had lighting drift.
-Final actualfullscreen fixedMidday2304x1446→3456x2168 shows grass≈85%/palm77%less adjacent variation.
-20strict quality bounds remain failed; detail/settling stay open. Quiet sanity observes8%lower rate, unisolated.
-Final14affected suites pass API/GPU validation; strict fixture retains20failures/6201assertions.
-69506/sourcef969bd5324: Release/signature/346ARM64/DMGchecks pass; iCloud packages uploaded, settings restored/appclosed.
-See [Temporal report](../research/metalfx-temporal-20261125.md). Owner authorizes Temporal source push for AI review; quality acceptance pending.
-
-Preserved PPD608/609 correction source64023b8b16/build69501 passes15 suites, Release/static/signature checks,
-fullscreenlogin-only smoke; settings restored. Minimal12world textures24→2/reuse22/deferral0; optional armsplateau.
-Early display rejection now cancels, retains prior background and resets recovery. Those correctness results
-remain valid; stationary image-quality acceptance failed owner review and is open under610.
+**Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`; experimental69507 Release verified.
+Started from remote publicationf2f841305c; reviewed69506 sourcef969bd5324 and all artifacts are preserved.
+[69507review](../research/temporal-foliage-69507-review.md) owns the compact correction/quality matrix;
+[frozen69506baseline](../research/temporal-foliage-quality-69506-baseline.md) retains all20original failures.
+PPD612/613 correct actual alpha culling, depth-write/order, alpha cutoff and visible-contribution rejection.
+Full alpha can hide background parallax/sky/water; partial/zero alpha retain their actual contributing inputs.
+A memoryless depth attachment reproduces forward color visibility; no new command/submission wait.
+Final10visibility cases pass19777assertions;15focused correctness suites pass API/GPU validation.
+Repeated12world pool arms plateau afterwarm4, including visibility-pack45reuses/0deferrals.
+Original quality fixture STILL fails20bounds/6972assertions; explicit PBR palm fails16bounds/23684assertions.
+Matched input/history checks pass; current-frame reconstruction loses contrast, retained history improves it.
+Sign reversal/reset-every-world worsen quality; input-alpha/clear-versus-finite-depth controls do not fix it.
+No production quality-policy diagnostics retained; no intrinsic-vendor-limit or live-complaint-fixed claim.
+PPD610 stays investigating. PPD611semantic equality,608/609allocation/cancellation corrections preserved.
+Owner requests Temporal-only commit/push and new experimental package; usual/Spatial remain untouched.
+Release/346ARM64/signatures and8272mounted app entries verified; intended test/app/mounted shader identical.
+Fullscreenlogin-only smoke passes,17XMLfiles restored byte-exact, appclosed. iCloud upload pending.
+Owner alone performs live login/quality acceptance; exact hashes and package receipt are in the69507review.
 
 ## Preserved69494 Temporal checkpoint — PPD598
 
@@ -153,8 +154,6 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Snapshot lifecycle repair/retest passes; controlled69503 baseline matches the owner's front-yard landmarks.
-69504 grass rejection falls80–94%→1–2%, with actual foreground depth; dense cutout/detail settling limits remain.
-PPD611 has exact semantic/live corrective proof; owner review remains pending. PPD610 quality acceptance stays open.
-Remove private capture hooks from the production candidate. Preserve69501/Spatial/usual branches and settings.
-Keep Native default and combined lighting OFF; no FPS investigation, unrelated shader trials or new push approval.
+Finish experimental69507 delivery and owner review. Use Advanced Graphics → World resolution →
+67% MetalFX Temporal; inspect effective status. Use macOS screenshots/recording, not independent snapshots.
+No live login or new Home investigation during offline qualification. PPD610 stays open for MASK quality.

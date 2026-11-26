@@ -491,3 +491,16 @@ The owner explicitly requests publication of the foliage corrections, tests and 
 statements, without changing pending quality acceptance or the20strict rendered failures. Private media,
 raw evidence and packages remain local/iCloud; usual and Spatial branches are unchanged. Review69506 still
 uses application sourcef969bd5324; later commits are documentation only. No rebuild or new measurements.
+
+
+### Experimental69507 follow-up — visibility corrections; MASK quality remains open
+
+Application source `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` preserves69506 and corrects PPD612/613:
+shared color/replay culling and depth policy, ordered visible-contribution inputs, full/partial/zero alpha,
+water halfspace and opaque-fullbright MASK coverage. No new submission, CPU wait or quality-setting change.
+The [compact69507review](temporal-foliage-69507-review.md) is authoritative for the original20-row before/after
+matrix, explicit PBR palm cases, rendered counterexamples and private artifact map. Fifteen correctness
+suites and10visibility cases/19777assertions pass API/GPU validation. The original20quality failures and
+16explicit-palm bounds remain; this is an experimental correction build, not a fixed live palm complaint.
+Current-frame reconstruction already loses useful contrast and history improves it; the exact remaining
+mechanism is unresolved. No further rejected diagnostic policy is retained. Owner will perform live review.

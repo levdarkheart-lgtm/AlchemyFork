@@ -14989,7 +14989,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-25
 - Original reference: Original Alchemy1eb44bb alpha-tested tree/grass/material color/depth coverage is the compatibility reference; Temporal jitter/reconstruction/history is new. Native and Spatial remain independent controls.
 - Evidence: [Temporal implementation and corrective investigation](research/metalfx-temporal-20261125.md). Owner Untitled.mov SHA6065598f44f2cbce37ae1693bb716ff4718402a38a4effb1cf075a4bde82da99 and failed69503 review are retained. Actual front-yard draw/face records identify PBR MASK palms/dense leaves and generic/PBR BLEND grass; static camera/poses, near-zero unjittered motion and broad rejection are directly observed.
-- Next action: Review69506 in the affected palm/grass view. Confirm stationary improvement and assess remaining thin-detail/move-stop settling;20strict rendered quality bounds remain open. Ordinary sanity observed8%lower joined world rate without restored control and with telemetry gaps; do not claim no performance cost. Native remains the concrete full-detail alternative.
+- Next action: Owner reviews experimental69507; do not claim the palm complaint fixed. All20original quality failures remain. Preserve the exact PBR MASK reproducible case and independently valid inputs while deciding whether to pursue a reconstruction-detail correction; Native and existing Spatial modes remain concrete quality alternatives. No live FPS benefit is claimed.
 - Verification: Sky-only and forward-only interventions isolate excessive rejection. Corrected sky direction/layer handling and a separate foreground depth/motion proxy preserve conservative rejection for unreliable layers. Color/depth/motion coverage tests pass;20strict rendered quality bounds remain failed. Earlier live records were windowed2304x1278→3456x1916 and had illumination drift; final native-fullscreen records use2304x1446→3456x2168 and fixedMidday. PPD611 separately repairs proven semantic-publication history loss. No complete visual acceptance or FPS claim.
 - Owner verification: pending
 - Push approval: granted
@@ -15014,6 +15014,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26 publication authorization: Owner explicitly requests pushing these changes to codex/metalfx-temporal-20261125 so another AI can review. Authorization covers corrective code, tests and documentation only; private recordings/artifacts stay local. This does not grant quality acceptance, usual/Spatial branch changes or release publication.
 
+- 2026-11-26 remaining-quality qualification: [69507review](research/temporal-foliage-69507-review.md) preserves the original20-row matrix and adds explicit PBR MASK palm, normal/reversed depth and matched background controls. Final original fixture fails20/6972assertions; explicit palm fails16/23684 across4arms. Existing motion/coverage/history contracts pass. Wrong-sign jitter worsens detail/stability; equal-color clear/finite depths and vendor-input alpha-one produce identical stationary output. Reset-every-world worsens edge/detail quality, showing current-frame reconstruction already attenuates contrast while retained history helps. No safe MASK correction is established; do not call this an intrinsic MetalFX limit. No production jitter/mip/rejection tuning is retained. PPD612/613 input repairs are separate.
+
 ## PPD-611 — Equivalent immutable material republication can invalidate Temporal poses
 
 - Status: ready_for_owner
@@ -15022,7 +15024,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-25
 - Original reference: Temporal is new; original Alchemy has no corresponding history identity. Preserve PPD604 producer/resource-generation safety.
 - Evidence: [Temporal corrective investigation](research/metalfx-temporal-20261125.md). The prior key included native_material_source.get(), although identical publish() calls can produce distinct wrappers. Targeted54-world records retain36/24 wrapper-address changes with exactly equal named material values and active texture identities/generations; corrected previous poses remain valid54/54. All72matched-phase GBuffer crop pairs and72pristine opaque-depth file pairs are byte-identical.
-- Next action: Owner review of the scoped history-identity correction in the review69506 build. PPD610 thin-detail/settling acceptance remains separate and open; source publication is authorized for AI review.
+- Next action: Owner review of the preserved history-identity correction in experimental69507 (original69506 evidence retained). PPD610 thin-detail/settling acceptance remains separate and open; source publication is authorized for AI review.
 - Verification: Canonical active material/texture tokens replace wrapper-address significance. Exact owned equality verifies fingerprint matches; producer/resource generations, layout, topology and duplicate guards remain. Retained token capacity is charged to the64MiBframe bound.44focused cases pass435928assertions with API/GPU validation. At four stationary opaque centers, full rejection44/41/53/53 of54worlds falls to0/0/0/0, despite continued equivalent republication. Reserved-UV-lane refinement passes19history cases/1851assertions;14affected CTest suites pass Metal API/GPU validation. Clean69506DMG content/signature/346ARM64 checks and login smoke pass; owner review remains pending.
 - Owner verification: pending
 - Push approval: granted
@@ -15038,14 +15040,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-612 — Forward Temporal replay ignores color-pass backface culling
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Temporal visibility
 - Discovered: 2026-11-26
 - Original reference: Alchemy1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 lldrawpoolalpha.cpp renderAlpha preserves backface culling except particles and explicitly double-sided glTF; Temporal is a new consumer of that visible-color contract.
 - Evidence: [Frozen69506quality baseline](research/temporal-foliage-quality-69506-baseline.md). Native alpha color uses avatar policy, particles/PBR double-sided none, otherwise back; almetalworld_motion.inl disables culling for every forward row. Invisible backfaces can supply proxy depth/motion/rejection.
-- Next action: Share the actual alpha culling policy and render front/back generic/PBR and double-sided controls before/after.
-- Verification: Source mismatch confirmed at publicationf2f841305c; rendered counterexample pending. Separate from attribution to every live MASK palm pixel.
+- Next action: Owner review of experimental69507; retain shared color/replay culling policy and rendered backface controls. PPD610 MASK quality remains open.
+- Verification: Sourceb73abe1acd shares actual alpha culling. Coherent69506 native/shader counterexample fails36 culling-input assertions while real color remains unchanged. Final10-case visibility suite passes19777assertions with API/GPU validation, including generic/PBR front/back, double-sided PBR and production jitter phases. No claim that this fixes opaque PBR MASK palms.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15053,19 +15055,31 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Registered before repair after owner review. Scope is visible forward color and both Temporal replays; preserve avatar/particle exceptions and all existing history/ownership invariants. Owner requests corrective source/test/report publication on the Temporal branch and a new private review build.
 
+- 2026-11-26 final corrective verification:15/15focused suites pass with Metal API/GPU validation; repeated12world targets reach a plateau after warm4, including the new visibility pack (45reuses,0deferrals,0newtextures afterwarm4). The private report retains exact source/library identities, failed controls and fixed bounds. Owner explicitly authorizes Temporal-only publication and experimental packaging; owner scene acceptance is pending.
+
 ## PPD-613 — Temporal rejection includes hidden background contributions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Temporal contribution visibility
 - Discovered: 2026-11-26
 - Original reference: Temporal is new. Original Alchemy alpha composition and existing native standard-alpha color/depth order define visible contributions; Aurora is a selective-history reference, not a replacement backend.
 - Evidence: [Frozen69506quality baseline](research/temporal-foliage-quality-69506-baseline.md). Qualified forward motion must match opaque motion within.025inputpixel even at alpha1; final sky/water union classifies pristine opaque-only depth after foreground proxy selection. Perspective parallax or hidden dynamic backgrounds can therefore reject fully covering reliable foreground.
-- Next action: Render perspective full/partial foreground, dynamic sky/water and overlap controls; implement an explicit opacity/visibility policy with matching foreground inputs and conservative genuine-transparency protection.
-- Verification: Source dependencies confirmed; targeted rendered counterexamples and correction pending. Do not globally accept history or increase the tolerance.
+- Next action: Owner review of experimental69507. Retain actual visibility/depth order, exact-zero/full/partial contribution handling and conservative genuine-transparency protection; PPD610 retains unresolved MASK detail and settling.
+- Verification: Sourceb73abe1acd replays actual color culling/depth and alpha coverage against a pooled memoryless visibility-depth attachment in one ordered forward sweep. Full alpha replaces hidden background only with reliable history/water protection; exact zero preserves visible inputs without suppressing real depth writes; partial alpha preserves rejection and requires identical representable contributing motion. Coherent pre-fix runs retain72original visibility failures,32opaque-blocker,24opaque-MASK and24exact-zero failures (successive source checkpoints). Final10cases/19777assertions and15regression suites pass API/GPU validation. Real perspective move-stop output passes unchanged1/255mean-error and2%old-history bounds, including110analytically disoccluded pixels. Local edge settling remains visible. Water coverage tests use actual plane/slab inputs, not a complete water-field producer. No live FPS result.
 - Owner verification: pending
 - Push approval: granted
 
 ### History
 
 - 2026-11-26: Registered before repair. Full, partial and near-zero opacity require distinct contribution treatment. Preserve valid history advancement, cancellation and pooled ownership; report any additional pass/allocation cost. PPD610 owns separate MASK/settling quality failures.
+
+- 2026-11-26 visibility audit during repair: non-alpha fullbright/shiny color writes depth (emboss is read-only), but the candidate replay initially reused alpha-only writes-depth logic and water clipping. This could admit a later hidden alpha layer. Register the same ownership-boundary gap before correction; add actual color blocker coverage and preserve unsupported-family conservative history.
+
+- 2026-11-26 coverage audit during613repair: opaque-forward fullbright MASK color uses texture alpha alone and the fixed1/512cutoff adjustment; streamed vertex alpha is shininess. Replay had multiplied that alpha and could miss a visible depth blocker. Added boundary/source-alpha/vertex-shininess counterexample before correction; alpha-pool/GBuffer sampling policies remain separate.
+
+- 2026-11-26 retest:14/15correctness suites pass; the old fixed-anchor fixture fails12assertions because its alpha1layers completely replace preceding read-only-depth color while its oracle requires hidden layers to poison history and nearest-depth order independence. Actual production-color overlap tests prove that assumption wrong. Preserve failed log; change this fixture to genuinely partial alpha191/255 and exact-equal motion for its independent close-depth arm. All numerical bounds and the .000/.020/.040 anti-chaining arm remain; frozen20quality bounds are untouched.
+
+- 2026-11-26 exact-zero contribution counterexample: qualified standard BLEND with minimum alpha0 and sampled alpha0 changes no RGB, but replay replaces visible-background proxy inputs/rejection. Coherent pre-fix native/shader produces24 failures/894 assertions across generic/PBR and normal/reversed depth. Preserve real pre-water depth writes while leaving visible-background color inputs unchanged; tiny positive1/1024 controls prevent inventing a new cutoff.
+
+- 2026-11-26 final corrective verification:15/15focused suites pass with Metal API/GPU validation; repeated12world targets reach a plateau after warm4, including the new visibility pack (45reuses,0deferrals,0newtextures afterwarm4). The private report retains exact source/library identities, failed controls and fixed bounds. Owner explicitly authorizes Temporal-only publication and experimental packaging; owner scene acceptance is pending.
