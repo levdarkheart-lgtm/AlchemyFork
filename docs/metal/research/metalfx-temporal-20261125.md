@@ -504,3 +504,11 @@ suites and10visibility cases/19777assertions pass API/GPU validation. The origin
 16explicit-palm bounds remain; this is an experimental correction build, not a fixed live palm complaint.
 Current-frame reconstruction already loses useful contrast and history improves it; the exact remaining
 mechanism is unresolved. No further rejected diagnostic policy is retained. Owner will perform live review.
+
+
+Experimental69507delivery is complete: sourceb73abe1acd, final tested/app/mounted library5d10cbcaefd65d98,
+full Release/346ARM64/deepstrictad-hoc signature/8272entrymount/1057ZIPfile checks pass; login-screen-only
+fullscreen smoke passes,17settingsXML restored/appclosed. DMG,verificationZIP/checksums on iCloud Desktop
+are confirmeduploaded at08:39:33UTC. Temporal-only publication is owner-authorized; usual/Spatial and69506
+are preserved. See the compact69507review for exact identities and allremainingqualityfailures. No fixed
+live foliage claim or FPS result; owner live review is next.

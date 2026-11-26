@@ -75,3 +75,20 @@ Media receipts: `fixture-review-preparation/final-eight-ROI-media/assembly-recei
 
 The private before/after fixture stationary and move-stop exports preserve actual texture output and exact frame/jitter identities. Because the existing fixture outputs are byte-identical, those clips honestly show unchanged residual quality, not a new stability improvement. PNGs are the authoritative pixel crops; compressed MP4 previews and nominal playback rate are not viewer FPS. The explicit PBR arm has18 stationary outputs and four sampled move/stop states; sparse samples are not fabricated into a continuous motion recording. Native-reference crops show sharper but binary/jagged thin tips, while warm Temporal output is smoother and lower in fine-detail contrast. Native0 is a detail reference, not an exact anti-aliased output oracle; recovered area is not a count of missing geometric leaves.
 Keep 69507 **experimental**. Retain the verified visibility corrections, but do not select Temporal as the default or call PPD-610 fixed. Native remains the direct detail reference and Spatial remains an available reconstruction alternative for owner review; no new comparative quality/FPS claim is made for either. The next acceptable Temporal change must improve the explicit MASK contrast/edge/settling gates while preserving accurate motion/occlusion and the passing visibility cases. Keep the current quality thresholds and do not mask the defect with blanket rejection, added blur, a jitter freeze or relaxed coverage scoring. Remaining real-scene foliage/motion acceptance belongs to owner review after this bounded handoff.
+
+
+## Completed private delivery
+
+At2026-11-26 08:39:33UTC, Foundation reports all three iCloud Desktop files uploaded=true,
+uploading=false and no uploaderror: `Alchemy-MetalFX-Temporal-Experimental-69507-AppleSilicon.dmg`,
+`MetalFX-Temporal-Experimental-69507-Review.zip`, `MetalFX-Temporal-Experimental-69507-SHA256SUMS.txt`.
+DMG377560963bytes/SHA256`d92686ca1d767499e8f1bdbb57092044ad9851be1344538bec0516dcc4743c64`;
+ZIP84363956bytes/SHA256`f72eac530b2a25b962de776fc26f1883c544bd7ad5663b61adf5dc2a841e6e18`.
+Read-only DMG matches all8272appentries; ZIP verifies all1057manifestedfiles. Signing is ad-hoc,
+not notarized; AppleSilicon/macOS26.0+. Actual runtime decoder identifies OpenHTJ2K0.27.0.
+Private `delivery-69507/final-handoff-receipt.json` retains source/executable/library/upload details.
+Application source remainsb73abe1a; the source publicationf3d9fdd1 and this later delivery-note commit
+are distinct documentation checkpoints. The ZIP contains the pinned application source and final evidence;
+this completion note does not change its executable, shaders or quality disposition. Prior69506 is preserved.
+Select AdvancedGraphics→Worldresolution→67%MetalFXTemporal and inspect effective status. Use macOS
+screenshots/recording for live review; independent viewer snapshots do not reliably represent Temporal output.

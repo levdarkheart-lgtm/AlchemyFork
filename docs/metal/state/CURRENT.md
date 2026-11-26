@@ -30,7 +30,7 @@ No production quality-policy diagnostics retained; no intrinsic-vendor-limit or 
 PPD610 stays investigating. PPD611semantic equality,608/609allocation/cancellation corrections preserved.
 Owner requests Temporal-only commit/push and new experimental package; usual/Spatial remain untouched.
 Release/346ARM64/signatures and8272mounted app entries verified; intended test/app/mounted shader identical.
-Fullscreenlogin-only smoke passes,17XMLfiles restored byte-exact, appclosed. iCloud upload pending.
+Fullscreenlogin-only smoke passes,17XMLfiles restored byte-exact, appclosed. iCloud uploaded08:39UTC.
 Owner alone performs live login/quality acceptance; exact hashes and package receipt are in the69507review.
 
 ## Preserved69494 Temporal checkpoint — PPD598

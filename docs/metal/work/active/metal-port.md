@@ -24,8 +24,8 @@ reproduced, without an established quality-preserving repair. No production jitt
 PPD610 remains investigating; owner scene acceptance is unclaimed. PPD612/613 are ready for owner review.
 
 Build/signature/346ARM64 checks, fullscreenlogin-only smoke and8272entry mounted equality pass.
-Test/app/mounted shader is identical;17XMLsettings restored and appclosed. Finish private iCloud upload.
-Commit/push Temporal-only code/tests/report as owner authorizes; do not rewrite or change usual/Spatial.
+Test/app/mounted shader is identical;17XMLsettings restored/appclosed. iCloud upload confirmed08:39UTC.
+Temporal-only code/tests/report published with owner authorization; usual/Spatial unchanged. Owner review next.
 
 ## Preserved Spatial parent checkpoint
 
