@@ -482,3 +482,12 @@ Delivery metadata confirms all three privately copied iCloudDesktop files upload
 Files: Alchemy-MetalFX-Temporal-Foliage-69506-AppleSilicon.dmg, MetalFX-Temporal-Foliage-69506-Review.zip and
 MetalFX-Temporal-Foliage-69506-SHA256SUMS.txt. Checksums/final delivery receipt remain beside private evidence.
 Ready for owner review of the demonstrated correction and residual limits; no new push approval or FPS claim.
+
+
+### Current publication authorization — 2026-11-26
+
+The owner explicitly requests publication of the foliage corrections, tests and documentation to
+`codex/metalfx-temporal-20261125` so another AI can review. This supersedes earlier no-push checkpoint
+statements, without changing pending quality acceptance or the20strict rendered failures. Private media,
+raw evidence and packages remain local/iCloud; usual and Spatial branches are unchanged. Review69506 still
+uses application sourcef969bd5324; later commits are documentation only. No rebuild or new measurements.

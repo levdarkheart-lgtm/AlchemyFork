@@ -17,7 +17,7 @@ nearest foreground blend depth/motion preserve reliable history while retaining 
 PPD611 removes immutable-wrapper address significance with exact bounded active material/resource semantics.
 Targeted54-world proof retains36/24equivalent publication changes with54/54valid poses; four opaque center
 rejection counts44/41/53/53→0/0/0/0. All72matched GBuffer and72pristine-depth file pairs are byte-identical.
-Generation/topology/duplicate/budget guards remain. Owner acceptance/push approval are still pending.
+Generation/topology/duplicate/budget guards remain. Quality acceptance is pending; owner authorizes source push for AI review on2026-11-26.
 
 All earlier live runs were WINDOWED2304x1278→3456x1916: macOS startup ignores FullScreen. Some also have
 illumination drift, so their descriptive image metrics are not isolated final quality/FPS claims. Root now
@@ -34,7 +34,7 @@ Previous PPD608/609 allocation/cancellation corrections and optional pool platea
 Clean69506/sourcef969bd5324 builds/signs and passes346ARM64 checks/login smoke. Fullscreen grass/palm
 variation falls≈85%/77%; settling remains. Quiet sanity observes8%lower rate without restoredcontrol. Next:
 DMG/signature/content checks pass; DMG/ZIP/checksums uploaded to iCloudDesktop. Next: owner quality/cost review. Hooks/mip counterfactual
-have been removed from pipeline source; diagnostic executables/evidence remain retained. No new push.
+have been removed from pipeline source; diagnostic executables/evidence remain private. Source publication is owner-authorized for AI review.
 Restore settings/shared environment, leave viewer closed. Never query an app-bound CUA object after Quit.
 
 ## Preserved Spatial parent checkpoint

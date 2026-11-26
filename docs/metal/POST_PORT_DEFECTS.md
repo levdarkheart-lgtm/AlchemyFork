@@ -14992,7 +14992,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Next action: Review69506 in the affected palm/grass view. Confirm stationary improvement and assess remaining thin-detail/move-stop settling;20strict rendered quality bounds remain open. Ordinary sanity observed8%lower joined world rate without restored control and with telemetry gaps; do not claim no performance cost. Native remains the concrete full-detail alternative.
 - Verification: Sky-only and forward-only interventions isolate excessive rejection. Corrected sky direction/layer handling and a separate foreground depth/motion proxy preserve conservative rejection for unreliable layers. Color/depth/motion coverage tests pass;20strict rendered quality bounds remain failed. Earlier live records were windowed2304x1278→3456x1916 and had illumination drift; final native-fullscreen records use2304x1446→3456x2168 and fixedMidday. PPD611 separately repairs proven semantic-publication history loss. No complete visual acceptance or FPS claim.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
@@ -15011,6 +15011,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26 final fullscreen result: same camera/fixedMidday/Temporal67 at2304x1446→3456x2168.36worlds each show phase-balanced final-luma variation grass3.818/3.766→.588/.581 and palm6.233→1.413 in8bitdisplay levels. SixROI same-phase GBuffer/depth files are exact36/36; trunk has small genuine differences. HDR lighting drift is disclosed; normalized source variation changes≤1.7%, while output reductions persist. Gradients increase, but noNativeparity or immediate settling claim.108world move-stop arms adopt the same25camera matrices; matched30stopped worlds and stills retain visible detail settling. Clean69506/sourcef969bd5324 has no private readbacks/mip override.14correctness suites pass; strict6201assertion fixture retains20failures. Local commit only;69506DMG read-only content/signature/346ARM64 checks and login smoke pass; settings restored and viewer closed.
 
+
+- 2026-11-26 publication authorization: Owner explicitly requests pushing these changes to codex/metalfx-temporal-20261125 so another AI can review. Authorization covers corrective code, tests and documentation only; private recordings/artifacts stay local. This does not grant quality acceptance, usual/Spatial branch changes or release publication.
+
 ## PPD-611 — Equivalent immutable material republication can invalidate Temporal poses
 
 - Status: ready_for_owner
@@ -15019,13 +15022,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-25
 - Original reference: Temporal is new; original Alchemy has no corresponding history identity. Preserve PPD604 producer/resource-generation safety.
 - Evidence: [Temporal corrective investigation](research/metalfx-temporal-20261125.md). The prior key included native_material_source.get(), although identical publish() calls can produce distinct wrappers. Targeted54-world records retain36/24 wrapper-address changes with exactly equal named material values and active texture identities/generations; corrected previous poses remain valid54/54. All72matched-phase GBuffer crop pairs and72pristine opaque-depth file pairs are byte-identical.
-- Next action: Owner review of the scoped history-identity correction in the new local build. PPD610 thin-detail/settling acceptance remains separate and open; no push approval.
+- Next action: Owner review of the scoped history-identity correction in the review69506 build. PPD610 thin-detail/settling acceptance remains separate and open; source publication is authorized for AI review.
 - Verification: Canonical active material/texture tokens replace wrapper-address significance. Exact owned equality verifies fingerprint matches; producer/resource generations, layout, topology and duplicate guards remain. Retained token capacity is charged to the64MiBframe bound.44focused cases pass435928assertions with API/GPU validation. At four stationary opaque centers, full rejection44/41/53/53 of54worlds falls to0/0/0/0, despite continued equivalent republication. Reserved-UV-lane refinement passes19history cases/1851assertions;14affected CTest suites pass Metal API/GPU validation. Clean69506DMG content/signature/346ARM64 checks and login smoke pass; owner review remains pending.
 - Owner verification: pending
-- Push approval: not_granted
+- Push approval: granted
 
 ### History
 
 - 2026-11-25: Registered during PPD610 investigation after source audit identified wrapper churn. Targeted static leaf/trunk capture retained before the semantic-key repair. Preserve both source-confirmed mechanism and uncertainty about full live slot equality.
 
 - 2026-11-26: Exact live semantic comparison establishes erroneous history rejection and its correction with unchanged same-phase color/depth inputs. This scopes611 to history identity; it does not assign all residual fine-detail instability to that mechanism. Active shader UV lanes are canonical; reserved lanes are excluded conservatively after source proof. Owner verification remains pending.
+
+- 2026-11-26 publication authorization: Owner explicitly requests pushing these changes to codex/metalfx-temporal-20261125 so another AI can review. Authorization covers corrective code, tests and documentation only; private recordings/artifacts stay local. This does not grant quality acceptance, usual/Spatial branch changes or release publication.

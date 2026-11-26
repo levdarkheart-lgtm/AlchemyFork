@@ -14,7 +14,7 @@ image equivalence. No owner acceptance or push approval is inferred from builds 
 
 ## Active image-quality work — PPD610/611
 
-**Renderer code checkpoint:** `f969bd53245a26b79df3abcb41c047f28558f455` (local foliage corrections;69501 preserved).
+**Renderer code checkpoint:** `f969bd53245a26b79df3abcb41c047f28558f455` (foliage corrections;69501 preserved).
 Actual palms/dense leaves use PBR MASK mesh; grass uses generic/PBR BLEND. Original front-yard sequences
 show static camera/poses, near-zero unjittered motion and broad history rejection. Local corrections use
 infinite-direction/scoped sky history and true foreground blend depth/motion with fixed-anchor rejection.
@@ -25,7 +25,7 @@ Final actualfullscreen fixedMidday2304x1446→3456x2168 shows grass≈85%/palm77
 20strict quality bounds remain failed; detail/settling stay open. Quiet sanity observes8%lower rate, unisolated.
 Final14affected suites pass API/GPU validation; strict fixture retains20failures/6201assertions.
 69506/sourcef969bd5324: Release/signature/346ARM64/DMGchecks pass; iCloud packages uploaded, settings restored/appclosed.
-See [Temporal report](../research/metalfx-temporal-20261125.md). No new push approval.
+See [Temporal report](../research/metalfx-temporal-20261125.md). Owner authorizes Temporal source push for AI review; quality acceptance pending.
 
 Preserved PPD608/609 correction source64023b8b16/build69501 passes15 suites, Release/static/signature checks,
 fullscreenlogin-only smoke; settings restored. Minimal12world textures24→2/reuse22/deferral0; optional armsplateau.
