@@ -1,0 +1,122 @@
+{
+  "off-main": {
+    "device": {
+      "backend": "Metal",
+      "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+      "driver": "",
+      "driver_info": "",
+      "name": "Apple M1 Max",
+      "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+      "wgpu": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23"
+    },
+    "dimensions": {
+      "height": 128,
+      "output_height": 192,
+      "output_width": 384,
+      "width": 256
+    },
+    "frames": 468,
+    "first_world_id": 1,
+    "last_world_id": 468,
+    "resets": 1,
+    "rcas": "off",
+    "sharpness": null,
+    "rcas_proof": {
+      "dispatched": false,
+      "effective_sharpness": null,
+      "frame0_final_vs_internal_different_rgb_components": 0
+    },
+    "rcas_dispatched_frames": 0,
+    "run_json_sha256": "ade3d953947f1d436ae0151dfb9ca571b253d74a59236b6041f916f19b0dec72"
+  },
+  "off-reference": {
+    "device": {
+      "backend": "Metal",
+      "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+      "driver": "",
+      "driver_info": "",
+      "name": "Apple M1 Max",
+      "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+      "wgpu": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23"
+    },
+    "dimensions": {
+      "height": 128,
+      "output_height": 192,
+      "output_width": 384,
+      "width": 256
+    },
+    "frames": 414,
+    "first_world_id": 1,
+    "last_world_id": 414,
+    "resets": 1,
+    "rcas": "off",
+    "sharpness": null,
+    "rcas_proof": {
+      "dispatched": false,
+      "effective_sharpness": null,
+      "frame0_final_vs_internal_different_rgb_components": 0
+    },
+    "rcas_dispatched_frames": 0,
+    "run_json_sha256": "04af233ad3036822e4136a1792776dfe63c66dd6046e3ce6db9a58a2b4845aa0"
+  },
+  "ordinary-main": {
+    "device": {
+      "backend": "Metal",
+      "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+      "driver": "",
+      "driver_info": "",
+      "name": "Apple M1 Max",
+      "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+      "wgpu": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23"
+    },
+    "dimensions": {
+      "height": 128,
+      "output_height": 192,
+      "output_width": 384,
+      "width": 256
+    },
+    "frames": 468,
+    "first_world_id": 1,
+    "last_world_id": 468,
+    "resets": 1,
+    "rcas": "ordinary",
+    "sharpness": 0.800000011920929,
+    "rcas_proof": {
+      "dispatched": true,
+      "effective_sharpness": 0.800000011920929,
+      "frame0_final_vs_internal_different_rgb_components": 143473
+    },
+    "rcas_dispatched_frames": 468,
+    "run_json_sha256": "05f90bfed50481efb5a67a11861e68e49867f606ea32ea5e22ee1d8719531c0c"
+  },
+  "ordinary-reference": {
+    "device": {
+      "backend": "Metal",
+      "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+      "driver": "",
+      "driver_info": "",
+      "name": "Apple M1 Max",
+      "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+      "wgpu": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23"
+    },
+    "dimensions": {
+      "height": 128,
+      "output_height": 192,
+      "output_width": 384,
+      "width": 256
+    },
+    "frames": 414,
+    "first_world_id": 1,
+    "last_world_id": 414,
+    "resets": 1,
+    "rcas": "ordinary",
+    "sharpness": 0.800000011920929,
+    "rcas_proof": {
+      "dispatched": true,
+      "effective_sharpness": 0.800000011920929,
+      "frame0_final_vs_internal_different_rgb_components": 143974
+    },
+    "rcas_dispatched_frames": 414,
+    "run_json_sha256": "a9df7586fc7e63e86532b4e6074e4357873c5413cd67346c1dda0fb9b2b6bc68"
+  }
+}

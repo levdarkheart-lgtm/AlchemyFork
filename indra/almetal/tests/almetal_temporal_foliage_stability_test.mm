@@ -16,6 +16,7 @@
 #include <numeric>
 #include <sstream>
 #include <string_view>
+#include <simd/simd.h>
 
 namespace
 {
@@ -43,6 +44,8 @@ struct FramePixels
     std::array<float,2> jitter{};
     unsigned phase = 0;
     unsigned input_width = InputWidth, input_height = InputHeight;
+    float foreground_depth = .325f, foreground_threshold = .5f;
+    std::array<float,16> projection_aurora{},reprojection_aurora{};
     std::size_t previous_valid = 0;
     std::uint64_t resets = 0;
 };
@@ -95,7 +98,7 @@ void dumpImage(const std::filesystem::path& path,const std::vector<Color>& pixel
     REQUIRE(file.good());
 }
 
-template<ALRenderResourceInputs::MainResolutionMode Mode>
+template<ALRenderResourceInputs::MainResolutionMode Mode,bool Perspective=false>
 struct ScaledFoliageFixture : Fixture
 {
     static constexpr auto Dimensions=[]{
@@ -119,6 +122,7 @@ struct ScaledFoliageFixture : Fixture
 
     explicit ScaledFoliageFixture(bool reversed = false) : reverse_z(reversed)
     {
+        if constexpr(Perspective) REQUIRE(reverse_z);
         if(const char* path=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_LIBRARY"))
         { REQUIRE(renderer->reloadShaders(std::string(path),&error)); INFO(error); }
         if(const char* path=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_OUTPUT"))
@@ -175,6 +179,22 @@ struct ScaledFoliageFixture : Fixture
         const Texel black_pixel{0,0,0,255};
         for(unsigned face=0;face<6;++face) REQUIRE(black->upload(*command,0,face,{},black_pixel.data(),4,&error));
         REQUIRE(command->commitAndWait(&error)); black_environment=black.get(); resources->textures.push_back(black);
+        if constexpr(Perspective)
+        {
+            // Preserve the authored output footprint in a real perspective
+            // world: opaque foliage is2m away, background walls4m away.
+            for(auto& b:opaque)
+            {
+                Geometry g;REQUIRE(b.vertices->read(0,&g,sizeof(g),&error));
+                const float distance=g.positions[0][2]<0.f?2.f:4.f;
+                for(auto& p:g.positions)
+                {p[0]*=distance/.5f;p[1]*=-distance;p[2]=-distance;p[3]=1.f;}
+                b.vertices=buffer(&g,sizeof(g));
+            }
+            // This shared comparison is MASK-only. The pre-transparency and
+            // final HDR images therefore contain identical opaque/MASK color.
+            forward.clear();
+        }
     }
     ~ScaledFoliageFixture()
     { renderer->cancelCommandBatch(); device->waitUntilIdle(); }
@@ -282,8 +302,21 @@ struct ScaledFoliageFixture : Fixture
         ALMetalWorldGBufferScene gbuffer;
         ALMetalWorldOpaquePostDeferredScene forward_scene;
     };
+    static std::array<float,16> perspectiveProjection()
+    {
+        // Infinite right-handed reverse-Z, near=.1m, verticalFOV90deg,
+        // aspect2:1. The renderer's logical clipY is down; it flipsY at raster.
+        std::array<float,16> p{};p[0]=.5f;p[5]=-1.f;p[11]=-1.f;p[14]=.1f;return p;
+    }
     void cameraMatrix(float* matrix,float camera_shift) const
     {
+        if constexpr(Perspective)
+        {
+            const auto p=perspectiveProjection();std::copy(p.begin(),p.end(),matrix);
+            // Actual cameraX=−4*shift: a2m palm moves +shift inNDC;
+            // a4m wall has half that displacement (perspective parallax).
+            matrix[12]=2.f*camera_shift;return;
+        }
         identity(matrix); matrix[12]=camera_shift;
         // The normal path converts GL clip depth in its vertex shader. The
         // reverse-Z path accepts Metal depth directly, so supply the equivalent
@@ -313,7 +346,11 @@ struct ScaledFoliageFixture : Fixture
     World world(unsigned width,unsigned height,float camera_shift,float bias,std::array<float,2> jitter)
     {
         World w;w.opaque=opaque;w.forward=forward;
-        for(auto* list:{&w.opaque,&w.forward})for(auto& b:*list)cameraMatrix(b.modelview_projection,camera_shift);
+        for(auto* list:{&w.opaque,&w.forward})for(auto& b:*list)
+        {
+            cameraMatrix(b.modelview_projection,camera_shift);
+            if constexpr(Perspective){identity(b.modelview);b.modelview[12]=4.f*camera_shift;}
+        }
         w.gbuffer=scene();w.gbuffer.width=width;w.gbuffer.height=height;
         w.gbuffer.reverse_z=reverse_z;
         w.gbuffer.hdr=true;w.gbuffer.material_mip_bias=bias;w.gbuffer.clear_color[0]=.035f;
@@ -419,14 +456,14 @@ struct ScaledFoliageFixture : Fixture
                 const auto sample=y*width+x,ox=x/scale,oy=y/scale,i=oy*OutputWidth+ox;
                 const auto region=(oy/96)*4+ox/96;const auto& r=Regions[region];
                 for(unsigned c=0;c<4;++c)truth.color[i][c]+=high[sample][c]/16.f;
-                if(reverse_z?depth[sample]>.5f:depth[sample]<.5f)
+                if(reverse_z?depth[sample]>(Perspective?.1f/3.f:.5f):depth[sample]<.5f)
                 {
                     ++covered_samples[i];truth.coverage[i]+=1.f/16.f;
                     for(unsigned c=0;c<4;++c)truth.foreground[i][c]+=high[sample][c];
                 }
                 if(ox>=r.x+6 && ox<r.x+90 && oy>=r.y+6 && oy<r.y+90)
                 {
-                    if(reverse_z?depth[sample]>.5f:depth[sample]<.5f)
+                    if(reverse_z?depth[sample]>(Perspective?.1f/3.f:.5f):depth[sample]<.5f)
                     {for(unsigned c=0;c<4;++c)foreground_sum[region][c]+=high[sample][c];++foreground_count[region];}
                     else
                     {for(unsigned c=0;c<4;++c)background_sum[region][c]+=high[sample][c];++background_count[region];}
@@ -474,6 +511,15 @@ struct ScaledFoliageFixture : Fixture
         REQUIRE(history.beginFrame(input,&error)); INFO(error);
         REQUIRE(history.stage(w.gbuffer,w.forward_scene,&error)); INFO(error);
         FramePixels pixels;pixels.input_width=InputWidth;pixels.input_height=InputHeight;pixels.jitter=history.jitterPixels();
+        pixels.foreground_depth=Perspective?.1f/2.f:reverse_z?.675f:.325f;
+        pixels.foreground_threshold=Perspective?.1f/3.f:.5f;
+        if constexpr(Perspective)
+        {
+            pixels.projection_aurora=perspectiveProjection();pixels.projection_aurora[5]*=-1.f;
+            const auto& r=history.clipToPrevious();
+            for(unsigned col=0;col<4;++col)for(unsigned row=0;row<4;++row)
+                pixels.reprojection_aurora[col*4+row]=r[col*4+row]*(col==1?-1.f:1.f)*(row==1?-1.f:1.f);
+        }
         pixels.phase=history.stats().jitter_phase;pixels.previous_valid=history.stats().valid_previous_draws;
         REQUIRE(history.jitterPhaseCount()==ALMetalTemporalWorldHistory::recommendedJitterPhaseCount(InputWidth,InputHeight,OutputWidth,OutputHeight));
         if(frame_index) REQUIRE(pixels.previous_valid==opaque.size()+forward.size());
@@ -491,7 +537,12 @@ struct ScaledFoliageFixture : Fixture
         std::copy(history.clipToPrevious().begin(),history.clipToPrevious().end(),motion_scene.clip_to_previous_clip);
         std::copy(pixels.jitter.begin(),pixels.jitter.end(),motion_scene.jitter_pixels);
         identity(motion_scene.inverse_projection);
-        if(reverse_z){motion_scene.inverse_projection[10]=-2.f;motion_scene.inverse_projection[14]=1.f;}
+        if constexpr(Perspective)
+        {
+            const auto p=perspectiveProjection();simd_float4x4 m;std::memcpy(&m,p.data(),sizeof(m));
+            const auto inv=simd_inverse(m);std::memcpy(motion_scene.inverse_projection,&inv,sizeof(inv));
+        }
+        else if(reverse_z){motion_scene.inverse_projection[10]=-2.f;motion_scene.inverse_projection[14]=1.f;}
         const auto& previous_opaque=history.previousOpaque();const auto& previous_forward=history.previousForward();
         motion_scene.previous_opaque=previous_opaque.data();motion_scene.previous_opaque_count=previous_opaque.size();
         motion_scene.previous_forward=previous_forward.data();motion_scene.previous_forward_count=previous_forward.size();
@@ -527,6 +578,7 @@ struct ScaledFoliageFixture : Fixture
 
 using FoliageFixture=ScaledFoliageFixture<ALRenderResourceInputs::MainResolutionMode::Temporal67>;
 using FoliageFixture75=ScaledFoliageFixture<ALRenderResourceInputs::MainResolutionMode::Temporal75>;
+using PerspectivePalmFixture=ScaledFoliageFixture<ALRenderResourceInputs::MainResolutionMode::Temporal67,true>;
 static_assert(FoliageFixture::InputWidth==InputWidth && FoliageFixture::InputHeight==InputHeight);
 static_assert(FoliageFixture75::InputWidth==288 && FoliageFixture75::InputHeight==144);
 
@@ -633,7 +685,7 @@ MaskMotionContract maskMotionContract(const FramePixels& frame,float expected_x,
         {
             const auto i=y*frame.input_width+x;
             const bool foreground=leaf(frame.input[i]);
-            const float authored_depth=reverse_z?.675f:.325f;
+            const float authored_depth=frame.foreground_depth;
             const bool foreground_depth=std::abs(frame.depth[i]-authored_depth)<2.e-6f;
             result.coverage_mismatches+=foreground!=foreground_depth ||
                 std::abs(frame.depth[i]-frame.motion_depth[i])>2.e-6f;
@@ -660,7 +712,7 @@ unsigned straightEdgeRasterMismatches(const FramePixels& frame,float camera_shif
         if(std::min(std::abs(center-left),std::abs(center-right))<1.e-4f)continue;
         const bool expected=center>=left && center<right;
         const float depth=frame.depth[y*frame.input_width+x];
-        const bool actual=reverse_z?depth>.5f:depth<.5f;
+        const bool actual=reverse_z?depth>frame.foreground_threshold:depth<frame.foreground_threshold;
         mismatches+=expected!=actual;
     }
     return mismatches;
@@ -756,7 +808,7 @@ void measure(Stability& m,const FramePixels& previous,const FramePixels& current
             m.coverage_mismatches+=std::abs(current.depth[i]-current.motion_depth[i])>2.e-6f;
             // Authored masked cutouts are green at device depth .325;
             // blue/gray backgrounds are clear or farther opaque surfaces.
-            if(r.foliage)m.coverage_mismatches+=leaf(current.input[i])!=(reverse_z?current.depth[i]>.5f:current.depth[i]<.5f);
+            if(r.foliage)m.coverage_mismatches+=leaf(current.input[i])!=(reverse_z?current.depth[i]>current.foreground_threshold:current.depth[i]<current.foreground_threshold);
         }
         else
         {
@@ -1427,6 +1479,133 @@ TEST_CASE("Temporal75 freshly rasterized PBR palm meets the existing foliage qua
         const double energy=metrics.edge_energy/metrics.comparisons,reference_energy=referenceEnergy(reference,palm);
         std::cout<<std::setprecision(17)<<"PBR palm75 input="<<Width<<'x'<<Height<<", output="<<OutputWidth<<'x'<<OutputHeight
             <<", mode=7, bias="<<f.mip_bias<<", phases="<<phases<<", warm="<<warm<<", stable="<<stable
+            <<", mean_rgb_change="<<change<<", edge_band_change="<<edge_change<<", edge_band_p95="<<p95
+            <<", coverage_change="<<double(metrics.coverage_changes)/metrics.pixels<<", mean_reference_error="<<metrics.reference_error/(3.*metrics.pixels)
+            <<", minimum_recall="<<metrics.minimum_recall<<", minimum_precision="<<metrics.minimum_precision
+            <<", minimum_area="<<metrics.minimum_area<<", maximum_area="<<metrics.maximum_area
+            <<", edge_energy="<<energy<<", reference_edge_energy="<<reference_energy
+            <<", stop18_phase_error="<<stopped[1].phase_matched_error<<", stop36_phase_error="<<stopped[2].phase_matched_error
+            <<", stop18_old_fraction="<<stopped[1].old_history_fraction<<", stop36_old_fraction="<<stopped[2].old_history_fraction
+            <<", max_motion_error="<<max_vector_error<<", coverage_mismatches="<<coverage_mismatches
+            <<", raster_mismatches="<<raster_mismatches<<", rejected_foreground="<<rejected_foreground<<'\n';
+        CHECK(max_vector_error<.002f);CHECK(coverage_mismatches==0);CHECK(raster_mismatches==0);CHECK(rejected_foreground==0);
+        // Exactly the existing quality bounds; changing resolution does not
+        // change the output-space oracle or turn the18/36world horizons into15/30.
+        CHECK(change<=1./255.);CHECK(edge_change<=1./255.);CHECK(p95<=2./255.);
+        CHECK(double(metrics.coverage_changes)/metrics.pixels<=.005);CHECK(metrics.reference_error/(3.*metrics.pixels)<=.12);
+        CHECK(metrics.minimum_recall>=.90);CHECK(metrics.minimum_precision>=.90);CHECK(metrics.minimum_area>=.85);CHECK(metrics.maximum_area<=1.15);
+        CHECK(energy>=.5*reference_energy);
+        CHECK(stopped[1].phase_matched_error<=1./255.);CHECK(stopped[2].phase_matched_error<=1./255.);
+        CHECK(stopped[1].old_history_fraction<=.02);CHECK(stopped[2].old_history_fraction<=.02);
+    }
+}
+
+TEST_CASE("Perspective reverse-Z PBR palm exports shared Aurora and MetalFX quality inputs",
+          "[metal][temporal][aurora-shared-perspective]")
+{
+    @autoreleasepool
+    {
+        const Region palm{"pbr_palm",192,0,true,true};
+        constexpr unsigned Width=PerspectivePalmFixture::InputWidth,Height=PerspectivePalmFixture::InputHeight;
+        const unsigned phases=ALMetalTemporalWorldHistory::recommendedJitterPhaseCount(Width,Height,OutputWidth,OutputHeight);
+        REQUIRE(phases==18);
+        // One bounded maturity correction:360 warm worlds, three measured
+        // cycles, then the unchanged18-world movement and36-world stop.
+        // The first36-warm/54-reference run is retained as preliminary.
+        const unsigned warm=360,stable=3*phases;
+        constexpr unsigned moving_frames=18,stopped_frames=36;
+        const unsigned first_move=warm+stable,first_stop=first_move+moving_frames,total=first_stop+stopped_frames;
+        REQUIRE(first_move==414);REQUIRE(total==468);
+        PerspectivePalmFixture f(true);f.usePBRPalm(false);f.observe_native_output=true;
+        if(!f.output_dir.empty()){f.output_dir/="shared-perspective";std::filesystem::create_directories(f.output_dir);}
+        const auto reference=f.native(0.f),shifted_reference=f.native(.05f);
+        const auto truth=f.coverageReference(0.f);
+        std::vector<std::vector<Color>> initial(phases),stationary_final(phases);
+        auto csvHeader=[](std::ostream& out){
+            out<<"frame,world_id,phase,phase_count,jitter_x,jitter_y,camera_shift,reset,history_resets,valid_previous,input_width,input_height,output_width,output_height,mode,mip_bias,depth_reversed,pre_exposure";
+            for(unsigned i=0;i<16;++i)out<<",projection_"<<i;
+            for(unsigned i=0;i<16;++i)out<<",reprojection_"<<i;
+            out<<'\n';
+        };
+        auto csvRow=[&](std::ostream& out,unsigned i,const FramePixels& current,float shift){
+            out<<std::setprecision(17)<<i<<','<<i+1<<','<<current.phase<<','<<phases<<','<<current.jitter[0]<<','<<current.jitter[1]<<','<<shift<<','<<(i==0)<<','<<current.resets<<','<<current.previous_valid<<','<<Width<<','<<Height<<','<<OutputWidth<<','<<OutputHeight<<",6,"<<f.mip_bias<<",1,1";
+            for(float v:current.projection_aurora)out<<','<<v;
+            for(float v:current.reprojection_aurora)out<<','<<v;
+            out<<'\n';
+        };
+        std::ofstream reference_frames;
+        if(!f.output_dir.empty())
+        {
+            dumpRaw(f.output_dir/"native-detail-reference.rgba32f",reference.data(),reference.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"shifted-native-detail-reference.rgba32f",shifted_reference.data(),shifted_reference.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"coverage-reference.r32f",truth.coverage.data(),truth.coverage.size()*sizeof(float));
+            dumpImage(f.output_dir/"native-detail-reference.ppm",reference,OutputWidth,OutputHeight);
+            dumpRaw(f.output_dir/"coverage-color.rgba32f",truth.color.data(),truth.color.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"coverage-foreground.rgba32f",truth.foreground.data(),truth.foreground.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"coverage-backgrounds.rgba32f",truth.backgrounds.data(),sizeof(truth.backgrounds));
+            std::ofstream manifest(f.output_dir/"manifest.json");
+            manifest<<R"({"matrix_convention":"aurora_uv_y_down_ndc_y_up_column_major","input_width":256,"input_height":128,"output_width":384,"output_height":192,"phase_count":18,"warm_frames":360,"stable_frames":54,"moving_frames":18,"stopped_frames":36,"reference_frames":414,"near_meters":0.1,"vertical_fov_degrees":90,"foreground_meters":2,"wall_meters":4,"camera_x":"-4*camera_shift","projection":"infinite RH reverse-Z perspective; actual raster projection Y-conjugated for Aurora unchanged texture rows","motion":"previous-minus-current input pixels; Aurora ZW=-motion/[width,height]; no second Y flip","opaque_equals_final":true,"composition_marker":0,"pre_exposure":1,"depth_reversed":true})";
+
+            reference_frames.open(f.output_dir/"reference-sequence.csv");reference_frames<<std::setprecision(17);
+            csvHeader(reference_frames);
+        }
+        {
+            PerspectivePalmFixture independent(true);independent.usePBRPalm(false);independent.observe_native_output=true;
+            for(unsigned i=0;i<warm+stable;++i)
+            {
+                auto current=independent.render(i,.05f);current.output=current.native_output;
+                REQUIRE(current.phase==i%phases);REQUIRE(current.resets==1);
+                if(!f.output_dir.empty())
+                {std::ostringstream label;label<<"reference-world-"<<std::setw(3)<<std::setfill('0')<<i;dumpFrame(f.output_dir,label.str(),current);}
+                if(reference_frames)csvRow(reference_frames,i,current,.05f);
+                if(i>=warm)stationary_final[current.phase]=std::move(current.output);
+            }
+        }
+        FramePixels previous;Stability metrics;std::array<StopQuality,3> stopped{};
+        float previous_shift=0,max_vector_error=0;unsigned coverage_mismatches=0,rejected_foreground=0,raster_mismatches=0;
+        std::ofstream frames;
+        if(!f.output_dir.empty())
+        {
+            frames.open(f.output_dir/"sequence.csv");frames<<std::setprecision(17);
+            csvHeader(frames);
+        }
+        for(unsigned i=0;i<total;++i)
+        {
+            const unsigned moving=i>=first_move?i-first_move+1:0;
+            const float shift=.05f*float(std::min(moving,moving_frames))/float(moving_frames);
+            auto current=f.render(i,shift);current.output=current.native_output;REQUIRE(current.phase==i%phases);REQUIRE(current.resets==1);
+            REQUIRE(f.current_gbuffer->descriptor().width==Width);REQUIRE(f.current_gbuffer->descriptor().height==Height);
+            REQUIRE(current.input.size()==Width*Height);REQUIRE(current.motion.size()==Width*Height);
+            REQUIRE(current.motion_depth.size()==Width*Height);REQUIRE(current.reactive.size()==Width*Height);
+            const float expected_motion=-(shift-previous_shift)*(.5f*Width);previous_shift=shift;
+            const auto contract=maskMotionContract(current,expected_motion,true);
+            if(i){REQUIRE(contract.foreground_samples>100);coverage_mismatches+=contract.coverage_mismatches;
+                rejected_foreground+=contract.rejected_foreground;max_vector_error=std::max(max_vector_error,contract.maximum_vector_error);}
+            raster_mismatches+=straightEdgeRasterMismatches(current,shift,true);
+            if(i>=warm && i<first_move)
+            {
+                measure(metrics,previous,current,reference,truth,palm,true);
+                if(i<warm+phases)initial[current.phase]=current.output;
+            }
+            if(i==first_stop || i==first_stop+17 || i==first_stop+35)
+            {
+                const unsigned sample=i==first_stop?0:i==first_stop+17?1:2;
+                REQUIRE(!initial[current.phase].empty());REQUIRE(!stationary_final[current.phase].empty());
+                stopped[sample]=stopQuality(reference,shifted_reference,initial[current.phase],stationary_final[current.phase],current.output,palm);
+            }
+            if(!f.output_dir.empty())
+            {std::ostringstream label;label<<"world-"<<std::setw(3)<<std::setfill('0')<<i;dumpFrame(f.output_dir,label.str(),current);}
+            if(frames)csvRow(frames,i,current,shift);
+            previous=std::move(current);
+        }
+        CHECK(f.scaler->stats().creation_successes==1);CHECK(f.scaler->stats().submitted_calls==total);
+        CHECK(f.scaler->stats().reset_calls==1);
+        const double change=metrics.absolute_change/metrics.pixels,edge_change=metrics.edge_band_change/metrics.edge_band_pixels;
+        auto sorted=metrics.frame_edge_changes;std::sort(sorted.begin(),sorted.end());
+        const double p95=sorted[std::min(sorted.size()-1,std::size_t(std::ceil(sorted.size()*.95)-1))];
+        const double energy=metrics.edge_energy/metrics.comparisons,reference_energy=referenceEnergy(reference,palm);
+        std::cout<<std::setprecision(17)<<"PBR palm shared perspective input="<<Width<<'x'<<Height<<", output="<<OutputWidth<<'x'<<OutputHeight
+            <<", mode=6, bias="<<f.mip_bias<<", phases="<<phases<<", warm="<<warm<<", stable="<<stable
             <<", mean_rgb_change="<<change<<", edge_band_change="<<edge_change<<", edge_band_p95="<<p95
             <<", coverage_change="<<double(metrics.coverage_changes)/metrics.pixels<<", mean_reference_error="<<metrics.reference_error/(3.*metrics.pixels)
             <<", minimum_recall="<<metrics.minimum_recall<<", minimum_precision="<<metrics.minimum_precision

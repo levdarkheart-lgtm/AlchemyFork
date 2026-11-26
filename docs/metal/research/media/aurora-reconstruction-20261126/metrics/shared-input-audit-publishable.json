@@ -1,0 +1,107 @@
+{
+  "scope": "Independent offline audit of complete shared perspective input streams; no GPU execution",
+  "producer_source_revision": "86a7654fb172c47ed9016e5d9c771aa4c06753f3 plus local perspective fixture",
+  "upstream_revision": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+  "input_dimensions": [
+    256,
+    128
+  ],
+  "output_dimensions": [
+    384,
+    192
+  ],
+  "render_mode": 6,
+  "phase_count": 18,
+  "reset": "only first world of each independent stream",
+  "projection": "right-handed infinite reverse-Z perspective, near0.1m; matrix column-major; Aurora UV Y-down/NDC Y-up",
+  "raw_rows": "unchanged from production Metal export",
+  "color": "all values finite and losslessly round-trip through native RGBA16Float",
+  "depth": "Temporal proxy equals independently exported final G-buffer depth for all retained worlds",
+  "streams": {
+    "main": {
+      "frames": 144,
+      "errors": [],
+      "max_camera_reprojection_matrix_error": 1.862645149230957e-09,
+      "max_covered_camera_fallback_vs_motion_pixels_error": 8.702807957661207e-05,
+      "proxy_depth_values": [
+        0.0,
+        0.02500000037252903,
+        0.05000000074505806
+      ],
+      "motion_xy_values": [
+        [
+          -0.35546875,
+          0.0
+        ],
+        [
+          -0.177734375,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "source_csv_sha256": "4791493f296a5c1d49f6770ae5619f001f42887bf74141993113fe55fbc75d8c"
+    },
+    "reference-": {
+      "frames": 54,
+      "errors": [],
+      "max_camera_reprojection_matrix_error": 4.44089183380283e-17,
+      "max_covered_camera_fallback_vs_motion_pixels_error": 0.0,
+      "proxy_depth_values": [
+        0.0,
+        0.02500000037252903,
+        0.05000000074505806
+      ],
+      "motion_xy_values": [
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "source_csv_sha256": "23b48f3d4148d757593a48d8aeae82084589b3d4d20dc4e49ed8c43b22a707f3"
+    }
+  },
+  "limits": [
+    "Opaque-depth snapshot itself is not separately exported.",
+    "The no-forward MASK scene uses the same HDR color as opaque and final input.",
+    "Runtime Depth32 import, packed RGBA16Float ZW, and upstream dilated-motion GPU checks remain separate mandatory gates.",
+    "This audit does not claim image-quality qualification or FPS."
+  ],
+  "actual_both_axis_raster_check": {
+    "scope": "Independent raw-depth both-axis raster test of authored solid control; no GPU",
+    "utc": "2026-11-26T12:45:22.413224+00:00",
+    "expected_rectangle_output_pixels": [
+      292,
+      100,
+      334.4,
+      188
+    ],
+    "pixel_center_rule": "inside left<=x+.5<right and top<=y+.5<bottom; exclude centers within1e-4inputpx of any edge",
+    "streams": {
+      "main": {
+        "frames": 144,
+        "pixels_checked": 304305,
+        "boundary_pixels_excluded": 530,
+        "inside_pixels": 238365,
+        "outside_pixels": 65940,
+        "mismatches": 0,
+        "frames_with_mismatch": [],
+        "counterfactual_negated_jitterY_mismatches": 5187,
+        "first_mismatches": []
+      },
+      "reference-": {
+        "frames": 54,
+        "pixels_checked": 114207,
+        "boundary_pixels_excluded": 201,
+        "inside_pixels": 89322,
+        "outside_pixels": 24885,
+        "mismatches": 0,
+        "frames_with_mismatch": [],
+        "counterfactual_negated_jitterY_mismatches": 1944,
+        "first_mismatches": []
+      }
+    }
+  }
+}

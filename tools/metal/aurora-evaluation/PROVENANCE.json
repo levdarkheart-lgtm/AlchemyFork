@@ -1,0 +1,57 @@
+{
+  "upstream": "https://github.com/Aurora-Viewer/Aurora-Viewer",
+  "revision": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+  "wgpu_revision": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23",
+  "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.2\n",
+  "compiler_binary_sha256": "951efe952b1e70ab89d1b040de27315385ddb1ea8ece7d260655a54c3e52034f",
+  "source_files": {
+    "fsr.rs": {
+      "upstream_path": "crates/aurora-render/src/fsr.rs",
+      "sha256": "db99fc611ccdccda8526905bdc094c440b9f3e83bdc059c30cffa754ebdd0960"
+    },
+    "shaders/fsr/common.wgsl": {
+      "upstream_path": "crates/aurora-render/src/shaders/fsr/common.wgsl",
+      "sha256": "328b2d8d367f0e7280a385ecf7a59e9299af3f8e00dc8461ec6ddf88e0e7abf5"
+    },
+    "shaders/fsr/pyramids.wgsl": {
+      "upstream_path": "crates/aurora-render/src/shaders/fsr/pyramids.wgsl",
+      "sha256": "4b6fe2f7c1d375c54d93a5a9e1c8ad0faeccae77f8f6ce816ca29992746759e9"
+    },
+    "shaders/fsr/reactivity.wgsl": {
+      "upstream_path": "crates/aurora-render/src/shaders/fsr/reactivity.wgsl",
+      "sha256": "93147d1514ddf246fff19cc14f4df6a9a17415eef94b548ca66e7a07ca265d96"
+    },
+    "shaders/fsr/accumulate.wgsl": {
+      "upstream_path": "crates/aurora-render/src/shaders/fsr/accumulate.wgsl",
+      "sha256": "261a55bfe459a133ca2a67e951fad0a6b99944ea11c7e5351d2d10b18d98f807"
+    },
+    "shaders/fsr/prepare_inputs.wgsl": {
+      "upstream_path": "crates/aurora-render/src/shaders/fsr/prepare_inputs.wgsl",
+      "sha256": "987b93e3c20b53c94902fea13b2ae5192a2c60768e1a6e8fc05276546213c486"
+    },
+    "shaders/fsr/LICENSE-FidelityFX.txt": {
+      "upstream_path": "crates/aurora-render/src/shaders/fsr/LICENSE-FidelityFX.txt",
+      "sha256": "82cf74fc23885107c7f69249ac3f1dac55898ff68320eb2c753984cae6b2d78a"
+    }
+  },
+  "ordinary_RCAS": {
+    "sharpness": 0.8,
+    "source": "crates/aurora-render/src/types.rs:1464; renderer.rs:12943",
+    "off": "FrameInputs.sharpness=None, not Some(0.0)"
+  },
+  "scope": "Evaluation only. No viewer production dependency. Vendor algorithm and5WGSL preserved byte-identically.",
+  "compiler_choice": "Installed exact Rust1.99.0 successfully compiles the unchanged isolated module and locked dependencies; upstream repository toolchain1.100 is not required by this module.",
+  "host_adaptations": {
+    "build.rs": "Verbatim module prefix + read-only appended accessor methods; all five WGSL unchanged",
+    "src/pipeline_cache.rs": "Same call surface, direct pipeline creation on Metal",
+    "src/renderer.rs": "Upstream allocation helper + COPY_SRC for explicitly observed textures only",
+    "src/main.rs": "Input upload/format/sign-unit adapters and out-of-band readback; no algorithm adaptation"
+  },
+  "cargo_lock_sha256": "a34578a49345fefb92c42773a8713387f9509f0d91328cb5d5e701e3f7de9a35",
+  "host_observation_append_sha256": "28b9b8e764c53921ccb3f48ace26d4afde5b3494cf1bee9dfb701c0159306c38",
+  "notices": {
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "NOTICE.md": "261a4105664cdc8a735c24ae4dd19bbab24356a357cb02952f218a47611013e3",
+    "TRADEMARKS.md": "3de116245c178b63521fb6d10d9a70cafd836290a46ad54f4cd252294b4fb7ca"
+  }
+}

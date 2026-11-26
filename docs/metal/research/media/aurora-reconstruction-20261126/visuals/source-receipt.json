@@ -1,0 +1,2883 @@
+{
+  "scope": "Selected SYNTHETIC offscreen fixture only; no viewer scene, no Home FPS or live-quality qualification. Both Aurora arms NOT SELECTED: area and stop18/36 still fail unchanged bounds.",
+  "preview": "RGB clipped[0,1], power(1/2.2), nearest integer8bit; no normalization, extra sharpening or per-arm transfer",
+  "crop_output_xywh": [
+    192,
+    0,
+    112,
+    96
+  ],
+  "native_reference": "Unjittered independently rendered detail reference shown in stills only; no fabricated Native motion",
+  "playback_fps": 12,
+  "playback_warning": "One supplied world per video frame; playback rate is for inspection and is NOT measured throughput",
+  "manifest": {
+    "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/manifest.json",
+    "sha256": "fe2aa782fbdb13e075c8963ca47c21ffb1fd5805ae781d915da9fca9dea79afe",
+    "bytes": 675
+  },
+  "sequence": {
+    "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/sequence.csv",
+    "sha256": "83f8a13a0a8e2ef5864ac73e33ffaa340f498e0596e2574a75f3f7da2e73b442",
+    "bytes": 87744
+  },
+  "software": {
+    "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "numpy": "2.5.5",
+    "pillow": "13.0.0"
+  },
+  "sources": {
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/native-detail-reference.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/native-detail-reference.rgba32f",
+      "sha256": "6a04e16038dacafbab71da1ee95b24d412d55c15e3d48ffa110acca4830e9b67",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-396-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-396-native-output.rgba32f",
+      "sha256": "9d0ea8ad8f475e30b5adb85d4dc75cdecb8a6e5895766cdf1a619b6b6e810aa3",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-396-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-396-output.rgba32f",
+      "sha256": "97d019a599803614def843cfccd36d6d964c74db10919e1ec11df554125e98c1",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-396-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-396-output.rgba32f",
+      "sha256": "51f55168060cabcd3a8dadb73e35f1ee12213ab7f59375699d323ace20826f19",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-403-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-403-native-output.rgba32f",
+      "sha256": "4fc4d9e9b43b018ee568ad1b6fd55bf3d8cb2403fc45bc9cad8f5fbc46e33916",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-403-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-403-output.rgba32f",
+      "sha256": "8d5a5ebbb061d978f7a1ce5c6e053d19c2797b07f26fee4c449896bbb672c1a4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-403-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-403-output.rgba32f",
+      "sha256": "1bdd75e3e4cefd6f1f222049dac96e4474dd976638c79f218c77dc39631cab11",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-410-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-410-native-output.rgba32f",
+      "sha256": "b08f66c8e90f7f89a03493033271def28ef3877fc61b6306f4d23cc145f8d04b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-410-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-410-output.rgba32f",
+      "sha256": "0bfae4a9b6ce2db9cb20195dcc23efd3246207071d8026a2accf92db26bc64ae",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-410-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-410-output.rgba32f",
+      "sha256": "d2fe03395511b5d27ff1dbe84a1e5015e06a09516b80afb97dca25ad0ead974c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-360-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-360-native-output.rgba32f",
+      "sha256": "5607d067c167fb15c1e5f40d3a1176936ec0a7b31ecc94257a95adc2a3a596bd",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-360-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-360-output.rgba32f",
+      "sha256": "e443975cd9eea3b6102df1edf5b60b9fe3d16c9b5ae24c66f5d6c7b5e7a9a7fd",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-360-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-360-output.rgba32f",
+      "sha256": "97c0a6616b1fa00b9dea78c94247ffa7b166ceb0a90e8cf1abeee29ca9d8d091",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-361-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-361-native-output.rgba32f",
+      "sha256": "76940cc46f3986cb63ab6994cfc781c3fbce20d9081aaeed6fb8df92c97b2540",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-361-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-361-output.rgba32f",
+      "sha256": "54f19da7f828a3f79ab5284c4c5f2c1bce58783467a1cd1e299cdcaa6766fda0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-361-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-361-output.rgba32f",
+      "sha256": "214b94682393eedec437fcee44a1bb714f71ba96f8f98d7722c155a8fa903436",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-362-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-362-native-output.rgba32f",
+      "sha256": "70a8ae8b93169d5aafe06d920c78174772a49f8b7147754591b4eea8a802048c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-362-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-362-output.rgba32f",
+      "sha256": "3700a057da764e516cef034924fbf499308df5bfff99bb977d071eed85f8dc29",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-362-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-362-output.rgba32f",
+      "sha256": "5b7e98a8ff90fffa1ac0dc1a4a4ea58b8d0608cbe8dd4730e5fd8930370e3ff0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-363-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-363-native-output.rgba32f",
+      "sha256": "92c763e4d9040b7f05d70c805b15081bcc12cb22c6c9587794abd25d36c9b985",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-363-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-363-output.rgba32f",
+      "sha256": "09d67607564bf9fed1bce364fbba1ccc40e1ed6bc2237fdeb46c5a5a3d2b15aa",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-363-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-363-output.rgba32f",
+      "sha256": "4c0bbdbc1e1502b04001479f115711b3d6241d9ce189c09ba00b9c31da832751",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-364-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-364-native-output.rgba32f",
+      "sha256": "3b237608950ca855dc7816f2bfdcd89c9bbfdb242ae0a9914732cee4f60a04e8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-364-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-364-output.rgba32f",
+      "sha256": "720979fd69421293fcb3b4cf59950c4990ca4bec94f1a211b9d6edc9c51e27dd",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-364-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-364-output.rgba32f",
+      "sha256": "fe6de16e5e8834bf815de7f1f861e95d9cc1c832cde45ac28c3cdbac1ba204a0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-365-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-365-native-output.rgba32f",
+      "sha256": "67f43d3f83f4b7859d96e2cbad54f8187db91e8c075a3a4662d741846aa3395a",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-365-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-365-output.rgba32f",
+      "sha256": "f523a613ac69803ff58f20394013dd8f9c21aa71557d7806ae1ea23433acd9d0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-365-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-365-output.rgba32f",
+      "sha256": "0ea55826dbe04df95eadf55d8c2a2314efa975f2b6c139db68b484bdaf0c83e8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-366-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-366-native-output.rgba32f",
+      "sha256": "83ab9e32d9618b9a60e925a8e51b1b350475f341e8f99cc2ac39e59bbcc2a3b4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-366-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-366-output.rgba32f",
+      "sha256": "9a76b7938fe210dafc0965547a517861e3d384ff6ac36dc9b4b1cd9dde2079ba",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-366-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-366-output.rgba32f",
+      "sha256": "161fad13007987bd9f77279679cbd1decedd9d3e12e5103701fdcd1b6c44d8aa",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-367-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-367-native-output.rgba32f",
+      "sha256": "b7ba430e483ef4feb652076a053d1f418b9f94034189a7234bfae3d7717f8860",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-367-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-367-output.rgba32f",
+      "sha256": "f87a72197ba1bafd1e68b45ec31b8fc6b52f6bf8f3bb6e6b05faec798cb3daf7",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-367-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-367-output.rgba32f",
+      "sha256": "5e4e77c95bfa4a712c464a4cc3007457a278ddead490dfa996436804af72a879",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-368-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-368-native-output.rgba32f",
+      "sha256": "536b2edca7ceb86f887343d2c26efe89c92f65a8cc974c0e680634824f7abe94",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-368-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-368-output.rgba32f",
+      "sha256": "f406bb8c3ae145f739f9c543762792f09f774db5a8e453ef1b22ad2331106d67",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-368-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-368-output.rgba32f",
+      "sha256": "b71732c98832e092afff00e14b45705c6e4d2defb2fd68a329a802d68e17bc4b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-369-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-369-native-output.rgba32f",
+      "sha256": "e9356e7a5c42f099ea593e28ed504b15036b62a75d61eb8bfd5c6d745b2c9706",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-369-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-369-output.rgba32f",
+      "sha256": "130e207d0be20c1e4f3e5a367b9172de97b5ee79eda66fef22d2d5fdfdc6086e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-369-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-369-output.rgba32f",
+      "sha256": "85a6e69b37767a1518b6432628a2e349c7f27b83997d890f36b4a6cf885878c4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-370-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-370-native-output.rgba32f",
+      "sha256": "0fee1d94bc2a03765767cb3d4411a8043d6b2fcb99ba3791edfb0d871f576a95",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-370-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-370-output.rgba32f",
+      "sha256": "aacee5e7b1221bb18ee4d083e825849f0e30151e389b8888afdc02c53f0651db",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-370-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-370-output.rgba32f",
+      "sha256": "d86ffcfad6c8a2f52f51653b5ca92902dd7f4495118182cd19c9c90659e827fc",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-371-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-371-native-output.rgba32f",
+      "sha256": "1dbd9c723e780a5ab7389f35bf68b427aa5c6a601fcdef77e6a6b9f2aecb302d",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-371-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-371-output.rgba32f",
+      "sha256": "26620fa1530a13974e0493834b59cd802c3e20df728b3def490883ea332a2ee5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-371-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-371-output.rgba32f",
+      "sha256": "6d14142576f134157424954ca5a8492fae43aba86d61be9a613d4783a8f0fe53",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-372-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-372-native-output.rgba32f",
+      "sha256": "b1f0ff7d193e57333a93747a390e13ac6ca1576f0db5627c94e8e00b5f746dfd",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-372-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-372-output.rgba32f",
+      "sha256": "1fefe0f40f1fba1759ca3fad1da45f9840ba24e2337d09118131588b2ebeda6e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-372-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-372-output.rgba32f",
+      "sha256": "e06e3d59c3799c27f587b72c04ec16f08b45918c343765e7ebe35bbca711d6c4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-373-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-373-native-output.rgba32f",
+      "sha256": "a88be8914baf0d8fa39039a97e4155f8b6a7879781d94114769ce895d41d7355",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-373-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-373-output.rgba32f",
+      "sha256": "0791659cc42469e06d32a7a1f9943a804cb6c92e08b26a4e67a6ea7d4078fffd",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-373-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-373-output.rgba32f",
+      "sha256": "88f71b36501fd5942de1435067bbd30d6bc5808faf157a01e2471829ce288d79",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-374-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-374-native-output.rgba32f",
+      "sha256": "7c4389473c0954a36da5fe7e53f2d7dbc7d67798d236a7c4af3661962b157fcf",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-374-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-374-output.rgba32f",
+      "sha256": "a4328bf382336acacef344592ffb942b8e99a19a23419f794f3fb59c7c4d7393",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-374-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-374-output.rgba32f",
+      "sha256": "c28c67646aa55c7ffabcd4a8e3ec76f29abd05ac9290d2414f9b81196dbf9bda",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-375-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-375-native-output.rgba32f",
+      "sha256": "f9fac2af78bd1eaed819676921cea9d7a7ee0d17391cc28844553540d361c0fb",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-375-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-375-output.rgba32f",
+      "sha256": "a463f058c0bee551cd9022cc98d8a29153b8a37866902f6a8d49ff6215858fcb",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-375-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-375-output.rgba32f",
+      "sha256": "cc3c7663929d3ef6ccd362f599f80e1857d734641889fa9c62e384734b19a048",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-376-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-376-native-output.rgba32f",
+      "sha256": "54bd0d73d7422cda0db0fc8cb4f66a84da1389561a42ec7a72cb020b96d039f8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-376-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-376-output.rgba32f",
+      "sha256": "a8424def8a181d0da47c805b42d3bd37db453e046a7c6260bfff000a23b5c3a4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-376-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-376-output.rgba32f",
+      "sha256": "5ad87054460a458dea64f4d48eb90767b3cf291173f996481a879df3f854d53f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-377-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-377-native-output.rgba32f",
+      "sha256": "c57bc3d132cb52e15a4e8f855d7aedd95cc586538f1b9374dfdb5957bb40f0da",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-377-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-377-output.rgba32f",
+      "sha256": "9587e885cb258e7c75d665d8964bd50b2b8802542288f21ba0a34133016d3c80",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-377-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-377-output.rgba32f",
+      "sha256": "da4752927e6daf8234d3826b3ef17c4da79b3cd6c6c2e577223268e75c77fb91",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-378-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-378-native-output.rgba32f",
+      "sha256": "666fc64aa5fa03fbaf26cf1e3ae7471bb47b1c4445e5d06a33e45fcdee6d1841",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-378-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-378-output.rgba32f",
+      "sha256": "26ca1ab62cd5b9331b2ba1a2fd822b8fb07a2bd68ff9c506e5121ca001258072",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-378-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-378-output.rgba32f",
+      "sha256": "1507650c161768fe116bf30ec8be72f8daf80f79da8731ef5eaa11f68c693665",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-379-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-379-native-output.rgba32f",
+      "sha256": "d77b7b361c693b987b43214ce7711705a61dec5087dbdb134005604d4fc7be13",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-379-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-379-output.rgba32f",
+      "sha256": "f2b7713c9b3bba1d1a6ea4bf627ce019922319b3386e13adb1f98731b6f6e545",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-379-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-379-output.rgba32f",
+      "sha256": "b147cbd034bed61c6e695bf88ff90412b7d890e4e077dfef08997abe46c6a5e4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-380-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-380-native-output.rgba32f",
+      "sha256": "c0dab9593ade8fa4b7b3e38e926797cc02dd629faf41feecbbc742fc8743074f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-380-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-380-output.rgba32f",
+      "sha256": "2a9db8165d5354c2085fe2a1621c8877c6910bc75ad2affca8c22c28a2a716fc",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-380-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-380-output.rgba32f",
+      "sha256": "874d918010746bb9271095f1a3b4e626091d95fdb3bdeb8ad76bd4dd8e8e3128",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-381-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-381-native-output.rgba32f",
+      "sha256": "0ce84c473fa173f2f7c9c92ae40ad2f30914e7b2d67fc72dc3b76048c162fd7f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-381-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-381-output.rgba32f",
+      "sha256": "527139b92df2ba2caf6fc9eac6bbe2fbdd7c977098044b9b712dd129ccc825c7",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-381-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-381-output.rgba32f",
+      "sha256": "298ec8e349f8b7b4bd98aed54956f67200c70902b744dc717c2db3e225bc4063",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-382-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-382-native-output.rgba32f",
+      "sha256": "03b05a8261c3f98abd8363dcff0bc0cf43a97a7627ab48768b6e6ed991748fa6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-382-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-382-output.rgba32f",
+      "sha256": "91667b8a6e9d894fb0d4e449da72dfb09b7ab17061c023cff9205e0fdbba2ed4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-382-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-382-output.rgba32f",
+      "sha256": "5d3fbb16e8771c4279fe239b4fd871756074dd9b5d2eed9629ccce78de1047cf",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-383-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-383-native-output.rgba32f",
+      "sha256": "d556ac7548fda676baeb364a8a4f8ca15c64a6c31f69e2bd7d28a46ea397e416",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-383-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-383-output.rgba32f",
+      "sha256": "7646c89e7dffa6a1e01a6b9f084eda5215983504df15026c78689a3f8bb8f907",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-383-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-383-output.rgba32f",
+      "sha256": "b889cacd0e0e4297b5696976b68169319935387d93f91630195592870d0a957f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-384-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-384-native-output.rgba32f",
+      "sha256": "76247193e046f3ea0287efcf35de508e9319c498ce08ab111e03d9a148378248",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-384-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-384-output.rgba32f",
+      "sha256": "0f2cee3ad0886420560f012dd9b77d730ffab215370964de9df093a5b99c4b2b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-384-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-384-output.rgba32f",
+      "sha256": "e0e972095dab6f90123fc7078c40c7da6a2cd51d5594b5d780bec37fbf00c016",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-385-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-385-native-output.rgba32f",
+      "sha256": "5ead84ae55a94f2930f7e303d4f561d7335706ef17bd4c61c017a553a53c6f49",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-385-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-385-output.rgba32f",
+      "sha256": "774d71218c2fcd8631d5a442cbfb93f9fab175617c761a18c43bad195b6e904e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-385-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-385-output.rgba32f",
+      "sha256": "663f08433c06777e391c9ff2188f3b18d3f433b7fd4718905d64787ffcbcacc7",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-386-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-386-native-output.rgba32f",
+      "sha256": "480b74bd91241038a3261f1274e931b0057e7dedb982eac9508aa5e4d6d5dae8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-386-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-386-output.rgba32f",
+      "sha256": "b9d2f4f87f88a83221332ee06bb8fd54703017fc1d8dae6c4950ae8750d2585e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-386-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-386-output.rgba32f",
+      "sha256": "f824b32c71126ec2a186cc251ed6e1bc06656bfe6c00a52485f11c3bcff197e8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-387-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-387-native-output.rgba32f",
+      "sha256": "2388e91c716f7913a3910e3be438a68440278ae44d8fee6fce8e2209a95c7e3b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-387-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-387-output.rgba32f",
+      "sha256": "e9baeab8437bed0c789e66641c9617baa4449512f86b567e1e3accb15babe6d5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-387-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-387-output.rgba32f",
+      "sha256": "92a0685ddc6ef05261c9f2270342213b9603c553d41f0d420b063376a6f1dae1",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-388-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-388-native-output.rgba32f",
+      "sha256": "45e511f5a93931fd751dff0b77af71faf1bc1538830561e99872748d8960a4f0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-388-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-388-output.rgba32f",
+      "sha256": "aa51d1da350c3adee2598d36e6806bc56d83a4733525e149242aabd484613458",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-388-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-388-output.rgba32f",
+      "sha256": "c3b221eb42f926678c20066d26fa4260ed005fa379b3491bdff12828e27e81a5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-389-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-389-native-output.rgba32f",
+      "sha256": "2ffec71ede8ea42d29ec22c313b316dbf8cd353bfa94529cf80613f40424f88e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-389-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-389-output.rgba32f",
+      "sha256": "8aa10a6a920f417b049160d83d6de82113641ee9286b9dacc800cd144da880c0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-389-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-389-output.rgba32f",
+      "sha256": "5064c0d49c35323ebd69b205f38fa276a78b830bf3b5b2d69792674e1bfdd525",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-390-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-390-native-output.rgba32f",
+      "sha256": "c16f95ccd0ec89fa60405b68ebcfa12ef9e3b28242a5ff8d9de9371cc159a8a3",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-390-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-390-output.rgba32f",
+      "sha256": "9695eb1e8f20073ef6965412afee2d8a043047b1886e29e85031ac0b1dc5d8b5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-390-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-390-output.rgba32f",
+      "sha256": "5fab18dd884315645b1d2c53060075eff3387a03c57f1014f57a2ec84578f130",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-391-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-391-native-output.rgba32f",
+      "sha256": "dfd5046a1ff4329ca04f981eb21351c4b7baf711c83107ab9c95a304a951fbac",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-391-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-391-output.rgba32f",
+      "sha256": "dac0a8499598d325afc5f721a1fa5ecfe59d362cbc38364d7e8068de000646f9",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-391-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-391-output.rgba32f",
+      "sha256": "582533a530eeee6a03d3f6f501eefd359bd1050dfdede82ff01bac8c71285f90",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-392-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-392-native-output.rgba32f",
+      "sha256": "51f086a1dba6a177aca9314c82ab2ee6783bb1968e361e4c33ad48c76b488a5d",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-392-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-392-output.rgba32f",
+      "sha256": "5be7950b92ff6659c8b21dfeacc1043559379083f84d10b6964e44aff4906378",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-392-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-392-output.rgba32f",
+      "sha256": "9c8a7c7e140b2af011b36c8ed231eba590f8e7e0fd66aba4d34e367d0bf20ed4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-393-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-393-native-output.rgba32f",
+      "sha256": "9823bfcfd31883f7a58a7c2033454f6511a53b9273ce451aec31847d44cf94c6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-393-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-393-output.rgba32f",
+      "sha256": "2a4a832a897be04728b76b3144904eb8148d081afa6c5940d77ce32dba8e4b64",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-393-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-393-output.rgba32f",
+      "sha256": "6cadce303539531117f82172c4da4322b0aacab2de4c55267464fa9a646ebf12",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-394-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-394-native-output.rgba32f",
+      "sha256": "f0b904db89f10032548a4f98294e07af150957bb0003988e8590fd924eb5a608",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-394-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-394-output.rgba32f",
+      "sha256": "70a86bbeca194a2343d7510c267143902e1c27ad63cbf47e2e002d985bb3551a",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-394-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-394-output.rgba32f",
+      "sha256": "db0b53fc4cff71643bd7183e6f29a1a870058a9e2cc0b3398a813132ea6dd948",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-395-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-395-native-output.rgba32f",
+      "sha256": "ef76edf8cf172c85d60d2d213b4ad933575c275e43cf4409edbf64fb695c9867",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-395-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-395-output.rgba32f",
+      "sha256": "cd27a3c001f3b0321c2e44784b6cdc8d33ef69150c5ade11fec6859ea45ecd48",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-395-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-395-output.rgba32f",
+      "sha256": "81e0d59afbe21bf10bc9b2cdc460071bce6de98ce3221c12434d5d5760e46d01",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-397-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-397-native-output.rgba32f",
+      "sha256": "c740e8f4a9651c74e65331e4544a2beede4e7876a89011ed9f668c74451022e3",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-397-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-397-output.rgba32f",
+      "sha256": "b537f16bfbd7476cf626430336ebd1d51d305233ca836945040a25e7c4f9d704",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-397-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-397-output.rgba32f",
+      "sha256": "3fc6b8ca69b2c5b90d8e5a62206f4c005a4287161179734b73730a9a70ee5464",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-398-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-398-native-output.rgba32f",
+      "sha256": "d871896728cfc4eb3e40f0f89b97130206f02546cb06ab40638f00ce4ddb23f9",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-398-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-398-output.rgba32f",
+      "sha256": "384459f44e8f7e522e932f7e064123dc1a90ba4537e54328afd55bec69d742d0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-398-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-398-output.rgba32f",
+      "sha256": "ce5c60481cb12635a7379251c890b8c219fe76332df1e6ed3e29644c7eba88d2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-399-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-399-native-output.rgba32f",
+      "sha256": "727b837d18b6b386bdce0d0018e657317810fa7cab91ec11254e58b801efa5e5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-399-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-399-output.rgba32f",
+      "sha256": "b89eb382bf89b58f1f18244f32a8878e6f7946e85542f7fa85a964031c8e277a",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-399-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-399-output.rgba32f",
+      "sha256": "820b8f7c231721bb72a9489f0e10371818519394ca587bfc666fa3d52b00428a",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-400-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-400-native-output.rgba32f",
+      "sha256": "b15c7d93e3422c00620ba19fe05bd8c60f2150379eafa883ae732a58575c3f72",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-400-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-400-output.rgba32f",
+      "sha256": "ecafa21cffdbe4cc7d87c1888eedd0d7037d1e5c623ee45c23ce9b16002b89d2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-400-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-400-output.rgba32f",
+      "sha256": "97ed6759485954c1ddf3335f6ca8572d003489bb992ee19c9f2e25a8b0617442",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-401-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-401-native-output.rgba32f",
+      "sha256": "f62437bc80ac3aa94dad6dae3f9e04a9d3ea690846e8bdc5370ef47bc86999a4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-401-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-401-output.rgba32f",
+      "sha256": "dabd999cc21102c20c782fc739c73f85698500e526b459baf36fac67e6ca1021",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-401-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-401-output.rgba32f",
+      "sha256": "8b4110cf217aaea4861a121988baa7dccf2e1c408da32fbae00543f27acf51e5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-402-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-402-native-output.rgba32f",
+      "sha256": "8cb4ba1778dc4d2d681b8cb44fb27ef5986c890dd517b0c0469e0b1d68cfb327",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-402-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-402-output.rgba32f",
+      "sha256": "2f568ee3c039a9edd7d5b515480cc41d477748f59b52e978011643a4ce202b80",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-402-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-402-output.rgba32f",
+      "sha256": "0576e797de33e2b5da2151368a3d68d80eb6ff79bfaca5687cf9284aa28da892",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-404-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-404-native-output.rgba32f",
+      "sha256": "2edd468dcb315a49dc31323fbf8c5d5781b2422c311294cb38b69914e6090f3e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-404-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-404-output.rgba32f",
+      "sha256": "e2e2859c5319c4b38080361d0f35e84b5174d3e6ad116504cc91bfc99e77bd59",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-404-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-404-output.rgba32f",
+      "sha256": "ed1ae7968d5b03f2bf374c0304b6eea4083bf73e1b8cffdbb6616805d9af2f14",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-405-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-405-native-output.rgba32f",
+      "sha256": "cf5c55f3354383a369c34fcc5313a4d5cd134cdaa6f1074e47bf69ff1b717043",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-405-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-405-output.rgba32f",
+      "sha256": "c8a15eaa585352fa52a3af4c0148108f9c042516356d5853d1d2d366ade4e6ea",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-405-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-405-output.rgba32f",
+      "sha256": "a5b9c530e2fb2770a4aa6c439bf76a3c0e02ca5dadc589960674f2a8fab0cf40",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-406-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-406-native-output.rgba32f",
+      "sha256": "f29387577d067b0087acc2a4ee749b6857ce643192d30a203eac3f0b5d4bd534",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-406-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-406-output.rgba32f",
+      "sha256": "c35ab57dcd73e6998e978c882c4a9824a8d0473323a750256099bef78ca15692",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-406-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-406-output.rgba32f",
+      "sha256": "3b22c710917e5cfd9c34282d6e4044898c64f5378be17e4988f303a50421bfd1",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-407-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-407-native-output.rgba32f",
+      "sha256": "31ec58aaf87218228bc0737b5cd87aa214c5dad4d0d2b56e3e566a7bef608a53",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-407-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-407-output.rgba32f",
+      "sha256": "11c3a1f44583a317fe101872c0bb7071f93134d0c630745596e66ef3ca44db62",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-407-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-407-output.rgba32f",
+      "sha256": "de468c179bb87740bb4d6eaafba3dcdcbec59b3700c3204579905d29e7e3c4b0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-408-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-408-native-output.rgba32f",
+      "sha256": "94ea51d7b81afe573fe2be069d3cae305a57acd711a3f18ab9507807315606e9",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-408-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-408-output.rgba32f",
+      "sha256": "632ccde9fb19f4f6b3c440cf1273a7b39a8b78dc909c5c7b25d2f9be0587db9d",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-408-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-408-output.rgba32f",
+      "sha256": "b958f8c46c0a1d91356eeed810c247d509ed8a2b3f1798288d47a109fa7014bc",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-409-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-409-native-output.rgba32f",
+      "sha256": "6cc4f12caaab5c07fd3224fb1618926b38931b1564a540ee98043449773b62ff",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-409-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-409-output.rgba32f",
+      "sha256": "69c207ee1c1b4985869a632f03fe75698e7900fcc01eb504c5fa855f2bc30300",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-409-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-409-output.rgba32f",
+      "sha256": "997c1584df900f44be95211fce0695d31a0d8b4ffbd1b13592151043726f9351",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-411-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-411-native-output.rgba32f",
+      "sha256": "812d1806c9c9921b10235345564632cd2cc440f6f2158276402f28291759362e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-411-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-411-output.rgba32f",
+      "sha256": "7fdf1a81494b4a3dc4c5e96666bce866ee155adf5796cd29a676e883b5217ea6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-411-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-411-output.rgba32f",
+      "sha256": "147363ef70926974aaf6d176cc6b15f7003a8df670f288a4cdf9167d37d6eded",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-412-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-412-native-output.rgba32f",
+      "sha256": "aec0497441c06b4083f3a44cc411bb4e5f77fa2156498448bcf91a8e647115ad",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-412-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-412-output.rgba32f",
+      "sha256": "644e35c900a51279b030862d589f436afe6d0b3e7f0743c3634379f1199fd8ac",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-412-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-412-output.rgba32f",
+      "sha256": "7f37db49f891c39a109897beac45d01e3a9c1771fc2e2cd4e57eaca5298fc82a",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-413-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-413-native-output.rgba32f",
+      "sha256": "4e2ade5e639833c1dd0f853f6c0ef3aef7929cf8584dab2e2e12726c0f289347",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-413-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-413-output.rgba32f",
+      "sha256": "ccf63eac3e277114a15a5228ab59a1bd6bf79b3a617d45a01c959595f1ebc382",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-413-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-413-output.rgba32f",
+      "sha256": "436247709d999eab6b7ad2499790ff0a5a7f151121bd4a2183cf192d476b1739",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-414-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-414-native-output.rgba32f",
+      "sha256": "ae9c08dc6df1ef136592461a55ffe8a466f41d4b22cae240e9fc9c95f92af061",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-414-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-414-output.rgba32f",
+      "sha256": "4c1105493f0016a0f88e8293c4a6d2bdfa8973a27c7717d4e7e524cadf90b3c8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-414-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-414-output.rgba32f",
+      "sha256": "566757110b0dce9de31645536dfd0995c5764fbcb46f99aa35b8d46d7441295f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-415-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-415-native-output.rgba32f",
+      "sha256": "7ff82a400717b706c64383b83400d15c08ca705ba4ef35ea06cfc023015a97a1",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-415-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-415-output.rgba32f",
+      "sha256": "87d0e7cc71d922254444a5fc923b6d9b7069ee0e93f3d307124c682d8cd795f5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-415-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-415-output.rgba32f",
+      "sha256": "7381b9f5dd64a0787cf3f18af7a3461834fdcf4de7abd8aa3812197c7b4de092",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-416-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-416-native-output.rgba32f",
+      "sha256": "cef470de27388b4eb8db418fb90e0c8780c802353d7441cfaa3f9459ae0b7b32",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-416-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-416-output.rgba32f",
+      "sha256": "23e7d09ade4a542c9aa5ecdd753c642dfe378da46632d2104bfeb77732302119",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-416-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-416-output.rgba32f",
+      "sha256": "1e88d91c01c867490eca6d7f53b8948e719af9cbe9733ca9914d907d2c5952db",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-417-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-417-native-output.rgba32f",
+      "sha256": "e9e5c3c0ee2daa814069a31128f9338331c2e50dda2828e8bfcd7d7474a69d78",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-417-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-417-output.rgba32f",
+      "sha256": "41ac42e227a29585a0e7c7dc2017f5710eafcda5671ff4330c17f2030b386f22",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-417-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-417-output.rgba32f",
+      "sha256": "e221082d12b77c7f67f171e116afd3c3b6b707c3b2864ecfbb91e676bcd66a8f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-418-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-418-native-output.rgba32f",
+      "sha256": "50105bf0ede46bbc921eca2dcd7af8489cf831bd5162c06244927e2740d195e4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-418-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-418-output.rgba32f",
+      "sha256": "52c2d21a11a85ee79bf7c376fc539d4e96e6dde0898b73b29b724f96bcb0c89f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-418-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-418-output.rgba32f",
+      "sha256": "af245cbdceb232e957b502dea461d5f5dc9f16ee2b369c2e5133eede56cfc71f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-419-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-419-native-output.rgba32f",
+      "sha256": "bfa890cf8d871f62d65583b14d6b41ff596e26898ddfc7e8e98ff087d6227b26",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-419-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-419-output.rgba32f",
+      "sha256": "0f403caef6ef3178062753bf6e54aeb0496c4123ac5fb5da5a7715cd89de7982",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-419-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-419-output.rgba32f",
+      "sha256": "d14af2ae793c2c363ee897783bd1b5b27585197e4f5c482da216ce53090a7a83",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-420-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-420-native-output.rgba32f",
+      "sha256": "7450bffbd8d3592d45b00501082d241363b4457c705852d6f13514f2c5e07d78",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-420-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-420-output.rgba32f",
+      "sha256": "8b1d85cb3d46ea0f330bd971146e6bce1a351c17cc3fdb6b31213779b9e01692",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-420-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-420-output.rgba32f",
+      "sha256": "a51d657bdb029112b897e364756ca84079d8d04b630f102a695f546f58510532",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-421-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-421-native-output.rgba32f",
+      "sha256": "b6653d78d5cb441721de733c563f838bdf0d4a261c068820adce326411d6d4c4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-421-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-421-output.rgba32f",
+      "sha256": "69ab8830e9f0629e8fda6eb6ce71baa897ebacfaee0cfa3a7b633987300917ea",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-421-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-421-output.rgba32f",
+      "sha256": "1cef4cacbecb20932d2b1d2b42622d7bce280e9b90ef1432f88860cc35ca8543",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-422-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-422-native-output.rgba32f",
+      "sha256": "ba80c0033a923920920db3d4f19a3921f1878153c99d80d7a3bebef3eb38ec1e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-422-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-422-output.rgba32f",
+      "sha256": "cc0ad9ed97823f0800b331644e455d8ce24c58d31751622363dd9be08dd650f6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-422-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-422-output.rgba32f",
+      "sha256": "2b5a1b503635bf8d4e7c0b039730ebbc66d697ed2a10ae427037cdecadf4e5ee",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-423-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-423-native-output.rgba32f",
+      "sha256": "a7e7f2ce3af3929a63c229cd577f24ef80de3e019c39369787fcca24fcec45e1",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-423-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-423-output.rgba32f",
+      "sha256": "64e48b11b93f73a4b42863b605fa949292c81996f3b6a1fed543b9cf69f18890",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-423-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-423-output.rgba32f",
+      "sha256": "7c38d0b5d8bcaf6be31e70c3acc8f184b6ba75f4529943466e3b961c3f897b08",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-424-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-424-native-output.rgba32f",
+      "sha256": "c1950819f2b2fb646edb0a8023c083b6533bdbe3ac7577ee09a7d53ef15035f2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-424-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-424-output.rgba32f",
+      "sha256": "a18c0b2b640220955164b9ae286cbed75fa890976e56ecaf83de4bcff3f956f8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-424-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-424-output.rgba32f",
+      "sha256": "48b337a8db603355cbacc291f07b54ff6bf71f1f6cacfee5512286f8c6211c44",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-425-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-425-native-output.rgba32f",
+      "sha256": "01d2d7d1a39787127ff04363745c301b79f3b6b785a6195d7c678515fc23155e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-425-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-425-output.rgba32f",
+      "sha256": "392bbdd5b28447bf711dc47076d8a69d819179f0d7bca6935954a817151f7f0f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-425-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-425-output.rgba32f",
+      "sha256": "71f9370aff18def1c3b974b4dd9709df4129e0ad4526d487ea45ccd43a1d680e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-426-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-426-native-output.rgba32f",
+      "sha256": "f0a7121b9c56bdea183423a3c211a5c8b2f71a0146516af5d4686bcc99198989",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-426-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-426-output.rgba32f",
+      "sha256": "95d93a82800257164c774c963ff6db39a0ceefb35223b34c986377434751587e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-426-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-426-output.rgba32f",
+      "sha256": "4c258cb4ee494d0ba1afa597de9787c756cbb5ae5579f83db0598371a5c10e7f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-427-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-427-native-output.rgba32f",
+      "sha256": "3e74f2ae05c7c80ed6a1a7ba6853dc443c42b90966484e796d39937131f7b44e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-427-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-427-output.rgba32f",
+      "sha256": "38b0740ef30aa060332ec248dd111bcf8e54c0face00cee05cfd51d6dca83277",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-427-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-427-output.rgba32f",
+      "sha256": "df0f51fc15f5e876b8a4567e932fc3ce8b16ab0407db3a83b82cd34ad315ea2d",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-428-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-428-native-output.rgba32f",
+      "sha256": "6a1c36e43e2e0f967518c03ca749cc368e028ace137863a46e6654af60623860",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-428-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-428-output.rgba32f",
+      "sha256": "3968eed83f8e95dcf90d12a0f18a24bb996083d5e6781ffca029e0a5676ba98c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-428-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-428-output.rgba32f",
+      "sha256": "a1a3362928e7d82b62e3a15dbee8bbf25cb5bb224ce93458d5d7b545f1b7e2a5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-429-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-429-native-output.rgba32f",
+      "sha256": "cc0e83bba88e44570cbfae0680b84b4fe528e0943039526f86314b2fac8c1995",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-429-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-429-output.rgba32f",
+      "sha256": "42a2e8a5de0635911ec6ea681fcbd058efb0f69b5a738f072ec4a5d52ed2c79d",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-429-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-429-output.rgba32f",
+      "sha256": "287092abee39d9b38ad20ab846b217ec961aac80381d06977e940527c55f6804",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-430-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-430-native-output.rgba32f",
+      "sha256": "a637a72f9f1429bb671bab63152042694859c389bb6433a309e9db9e2d5625aa",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-430-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-430-output.rgba32f",
+      "sha256": "826a078605625f9e9863538caf542c4e3a40478ced97db51ea92c7d2a799e54f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-430-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-430-output.rgba32f",
+      "sha256": "dd58b5d9b355840feaf19ebc24c0c794079f3e5580d838815ad11346f15ea33c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-431-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-431-native-output.rgba32f",
+      "sha256": "998f256b14b4fc05de186215d94b91d197852cde177942e5a214f82c8939c6d6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-431-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-431-output.rgba32f",
+      "sha256": "3468b494af5b4769839bea1260f28ad9a17c7a3e8ea3f42db5f88d9cb6c8e637",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-431-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-431-output.rgba32f",
+      "sha256": "cf8a37903f926259dc0572e213a961d01855ddfb42715b246438f806d40d7080",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-432-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-432-native-output.rgba32f",
+      "sha256": "22a3dde111b609660e25583108f055eb586646ecbf231cba0ba857bf714e1f42",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-432-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-432-output.rgba32f",
+      "sha256": "ccc31910725f34cdb22c6c008da2d3d0ccf9145de4daaeaf4cdbd0c8da532d5f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-432-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-432-output.rgba32f",
+      "sha256": "4999620961f337ebc4c8edb5360fba5ee824cec4309196a63b3f9f905345e21b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-433-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-433-native-output.rgba32f",
+      "sha256": "f02b4f035ae7c819de42db77df9671b72e8711a4afddaa7d70327be1b9859e38",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-433-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-433-output.rgba32f",
+      "sha256": "66cc1808a16a730a75bade46cef16349a81d91c7970611b0660acd2cc12ede7c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-433-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-433-output.rgba32f",
+      "sha256": "6e497a3a01ba52fcdd48089b9e70e9239251f6cf50a895d113fafff0047b76d2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-434-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-434-native-output.rgba32f",
+      "sha256": "b68d390347bb209883103cb872f2aafb168630e5bbe92c345017c9ec85d5d84e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-434-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-434-output.rgba32f",
+      "sha256": "aac3f533395ab01d0a884925fd9800c55bfb65b3101ddd112dfc283abdf67b77",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-434-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-434-output.rgba32f",
+      "sha256": "aea4bb180a1595addfb101f8020951b696dbfed5291eff30fadfbf2f31542149",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-435-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-435-native-output.rgba32f",
+      "sha256": "7863bdde7a600cab74ccae5166bcb7b237e21aa4d23f97906bf3cf72a4859b34",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-435-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-435-output.rgba32f",
+      "sha256": "52d5c3f6d9fe0fc0d6ab49d9da6160d175676c68ef7fc88021d37292d0e28f14",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-435-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-435-output.rgba32f",
+      "sha256": "6b8bad330324c76831f88056be74612667905d2f163ce3fbb27298378ab510c6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-436-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-436-native-output.rgba32f",
+      "sha256": "a7e7bf5b1c87db25ea81b81ccbc944c73b0d45f9327d58fa93d9016e3c086f6f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-436-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-436-output.rgba32f",
+      "sha256": "2f53761aa5f25aef3a6d9f6efb6a602d0751fc7fba068b093ae29cd3633d204b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-436-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-436-output.rgba32f",
+      "sha256": "451190ab6a6b67ec5559049116d588b7559f1868f06bccfcb8232da2286ff8f9",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-437-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-437-native-output.rgba32f",
+      "sha256": "d1a4c63d24fc4f58ef47b57064f3c130a21b4cde954ca8ece89e0dccb79ee721",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-437-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-437-output.rgba32f",
+      "sha256": "6c65d919192912d72e2ad0a0d3b84ddf21c6f9c4e99d84f4f62991e1e070fd32",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-437-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-437-output.rgba32f",
+      "sha256": "24b845421704b24651edfd366b6530d77b89029fe21959a48c407c3750ba7cc4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-438-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-438-native-output.rgba32f",
+      "sha256": "da6834bbd0cefd3f7337fc3600e027c2c9a867442c121d45ad2bad3ab3abbbf6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-438-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-438-output.rgba32f",
+      "sha256": "0d0ca64553de2c1c39cbf57ba8d2f7f52dfee0d86a6f7b3f9db9fdad30389bd7",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-438-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-438-output.rgba32f",
+      "sha256": "f66ad4f511246befdbef1823746b791a1fd24e553dbda9e07da0c4a5d06c7543",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-439-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-439-native-output.rgba32f",
+      "sha256": "2437da2809436eb6653bfe93cfd7c3b10a194398edbb00b9dcf9229983ba79d0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-439-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-439-output.rgba32f",
+      "sha256": "2637c5ead17e48a444af7c38c40d5a44cead672fc7b8ee0d996a10978b5319a5",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-439-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-439-output.rgba32f",
+      "sha256": "03f467bd432acabfcd8412b06848712dfe68e99e364618eae031a099ab800269",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-440-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-440-native-output.rgba32f",
+      "sha256": "3adb18012d3d8325bfe3f87e09095a46666da10af5490dd46780566675c002f4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-440-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-440-output.rgba32f",
+      "sha256": "7199682d5d3ab0e28c580bff13caebdecfc4bc80f14b356291f3e4f98eb8cce3",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-440-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-440-output.rgba32f",
+      "sha256": "c2d617861a2fa73a31765fdf37ab9f94ac85ca56f90d9e280f9f045d70829da7",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-441-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-441-native-output.rgba32f",
+      "sha256": "099c6252cdb90273ae2382f161ec0f273407163b1caf53fa74a5450bcad3ae54",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-441-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-441-output.rgba32f",
+      "sha256": "751f543176293a3ab3d899201a596b4c3655b9e3e4cb2b6c097d5b2eed878101",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-441-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-441-output.rgba32f",
+      "sha256": "f8e9fbdfd7d1875b96802daf502f19cf41ece476bae4b345baa53042db7d847c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-442-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-442-native-output.rgba32f",
+      "sha256": "aed1dabb687147c0b128cd10f2dd176dc640e3e752376ef6cc2df6f14af682d2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-442-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-442-output.rgba32f",
+      "sha256": "75f36a9d2ca73b6483507b47cacd913fe0e315e0e8d56016ce4da6f94defe938",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-442-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-442-output.rgba32f",
+      "sha256": "97f7e84979f3f5c55fc5b75f62edb76509006c5a04e3aee7517a4c72ac9cc3d4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-443-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-443-native-output.rgba32f",
+      "sha256": "feaed51b117578023c1a6809dc331194aef2237029cc139a94332e22201f7a11",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-443-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-443-output.rgba32f",
+      "sha256": "23e7dd69c1be81d479513ae2843a241ed6dbc58bbc0b8f70aa89d9a58b5490ff",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-443-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-443-output.rgba32f",
+      "sha256": "249d0c5ad112676c7b2ec678b6d6728ad394533b59e0110aa7f235042ec4b413",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-444-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-444-native-output.rgba32f",
+      "sha256": "882ade93ad022b7ee646dba73528b7fbdac856058c63abf6922eeb0a3ea89c8b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-444-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-444-output.rgba32f",
+      "sha256": "3f829c186885f42630e6a6c66fbd22883629878dc3f8cc1b68758131aeeab096",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-444-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-444-output.rgba32f",
+      "sha256": "4b45877c203c448c9720b18321eb04eeab96f641166ec55095224feff9614650",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-445-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-445-native-output.rgba32f",
+      "sha256": "b7c74aa6e859bb841c5f035a23ce178f8721afaff78792652035ed03985ffee4",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-445-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-445-output.rgba32f",
+      "sha256": "d7eb1e6797b8070712b05e075151c05c43fd3a2b7a3d9c66918155ccdb10105e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-445-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-445-output.rgba32f",
+      "sha256": "6ca2e51c26da733a463360e80654521516099889ab24f0ecbe8d893465a80925",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-446-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-446-native-output.rgba32f",
+      "sha256": "ee6e2cfe0cc6501f75f6ba9111ae3fa0d54e1cdf6d63c7620f97e08717b5563c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-446-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-446-output.rgba32f",
+      "sha256": "7be7b8dfc007c638627dd5901183f453ce96408f9ad40406f5be61648efd2631",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-446-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-446-output.rgba32f",
+      "sha256": "c38f8046d031e83092161bd45e5162ffb89394d21533ab9f58de6900e7c23cbf",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-447-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-447-native-output.rgba32f",
+      "sha256": "2438c10fa9afba5ffd69ad2584dfc7d6f510b6e4a83a14e92740d525620ef559",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-447-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-447-output.rgba32f",
+      "sha256": "e492a55c4e9314bf519cb5c6bab62d4a7920574c400e63a0e6c12bc335777b2a",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-447-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-447-output.rgba32f",
+      "sha256": "7216be7a9f815ad135e7c2761e19833821de852af42eec74759d617edb8f30c8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-448-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-448-native-output.rgba32f",
+      "sha256": "28e734c64adbca0e45cd419bf3ca56dfb92d725b3194be8bcfae1f59f64e4bda",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-448-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-448-output.rgba32f",
+      "sha256": "e2fcda2a35b9334197597bb77b1a5a0847537e2e039d8cf36df5f324f4830c12",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-448-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-448-output.rgba32f",
+      "sha256": "f186d400d2108693f7e0281410b5a4641fd09a0bff9e1f47232e791e28ee745f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-449-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-449-native-output.rgba32f",
+      "sha256": "00484a515a2290a067525e3200349b7828e0c5ae6e9f284d03d46907da1a7922",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-449-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-449-output.rgba32f",
+      "sha256": "9eafe4592e9b59a1d2fc668c99b5d44874354dddd3684057d3b55afa7ebeaec2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-449-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-449-output.rgba32f",
+      "sha256": "adb515c848f47c1061d7020a756557cbabda618ad47b1a5d3cb6f1b5a6844836",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-450-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-450-native-output.rgba32f",
+      "sha256": "75d0d6b237231096f5dd50d916af47d2e6ff6772b3f564f783edde60ccf07343",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-450-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-450-output.rgba32f",
+      "sha256": "84df3c82e02f29294795d6a093b9ebf2e36aca2cff92cae7df4813380ed93b38",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-450-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-450-output.rgba32f",
+      "sha256": "ff837937dcd85fd3dc6d9c8b3a035077e815880ed4c78eade6023d72050552d9",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-451-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-451-native-output.rgba32f",
+      "sha256": "aec89192d46eead70622b320817dfb3fb1fa8329607154776ed9454f24054d9f",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-451-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-451-output.rgba32f",
+      "sha256": "c1423a2aef7e5ee8f00f6fa2da4706e7e823c881f60936c6672523788be83f56",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-451-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-451-output.rgba32f",
+      "sha256": "9e0b079d414e5c1fd607bc4d9db25dae68569422df3a656177478ec6e7e7c3b3",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-452-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-452-native-output.rgba32f",
+      "sha256": "4e8a477829311e8cf7dc9aa2c9a7c8d55ea8b396f489440eea0e08c418455d21",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-452-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-452-output.rgba32f",
+      "sha256": "63f202ddc71583f32b22a1776fea8e2bccc8892040204cb2304812cdd6b3b1db",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-452-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-452-output.rgba32f",
+      "sha256": "12701163968bf52239e002ac73f6a5dd633a6d31d42c81e81a6cc0363cb1cf86",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-453-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-453-native-output.rgba32f",
+      "sha256": "86a696c146c90fbdaa95546949fa82269a9f73b9c221bf8d055e960e07f1dc77",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-453-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-453-output.rgba32f",
+      "sha256": "ef3d9e1a229897c9cbf974b3528fe5d140ff466951ea0f5775b7d09d003b1a81",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-453-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-453-output.rgba32f",
+      "sha256": "60e7cffe124bc5cadc2ddc0dd6c528fac617a2c5f362be4d2d64df611f1b0ac2",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-454-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-454-native-output.rgba32f",
+      "sha256": "39cc679c822e4e8b9a9d4eae617240020a10f0f4659da7de95594b4716d7e21e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-454-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-454-output.rgba32f",
+      "sha256": "6023af8ac37de4f4cd1b100455b74a0758eff83715b4ab5570c243268a969a58",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-454-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-454-output.rgba32f",
+      "sha256": "3284db2361989e40e88082f4e4ca6d8b7a77b18c140fc45f28e90127a0fa48f6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-455-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-455-native-output.rgba32f",
+      "sha256": "04a0209c9120a35a3e6daf419bf0c4cdb049fe5c747a8d1e451f0c142a4eaa13",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-455-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-455-output.rgba32f",
+      "sha256": "607bbf3293ea9b086de2d30b09f78823ab756282b163f67f3f9561471727dabf",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-455-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-455-output.rgba32f",
+      "sha256": "5112240d6cc9f0766202993adb11ceb1640d27ac58cb8c4c883f8d861ff14ade",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-456-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-456-native-output.rgba32f",
+      "sha256": "f331a7b5f7580610a84e2ad686f88fba28c37a862982a93e2eba9be7c7326cbf",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-456-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-456-output.rgba32f",
+      "sha256": "4e26b24c5be4df5011a6150d5da44d31b7ca501035cbeff9bd80471500272656",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-456-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-456-output.rgba32f",
+      "sha256": "902e27b1f36946f7d68337ca01b758c761b651ee1974b53d5625ef2e1a11c7cc",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-457-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-457-native-output.rgba32f",
+      "sha256": "9c384475124ed946d2d26409e786a864bd10da76b3c6c614236432354c3c161c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-457-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-457-output.rgba32f",
+      "sha256": "8771b83265f41e8ab53c3295b05293abcce5d1a0db631764e70d4a88393d3eca",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-457-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-457-output.rgba32f",
+      "sha256": "f6a6bcae56edcd99f116726808f56dc6ae415e85c73d54318d5aa1930a7bc4d8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-458-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-458-native-output.rgba32f",
+      "sha256": "bd7b099a46daba807a7df5b8a15e7e5023079e1a14429f88ba3feb742083234c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-458-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-458-output.rgba32f",
+      "sha256": "4a60342fdbb49876170919590aa2846eab8949cdf835807d9ef849fa50db3ac7",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-458-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-458-output.rgba32f",
+      "sha256": "58cfb45437145ce30ff2b2c62f8f162dbb94dcd26a8cb8d3fa7f4d9a207bed46",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-459-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-459-native-output.rgba32f",
+      "sha256": "79d30b1ca971a02347aa590b30377e38544ad1bf7fd626b4afc82925b2937336",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-459-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-459-output.rgba32f",
+      "sha256": "8bc65ec2d17f2420eb297e0a95697a541629a2a82e7646bc06e6183640e94670",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-459-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-459-output.rgba32f",
+      "sha256": "c35f9a7ed8b34f504cdda24f43e29c89c74c23fa9cfb9ef037fb1bae6fe0d6dd",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-460-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-460-native-output.rgba32f",
+      "sha256": "1c8780f546467a0337b81afb40538d5e68865f68a2ac938bfe6857d149672de0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-460-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-460-output.rgba32f",
+      "sha256": "c2896f7ec8b38a1f01639dfe08d35128d465a3a9c1506ce7c0c2c9b9a65d9ab6",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-460-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-460-output.rgba32f",
+      "sha256": "eb9847f097cdb1e2dc7943dfddfccd464e2dd3850f43f87839bdb0b829b5e950",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-461-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-461-native-output.rgba32f",
+      "sha256": "641c2d50df4398443f73c6abf308d2835fe89a83e1bc3a23c7145fea410329c8",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-461-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-461-output.rgba32f",
+      "sha256": "7aeab27940847dd361e1e1cf84a98c0718bdb6d3a38131a8523a8e5ef8fbcb91",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-461-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-461-output.rgba32f",
+      "sha256": "f8c9d9088d8d50e080ea507c77160f25c0fe958904dd324d15437208f9ef79c0",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-462-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-462-native-output.rgba32f",
+      "sha256": "5990ef03654d24e868ed05270a427582a0d00375ea237257687cef0b7271b46b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-462-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-462-output.rgba32f",
+      "sha256": "d8d5d1368e80c52553caf10db76f49369dfc56a7e3b3e8d8111193c563916c6c",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-462-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-462-output.rgba32f",
+      "sha256": "a9fc3d56e7f1de13d972c0f7653de99833ea840b589b267415f5ce6c3c910057",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-463-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-463-native-output.rgba32f",
+      "sha256": "53b75f806872f356d09fd488dd0822bb42cdbe85107a41c74a2378e21e72750b",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-463-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-463-output.rgba32f",
+      "sha256": "42662fefbacb019b01cf0b6b1bc2a7c39a4f1db6987be56c174c70b8d86af1ad",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-463-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-463-output.rgba32f",
+      "sha256": "7038dc88e4213404e3c94a18f85adfc29679f15128edbcfe12021b82e72bfb32",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-464-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-464-native-output.rgba32f",
+      "sha256": "e4565efaf22610faec7d617a94eab809622901b7f3f8ad8a9108885c5b54539e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-464-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-464-output.rgba32f",
+      "sha256": "95fb96c2f6465fec186b1b315b9d12824ac16543f5ca746414e8e8de3ab08f4d",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-464-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-464-output.rgba32f",
+      "sha256": "469726d9f311cf70e1c5fe93766802cafdd5f7c41ee80d0fbe246bf0d635e890",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-465-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-465-native-output.rgba32f",
+      "sha256": "5527b0b0805d4a2097593cd33eae3e544ab4e6af7ae9ee55212578eba37b2420",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-465-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-465-output.rgba32f",
+      "sha256": "1118df775be8c8dde0f1ec1672f4b3b3b4ec19b84efeb0aa440f58d6bdc6890e",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-465-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-465-output.rgba32f",
+      "sha256": "87eb986d42272aa496a3f518c788cf46c3bbcdc1d190f70312e0f617a21bd5e9",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-466-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-466-native-output.rgba32f",
+      "sha256": "481fc6b8192e124360e825cbac3042c83aa2fe1b8289e9db32e41027c1cf5053",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-466-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-466-output.rgba32f",
+      "sha256": "ef8decd3751b00ca7fda561dd6f9670bf0498c9adda600789266bfe0be35e491",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-466-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-466-output.rgba32f",
+      "sha256": "8d04cd35171af14cecb6b6d80d574072507f8e24c3ae2f7fab560adf2fb50e80",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-467-native-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/shared-inputs-warm360/shared-perspective/world-467-native-output.rgba32f",
+      "sha256": "2e33552d800f0169887c98d2454eed358c95372148285ed64dce6f0826da5a19",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-467-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/off-main/results/world-467-output.rgba32f",
+      "sha256": "ed88764c08142c37f154520ba5d8134a32207c25521bb4f2898698d15e827489",
+      "bytes": 1179648
+    },
+    "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-467-output.rgba32f": {
+      "path": "artifacts/metal/aurora-evaluation-20261126/quality-warm360/ordinary-main/results/world-467-output.rgba32f",
+      "sha256": "8ef941c721b9100d5547e926fef63b17143317249641c924c642b314a4494d93",
+      "bytes": 1179648
+    }
+  },
+  "stills": [
+    {
+      "file": "stationary-phase0-frame396-1x.png",
+      "frame_index": 396,
+      "world_id": 397,
+      "phase": 0,
+      "scale": 1
+    },
+    {
+      "file": "stationary-phase0-frame396-3x.png",
+      "frame_index": 396,
+      "world_id": 397,
+      "phase": 0,
+      "scale": 3
+    },
+    {
+      "file": "stationary-phase7-frame403-1x.png",
+      "frame_index": 403,
+      "world_id": 404,
+      "phase": 7,
+      "scale": 1
+    },
+    {
+      "file": "stationary-phase7-frame403-3x.png",
+      "frame_index": 403,
+      "world_id": 404,
+      "phase": 7,
+      "scale": 3
+    },
+    {
+      "file": "stationary-phase14-frame410-1x.png",
+      "frame_index": 410,
+      "world_id": 411,
+      "phase": 14,
+      "scale": 1
+    },
+    {
+      "file": "stationary-phase14-frame410-3x.png",
+      "frame_index": 410,
+      "world_id": 411,
+      "phase": 14,
+      "scale": 3
+    }
+  ],
+  "clips": [
+    {
+      "file": "stationary-matched.mp4",
+      "frames": [
+        {
+          "frame_index": 360,
+          "world_id": 361,
+          "phase": 0,
+          "jitter": [
+            0.0,
+            -0.1666666567325592
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 361,
+          "world_id": 362,
+          "phase": 1,
+          "jitter": [
+            -0.25,
+            0.1666666865348816
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 362,
+          "world_id": 363,
+          "phase": 2,
+          "jitter": [
+            0.25,
+            -0.3888888955116272
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 363,
+          "world_id": 364,
+          "phase": 3,
+          "jitter": [
+            -0.375,
+            -0.055555522441864014
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 364,
+          "world_id": 365,
+          "phase": 4,
+          "jitter": [
+            0.125,
+            0.2777777910232544
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 365,
+          "world_id": 366,
+          "phase": 5,
+          "jitter": [
+            -0.125,
+            -0.277777761220932
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 366,
+          "world_id": 367,
+          "phase": 6,
+          "jitter": [
+            0.375,
+            0.05555558204650879
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 367,
+          "world_id": 368,
+          "phase": 7,
+          "jitter": [
+            -0.4375,
+            0.388888955116272
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 368,
+          "world_id": 369,
+          "phase": 8,
+          "jitter": [
+            0.0625,
+            -0.46296295523643494
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 369,
+          "world_id": 370,
+          "phase": 9,
+          "jitter": [
+            -0.1875,
+            -0.12962961196899414
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 370,
+          "world_id": 371,
+          "phase": 10,
+          "jitter": [
+            0.3125,
+            0.20370370149612427
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 371,
+          "world_id": 372,
+          "phase": 11,
+          "jitter": [
+            -0.3125,
+            -0.35185182094573975
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 372,
+          "world_id": 373,
+          "phase": 12,
+          "jitter": [
+            0.1875,
+            -0.01851847767829895
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 373,
+          "world_id": 374,
+          "phase": 13,
+          "jitter": [
+            -0.0625,
+            0.31481480598449707
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 374,
+          "world_id": 375,
+          "phase": 14,
+          "jitter": [
+            0.4375,
+            -0.24074071645736694
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 375,
+          "world_id": 376,
+          "phase": 15,
+          "jitter": [
+            -0.46875,
+            0.09259259700775146
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 376,
+          "world_id": 377,
+          "phase": 16,
+          "jitter": [
+            0.03125,
+            0.42592597007751465
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 377,
+          "world_id": 378,
+          "phase": 17,
+          "jitter": [
+            -0.21875,
+            -0.4259259104728699
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 378,
+          "world_id": 379,
+          "phase": 0,
+          "jitter": [
+            0.0,
+            -0.1666666567325592
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 379,
+          "world_id": 380,
+          "phase": 1,
+          "jitter": [
+            -0.25,
+            0.1666666865348816
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 380,
+          "world_id": 381,
+          "phase": 2,
+          "jitter": [
+            0.25,
+            -0.3888888955116272
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 381,
+          "world_id": 382,
+          "phase": 3,
+          "jitter": [
+            -0.375,
+            -0.055555522441864014
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 382,
+          "world_id": 383,
+          "phase": 4,
+          "jitter": [
+            0.125,
+            0.2777777910232544
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 383,
+          "world_id": 384,
+          "phase": 5,
+          "jitter": [
+            -0.125,
+            -0.277777761220932
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 384,
+          "world_id": 385,
+          "phase": 6,
+          "jitter": [
+            0.375,
+            0.05555558204650879
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 385,
+          "world_id": 386,
+          "phase": 7,
+          "jitter": [
+            -0.4375,
+            0.388888955116272
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 386,
+          "world_id": 387,
+          "phase": 8,
+          "jitter": [
+            0.0625,
+            -0.46296295523643494
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 387,
+          "world_id": 388,
+          "phase": 9,
+          "jitter": [
+            -0.1875,
+            -0.12962961196899414
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 388,
+          "world_id": 389,
+          "phase": 10,
+          "jitter": [
+            0.3125,
+            0.20370370149612427
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 389,
+          "world_id": 390,
+          "phase": 11,
+          "jitter": [
+            -0.3125,
+            -0.35185182094573975
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 390,
+          "world_id": 391,
+          "phase": 12,
+          "jitter": [
+            0.1875,
+            -0.01851847767829895
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 391,
+          "world_id": 392,
+          "phase": 13,
+          "jitter": [
+            -0.0625,
+            0.31481480598449707
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 392,
+          "world_id": 393,
+          "phase": 14,
+          "jitter": [
+            0.4375,
+            -0.24074071645736694
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 393,
+          "world_id": 394,
+          "phase": 15,
+          "jitter": [
+            -0.46875,
+            0.09259259700775146
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 394,
+          "world_id": 395,
+          "phase": 16,
+          "jitter": [
+            0.03125,
+            0.42592597007751465
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 395,
+          "world_id": 396,
+          "phase": 17,
+          "jitter": [
+            -0.21875,
+            -0.4259259104728699
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 396,
+          "world_id": 397,
+          "phase": 0,
+          "jitter": [
+            0.0,
+            -0.1666666567325592
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 397,
+          "world_id": 398,
+          "phase": 1,
+          "jitter": [
+            -0.25,
+            0.1666666865348816
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 398,
+          "world_id": 399,
+          "phase": 2,
+          "jitter": [
+            0.25,
+            -0.3888888955116272
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 399,
+          "world_id": 400,
+          "phase": 3,
+          "jitter": [
+            -0.375,
+            -0.055555522441864014
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 400,
+          "world_id": 401,
+          "phase": 4,
+          "jitter": [
+            0.125,
+            0.2777777910232544
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 401,
+          "world_id": 402,
+          "phase": 5,
+          "jitter": [
+            -0.125,
+            -0.277777761220932
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 402,
+          "world_id": 403,
+          "phase": 6,
+          "jitter": [
+            0.375,
+            0.05555558204650879
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 403,
+          "world_id": 404,
+          "phase": 7,
+          "jitter": [
+            -0.4375,
+            0.388888955116272
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 404,
+          "world_id": 405,
+          "phase": 8,
+          "jitter": [
+            0.0625,
+            -0.46296295523643494
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 405,
+          "world_id": 406,
+          "phase": 9,
+          "jitter": [
+            -0.1875,
+            -0.12962961196899414
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 406,
+          "world_id": 407,
+          "phase": 10,
+          "jitter": [
+            0.3125,
+            0.20370370149612427
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 407,
+          "world_id": 408,
+          "phase": 11,
+          "jitter": [
+            -0.3125,
+            -0.35185182094573975
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 408,
+          "world_id": 409,
+          "phase": 12,
+          "jitter": [
+            0.1875,
+            -0.01851847767829895
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 409,
+          "world_id": 410,
+          "phase": 13,
+          "jitter": [
+            -0.0625,
+            0.31481480598449707
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 410,
+          "world_id": 411,
+          "phase": 14,
+          "jitter": [
+            0.4375,
+            -0.24074071645736694
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 411,
+          "world_id": 412,
+          "phase": 15,
+          "jitter": [
+            -0.46875,
+            0.09259259700775146
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 412,
+          "world_id": 413,
+          "phase": 16,
+          "jitter": [
+            0.03125,
+            0.42592597007751465
+          ],
+          "camera_shift": 0.0
+        },
+        {
+          "frame_index": 413,
+          "world_id": 414,
+          "phase": 17,
+          "jitter": [
+            -0.21875,
+            -0.4259259104728699
+          ],
+          "camera_shift": 0.0
+        }
+      ],
+      "encoding_argv": [
+        "/opt/homebrew/bin/ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-framerate",
+        "12",
+        "-i",
+        "<repo>/artifacts/metal/aurora-evaluation-20261126/selected-media-work/stationary/frame-%03d.png",
+        "-frames:v",
+        "54",
+        "-c:v",
+        "libx264",
+        "-crf",
+        "14",
+        "-preset",
+        "slow",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "<repo>/docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-matched.mp4"
+      ],
+      "exit_code": 0
+    },
+    {
+      "file": "move-stop-matched.mp4",
+      "frames": [
+        {
+          "frame_index": 414,
+          "world_id": 415,
+          "phase": 0,
+          "jitter": [
+            0.0,
+            -0.1666666567325592
+          ],
+          "camera_shift": 0.0027777778450399637
+        },
+        {
+          "frame_index": 415,
+          "world_id": 416,
+          "phase": 1,
+          "jitter": [
+            -0.25,
+            0.1666666865348816
+          ],
+          "camera_shift": 0.0055555556900799274
+        },
+        {
+          "frame_index": 416,
+          "world_id": 417,
+          "phase": 2,
+          "jitter": [
+            0.25,
+            -0.3888888955116272
+          ],
+          "camera_shift": 0.008333333767950535
+        },
+        {
+          "frame_index": 417,
+          "world_id": 418,
+          "phase": 3,
+          "jitter": [
+            -0.375,
+            -0.055555522441864014
+          ],
+          "camera_shift": 0.011111111380159855
+        },
+        {
+          "frame_index": 418,
+          "world_id": 419,
+          "phase": 4,
+          "jitter": [
+            0.125,
+            0.2777777910232544
+          ],
+          "camera_shift": 0.013888888992369175
+        },
+        {
+          "frame_index": 419,
+          "world_id": 420,
+          "phase": 5,
+          "jitter": [
+            -0.125,
+            -0.277777761220932
+          ],
+          "camera_shift": 0.01666666753590107
+        },
+        {
+          "frame_index": 420,
+          "world_id": 421,
+          "phase": 6,
+          "jitter": [
+            0.375,
+            0.05555558204650879
+          ],
+          "camera_shift": 0.01944444514811039
+        },
+        {
+          "frame_index": 421,
+          "world_id": 422,
+          "phase": 7,
+          "jitter": [
+            -0.4375,
+            0.388888955116272
+          ],
+          "camera_shift": 0.02222222276031971
+        },
+        {
+          "frame_index": 422,
+          "world_id": 423,
+          "phase": 8,
+          "jitter": [
+            0.0625,
+            -0.46296295523643494
+          ],
+          "camera_shift": 0.02500000037252903
+        },
+        {
+          "frame_index": 423,
+          "world_id": 424,
+          "phase": 9,
+          "jitter": [
+            -0.1875,
+            -0.12962961196899414
+          ],
+          "camera_shift": 0.02777777798473835
+        },
+        {
+          "frame_index": 424,
+          "world_id": 425,
+          "phase": 10,
+          "jitter": [
+            0.3125,
+            0.20370370149612427
+          ],
+          "camera_shift": 0.03055555559694767
+        },
+        {
+          "frame_index": 425,
+          "world_id": 426,
+          "phase": 11,
+          "jitter": [
+            -0.3125,
+            -0.35185182094573975
+          ],
+          "camera_shift": 0.03333333507180214
+        },
+        {
+          "frame_index": 426,
+          "world_id": 427,
+          "phase": 12,
+          "jitter": [
+            0.1875,
+            -0.01851847767829895
+          ],
+          "camera_shift": 0.03611111268401146
+        },
+        {
+          "frame_index": 427,
+          "world_id": 428,
+          "phase": 13,
+          "jitter": [
+            -0.0625,
+            0.31481480598449707
+          ],
+          "camera_shift": 0.03888889029622078
+        },
+        {
+          "frame_index": 428,
+          "world_id": 429,
+          "phase": 14,
+          "jitter": [
+            0.4375,
+            -0.24074071645736694
+          ],
+          "camera_shift": 0.0416666679084301
+        },
+        {
+          "frame_index": 429,
+          "world_id": 430,
+          "phase": 15,
+          "jitter": [
+            -0.46875,
+            0.09259259700775146
+          ],
+          "camera_shift": 0.04444444552063942
+        },
+        {
+          "frame_index": 430,
+          "world_id": 431,
+          "phase": 16,
+          "jitter": [
+            0.03125,
+            0.42592597007751465
+          ],
+          "camera_shift": 0.04722222313284874
+        },
+        {
+          "frame_index": 431,
+          "world_id": 432,
+          "phase": 17,
+          "jitter": [
+            -0.21875,
+            -0.4259259104728699
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "jitter": [
+            0.0,
+            -0.1666666567325592
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 433,
+          "world_id": 434,
+          "phase": 1,
+          "jitter": [
+            -0.25,
+            0.1666666865348816
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 434,
+          "world_id": 435,
+          "phase": 2,
+          "jitter": [
+            0.25,
+            -0.3888888955116272
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 435,
+          "world_id": 436,
+          "phase": 3,
+          "jitter": [
+            -0.375,
+            -0.055555522441864014
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 436,
+          "world_id": 437,
+          "phase": 4,
+          "jitter": [
+            0.125,
+            0.2777777910232544
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 437,
+          "world_id": 438,
+          "phase": 5,
+          "jitter": [
+            -0.125,
+            -0.277777761220932
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 438,
+          "world_id": 439,
+          "phase": 6,
+          "jitter": [
+            0.375,
+            0.05555558204650879
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 439,
+          "world_id": 440,
+          "phase": 7,
+          "jitter": [
+            -0.4375,
+            0.388888955116272
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 440,
+          "world_id": 441,
+          "phase": 8,
+          "jitter": [
+            0.0625,
+            -0.46296295523643494
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 441,
+          "world_id": 442,
+          "phase": 9,
+          "jitter": [
+            -0.1875,
+            -0.12962961196899414
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 442,
+          "world_id": 443,
+          "phase": 10,
+          "jitter": [
+            0.3125,
+            0.20370370149612427
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 443,
+          "world_id": 444,
+          "phase": 11,
+          "jitter": [
+            -0.3125,
+            -0.35185182094573975
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 444,
+          "world_id": 445,
+          "phase": 12,
+          "jitter": [
+            0.1875,
+            -0.01851847767829895
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 445,
+          "world_id": 446,
+          "phase": 13,
+          "jitter": [
+            -0.0625,
+            0.31481480598449707
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 446,
+          "world_id": 447,
+          "phase": 14,
+          "jitter": [
+            0.4375,
+            -0.24074071645736694
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 447,
+          "world_id": 448,
+          "phase": 15,
+          "jitter": [
+            -0.46875,
+            0.09259259700775146
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 448,
+          "world_id": 449,
+          "phase": 16,
+          "jitter": [
+            0.03125,
+            0.42592597007751465
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "jitter": [
+            -0.21875,
+            -0.4259259104728699
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 450,
+          "world_id": 451,
+          "phase": 0,
+          "jitter": [
+            0.0,
+            -0.1666666567325592
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 451,
+          "world_id": 452,
+          "phase": 1,
+          "jitter": [
+            -0.25,
+            0.1666666865348816
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 452,
+          "world_id": 453,
+          "phase": 2,
+          "jitter": [
+            0.25,
+            -0.3888888955116272
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 453,
+          "world_id": 454,
+          "phase": 3,
+          "jitter": [
+            -0.375,
+            -0.055555522441864014
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 454,
+          "world_id": 455,
+          "phase": 4,
+          "jitter": [
+            0.125,
+            0.2777777910232544
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 455,
+          "world_id": 456,
+          "phase": 5,
+          "jitter": [
+            -0.125,
+            -0.277777761220932
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 456,
+          "world_id": 457,
+          "phase": 6,
+          "jitter": [
+            0.375,
+            0.05555558204650879
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 457,
+          "world_id": 458,
+          "phase": 7,
+          "jitter": [
+            -0.4375,
+            0.388888955116272
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 458,
+          "world_id": 459,
+          "phase": 8,
+          "jitter": [
+            0.0625,
+            -0.46296295523643494
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 459,
+          "world_id": 460,
+          "phase": 9,
+          "jitter": [
+            -0.1875,
+            -0.12962961196899414
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 460,
+          "world_id": 461,
+          "phase": 10,
+          "jitter": [
+            0.3125,
+            0.20370370149612427
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 461,
+          "world_id": 462,
+          "phase": 11,
+          "jitter": [
+            -0.3125,
+            -0.35185182094573975
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 462,
+          "world_id": 463,
+          "phase": 12,
+          "jitter": [
+            0.1875,
+            -0.01851847767829895
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 463,
+          "world_id": 464,
+          "phase": 13,
+          "jitter": [
+            -0.0625,
+            0.31481480598449707
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 464,
+          "world_id": 465,
+          "phase": 14,
+          "jitter": [
+            0.4375,
+            -0.24074071645736694
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 465,
+          "world_id": 466,
+          "phase": 15,
+          "jitter": [
+            -0.46875,
+            0.09259259700775146
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 466,
+          "world_id": 467,
+          "phase": 16,
+          "jitter": [
+            0.03125,
+            0.42592597007751465
+          ],
+          "camera_shift": 0.05000000074505806
+        },
+        {
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "jitter": [
+            -0.21875,
+            -0.4259259104728699
+          ],
+          "camera_shift": 0.05000000074505806
+        }
+      ],
+      "encoding_argv": [
+        "/opt/homebrew/bin/ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-framerate",
+        "12",
+        "-i",
+        "<repo>/artifacts/metal/aurora-evaluation-20261126/selected-media-work/move-stop/frame-%03d.png",
+        "-frames:v",
+        "54",
+        "-c:v",
+        "libx264",
+        "-crf",
+        "14",
+        "-preset",
+        "slow",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "<repo>/docs/metal/research/media/aurora-reconstruction-20261126/visuals/move-stop-matched.mp4"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "files": [
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/move-stop-matched.mp4",
+      "sha256": "046609429dbce4aa1c376ae173bacc01e9ed8b13005f1ee0e9d01e74861f9c33",
+      "bytes": 845851
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-matched.mp4",
+      "sha256": "5f96f7c4cd6bc3770dc030388a6b094730af8007dfc86015be9c708877d2d820",
+      "bytes": 387091
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-phase0-frame396-1x.png",
+      "sha256": "fa691899eeacec3b946b7661a332e0378375428bbd0e090d1c5d60fc9c80b8f1",
+      "bytes": 45969
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-phase0-frame396-3x.png",
+      "sha256": "fa99ef70c4fe77444059b87a05dd4fcc553d0b821bb57634c7918b798b428adf",
+      "bytes": 69180
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-phase14-frame410-1x.png",
+      "sha256": "9af579123cf623565023b70926766f9ccfa3635899a4d3e6573ee8b65c0f70c6",
+      "bytes": 45526
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-phase14-frame410-3x.png",
+      "sha256": "ffb985b7dd4922988daa3fb5ffe3ae67fe7065ccf8710853536cedb5d90c91ca",
+      "bytes": 68573
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-phase7-frame403-1x.png",
+      "sha256": "6bc69a6a74a031e0f6e346bacd28929e73e7f4ec9b693190ec28364faace8611",
+      "bytes": 45739
+    },
+    {
+      "path": "docs/metal/research/media/aurora-reconstruction-20261126/visuals/stationary-phase7-frame403-3x.png",
+      "sha256": "1217086948c097f7463c618ef0361b41f99b429c0045b1abf0e4cf5c428049c2",
+      "bytes": 68882
+    }
+  ]
+}

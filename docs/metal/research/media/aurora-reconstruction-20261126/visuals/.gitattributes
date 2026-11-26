@@ -1,0 +1,2 @@
+# Preserve the recorded synthetic preview bytes and their verification hashes.
+*.mp4 binary

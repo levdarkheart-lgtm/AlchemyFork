@@ -1,0 +1,275 @@
+{
+  "scope": "Independent offline corrective360warm input/arm/reference audit; no GPU",
+  "main_frames": 468,
+  "reference_frames": 414,
+  "roi": [
+    198,
+    6,
+    84,
+    84
+  ],
+  "stop_changed_pixels": 2251,
+  "arms": {
+    "metalfx": {
+      "streams": {
+        "main": {
+          "metadata": {
+            "worlds": 468,
+            "source_csv_sha256": "83f8a13a0a8e2ef5864ac73e33ffaa340f498e0596e2574a75f3f7da2e73b442",
+            "claim": "Actual MetalFX output captured by producer exporting this same input dataset."
+          },
+          "metadata_errors": [],
+          "phase_convergence": [
+            {
+              "old_frames": [
+                360,
+                377
+              ],
+              "new_frames": [
+                378,
+                395
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 1.5896253898972645e-05,
+              "roi_max_phase_mean": 1.7104144717450254e-05,
+              "stop_domain_rgb_mean": 2.239723208832503e-05,
+              "stop_domain_max_phase_mean": 2.580866203061305e-05,
+              "phase17_stop_domain_mean": 2.4498118364135735e-05
+            },
+            {
+              "old_frames": [
+                378,
+                395
+              ],
+              "new_frames": [
+                396,
+                413
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 1.624666325975947e-05,
+              "roi_max_phase_mean": 1.745591544022318e-05,
+              "stop_domain_rgb_mean": 2.3260382679129383e-05,
+              "stop_domain_max_phase_mean": 2.7295449399389327e-05,
+              "phase17_stop_domain_mean": 2.4796379875624552e-05
+            }
+          ]
+        },
+        "reference": {
+          "metadata": {
+            "worlds": 414,
+            "source_csv_sha256": "4fbf861cec4758aa7f687030ae3c48db20644fa7e3f082f7a8f15a4b4c22837d",
+            "claim": "Actual MetalFX output captured by producer exporting this same input dataset."
+          },
+          "metadata_errors": [],
+          "phase_convergence": [
+            {
+              "old_frames": [
+                378,
+                395
+              ],
+              "new_frames": [
+                396,
+                413
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 1.3908170987835749e-05,
+              "roi_max_phase_mean": 1.517661348771071e-05,
+              "stop_domain_rgb_mean": 2.0245380558966037e-05,
+              "stop_domain_max_phase_mean": 2.178213071601931e-05,
+              "phase17_stop_domain_mean": 2.009198215091601e-05
+            }
+          ]
+        }
+      }
+    },
+    "off": {
+      "streams": {
+        "main": {
+          "metadata": {
+            "worlds": 468,
+            "execution_exit": 0,
+            "binary_sha256": "1aef377a34f4e909f2da3f179028b99a1f41ec1e2ade76ad02ab6f6ea0977b94",
+            "source_csv_sha256": "83f8a13a0a8e2ef5864ac73e33ffaa340f498e0596e2574a75f3f7da2e73b442",
+            "manifest_sha256": "fe2aa782fbdb13e075c8963ca47c21ffb1fd5805ae781d915da9fca9dea79afe",
+            "run_metadata_sha256": "ade3d953947f1d436ae0151dfb9ca571b253d74a59236b6041f916f19b0dec72",
+            "rcas_proof": {
+              "dispatched": false,
+              "effective_sharpness": null,
+              "frame0_final_vs_internal_different_rgb_components": 0
+            }
+          },
+          "metadata_errors": [],
+          "phase_convergence": [
+            {
+              "old_frames": [
+                360,
+                377
+              ],
+              "new_frames": [
+                378,
+                395
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 3.858596553780242e-05,
+              "roi_max_phase_mean": 4.432603236637078e-05,
+              "stop_domain_rgb_mean": 6.062994240589129e-05,
+              "stop_domain_max_phase_mean": 6.954465061426163e-05,
+              "phase17_stop_domain_mean": 5.1558574341470376e-05
+            },
+            {
+              "old_frames": [
+                378,
+                395
+              ],
+              "new_frames": [
+                396,
+                413
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 2.7636131360648302e-05,
+              "roi_max_phase_mean": 3.2478270441060886e-05,
+              "stop_domain_rgb_mean": 4.2939367833443815e-05,
+              "stop_domain_max_phase_mean": 5.046946898801252e-05,
+              "phase17_stop_domain_mean": 3.632012158050202e-05
+            }
+          ]
+        },
+        "reference": {
+          "metadata": {
+            "worlds": 414,
+            "execution_exit": 0,
+            "binary_sha256": "1aef377a34f4e909f2da3f179028b99a1f41ec1e2ade76ad02ab6f6ea0977b94",
+            "source_csv_sha256": "4fbf861cec4758aa7f687030ae3c48db20644fa7e3f082f7a8f15a4b4c22837d",
+            "manifest_sha256": "fe2aa782fbdb13e075c8963ca47c21ffb1fd5805ae781d915da9fca9dea79afe",
+            "run_metadata_sha256": "04af233ad3036822e4136a1792776dfe63c66dd6046e3ce6db9a58a2b4845aa0",
+            "rcas_proof": {
+              "dispatched": false,
+              "effective_sharpness": null,
+              "frame0_final_vs_internal_different_rgb_components": 0
+            }
+          },
+          "metadata_errors": [],
+          "phase_convergence": [
+            {
+              "old_frames": [
+                378,
+                395
+              ],
+              "new_frames": [
+                396,
+                413
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 2.6069500765717952e-05,
+              "roi_max_phase_mean": 3.0294117095763795e-05,
+              "stop_domain_rgb_mean": 4.091706432518549e-05,
+              "stop_domain_max_phase_mean": 4.7744440962560475e-05,
+              "phase17_stop_domain_mean": 3.364480653544888e-05
+            }
+          ]
+        }
+      }
+    },
+    "ordinary": {
+      "streams": {
+        "main": {
+          "metadata": {
+            "worlds": 468,
+            "execution_exit": 0,
+            "binary_sha256": "1aef377a34f4e909f2da3f179028b99a1f41ec1e2ade76ad02ab6f6ea0977b94",
+            "source_csv_sha256": "83f8a13a0a8e2ef5864ac73e33ffaa340f498e0596e2574a75f3f7da2e73b442",
+            "manifest_sha256": "fe2aa782fbdb13e075c8963ca47c21ffb1fd5805ae781d915da9fca9dea79afe",
+            "run_metadata_sha256": "05f90bfed50481efb5a67a11861e68e49867f606ea32ea5e22ee1d8719531c0c",
+            "rcas_proof": {
+              "dispatched": true,
+              "effective_sharpness": 0.800000011920929,
+              "frame0_final_vs_internal_different_rgb_components": 143473
+            }
+          },
+          "metadata_errors": [],
+          "phase_convergence": [
+            {
+              "old_frames": [
+                360,
+                377
+              ],
+              "new_frames": [
+                378,
+                395
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 4.4411091948859394e-05,
+              "roi_max_phase_mean": 5.018071169615723e-05,
+              "stop_domain_rgb_mean": 6.91432016739984e-05,
+              "stop_domain_max_phase_mean": 7.758867286611348e-05,
+              "phase17_stop_domain_mean": 5.968846016912721e-05
+            },
+            {
+              "old_frames": [
+                378,
+                395
+              ],
+              "new_frames": [
+                396,
+                413
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 3.2383998687792984e-05,
+              "roi_max_phase_mean": 3.746938091353513e-05,
+              "stop_domain_rgb_mean": 5.005621965715868e-05,
+              "stop_domain_max_phase_mean": 5.8115809224545956e-05,
+              "phase17_stop_domain_mean": 4.387156150187366e-05
+            }
+          ]
+        },
+        "reference": {
+          "metadata": {
+            "worlds": 414,
+            "execution_exit": 0,
+            "binary_sha256": "1aef377a34f4e909f2da3f179028b99a1f41ec1e2ade76ad02ab6f6ea0977b94",
+            "source_csv_sha256": "4fbf861cec4758aa7f687030ae3c48db20644fa7e3f082f7a8f15a4b4c22837d",
+            "manifest_sha256": "fe2aa782fbdb13e075c8963ca47c21ffb1fd5805ae781d915da9fca9dea79afe",
+            "run_metadata_sha256": "a9df7586fc7e63e86532b4e6074e4357873c5413cd67346c1dda0fb9b2b6bc68",
+            "rcas_proof": {
+              "dispatched": true,
+              "effective_sharpness": 0.800000011920929,
+              "frame0_final_vs_internal_different_rgb_components": 143974
+            }
+          },
+          "metadata_errors": [],
+          "phase_convergence": [
+            {
+              "old_frames": [
+                378,
+                395
+              ],
+              "new_frames": [
+                396,
+                413
+              ],
+              "pairs": 18,
+              "roi_rgb_mean": 3.067900706810178e-05,
+              "roi_max_phase_mean": 3.577107781893574e-05,
+              "stop_domain_rgb_mean": 4.753354975643257e-05,
+              "stop_domain_max_phase_mean": 5.5304921261267737e-05,
+              "phase17_stop_domain_mean": 3.945638673030771e-05
+            }
+          ]
+        }
+      }
+    }
+  },
+  "input_hash_limit": "Raw hashes observed after execution. Each Aurora receipt pins the CSV/manifest and same source dataset/prefix. Raw hashes are not falsely labelled runtime-captured hashes.",
+  "shared_input_channel_manifest_sha256": {
+    "main:input.rgba32f": "fa1c22f18a1cffa256fdc71fcd3ade2db478b52a97589e78abf031d6369c6503",
+    "main:proxy-depth.r32f": "bf8601f32f6211e0e6dc881cfdb359293027d8a16e3e7a6c0e2e3f0a53c0fc97",
+    "main:motion.rg16f": "7aa4afb207b9be90511968ef7fb667330c647d7a68adf80fe2820cb68730ebaf",
+    "main:reactive.r8": "b4b38782c51b3f24807fd7f6bde6935b4d73acc698702ff86bd17ada1a2fc497",
+    "reference-:input.rgba32f": "fec73e3d6bf58f326a89b98b9ed3cfda5239a600dc081bc58ca67da12da49fa7",
+    "reference-:proxy-depth.r32f": "212dc76ebb34b0326751b4dc3281af3dda96f0718cde107e2398272e854b53f1",
+    "reference-:motion.rg16f": "9a1f27f76b46253d1eb70d51b38dd112c6b56ff580f2e8a9c4d952fb37bd7a11",
+    "reference-:reactive.r8": "58707b962dcae3cdd009c466d9d16ab6d050dabad307b93a941f677c4422ab1c"
+  },
+  "raw_input_manifest_sha256": "851011932968c3b7936e57ca13a839b656bbbc6446930448e58740e4b8e767a5",
+  "conclusion": "Latest matching-phase references and stationary main cycles are far below1/255 for allthree outputs. This qualifies finite references at the original metric scale; not a proof of exact asymptotic equality. Use only corrected360warm quality results for the final comparison."
+}

@@ -1,0 +1,35 @@
+{
+  "scope": "Independent raw-depth both-axis raster test of authored solid control; no GPU",
+  "utc": "2026-11-26T12:45:22.413224+00:00",
+  "expected_rectangle_output_pixels": [
+    292,
+    100,
+    334.4,
+    188
+  ],
+  "pixel_center_rule": "inside left<=x+.5<right and top<=y+.5<bottom; exclude centers within1e-4inputpx of any edge",
+  "streams": {
+    "main": {
+      "frames": 144,
+      "pixels_checked": 304305,
+      "boundary_pixels_excluded": 530,
+      "inside_pixels": 238365,
+      "outside_pixels": 65940,
+      "mismatches": 0,
+      "frames_with_mismatch": [],
+      "counterfactual_negated_jitterY_mismatches": 5187,
+      "first_mismatches": []
+    },
+    "reference-": {
+      "frames": 54,
+      "pixels_checked": 114207,
+      "boundary_pixels_excluded": 201,
+      "inside_pixels": 89322,
+      "outside_pixels": 24885,
+      "mismatches": 0,
+      "frames_with_mismatch": [],
+      "counterfactual_negated_jitterY_mismatches": 1944,
+      "first_mismatches": []
+    }
+  }
+}

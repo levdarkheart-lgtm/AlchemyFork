@@ -1,0 +1,296 @@
+{
+  "scope": "Final shared reverse-Z perspective population only. Short-history study is preliminary; one predeclared360-warm correction, no third attempt. No oldorthographic reconstruction score is used.",
+  "decision": "Does not justify integration: both Aurora arms fail minimumarea and18/36stopped-world phase-matched error. Cost not measured; production viewer unchanged.",
+  "parent_revision": "86a7654fb172c47ed9016e5d9c771aa4c06753f3",
+  "aurora_revision": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+  "algorithm": "Aurora WGSL port of FSR3.1 upscaler from FidelityFXSDK1.1.4; notAMDnativeSDK or framegeneration",
+  "schedule": {
+    "warm": 360,
+    "stationary": 54,
+    "moving": 18,
+    "stopped": 36,
+    "main_total": 468,
+    "independent_reference_total": 414,
+    "phase_count": 18,
+    "stationary_frame_indices": [
+      360,
+      413
+    ],
+    "motion_frame_indices": [
+      414,
+      431
+    ],
+    "stopped_frame_indices": [
+      432,
+      467
+    ],
+    "reference_cycle_frame_indices": [
+      396,
+      413
+    ]
+  },
+  "metrics": {
+    "metalfx": {
+      "values": {
+        "mean_rgb_change": 0.0036851754184867784,
+        "edge_band_change": 0.0043286165863786735,
+        "edge_band_p95": 0.004619121894780773,
+        "coverage_change": 0.0002650751658688167,
+        "mean_reference_error": 0.051335573042898416,
+        "minimum_recall": 0.8778645790411989,
+        "minimum_precision": 0.9998931630677309,
+        "minimum_area": 0.7451798266106638,
+        "maximum_area": 0.7482114498639931,
+        "edge_energy": 0.20936879935188882,
+        "reference_edge_energy": 0.32655210411197205,
+        "mean_signed_green_contrast_over_actual_input": 0.7466399015234009
+      },
+      "stops": {
+        "1": {
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "reference_frame_index": 396,
+          "reference_world_id": 397,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.0847380954585257,
+          "phase_matched_error": 0.020494442714936924,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0012058464239854648,
+          "localized_trail_review_only": {
+            "residue_p95": 0.007267745677381754,
+            "residue_peak": 0.0252532958984375,
+            "fraction_over_point1": 0.0
+          }
+        },
+        "18": {
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "reference_world_id": 414,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.0795096883896746,
+          "phase_matched_error": 0.008288792017480496,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0004192244397552078,
+          "localized_trail_review_only": {
+            "residue_p95": 0.002436827402561903,
+            "residue_peak": 0.0074309613555669785,
+            "fraction_over_point1": 0.0
+          }
+        },
+        "36": {
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "reference_world_id": 414,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07827248122767975,
+          "phase_matched_error": 0.0032545620986603268,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.00022896695938672766,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0016173123149201274,
+            "residue_peak": 0.005356753244996071,
+            "fraction_over_point1": 0.0
+          }
+        }
+      },
+      "failed_original_bounds": [
+        "edge_band_change",
+        "minimum_recall",
+        "minimum_area",
+        "stop18_phase_matched_error"
+      ],
+      "diagnostics_review_only": {
+        "maximum_peak_channel_overshoot": 0.2592712640762329,
+        "maximum_fraction_pixels_overshoot_over_2_255": 0.09013605442176871,
+        "maximum_halo_peak_background_residual": 0.000738486647605896,
+        "maximum_halo_fraction_background_residual_over_2_255": 0.0,
+        "maximum_false_coverage_positive_peak": 0.00046821427531540394,
+        "maximum_negative_coverage_peak": 0.00016193756891880184
+      },
+      "reference_maturity_changed_region_mean": 2.0245380510660778e-05
+    },
+    "aurora-none": {
+      "values": {
+        "mean_rgb_change": 0.0007384383454254535,
+        "edge_band_change": 0.0008673074296411691,
+        "edge_band_p95": 0.000975759807889239,
+        "coverage_change": 0.0,
+        "mean_reference_error": 0.045084070436518194,
+        "minimum_recall": 0.9360278467144229,
+        "minimum_precision": 0.9999417532718403,
+        "minimum_area": 0.8214011355954106,
+        "maximum_area": 0.8229045792298734,
+        "edge_energy": 0.23200624594107838,
+        "reference_edge_energy": 0.32655210411197205,
+        "mean_signed_green_contrast_over_actual_input": 0.8201127360735045
+      },
+      "stops": {
+        "1": {
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "reference_frame_index": 396,
+          "reference_world_id": 397,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07798686438487859,
+          "phase_matched_error": 0.020208719460483124,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0008789892833024602,
+          "localized_trail_review_only": {
+            "residue_p95": 7.528911373810843e-05,
+            "residue_peak": 0.0779992863535881,
+            "fraction_over_point1": 0.0
+          }
+        },
+        "18": {
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "reference_world_id": 414,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07565107880919317,
+          "phase_matched_error": 0.015886268101374126,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0003370862398205934,
+          "localized_trail_review_only": {
+            "residue_p95": 3.3564141631359234e-05,
+            "residue_peak": 0.0539943128824234,
+            "fraction_over_point1": 0.0
+          }
+        },
+        "36": {
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "reference_world_id": 414,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07375672024127404,
+          "phase_matched_error": 0.012319430645412483,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 7.560483340642219e-05,
+          "localized_trail_review_only": {
+            "residue_p95": 2.9574443033197895e-05,
+            "residue_peak": 0.007340352516621351,
+            "fraction_over_point1": 0.0
+          }
+        }
+      },
+      "failed_original_bounds": [
+        "minimum_area",
+        "stop18_phase_matched_error",
+        "stop36_phase_matched_error"
+      ],
+      "diagnostics_review_only": {
+        "maximum_peak_channel_overshoot": 0.001953125,
+        "maximum_fraction_pixels_overshoot_over_2_255": 0.0,
+        "maximum_halo_peak_background_residual": 0.000372275710105896,
+        "maximum_halo_fraction_background_residual_over_2_255": 0.0,
+        "maximum_false_coverage_positive_peak": 4.6202418161556125e-05,
+        "maximum_negative_coverage_peak": 3.6757814086740837e-05
+      },
+      "reference_maturity_changed_region_mean": 4.09170644009206e-05
+    },
+    "aurora-ordinary08": {
+      "values": {
+        "mean_rgb_change": 0.0008073672848728785,
+        "edge_band_change": 0.000948051780312177,
+        "edge_band_p95": 0.0010697985193926876,
+        "coverage_change": 0.0,
+        "mean_reference_error": 0.042556002527097424,
+        "minimum_recall": 0.9585719240060749,
+        "minimum_precision": 0.9993435152680957,
+        "minimum_area": 0.8328258077586079,
+        "maximum_area": 0.8343583630453268,
+        "edge_energy": 0.2526394340625657,
+        "reference_edge_energy": 0.32655210411197205,
+        "mean_signed_green_contrast_over_actual_input": 0.8209057461410612
+      },
+      "stops": {
+        "1": {
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "reference_frame_index": 396,
+          "reference_world_id": 397,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07233424783511504,
+          "phase_matched_error": 0.021705070466721994,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0009581219246223597,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0008202797034755349,
+            "residue_peak": 0.07520970702171326,
+            "fraction_over_point1": 0.0
+          }
+        },
+        "18": {
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "reference_world_id": 414,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.0700491802186748,
+          "phase_matched_error": 0.016933215755584104,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0005733328632758789,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0020417673513293266,
+            "residue_peak": 0.055205054581165314,
+            "fraction_over_point1": 0.0
+          }
+        },
+        "36": {
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "reference_world_id": 414,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.06823541123571593,
+          "phase_matched_error": 0.013050858332616606,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.00023044837875536433,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0009868087945505977,
+            "residue_peak": 0.013128301128745079,
+            "fraction_over_point1": 0.0
+          }
+        }
+      },
+      "failed_original_bounds": [
+        "minimum_area",
+        "stop18_phase_matched_error",
+        "stop36_phase_matched_error"
+      ],
+      "diagnostics_review_only": {
+        "maximum_peak_channel_overshoot": 0.11767578125,
+        "maximum_fraction_pixels_overshoot_over_2_255": 0.1641156462585034,
+        "maximum_halo_peak_background_residual": 0.000494346022605896,
+        "maximum_halo_fraction_background_residual_over_2_255": 0.0,
+        "maximum_false_coverage_positive_peak": 6.135232979431748e-05,
+        "maximum_negative_coverage_peak": 0.00010456814197823405
+      },
+      "reference_maturity_changed_region_mean": 4.753354973010261e-05
+    }
+  },
+  "preliminary_limit": "36-warm reference18..35\u219236..53 drift\u2248.00706/.00772(Aurora None/ordinary) contaminated motion attribution; retained privately and not used as finalsettling evidence.",
+  "corrective_protocol_timing": "Root directive fixed360-warm before generation; actualJSON serialization receipt12:56:17 is later,not backdated as a pre-generation receipt.",
+  "analysis_runtime": {
+    "python": "3.14.6",
+    "numpy": "2.4.3"
+  },
+  "tests": {
+    "analysis_unit_tests": 10,
+    "repository_tool_tests": 195,
+    "repository_tool_skipped": 1,
+    "initial_repository_env_failure": "MissingPyYAML; preserved; configuredprivateenv rerunpassed."
+  }
+}

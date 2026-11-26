@@ -1,0 +1,114 @@
+{
+  "scope": "Independent offline audit of corrective360-warm shared inputs and MetalFX reference convergence; noGPU/newrun",
+  "utc": "2026-11-26T12:57:25.556399+00:00",
+  "streams": {
+    "main": {
+      "frames": 468,
+      "errors": [],
+      "max_reprojection_error": 1.862645149230957e-09,
+      "max_covered_camera_vs_motion_pixel_error": 8.702807957661207e-05,
+      "depth_values": [
+        0.0,
+        0.02500000037252903,
+        0.05000000074505806
+      ],
+      "motion_values": [
+        [
+          -0.35546875,
+          0.0
+        ],
+        [
+          -0.177734375,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "actual_raster_xy": {
+        "checked": 988431,
+        "excluded_edge_centers": 1718,
+        "mismatches": 0,
+        "negativeY_counterfactual_mismatches": 16869
+      },
+      "csv_sha256": "83f8a13a0a8e2ef5864ac73e33ffaa340f498e0596e2574a75f3f7da2e73b442"
+    },
+    "reference-": {
+      "frames": 414,
+      "errors": [],
+      "max_reprojection_error": 4.44089183380283e-17,
+      "max_covered_camera_vs_motion_pixel_error": 0.0,
+      "depth_values": [
+        0.0,
+        0.02500000037252903,
+        0.05000000074505806
+      ],
+      "motion_values": [
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "actual_raster_xy": {
+        "checked": 875587,
+        "excluded_edge_centers": 1541,
+        "mismatches": 0,
+        "negativeY_counterfactual_mismatches": 14904
+      },
+      "csv_sha256": "4fbf861cec4758aa7f687030ae3c48db20644fa7e3f082f7a8f15a4b4c22837d"
+    }
+  },
+  "metalfx_maturity": {
+    "reference_latest": {
+      "pairs": 18,
+      "old_frames": [
+        378,
+        395
+      ],
+      "new_frames": [
+        396,
+        413
+      ],
+      "roi_rgb_mean": 1.3908170987835749e-05,
+      "roi_max_phase_mean": 1.517661348771071e-05,
+      "stop_domain_rgb_mean": 2.0245380558966037e-05,
+      "stop_domain_max_phase_mean": 2.178213071601931e-05,
+      "phase17_stop_domain_mean": 2.009198215091601e-05
+    },
+    "main_first_to_second": {
+      "pairs": 18,
+      "old_frames": [
+        360,
+        377
+      ],
+      "new_frames": [
+        378,
+        395
+      ],
+      "roi_rgb_mean": 1.5896253898972645e-05,
+      "roi_max_phase_mean": 1.7104144717450254e-05,
+      "stop_domain_rgb_mean": 2.239723208832503e-05,
+      "stop_domain_max_phase_mean": 2.580866203061305e-05,
+      "phase17_stop_domain_mean": 2.4498118364135735e-05
+    },
+    "main_second_to_third": {
+      "pairs": 18,
+      "old_frames": [
+        378,
+        395
+      ],
+      "new_frames": [
+        396,
+        413
+      ],
+      "roi_rgb_mean": 1.624666325975947e-05,
+      "roi_max_phase_mean": 1.745591544022318e-05,
+      "stop_domain_rgb_mean": 2.3260382679129383e-05,
+      "stop_domain_max_phase_mean": 2.7295449399389327e-05,
+      "phase17_stop_domain_mean": 2.4796379875624552e-05
+    }
+  },
+  "stop_domain_pixels": 2251,
+  "limit": "Phase cycle comparison is finite-window evidence,not proof of exact asymptotic convergence."
+}

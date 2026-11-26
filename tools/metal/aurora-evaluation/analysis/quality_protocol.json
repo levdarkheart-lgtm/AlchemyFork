@@ -1,0 +1,51 @@
+{
+  "scope": "Frozen offline analysis definitions before new perspective MetalFX/Aurora outputs. No new hard quality bounds are authored here. Existing original quality bounds remain mandatory; artifact diagnostics support matched image/motion review.",
+  "population": "New shared reverse-Z perspective PBR MASK fixture only. Do not compare retained orthographic MetalFX scores directly to Aurora.",
+  "first_gate": "New perspective MetalFX must reproduce a relevant ORIGINAL palm-quality failure before proceeding to an Aurora advantage comparison; a newly authored artifact diagnostic alone is not that reproduction.",
+  "candidate_identity": "Pinned Aurora WGSL port of FSR3.1 at ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f. RCAS None/unsharpened and ordinary setting are distinct arms, no sweep or assumed equivalence to native AMD SDK binaries.",
+  "data": {
+    "metric_domain": "Unclamped linear RGB reconstructed output texture, alpha recorded separately",
+    "sampling": "Each algorithm owns valid phase history and independent warmed final-camera references. Stop deadlines count 18/36 stopped submitted worlds and use actual matching phase, not a fixed phase ID.",
+    "metadata": "Keep zero-based frame indices separate from one-based submitted world IDs; preserve reset, jitter, dimensions, exposure, projection/depth and motion conventions.",
+    "images": "One identical documented preview transfer for both arms. Lossless raw arrays remain authoritative for values hidden by preview clipping. Native0 is not an exact anti-aliased image oracle."
+  },
+  "original_metrics_required": {
+    "mean_adjacent_RGB_change": "<=1/255",
+    "mean_fixed_native_edge_band_change": "<=1/255",
+    "edge_band_frame_p95_nearest_rank": "<=2/255",
+    "large_binary_coverage_change_fraction": "<=0.005",
+    "minimum_recovered_coverage_recall": ">=0.90",
+    "minimum_recovered_coverage_precision": ">=0.90",
+    "minimum_recovered_coverage_area": ">=0.85",
+    "maximum_recovered_coverage_area": "<=1.15",
+    "mean_output_edge_energy": ">=0.5*native_reference_edge_energy",
+    "mean_native_reference_RGB_error": "<=0.12",
+    "stop18_phase_matched_RGB_error": "<=1/255",
+    "stop36_phase_matched_RGB_error": "<=1/255",
+    "stop18_old_history_fraction": "<=0.02",
+    "stop36_old_history_fraction": "<=0.02",
+    "stationary_motion_input_pixels": "<=0.025",
+    "color_depth_motion_coverage_mismatches": "==0"
+  },
+  "new_diagnostics_review_only": {
+    "overshoot": {
+      "definition": "Per-channel positive distance outside the known foreground/background convex color range for the authored constant-color palm. Record peak, p95, mean and fraction above the review reference level. No output clamp before measuring.",
+      "review_reference_level": "2/255 linear RGB",
+      "hard_pass_bound": null
+    },
+    "halo_false_coverage": {
+      "definition": "In scored ROI pixels outside a two-output-pixel Chebyshev dilation of independent nonzero ground-truth foreground coverage, record RGB residual from known background and signed foreground-color-direction contribution. Report positive and negative residuals separately.",
+      "dilation_radius_output_pixels": 2,
+      "nonzero_reference_coverage": ">0",
+      "residual_review_reference_level": "2/255 linear RGB",
+      "report": "Peak/p95/mean background residual and fraction above reference level; fraction/area is descriptive, not a new pass tolerance.",
+      "hard_pass_bound": null
+    },
+    "localized_trails": {
+      "definition": "At stopped-world counts 18/36, use analytically old-only/disoccluded pixels and the algorithm's own warmed matching-phase final-camera reference. Project residual output toward that algorithm's initial-position warm history, keeping the existing denominator validity guard. Report p95/peak residue and affected-pixel fraction, alongside unchanged mean old-history bound.",
+      "residue_review_reference_fraction": 0.1,
+      "hard_pass_bound": null
+    }
+  },
+  "selection": "Quality first: all existing target bounds plus matched review showing no new unacceptable artifact. New diagnostics explain observations and are not retroactively promoted into invented numeric pass/fail gates. Cost is considered only after the quality gate. No production integration or presumed Aurora advantage follows from compiling the port."
+}

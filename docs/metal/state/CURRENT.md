@@ -1,7 +1,8 @@
-# Current engineering state — Temporal foliage correction under qualification
+# Current engineering state — isolated Aurora reconstruction evaluation
 
 Observed 2026-11-26 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
-Current implementation branch is `codex/metalfx-temporal-20261125`, with the separate Spatial
+Current evaluation branch is `codex/aurora-reconstruction-evaluation-20261126`, parent86a7654fb1;
+Temporal implementation remains `codex/metalfx-temporal-20261125`, with the separate Spatial
 parent branch at41e90aaadb preserved. The Spatial foundation came from usual-branch
 `7911e382ce17f8957cd335cabbd30f808bef6ac1`; its control `f384e2c220` and implementation
 base `3df7055a9d` carry matched gated quiet observations. Those earlier worktrees/evidence remain separate.
@@ -12,24 +13,26 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
-## PBR MASK quality —75%notqualified; PPD610 stays open
+## PBR MASK quality — Aurora selection complete; PPD610 open
 
 **Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`;69507productionunchanged.
-Owner accepts [native isolation](../research/temporal-palm-native-isolation-20261126.md): wrapper/pool/history/
-resolve do not introduce the retained67failure. Do not reopen integration debugging without a new defect.
-[75quality comparison](../research/temporal-palm-75-quality-20261126.md) uses fresh288x144→384x192 inputs,
-mode7/productionmip−1.4150375/15phases,45warm+45stationary+18moving+36stoppedworlds.67baseline preserved.
-Recall.904331passes;edge.00430953,area.750082,stop18.00485880 stillfail3bounds/9584assertions.
-Contrast73.7611→75.9588%,edgeenergy+8.86%show some detail gain;edgevariation is nearlyflat.
-Native and targetcoverage references are identical. History ages/phases differ and are disclosed;stop18/36
-use eachmode's own phase. Inputpixels+26.5625%is arithmetic,not aGPUcost/FPSresult.
-No shader/rejection/mip experiment or production/settings change; no newviewerDMG or owner live request.
-Three sizing/history/glow regressions pass;genericlabel-only final validation yields identical metrics.
-Retain matchedcrops and stationary/move-stop clips. Apple draft is PRIVATE and unsubmitted.
-Stop qualifying theseTemporal settings for thisfoliage;Native/Spatial remain. Recommend bounded Aurora
-reconstruction comparison on samepalm with correctalgorithm inputs/unchangedbounds before fullintegration.
-Do not assume Aurora wins; no comparison/integration has begun. PPD610 imagequality stays unresolved.
-All69507visibility/semanticidentity/cancellation/pooling repairs and priorartifacts remain preserved.
+Owner accepts [native isolation](../research/temporal-palm-native-isolation-20261126.md); do not reopen it.
+[75quality](../research/temporal-palm-75-quality-20261126.md) and original67results remain preserved.
+[Aurora comparison](../research/aurora-reconstruction-evaluation-20261126.md): does not justify integration.
+Isolated nativeMetal/M1Max harness pins Auroraee458fbf1d WGSLportFSR3.1 /wgpu6c13013b3f; no viewer dependency.
+Shared actual reverse-Z perspective scene preserves palm footprint/material:256x128→384x192,18phases,
+mip−1.5849625. Exact depth/motion packing, both-axis raster jitter and camera fallback pass actualGPU checks.
+Preliminary36warm/54reference was immature; retained separately. One fixed360warm corrective comparison
+uses468main/414ownreferenceworlds, unchangedscene/bounds; latestphase-reference drift<5.6e−5.
+MFX/AuroraNone/Aurora.8: edge.00432862/.00086731/.00094805;recall.877865/.936028/.958572;
+area.745180/.821401/.832826 (bound≥.85);stop18.00828879/.01588627/.01693322;
+stop36.00325456/.01231943/.01305086 (bound≤1/255). BothAurora arms failarea+18/36settling.
+Aurora substantially improves stationary stability/detail, but does not meet qualitygate; no costbenchmark.
+Old-historyresidue remains low; phase-matchederror is not a measured largeghostingtrail or Appledefect.
+CPU/Naga5tests, analysis10tests and Python195tests pass(oneexplicitexternalfixture skip); GPU/API arms pass.
+No production/settings change, viewerlogin,DMG,FPSclaim or fullintegration. Allpriorrepairs remain.
+Private fullinputs/outputs/receipts: `artifacts/metal/aurora-evaluation-20261126/`; compactsyntheticmedia inreport.
+Native/Spatial stay available; PPD610 remains open for actual owner-scene imagequality acceptance.
 
 ## Preserved69494 Temporal checkpoint — PPD598
 
@@ -152,6 +155,5 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-75result/tests and media/privateApplefeedbackdraft are complete. Decision:not suitable for live quality/
-performance review. Stop Temporalsettings qualification; no newDMG. Bounded Aurora comparison recommended,
-not started.
+Do not integrate thisAurora candidate or extend the comparison. Review the published evaluationbranch/report.
+Keep Native/Spatial and PPD610open; actual owner-scene quality remains unresolved. No viewerpackage or FPSclaim.

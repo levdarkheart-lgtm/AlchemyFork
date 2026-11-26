@@ -1,0 +1,13 @@
+{
+  "scope": "One fixed corrective reference-maturity repetition for all three algorithms. The short-history run remains preliminary evidence, not overwritten. No algorithm, shader, input policy or quality bound changes.",
+  "warm_frames": 360,
+  "stable_frames": 54,
+  "moving_frames": 18,
+  "stopped_frames": 36,
+  "main_frames": 468,
+  "reference_frames": 414,
+  "phase_count": 18,
+  "reference_selection": "Use the last complete phase cycle: reference_index = len(reference_frames) - phase_count + actual_phase. Validate recorded phase identity. This also preserves old54-world selection.",
+  "maturity_review": "Report existing-output phase-matched drift between the final two reference cycles and final two stationary main cycles. No new numerical quality threshold is invented. Existing error units/bounds provide scale; if the reference still evolves materially, report the finite-reference limit and stop without another extension or an unsupported motion/ghosting conclusion.",
+  "selection": "Original target bounds and matched artifact review remain unchanged. No cost evaluation before a valid quality qualification. This is the only corrective warm-up repetition; no sweep or favorable-result retries."
+}

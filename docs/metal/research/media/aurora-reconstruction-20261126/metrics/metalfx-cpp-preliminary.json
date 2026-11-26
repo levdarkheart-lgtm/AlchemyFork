@@ -1,0 +1,33 @@
+{
+  "scope": "preliminary sharedperspectiveonly; exactC++loggedstrings, nooldorthographicscores.",
+  "log_name": "shared-perspective-metal-test-bundled.log",
+  "log_sha256": "5edf76d0a234679a13e88efe78c6b1f629c2a474d7d6c793633b3c7c45e7b04d",
+  "metrics": {
+    "input": "256x128",
+    "output": "384x192",
+    "mode": "6",
+    "bias": "-1.5849624872207642",
+    "phases": "18",
+    "warm": "36",
+    "stable": "54",
+    "mean_rgb_change": "0.0036734975464130216",
+    "edge_band_change": "0.0043149278244347458",
+    "edge_band_p95": "0.0045695464141372148",
+    "coverage_change": "0.000257201646090535",
+    "mean_reference_error": "0.051631350896516076",
+    "minimum_recall": "0.85562560392605125",
+    "minimum_precision": "0.99988850310307453",
+    "minimum_area": "0.7228177160135798",
+    "maximum_area": "0.74684940775982078",
+    "edge_energy": "0.20484732829337535",
+    "reference_edge_energy": "0.32655210055151274",
+    "stop18_phase_error": "0.0064262167172014226",
+    "stop36_phase_error": "0.0022085363573842954",
+    "stop18_old_fraction": "0.00042032346574153112",
+    "stop36_old_fraction": "0.0002169499405641863",
+    "max_motion_error": "8.7022781372070312e-05",
+    "coverage_mismatches": "0",
+    "raster_mismatches": "0",
+    "rejected_foreground": "0"
+  }
+}

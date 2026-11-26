@@ -1,6 +1,7 @@
-# Active Metal work — optional MetalFX Temporal review
+# Active Metal work — isolated Aurora reconstruction selection
 
-Current review scope is PPD598 on `codex/metalfx-temporal-20261125`; the active checkpoint follows.
+Current scope is PPD610 algorithm selection on `codex/aurora-reconstruction-evaluation-20261126`;
+Temporal implementation `codex/metalfx-temporal-20261125` and original evidence remain preserved.
 Preserved Spatial candidate69464 uses `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5`.
 PPD591 is the historical owner-requested Spatial scope on `codex/metalfx-spatial-20261124`,
 pinned from usual-branch7911e382ce. Control f384e2c220 and implementation base
@@ -10,17 +11,22 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains69507productioncheckpoint, unchanged.
-Owner accepts retained67nativeisolation; wrapper/pool/history/resolve are not this reproduced cause.
-[75quality](../../research/temporal-palm-75-quality-20261126.md) freshly renders288x144 at384x192output,
-production15phases/mip−1.4150375;45warm+45stationary+18move+36stop, with correctphase-specific references.
-Recall passes butedge.00430953,area.750082 andstop18.00485880 fail3bounds/9584assertions.75notqualified.
-Some contrast/detail gain is measured; no blur/ref-oracle substitution. Inputpixels+26.5625%, noFPSclaim.
-Baseline67/tests/results remain; targetreference byteidentity and allmetadata/limits are retained.
-Three sizing/history/glow regressions pass. No production/qualitypolicy/settings changes or newDMG.
-Result/media/private unsubmitted Apple draft complete. Stop Temporalsettings qualification for thispalm;
-recommend bounded Aurora reconstruction comparison before fullintegration, without assuming itwins.
-PPD610 remains investigating for imagequality;69507visibility/identity/ownership corrections preserved.
+Completed bounded selection; PPD610 remains open.
+
+Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains productioncheckpoint; allpriorfixes preserved.
+[Evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) on isolated
+`codex/aurora-reconstruction-evaluation-20261126`, parent86a7654fb1, concludes does not justify integration.
+Pinned Auroraee458fbf1d WGSLportFSR3.1/wgpu6c13013b3f, explicit M1MaxMetal; actualGPUadapterchecks pass.
+One maturity correction replaces unqualified36warm/54reference with468main/414ownreferenceworlds,
+360warm and unchangedscene/bounds. Latest referencephase drift<5.6e−5; no furtherextension.
+MFX/AuroraNone/.8 edge.00432862/.00086731/.00094805,recall.877865/.936028/.958572,
+area.745180/.821401/.832826<.85,stop18.00828879/.01588627/.01693322,
+stop36.00325456/.01231943/.01305086. BothAuroraarms failarea+18/36settling despitepartialdetail/stabilitygain.
+Qualitygatefails: no targetcostbenchmark, productiondependency/settings change, viewerlogin,DMG or integration.
+CPU/Naga5+analysis10tests and Python195testspass(oneexplicitexternalfixture skip); API/GPUvalidatedarms pass.
+Fullprivateevidence `artifacts/metal/aurora-evaluation-20261126/`; selectedsyntheticmedia/report are reviewable.
+Owner authorizespush of harness/tests/provenance/report to evaluationbranch only. Preserve Temporal/Spatial/usual.
+Decisioncomplete; do not extendexperiment. Native/Spatial remain; actual owner-scene PPD610quality stays open.
 
 ## Preserved Spatial parent checkpoint
 

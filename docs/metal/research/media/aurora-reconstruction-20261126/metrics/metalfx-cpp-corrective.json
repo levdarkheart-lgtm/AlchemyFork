@@ -1,0 +1,33 @@
+{
+  "scope": "corrective sharedperspectiveonly; exactC++loggedstrings, nooldorthographicscores.",
+  "log_name": "shared-perspective-metal-warm360.log",
+  "log_sha256": "7a673c47a1c3dbc05562591c0f9991b54d1a1823310785b99792137e1bedf399",
+  "metrics": {
+    "input": "256x128",
+    "output": "384x192",
+    "mode": "6",
+    "bias": "-1.5849624872207642",
+    "phases": "18",
+    "warm": "360",
+    "stable": "54",
+    "mean_rgb_change": "0.003685175527061275",
+    "edge_band_change": "0.0043286167139081518",
+    "edge_band_p95": "0.0046191220302490019",
+    "coverage_change": "0.00026507516586881665",
+    "mean_reference_error": "0.05133557304289843",
+    "minimum_recall": "0.87786457904119886",
+    "minimum_precision": "0.99989316306773091",
+    "minimum_area": "0.74517982661066384",
+    "maximum_area": "0.74821144986399313",
+    "edge_energy": "0.20936880016840714",
+    "reference_edge_energy": "0.32655210055151274",
+    "stop18_phase_error": "0.0082887922754670915",
+    "stop36_phase_error": "0.0032545621950203006",
+    "stop18_old_fraction": "0.00041922443975520778",
+    "stop36_old_fraction": "0.00022896695938672766",
+    "max_motion_error": "8.7022781372070312e-05",
+    "coverage_mismatches": "0",
+    "raster_mismatches": "0",
+    "rejected_foreground": "0"
+  }
+}

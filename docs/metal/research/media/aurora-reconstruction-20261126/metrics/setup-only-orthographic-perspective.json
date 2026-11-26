@@ -1,0 +1,27 @@
+{
+  "purpose": "SetupcomparabilityONLY, notold-versus-newreconstructionquality comparison. Bothsourcecases callproductionPBRMASKpalm flags/material; onlynewperspective case scores are used foralgorithmselection.",
+  "old_native_sha256": "783a820425dfd07f5cf0780cd4071a5d137d8481a8da1899ce8dbe5404988d7c",
+  "new_native_sha256": "6a04e16038dacafbab71da1ee95b24d412d55c15e3d48ffa110acca4830e9b67",
+  "PBR_cell_RGBA_components": 36864,
+  "bit_equal_RGBA_components": 36864,
+  "leaf_mask_different_pixels": 0,
+  "old_leaf_bbox_local_in96cell": [
+    10,
+    4,
+    87,
+    91
+  ],
+  "new_leaf_bbox_local_in96cell": [
+    10,
+    4,
+    87,
+    91
+  ],
+  "footprint_output_rectangle": [
+    196,
+    4,
+    284,
+    92
+  ],
+  "material_policy": "PBRMASK,alpha cutoff0.5,constantRGB authoredfoliage,production Temporal67mip; noforwardBLEND innewsharedcase. Projection/depth changed intentionally."
+}
