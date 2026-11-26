@@ -1,5 +1,6 @@
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 compile_error!("This evaluation executes only native Metal on Apple Silicon");
+mod benchmark;
 mod pipeline_cache;
 mod renderer;
 include!(concat!(env!("OUT_DIR"), "/aurora_module.rs"));
@@ -23,9 +24,16 @@ struct Gpu {
 }
 impl Gpu {
     fn new() -> Result<Self> {
+        Self::new_options(true, false)
+    }
+    fn new_options(validation: bool, timestamps: bool) -> Result<Self> {
         let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
         descriptor.backends = wgpu::Backends::METAL;
-        descriptor.flags = wgpu::InstanceFlags::VALIDATION | wgpu::InstanceFlags::DEBUG;
+        descriptor.flags = if validation {
+            wgpu::InstanceFlags::VALIDATION | wgpu::InstanceFlags::DEBUG
+        } else {
+            wgpu::InstanceFlags::empty()
+        };
         let instance = wgpu::Instance::new(descriptor);
         let adapters = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::METAL));
         let names: Vec<_> = adapters.iter().map(|a| a.get_info().name).collect();
@@ -36,8 +44,15 @@ impl Gpu {
             })
             .with_context(|| format!("Required Metal Apple M1 Max adapter not found: {names:?}"))?;
         let info = adapter.get_info();
-        let features =
+        let mut features =
             adapter.features() & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+        if timestamps {
+            ensure!(
+                adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY),
+                "M1 Max stage-boundary timestamps unavailable"
+            );
+            features |= wgpu::Features::TIMESTAMP_QUERY;
+        }
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some("Isolated Aurora evaluation"),
@@ -509,6 +524,9 @@ fn adapter_checks(gpu: &Gpu, output: &Path) -> Result<()> {
 fn main() -> Result<()> {
     contract::reject_overrides()?;
     let args: Vec<_> = std::env::args().collect();
+    if args.get(1).is_some_and(|a| a == "benchmark") {
+        return benchmark::run(&args[2..]);
+    }
     ensure!(
         args.len() >= 3,
         "usage: aurora-eval adapter-checks OUT | validate-inputs|run CSV PREFIX OUT [--manifest PATH] [--rcas off|ordinary]"

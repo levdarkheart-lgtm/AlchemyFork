@@ -1,0 +1,20 @@
+--- vendor/aurora/fsr.rs
++++ generated/fsr_observed.rs (timing-only prefix)
+@@ -896,7 +896,7 @@
+                     }),
+                     stencil_ops: None,
+                 }),
+-                timestamp_writes: None,
++                timestamp_writes: crate::benchmark::pass_timing("fsr display depth"),
+                 occlusion_query_set: None,
+                 multiview_mask: None,
+             });
+@@ -955,7 +955,7 @@
+         label: Some(label),
+         color_attachments: &attachments,
+         depth_stencil_attachment: None,
+-        timestamp_writes: None,
++        timestamp_writes: crate::benchmark::pass_timing(label),
+         occlusion_query_set: None,
+         multiview_mask: None,
+     });

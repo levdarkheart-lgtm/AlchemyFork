@@ -11,6 +11,8 @@ dependencies = [
  "glam",
  "half",
  "naga",
+ "objc2",
+ "objc2-metal",
  "pollster",
  "serde",
  "serde_json",
@@ -394,6 +396,7 @@ dependencies = [
  "bitflags",
  "block2",
  "objc2",
+ "objc2-core-foundation",
  "objc2-foundation",
 ]
 

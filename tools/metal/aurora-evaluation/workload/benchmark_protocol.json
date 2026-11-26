@@ -1,0 +1,50 @@
+{
+  "scope": "Owner-authorized bounded reconstruction cost follow-up to c31ffd288b. No quality or viewer FPS acceptance.",
+  "device": "Explicit Apple M1 Max / native Metal",
+  "input": [
+    2304,
+    1446
+  ],
+  "output": [
+    3456,
+    2168
+  ],
+  "input_workload": "perspective-mask-texture-hdr-static-v1",
+  "phases": 18,
+  "phase_pool": "18 immutable GPU-resident color/depth/motion sets prepared once, selected phase copied to fixed inputs by untimed producer CB",
+  "exposure": 1,
+  "motion": "zero unjittered previous-minus-current pixels, static camera and geometry; jitter handled separately",
+  "order": [
+    "MetalFX A0",
+    "Aurora RCAS None",
+    "Aurora RCAS0.8",
+    "MetalFX A1"
+  ],
+  "warmup_worlds_each": 360,
+  "measured_worlds_each": 360,
+  "max_outstanding_worlds": 3,
+  "timing": "MetalFX uses native command-buffer GPUStartTime/GPUEndTime. Pinned wgpu forbids mixed native-encoder observation: Aurora uses supported M1Max stage-boundary queries, earliest adapter/autogen begin to latest color/display-depth terminal end. Raw intervals/units retained; do not mix absolute clocks or sum overlap.",
+  "aurora": "Original pinned Fsr graph includes display depth; required combined depth/motion adapter in same timed command; adapter stage-query interval separately reported",
+  "metalfx": "Native classic MTLFXTemporalScaler plus existing production glow-alpha resolve in same timed command; native inputs need no adapter",
+  "excluded": [
+    "pipeline creation",
+    "initial resources/uploads",
+    "untimed producer copy",
+    "file IO",
+    "readback",
+    "deliberate host admission waits"
+  ],
+  "host_timing": "encoding and submission CPU wall intervals recorded separately, admission waits outside them",
+  "validation": "Release optimized builds; API/GPU validation runs separately before measurement; measurement environment clears validation/debug injection",
+  "drift": "Compare warmed A0/A1 p50 and p95 and temporal/thermal observations. More than10percent control p50 change is material; do not present close candidate differences as resolved. Repeat only a named technical invalidity, not a desired outcome.",
+  "memory": "Separate common synthetic input pool from fixed inputs, reconstruction textures/buffers, opaque scaler/backend retained allocation deltas and timing/readback buffers. Report exposed live-resource plateau, not unobserved lifetime churn.",
+  "unchanged_quality": "All c31ffd recovered-area and settling failures and bounds remain unchanged. Primary selection candidate is Aurora RCAS None; no parameter sweep.",
+  "uniform_upload": "The pinned wgpu208-byte uniform transfer precedes the measured render graph. One fixed64-sample actualAPI/nativequeue-bookend calibration provides an observed upper envelope including host/scheduling gaps; report separately as a conservative upload budget, never exclusive GPU self-time or an exact additive pass.",
+  "timestamp_warmup": "Exercise the same timestamp attachments during warm-up before measured queries overwrite them.",
+  "corrective_component_mode": {
+    "reason": "Ordered01 stage timestamps demonstrate cross-world fixed-input/history WAR waits: adapter vertex can start one world ahead while its fragment end waits for the previous world. Per-world elapsed pipeline spans are latency, not isolated component service time. No query mapping defect.",
+    "count": "Exactly one corrected A0/OFF/0.8/A1 sequence, same360warm/360measured worlds and identical data",
+    "method": "One outstanding world; previous world and input-copy producer GPU completion observed before CPU encoding starts. Those waits are outside GPU/CPU encode-submit timers. Production scheduling unchanged.",
+    "retention": "Keep ordered01 as pipeline-latency/service evidence; do not sum overlap or discard it. Reuse prior64-sample upload bound; no repeated calibration."
+  }
+}

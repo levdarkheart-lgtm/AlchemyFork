@@ -1,0 +1,92 @@
+{
+  "checkpoint": "c31ffd288bcc555891634fb02070b5d58fd75b34",
+  "scope": "Cost follow-up only; no production renderer/settings change, viewer login, DMG, native-MSL prototype or FPS acceptance.",
+  "identities": {
+    "native_quiescent_executable": {
+      "name": "metalfx-benchmark-quiescent",
+      "bytes": 114712,
+      "sha256": "1c41442a7e9e1c3d38cf9e39178427408b2c2df51816c9643ae823c71e7bd9f0"
+    },
+    "aurora_quiescent_executable": {
+      "name": "aurora-eval",
+      "bytes": 6377504,
+      "sha256": "3243996a4feb98c30b89ea5a50fea4d2a5db511b427468dee28fd8cf25ae419a"
+    },
+    "uniform_calibration_executable": {
+      "name": "aurora-uniform-calibration",
+      "bytes": 4760512,
+      "sha256": "c5eeec9e7250fd54bd0e68bb51ada7784002b3843a6d0566bd17d111b4ac999e"
+    },
+    "production_resolve_library": {
+      "name": "almetal_builtin.metallib",
+      "bytes": 2425760,
+      "sha256": "5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a"
+    },
+    "shared_workload_source": {
+      "name": "input_workload.c",
+      "bytes": 4685,
+      "sha256": "64acd34c37ae6cc1b95cc82a387ffdcd964a0f033b9a6f6e588b99635adf3531"
+    },
+    "cargo_lock": {
+      "name": "Cargo.lock",
+      "bytes": 23316,
+      "sha256": "2f3f70a3d1e462ef9801cbadbea2f003a44471d7b8b63d62bd0bde7f6947ca74"
+    },
+    "benchmark_host_timing_patch": {
+      "name": "benchmark-host-timing.patch",
+      "bytes": 716,
+      "sha256": "11a6c860ce5516131bf1b3ec334142906b5a3f0291750c7cbeab262511595370"
+    },
+    "offline_cost_reducer": {
+      "name": "cost.py",
+      "sha256": "927c2c29668b10e3ddffb51f33ccb99a1785784cf112c9b3d948ba26f7c61dc9"
+    }
+  },
+  "validation": {
+    "native": {
+      "receipt_sha256": "5d631b1c242f06be774735da9c469956d1f9178b0e73522284d904262fd6eb26",
+      "exit_code": 0,
+      "binary_sha256": "1c41442a7e9e1c3d38cf9e39178427408b2c2df51816c9643ae823c71e7bd9f0",
+      "configuration": "Separate actual-target18warm/18sample API+GPU validation; validation timings excluded from cost"
+    },
+    "aurora": {
+      "receipt_sha256": "a15edf683a24f2abd05ec032675fd2d60f7778f4e4fe904101ccee223886d60c",
+      "exit_code": 0,
+      "binary_sha256": "3243996a4feb98c30b89ea5a50fea4d2a5db511b427468dee28fd8cf25ae419a",
+      "configuration": "Separate actual-target18warm/18sample API+GPU validation; validation timings excluded from cost"
+    }
+  },
+  "device": "Apple M1 Max /64GiB /macOS26.5.2(25F84) /SDK26.5 /Appleclang21.0.0 /Rust1.99.0",
+  "measured_source_note": "Measured source bodies are frozen. A subsequent leading benchmark.rs documentation comment corrects discarded native-CB terminology to the actual render-stage timing method; no measured code statement changed. Reports/provenance/analysis were finalized after measurement.",
+  "algorithm_identity": "Pinned Auroraee458fbf fsr.rs and5WGSL bytes unchanged; only2hosttimestamp descriptor substitutions in generated copy, read-only accessors and construction helpers.",
+  "measurement_receipts": {
+    "pipelined": {
+      "name": "receipt.json",
+      "sha256": "5f96c15afa24cfc02f5091b21eb120a83015d7b81e7c48f543dcf58e6debb587"
+    },
+    "primary_quiescent": {
+      "name": "receipt.json",
+      "sha256": "af1ed32328e330aa606378d13fe9eab7de88390cfea89bdc8b6e5f8122e1f252"
+    }
+  },
+  "quality_policy": "All c31ffd quality thresholds/raw results unchanged. Revised owner instruction allows cost evaluation despite failures.",
+  "decision": "Worth one bounded optional67%native-MetalOFF prototype as an explicitly costly quality choice; no assumed native-MSL speedup or default/production acceptance.",
+  "verification": {
+    "repository_tool_tests": {
+      "run": 198,
+      "skipped": 1,
+      "exit_code": 0
+    },
+    "analysis_tests": {
+      "run": 19,
+      "exit_code": 0
+    },
+    "rust_naga_tests": {
+      "run": 5,
+      "exit_code": 0
+    },
+    "harness": "33requiredfilesvalidated",
+    "target_validation": "Metal API/GPU validation passes, timedruns validation/debugoff, ARMonlyexecutables"
+  },
+  "verification_notes": "Offline reducer rejects nonfinite clock periods/timestamps and uses LF CSV to preserve published raw-sample hashes. All original GPU observations and quality bounds are unchanged."
+}

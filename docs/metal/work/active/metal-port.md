@@ -11,22 +11,21 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Completed bounded selection; PPD610 remains open.
-
-Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains productioncheckpoint; allpriorfixes preserved.
-[Evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) on isolated
-`codex/aurora-reconstruction-evaluation-20261126`, parent86a7654fb1, concludes does not justify integration.
-Pinned Auroraee458fbf1d WGSLportFSR3.1/wgpu6c13013b3f, explicit M1MaxMetal; actualGPUadapterchecks pass.
-One maturity correction replaces unqualified36warm/54reference with468main/414ownreferenceworlds,
-360warm and unchangedscene/bounds. Latest referencephase drift<5.6e−5; no furtherextension.
-MFX/AuroraNone/.8 edge.00432862/.00086731/.00094805,recall.877865/.936028/.958572,
-area.745180/.821401/.832826<.85,stop18.00828879/.01588627/.01693322,
-stop36.00325456/.01231943/.01305086. BothAuroraarms failarea+18/36settling despitepartialdetail/stabilitygain.
-Qualitygatefails: no targetcostbenchmark, productiondependency/settings change, viewerlogin,DMG or integration.
-CPU/Naga5+analysis10tests and Python195testspass(oneexplicitexternalfixture skip); API/GPUvalidatedarms pass.
-Fullprivateevidence `artifacts/metal/aurora-evaluation-20261126/`; selectedsyntheticmedia/report are reviewable.
-Owner authorizespush of harness/tests/provenance/report to evaluationbranch only. Preserve Temporal/Spatial/usual.
-Decisioncomplete; do not extendexperiment. Native/Spatial remain; actual owner-scene PPD610quality stays open.
+Completed bounded actual-resolution cost/response follow-up under revised owner rule; PPD610 remains open.
+Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains productioncheckpoint; no viewer/source/settings change.
+[Evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) on isolated branch, parentc31ffd288b,
+recommends one optional67%native-MetalOFFprototype as quality tradeoff, not default/production acceptance.
+All quality bounds/failures and closednativeisolation preserved. Retainedpost-stop images are substantiallysteadier
+withAurora; slowdetailredistribution remains, Native-detailerrorslower, no broad retainedold-palmtrail demonstrated.
+M1Max2304x1446→3456x2168,360warm/360optimizedsamples/arm; commonmedian MFXA0/OFF/.8/MFXA1
+4.127750/10.996104/11.374166/4.146937ms;p955.702250/12.846334/13.104667/5.773333ms.
+Controlsmedian+0.465%; OFFpremium~6.86ms/2.66x. No NativeMSLspeedassumption or viewerFPS inference.
+Onecorrectivequiescentcomponentrun resolves prior-world latency ininitial3-inflightspan; allrawdata retained.
+Requiredformatadapterincluded;208Buniformupload hasseparateactualAPI observedupperenvelope, notexactGPUselftime.
+Footprintsplateau,butAuroraallocatesone208BMTLBuffer/world; MetalFXprivateallocationchurnnotexposed.
+No productionGPUwait/schedulingchange. No qualitysweep, newviewerbuild, login,DMG or prototype implementation.
+Checks:198tools(1skip),19analysis,5Rust/Naga pass; targetAPI/GPU validation passes. Publish evaluationbranch only.
+Native/Spatial/usual/Temporalbranches and allpriorartifacts preserved; PPD610actualscene remains unresolved.
 
 ## Preserved Spatial parent checkpoint
 

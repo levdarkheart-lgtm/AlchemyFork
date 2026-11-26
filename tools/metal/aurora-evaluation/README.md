@@ -58,6 +58,36 @@ The initial144/54 stream exposed continuing Aurora same-phase history evolution:
 
 ## Host-only adaptations
 
-`pipeline_cache.rs` preserves Aurora's call surface with direct Metal pipeline creation (the upstream disk cache is inapplicable here). `renderer.rs` reproduces the allocation helper and adds COPY_SRC solely for explicit output/diagnostic readbacks. `build.rs` copies the unmodified upstream module, appending only read-only host accessors for prepared motion, generated reactivity, latest internal color and effective sharpness. The original prefix and all WGSL remain unmodified. No filter, pass, uniform, history, sharpening or dispatch decision is replaced.
+`pipeline_cache.rs` preserves Aurora's call surface with direct Metal pipeline creation (the upstream disk cache is inapplicable here). `renderer.rs` reproduces the allocation helper and adds COPY_SRC solely for explicit output/diagnostic readbacks. `build.rs` preserves the original vendor module, appending read-only host accessors. Its generated compile copy also replaces exactly two host render-pass `timestamp_writes` fields with optional benchmark timing hooks; [the exact patch](benchmark-host-timing.patch) is versioned. The original vendor source and all WGSL remain byte-identical. No filter, pass sequence, uniform, history, sharpening or dispatch decision is replaced. Quality runs leave those timing hooks inactive.
 
-Input upload, file I/O, synchronous readbacks, first-use pipeline creation and CPU validation are qualification tooling. These process durations are **not** GPU reconstruction cost or Home FPS. Cost measurement is gated on passing the predefined image-quality checks in `analysis/`; no performance conclusion follows from this runner alone.
+Input upload, file I/O, synchronous readbacks, first-use pipeline creation and CPU validation are qualification tooling. These process durations are **not** GPU reconstruction cost or Home FPS. The owner subsequently authorized a separate bounded cost comparison despite the unchanged quality failures. Cost does not turn a failed quality bound into acceptance; no viewer FPS conclusion follows from this runner alone.
+
+
+## Target-size reconstruction cost mode
+
+The optimized benchmark uses the shared C producer in `workload/` at **2304×1446 →3456×2168**. Eighteen exact phase inputs are generated and uploaded once, retained on the GPU and fingerprinted identically to the native MetalFX runner. Before each timed reconstruction, an untimed GPU copy places the selected phase in the fixed input textures. This copy stands in for the viewer's existing producers; it is not proposed integration work.
+
+```sh
+cargo build --release --locked
+AURORA=../../../artifacts/metal/aurora-evaluation-20261126/cargo-target/release/aurora-eval
+# Separate correctness run; not a performance observation:
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 "$AURORA" benchmark /absolute/fresh/validation --rcas off --warmup 18 --samples 18 --validation --quiescent
+# In a clean environment WITHOUT Metal/WGPU validation or debug variables:
+"$AURORA" benchmark /absolute/fresh/off --rcas off --warmup 360 --samples 360 --quiescent
+"$AURORA" benchmark /absolute/fresh/ordinary --rcas ordinary --warmup 360 --samples 360 --quiescent
+```
+
+The parent comparison brackets those two unchanged arms with warmed native MetalFX controls. The benchmark rejects unoptimized/debug Rust builds for timed observations. The original pipelined mode permits at most three pending worlds. Its fixed inputs and adapter targets can produce previous-world resource waits inside elapsed stage envelopes, so those observations describe pipeline latency/service rather than isolated shader work. The one corrective `--quiescent` mode finishes each preceding world and waits for the resident input copy **before** timed encoding, leaving one world pending. These deliberate producer/completion waits are recorded separately and occur outside GPU timestamp intervals and host encoding/submission intervals. This is an isolated component measurement, not production overlap or viewer throughput. Every timestamp attachment is exercised during warm-up before its measured indices are overwritten.
+
+M1 Max supports render-stage timestamp queries, **not** arbitrary encoder timestamps. Five observations per world cover adapter begin/end, first FSR stage begin, actual color terminal end (accumulate or RCAS) and display-depth end. The reported complete graph envelope uses the earliest observed beginning and latest terminal end. Signed stage gaps/overlap are retained; overlapping envelopes must not be added. All required FSR render passes, reconstructed-depth clear and the combined depth/motion conversion lie inside that graph envelope. The FSR-only pass envelope omits the preceding clear and is labelled accordingly. Intermediate passes receive no timestamps. Query resolution/readback, input construction/uploads, output readback and file operations occur outside reconstruction GPU intervals.
+
+The source-defined 208-byte per-world uniform update is a separate `Queue::write_buffer` transfer before the observed graph. Its host staging is included in encoding time. A **single** separate `aurora-uniform-calibration FRESH_OUT` run measures 64 exact-API writes after16 warm writes, with completed native GPU markers before and after each. The resulting interval includes host waits, staging and scheduling gaps. It is an observed conservative envelope, **not** uniform-copy GPU self-time, a universal worst-case bound or an exact additive component.
+
+Memory evidence distinguishes these quantities:
+
+* Actual Metal `currentAllocatedSize` before inputs, after inputs, after warm-up and after measurement; texture-level `allocatedSize` records persistent FSR/adapter surfaces.
+* Fixed descriptor-derived buffer payloads, the separate18-phase benchmark input pool, fixed input textures and post-measurement diagnostic query buffers.
+* HAL buffer/texture/view counters are **live** counts, not cumulative allocation counts. The Metal backend does not populate its `buffer_memory`, `texture_memory` or `memory_allocations` counters; raw zeros mean **unimplemented**.
+* The pinned wgpu implementation allocates a fresh shared Metal staging buffer for every `Queue::write_buffer`, including the208-byte FSR uniform update. Therefore one transient Metal-buffer API allocation occurs per world even when persistent resource counts and physical footprint plateau. Physical driver-page reuse is unknown. No staging-pool claim follows from a plateau.
+
+This is Aurora's current WGSL implementation through the pinned Metal backend. It does not predict the cost of a future native-MSL implementation and is not a Home FPS benchmark.

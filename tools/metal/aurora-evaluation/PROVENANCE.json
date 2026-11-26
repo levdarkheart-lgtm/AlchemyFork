@@ -42,16 +42,37 @@
   "scope": "Evaluation only. No viewer production dependency. Vendor algorithm and5WGSL preserved byte-identically.",
   "compiler_choice": "Installed exact Rust1.99.0 successfully compiles the unchanged isolated module and locked dependencies; upstream repository toolchain1.100 is not required by this module.",
   "host_adaptations": {
-    "build.rs": "Verbatim module prefix + read-only appended accessor methods; all five WGSL unchanged",
+    "build.rs": "Vendor original fsr.rs is retained. Compiled copy appends read-only observation/resource accessors and substitutes two timestamp descriptor fields with optional benchmark hooks (None outside benchmarking). All shader bytes, pass order and reconstruction math remain unchanged.",
     "src/pipeline_cache.rs": "Same call surface, direct pipeline creation on Metal",
     "src/renderer.rs": "Upstream allocation helper + COPY_SRC for explicitly observed textures only",
-    "src/main.rs": "Input upload/format/sign-unit adapters and out-of-band readback; no algorithm adaptation"
+    "src/main.rs": "Input/format/sign-unit adapters and out-of-band readback. Optimized cost CLI is isolated in src/benchmark.rs; no viewer dependency."
   },
-  "cargo_lock_sha256": "a34578a49345fefb92c42773a8713387f9509f0d91328cb5d5e701e3f7de9a35",
-  "host_observation_append_sha256": "28b9b8e764c53921ccb3f48ace26d4afde5b3494cf1bee9dfb701c0159306c38",
+  "cargo_lock_sha256": "2f3f70a3d1e462ef9801cbadbea2f003a44471d7b8b63d62bd0bde7f6947ca74",
+  "host_observation_append_sha256": "362c731c5cae5742f96f2d9c4627a01ce09040477102a5016c3dfb92b523b69a",
   "notices": {
     "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
     "NOTICE.md": "261a4105664cdc8a735c24ae4dd19bbab24356a357cb02952f218a47611013e3",
     "TRADEMARKS.md": "3de116245c178b63521fb6d10d9a70cafd836290a46ad54f4cd252294b4fb7ca"
-  }
+  },
+  "cost_benchmark": {
+    "host_timing_patch": "benchmark-host-timing.patch",
+    "patch_sha256": "11a6c860ce5516131bf1b3ec334142906b5a3f0291750c7cbeab262511595370",
+    "vendor_sha256": "db99fc611ccdccda8526905bdc094c440b9f3e83bdc059c30cffa754ebdd0960",
+    "instrumentation": "Two generated host timestamp_writes fields; five supported Metal render-stage boundaries, no intermediate timestamps; graph/shaders/uniform decisions unchanged",
+    "target_input": [
+      2304,
+      1446
+    ],
+    "target_output": [
+      3456,
+      2168
+    ],
+    "compiler_and_dependencies": "Same pinned compiler and unchanged locked versions; objc2 and objc2-metal were already locked and are now direct dependencies for read-only memory observations and separate conservative transfer calibration",
+    "memory_counter_availability": "Metal HAL byte/allocation counters are unimplemented zeros. Buffer/texture/view counts are live. Queue::write_buffer creates one208-byte transient Metal staging buffer per world; physical page reuse unknown.",
+    "execution_modes": {
+      "pipelined": "Three outstanding fixed-resource worlds; retained as latency/service observations, not exclusive per-world GPU work",
+      "quiescent": "One corrective isolated-component mode: previous world and resident input copy complete before timed encoding; all waits recorded outside GPU/host encoding intervals"
+    }
+  },
+  "quality_checkpoint_host_observation_append_sha256": "28b9b8e764c53921ccb3f48ace26d4afde5b3494cf1bee9dfb701c0159306c38"
 }

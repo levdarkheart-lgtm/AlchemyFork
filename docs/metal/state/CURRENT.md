@@ -1,7 +1,7 @@
 # Current engineering state — isolated Aurora reconstruction evaluation
 
 Observed 2026-11-26 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
-Current evaluation branch is `codex/aurora-reconstruction-evaluation-20261126`, parent86a7654fb1;
+Current evaluation branch is `codex/aurora-reconstruction-evaluation-20261126`, cost-parentc31ffd288b/base86a7654fb1;
 Temporal implementation remains `codex/metalfx-temporal-20261125`, with the separate Spatial
 parent branch at41e90aaadb preserved. The Spatial foundation came from usual-branch
 `7911e382ce17f8957cd335cabbd30f808bef6ac1`; its control `f384e2c220` and implementation
@@ -13,26 +13,27 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
-## PBR MASK quality — Aurora selection complete; PPD610 open
+## PBR MASK quality and cost — bounded native prototype justified; PPD610 open
 
 **Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`;69507productionunchanged.
 Owner accepts [native isolation](../research/temporal-palm-native-isolation-20261126.md); do not reopen it.
-[75quality](../research/temporal-palm-75-quality-20261126.md) and original67results remain preserved.
-[Aurora comparison](../research/aurora-reconstruction-evaluation-20261126.md): does not justify integration.
-Isolated nativeMetal/M1Max harness pins Auroraee458fbf1d WGSLportFSR3.1 /wgpu6c13013b3f; no viewer dependency.
-Shared actual reverse-Z perspective scene preserves palm footprint/material:256x128→384x192,18phases,
-mip−1.5849625. Exact depth/motion packing, both-axis raster jitter and camera fallback pass actualGPU checks.
-Preliminary36warm/54reference was immature; retained separately. One fixed360warm corrective comparison
-uses468main/414ownreferenceworlds, unchangedscene/bounds; latestphase-reference drift<5.6e−5.
-MFX/AuroraNone/Aurora.8: edge.00432862/.00086731/.00094805;recall.877865/.936028/.958572;
-area.745180/.821401/.832826 (bound≥.85);stop18.00828879/.01588627/.01693322;
-stop36.00325456/.01231943/.01305086 (bound≤1/255). BothAurora arms failarea+18/36settling.
-Aurora substantially improves stationary stability/detail, but does not meet qualitygate; no costbenchmark.
-Old-historyresidue remains low; phase-matchederror is not a measured largeghostingtrail or Appledefect.
-CPU/Naga5tests, analysis10tests and Python195tests pass(oneexplicitexternalfixture skip); GPU/API arms pass.
-No production/settings change, viewerlogin,DMG,FPSclaim or fullintegration. Allpriorrepairs remain.
-Private fullinputs/outputs/receipts: `artifacts/metal/aurora-evaluation-20261126/`; compactsyntheticmedia inreport.
-Native/Spatial stay available; PPD610 remains open for actual owner-scene imagequality acceptance.
+[Quality/cost evaluation](../research/aurora-reconstruction-evaluation-20261126.md) retains all67/75andAuroraquality failures.
+AuroraOFF substantially reduces stationary variation and improves Native-detail agreement; post-stop behavior
+is mostly gradual detail/energy redistribution, not a broad old-position trail. Real-scene objectionability unreviewed.
+Area.821401/.832826<.85 and18/36own-reference errors stillfail; no threshold/settings/quality-run changes.
+Owner superseded the initial no-cost gate. ActualM1Max2304x1446→3456x2168 optimized360warm/360samples:
+MFXA0/OFF/.8/MFXA1 commonmedian4.127750/10.996104/11.374166/4.146937ms;
+p955.702250/12.846334/13.104667/5.773333ms. Controls+0.465%median; no viewerFPS claim.
+Initial3-world stage spans contained prior-world waits; preserved as latency evidence. One quiescent correction
+settles input/previousworld outside GPU/CPUtimers. Requiredformatadapter included;208Bupload separatelybounded
+byactualAPI64-sample.521292ms observedupperenvelope includinghostgaps, notexclusive/additiveGPUselftime.
+Worth one optional67%native-MetalOFFprototype for owner-scene quality, budgeted~11ms ratherthan presumedMSLfaster.
+Native/Spatial/MetalFX/defaults and allpriorrepairs remain; PPD610open. No prototype, login,DMG or productionchange.
+Devicefootprintwithbenchmarkpool1,403.594/1,405.594MiB Native/Aurora; differentinventories, not equalhistorycost.
+No netgrowth; wGPUstillallocatesone208BstagingMTLBuffer/world, privateMetalFXchurnunexposed.
+Checks:198tools(1skip),19analysis,5Rust/Naga pass; targetAPI/GPU validation passes. WGSL/produnchanged.
+Privatefullcost/validation/timestamps: `artifacts/metal/aurora-cost-20261126/`; publicsummary+rawCSVlinkedfromreport.
+Qualityevidence/Nativeisolation preserved under originalartifactpaths; alloldproductionbranches untouched.
 
 ## Preserved69494 Temporal checkpoint — PPD598
 
@@ -155,5 +156,5 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Do not integrate thisAurora candidate or extend the comparison. Review the published evaluationbranch/report.
-Keep Native/Spatial and PPD610open; actual owner-scene quality remains unresolved. No viewerpackage or FPSclaim.
+Review the cost/retained-response evidence and separately scope one optional67%native-MetalOFFviewerprototype.
+No automatic renderer migration or quality acceptance; Native/Spatial/defaults and PPD610 remain unchanged.

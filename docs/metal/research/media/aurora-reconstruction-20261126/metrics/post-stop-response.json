@@ -1,0 +1,434 @@
+{
+  "schema_version": 1,
+  "scope": "Offline clarification of the already recorded warm360384x192palm outputs. No rendering, new setting, threshold, reference or original score changed.",
+  "population": {
+    "main_worlds": 468,
+    "independent_reference_worlds": 414,
+    "output": [
+      384,
+      192
+    ],
+    "stopped_frame_indices": [
+      432,
+      467
+    ],
+    "stopped_world_ids": [
+      433,
+      468
+    ],
+    "stopped_worlds": 36,
+    "jitter_phases": 18,
+    "clip_playback_frames_per_second": 12,
+    "clip_playback_note": "The54-frameclip contains18moving+36stopped worlds;4.5s playback is not elapsed viewer time or throughput."
+  },
+  "definitions": {
+    "own_mature_error": "Mean absolute RGB difference on the original2251changedNativepixels versus the same algorithm independently mature final-camera output at the same jitter phase.",
+    "native_quality_error": "Already-recorded mean absolute RGB difference on those SAME2251pixels versus a common unjittered384x192Native detail render at the final camera. Not an ideal antialiased or temporally integrated truth.",
+    "old_history_fraction": "Original projected old-image residue on252valid old-only/disoccluded pixels, clipped[0,1]. It is localized evidence, not a whole-image trail score.",
+    "adjacent_change": "Consecutive stopped outputs; includes the reconstruction response to successive jitter phases.",
+    "phase_residual_change": "Consecutive change after subtracting each phase own mature output. This removes the mature phase footprint but does not by itself classify drift versus oscillation.",
+    "matched_phase_cycle_change": "First18stoppedworlds versus next18, pairwise equaljitterphase and unchangedcamera/inputs. Changes reflect remaining history evolution, rather than different sampling phases.",
+    "green_excess": "Mean linear-green excess over the knownsky background in the original84x84ROI; contrast divides by corresponding56x56actualinput excess.",
+    "native_reference_limitations": "Single unjittered output-resolution material render, zero added featuremipbias and binaryalpha coverage. Pixel-center aliasing, different sampling footprints/filtering and temporal reconstruction can all affect its RGB error. It is a common detail comparison, not a new perfect-quality oracle.",
+    "no_new_quality_gate": "All extra metrics are descriptive. Original area/settling failures remain unchanged."
+  },
+  "metadata_identities": {
+    "manifest.json": {
+      "name": "manifest.json",
+      "bytes": 675,
+      "sha256": "fe2aa782fbdb13e075c8963ca47c21ffb1fd5805ae781d915da9fca9dea79afe"
+    },
+    "sequence.csv": {
+      "name": "sequence.csv",
+      "bytes": 87744,
+      "sha256": "83f8a13a0a8e2ef5864ac73e33ffaa340f498e0596e2574a75f3f7da2e73b442"
+    },
+    "reference-sequence.csv": {
+      "name": "reference-sequence.csv",
+      "bytes": 92322,
+      "sha256": "4fbf861cec4758aa7f687030ae3c48db20644fa7e3f082f7a8f15a4b4c22837d"
+    }
+  },
+  "runtime": {
+    "python": "3.14.6",
+    "numpy": "2.4.3"
+  },
+  "algorithms": {
+    "metalfx": {
+      "original_score_identity": {
+        "name": "metalfx-warm360.json",
+        "bytes": 36019,
+        "sha256": "8a88bf744fc70b1659d04d5d1d214942c2ddd88de95338aaa161548ea53d7866"
+      },
+      "original_failed_bounds_unchanged": [
+        "edge_band_change",
+        "minimum_recall",
+        "minimum_area",
+        "stop18_phase_matched_error"
+      ],
+      "stop_samples": {
+        "1": {
+          "stopped_world_count": 1,
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "reference_frame_index": 396,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.0847380954585257,
+          "phase_matched_error": 0.020494442714936924,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0012058464239854648,
+          "localized_trail_review_only": {
+            "residue_p95": 0.007267745677381754,
+            "residue_peak": 0.0252532958984375,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.003481554246124761,
+          "adjacent_edge_change": 0.004417628803324143,
+          "phase_residual_change": 0.001228711682562565,
+          "green_excess": 0.14031770494249132,
+          "contrast_over_actual_input": 0.7002940358766078,
+          "edge_energy": 0.16787835289122297
+        },
+        "18": {
+          "stopped_world_count": 18,
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.0795096883896746,
+          "phase_matched_error": 0.008288792017480496,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0004192244397552078,
+          "localized_trail_review_only": {
+            "residue_p95": 0.002436827402561903,
+            "residue_peak": 0.0074309613555669785,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.0034421566104073003,
+          "adjacent_edge_change": 0.0043752939765784255,
+          "phase_residual_change": 0.0003628619043374728,
+          "green_excess": 0.14698251737218324,
+          "contrast_over_actual_input": 0.7283540832093689,
+          "edge_energy": 0.18630789353907143
+        },
+        "36": {
+          "stopped_world_count": 36,
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07827248122767975,
+          "phase_matched_error": 0.0032545620986603268,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.00022896695938672766,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0016173123149201274,
+            "residue_peak": 0.005356753244996071,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.0034686302634823916,
+          "adjacent_edge_change": 0.004408980046492156,
+          "phase_residual_change": 0.00016346684208622686,
+          "green_excess": 0.1494363711264128,
+          "contrast_over_actual_input": 0.7405138586265098,
+          "edge_energy": 0.19388090557674298,
+          "same_phase_18_world_change": 0.003274321466128671
+        }
+      },
+      "complete_phase_cycle_means": {
+        "stopped_1_to_18": {
+          "phase_matched_error": 0.013485719999972171,
+          "native_quality_error": 0.08153230202477657,
+          "old_history_fraction": 0.0007488883460764045,
+          "adjacent_rgb_change": 0.0034771888257061644,
+          "adjacent_edge_change": 0.004418473307174855,
+          "phase_residual_change": 0.0006607743988331854,
+          "green_excess": 0.14410252666016857,
+          "contrast_over_actual_input": 0.7146211281935893,
+          "edge_energy": 0.17810727896508602
+        },
+        "stopped_19_to_36": {
+          "phase_matched_error": 0.005249399906534519,
+          "native_quality_error": 0.07880398446723554,
+          "old_history_fraction": 0.0003058891499092365,
+          "adjacent_rgb_change": 0.003480211356862551,
+          "adjacent_edge_change": 0.004423666417807799,
+          "phase_residual_change": 0.0002345641954645779,
+          "green_excess": 0.14818301721074534,
+          "contrast_over_actual_input": 0.7348714120420743,
+          "edge_energy": 0.1901439854594332
+        }
+      },
+      "matched_phase_first_vs_second_stopped_cycle": {
+        "pairs": 18,
+        "mean_rgb_change": 0.005570113133124587,
+        "maximum_phase_mean_rgb_change": 0.008796684685036868
+      },
+      "mature_reference_phase_cycle": {
+        "green_excess": 0.1506363332166453,
+        "edge_energy": 0.19748474179121084
+      },
+      "localized_residue_review_only": {
+        "maximum_mean_old_history_fraction_over36": 0.0012058464239854648,
+        "maximum_single_pixel_projected_fraction_over36": 0.025606680661439896,
+        "maximum_fraction_of_valid_old_only_pixels_over_point1": 0.0,
+        "valid_old_only_pixels": 252
+      },
+      "read_output_file_count": 73,
+      "read_output_identities_aggregate_sha256": "12eea517bf597b0d96fc07c5735f189c8ffee92b4841be09a5deb55091c29c0c"
+    },
+    "aurora-none": {
+      "original_score_identity": {
+        "name": "aurora-off-warm360.json",
+        "bytes": 36010,
+        "sha256": "cd329e17836c3c9fa28c5cdb266eb2b86fdcccbbd94120ed705269ad5c58b193"
+      },
+      "original_failed_bounds_unchanged": [
+        "minimum_area",
+        "stop18_phase_matched_error",
+        "stop36_phase_matched_error"
+      ],
+      "stop_samples": {
+        "1": {
+          "stopped_world_count": 1,
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "reference_frame_index": 396,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07798686438487859,
+          "phase_matched_error": 0.020208719460483124,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0008789892833024602,
+          "localized_trail_review_only": {
+            "residue_p95": 7.528911373810843e-05,
+            "residue_peak": 0.0779992863535881,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.0008147723356930788,
+          "adjacent_edge_change": 0.001034702213885531,
+          "phase_residual_change": 0.0002475848093414883,
+          "green_excess": 0.17151587350027903,
+          "contrast_over_actual_input": 0.8559970626631854,
+          "edge_energy": 0.19421956241827737
+        },
+        "18": {
+          "stopped_world_count": 18,
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07565107880919317,
+          "phase_matched_error": 0.015886268101374126,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0003370862398205934,
+          "localized_trail_review_only": {
+            "residue_p95": 3.3564141631359234e-05,
+            "residue_peak": 0.0539943128824234,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.000726539803298684,
+          "adjacent_edge_change": 0.0009234806442985742,
+          "phase_residual_change": 0.00016494312704465466,
+          "green_excess": 0.16966165382575557,
+          "contrast_over_actual_input": 0.8407378002319487,
+          "edge_energy": 0.19829441391273725
+        },
+        "36": {
+          "stopped_world_count": 36,
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07375672024127404,
+          "phase_matched_error": 0.012319430645412483,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 7.560483340642219e-05,
+          "localized_trail_review_only": {
+            "residue_p95": 2.9574443033197895e-05,
+            "residue_peak": 0.007340352516621351,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.0007183250835616806,
+          "adjacent_edge_change": 0.0009130423957997337,
+          "phase_residual_change": 0.00012769288216588718,
+          "green_excess": 0.16845873532111413,
+          "contrast_over_actual_input": 0.8347768831086888,
+          "edge_energy": 0.20230110618761,
+          "same_phase_18_world_change": 0.0024555304327032713
+        }
+      },
+      "complete_phase_cycle_means": {
+        "stopped_1_to_18": {
+          "phase_matched_error": 0.017960137778097393,
+          "native_quality_error": 0.0767530481444692,
+          "old_history_fraction": 0.0004755694749144289,
+          "adjacent_rgb_change": 0.000781669418912857,
+          "adjacent_edge_change": 0.0009929383356674308,
+          "phase_residual_change": 0.00019570106601819208,
+          "green_excess": 0.1704507603336564,
+          "contrast_over_actual_input": 0.8453190624096536,
+          "edge_energy": 0.19607543288236148
+        },
+        "stopped_19_to_36": {
+          "phase_matched_error": 0.013921414211692691,
+          "native_quality_error": 0.07460676140214827,
+          "old_history_fraction": 0.00012103724172255095,
+          "adjacent_rgb_change": 0.0007550668148996,
+          "adjacent_edge_change": 0.0009593353413488281,
+          "phase_residual_change": 0.00014769329155303373,
+          "green_excess": 0.16892742696172433,
+          "contrast_over_actual_input": 0.8377619230668157,
+          "edge_energy": 0.20027526447025723
+        }
+      },
+      "matched_phase_first_vs_second_stopped_cycle": {
+        "pairs": 18,
+        "mean_rgb_change": 0.00280488503515622,
+        "maximum_phase_mean_rgb_change": 0.0032180359385159058
+      },
+      "mature_reference_phase_cycle": {
+        "green_excess": 0.16533538681879906,
+        "edge_energy": 0.21906855502091938
+      },
+      "localized_residue_review_only": {
+        "maximum_mean_old_history_fraction_over36": 0.0008789892833024602,
+        "maximum_single_pixel_projected_fraction_over36": 0.0779992863535881,
+        "maximum_fraction_of_valid_old_only_pixels_over_point1": 0.0,
+        "valid_old_only_pixels": 252
+      },
+      "read_output_file_count": 73,
+      "read_output_identities_aggregate_sha256": "b9e156bbbc010532b4261300dc2c4ac2184e3c04c1d4c9290ed8d1f4765f3d1d"
+    },
+    "aurora-ordinary08": {
+      "original_score_identity": {
+        "name": "aurora-ordinary-warm360.json",
+        "bytes": 36013,
+        "sha256": "6e3459f871758461e9c969a1d2f447cf2daa44ef05cf10ad3c7c50699cf07f2e"
+      },
+      "original_failed_bounds_unchanged": [
+        "minimum_area",
+        "stop18_phase_matched_error",
+        "stop36_phase_matched_error"
+      ],
+      "stop_samples": {
+        "1": {
+          "stopped_world_count": 1,
+          "frame_index": 432,
+          "world_id": 433,
+          "phase": 0,
+          "reference_frame_index": 396,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.07233424783511504,
+          "phase_matched_error": 0.021705070466721994,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0009581219246223597,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0008202797034755349,
+            "residue_peak": 0.07520970702171326,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.0009110883984174325,
+          "adjacent_edge_change": 0.0011544525121420053,
+          "phase_residual_change": 0.00029784265288960635,
+          "green_excess": 0.17233936802870561,
+          "contrast_over_actual_input": 0.8601069382278586,
+          "edge_energy": 0.21547825553543157
+        },
+        "18": {
+          "stopped_world_count": 18,
+          "frame_index": 449,
+          "world_id": 450,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.0700491802186748,
+          "phase_matched_error": 0.016933215755584104,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.0005733328632758789,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0020417673513293266,
+            "residue_peak": 0.055205054581165314,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.00078937418095251,
+          "adjacent_edge_change": 0.0010032133824121813,
+          "phase_residual_change": 0.0001990014823746339,
+          "green_excess": 0.17037998035110855,
+          "contrast_over_actual_input": 0.844297380426739,
+          "edge_energy": 0.21912755959618693
+        },
+        "36": {
+          "stopped_world_count": 36,
+          "frame_index": 467,
+          "world_id": 468,
+          "phase": 17,
+          "reference_frame_index": 413,
+          "changed_pixels": 2251,
+          "native_quality_error": 0.06823541123571593,
+          "phase_matched_error": 0.013050858332616606,
+          "disoccluded_valid_pixels": 252,
+          "old_history_fraction": 0.00023044837875536433,
+          "localized_trail_review_only": {
+            "residue_p95": 0.0009868087945505977,
+            "residue_peak": 0.013128301128745079,
+            "fraction_over_point1": 0.0
+          },
+          "adjacent_rgb_change": 0.0007789522442519895,
+          "adjacent_edge_change": 0.000989967658608152,
+          "phase_residual_change": 0.00015704990424446688,
+          "green_excess": 0.1690893800350544,
+          "contrast_over_actual_input": 0.8379019666945801,
+          "edge_energy": 0.2227923957590867,
+          "same_phase_18_world_change": 0.002639509564467072
+        }
+      },
+      "complete_phase_cycle_means": {
+        "stopped_1_to_18": {
+          "phase_matched_error": 0.019214807061241745,
+          "native_quality_error": 0.07111133051148764,
+          "old_history_fraction": 0.0006476047678718076,
+          "adjacent_rgb_change": 0.0008641747815200875,
+          "adjacent_edge_change": 0.0010967166706860024,
+          "phase_residual_change": 0.0002362703890587027,
+          "green_excess": 0.1712292534003302,
+          "contrast_over_actual_input": 0.8491802525812537,
+          "edge_energy": 0.21711469080515486
+        },
+        "stopped_19_to_36": {
+          "phase_matched_error": 0.014787529305226428,
+          "native_quality_error": 0.06904074168196626,
+          "old_history_fraction": 0.0002972219247395375,
+          "adjacent_rgb_change": 0.0008303025636726793,
+          "adjacent_edge_change": 0.0010543714617586128,
+          "phase_residual_change": 0.00017978887348939145,
+          "green_excess": 0.16960694766459103,
+          "contrast_over_actual_input": 0.8411322159476251,
+          "edge_energy": 0.22093655909319507
+        }
+      },
+      "matched_phase_first_vs_second_stopped_cycle": {
+        "pairs": 18,
+        "mean_rgb_change": 0.0030378786353641393,
+        "maximum_phase_mean_rgb_change": 0.003514984025337963
+      },
+      "mature_reference_phase_cycle": {
+        "green_excess": 0.1655769739802162,
+        "edge_energy": 0.23841928706982973
+      },
+      "localized_residue_review_only": {
+        "maximum_mean_old_history_fraction_over36": 0.0009581219246223597,
+        "maximum_single_pixel_projected_fraction_over36": 0.07520970702171326,
+        "maximum_fraction_of_valid_old_only_pixels_over_point1": 0.0,
+        "valid_old_only_pixels": 252
+      },
+      "read_output_file_count": 73,
+      "read_output_identities_aggregate_sha256": "99f7e1965524c2dd441b7960b68988920137c8953757dc862f4e5155729857ed"
+    }
+  }
+}

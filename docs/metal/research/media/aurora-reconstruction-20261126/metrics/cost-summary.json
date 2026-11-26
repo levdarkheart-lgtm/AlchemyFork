@@ -1,0 +1,1071 @@
+{
+  "schema_version": 1,
+  "scope": "Optimized isolated component cost on target-size synthetic perspective MASK/HDR inputs; not image-quality acceptance, HomeFPS, exclusive shader self-time or a future native-MSL estimate.",
+  "statistics": "Raw samples recomputed with midpoint median and nearest-rank p95. Native original p50 uses a lower-rank convention and is preserved separately; controls are not pooled as independent trials.",
+  "dimensions": {
+    "input": [
+      2304,
+      1446
+    ],
+    "output": [
+      3456,
+      2168
+    ]
+  },
+  "primary": {
+    "metalfx-a0": {
+      "gpu_complete_envelope": {
+        "count": 360,
+        "min_ms": 3.5113749909214675,
+        "median_ms": 4.1277499694842845,
+        "p95_ms": 5.702249996829778,
+        "mean_ms": 4.260979860717068,
+        "max_ms": 6.333083321806043
+      },
+      "source_timing_scope": "GPUStartTime..GPUEndTime of one command containing native MetalFX plus unchanged glow-alpha resolve; includes internal execution/dependencies, not exclusive shader self-time. Untimed resident producer copy is separate preceding command. Native accepts R32 depth/RG16 pixel motion directly: zero reconstruction adapter pass. Core/resolve not separately partitioned. Input-ready span additionally measures producer GPU-end through main GPU-end and includes submission/transfer/gaps; it is not exclusive GPU execution time.",
+      "memory": {
+        "after_drain_bytes": 1471774720,
+        "after_native_scaler_creation_bytes": 300843008,
+        "after_preparation_bytes": 1471430656,
+        "after_warmup_bytes": 1471774720,
+        "algorithm_outputs_bytes": 120848384,
+        "common_resident_phase_pool_bytes": 990904320,
+        "device_base_bytes": 393216,
+        "explicit_gpu_buffer_creations_preparation": 1,
+        "explicit_gpu_texture_creations": 61,
+        "explicit_owned_except_common_phase_pool_bytes": 179699840,
+        "explicit_persistent_texture_bytes": 1170604160,
+        "fixed_source_input_bytes": 55050240,
+        "observed_warm_residual_device_bytes": 300777344,
+        "opaque_internal_limit": "MetalFX does not expose per-resource history/temporary allocation inventory. currentAllocatedSize snapshots include opaque history, pipeline caches and driver storage; net/observed plateau is not proof of no hidden transient allocations.",
+        "preparation_staging_peak_bytes": 53313536,
+        "preparation_staging_retained_during_benchmark": false,
+        "steady_gpu_resource_creations": 0,
+        "steady_observed_max_bytes": 1471774720,
+        "steady_observed_min_bytes": 1471774720
+      },
+      "cpu": {
+        "encode": {
+          "count": 360,
+          "min_ms": 0.048625,
+          "median_ms": 0.106521,
+          "p95_ms": 0.219,
+          "mean_ms": 0.12247416388888889,
+          "max_ms": 1.053375
+        },
+        "submit": {
+          "count": 360,
+          "min_ms": 0.009917,
+          "median_ms": 0.017833500000000002,
+          "p95_ms": 0.027792,
+          "mean_ms": 0.019056008333333332,
+          "max_ms": 0.103209
+        },
+        "completion_gate_excluded": {
+          "count": 360,
+          "min_ms": 4.802,
+          "median_ms": 5.280896,
+          "p95_ms": 6.992708,
+          "mean_ms": 5.469882269444445,
+          "max_ms": 11.36025
+        },
+        "producer_wait_excluded": {
+          "count": 360,
+          "min_ms": 0.34775,
+          "median_ms": 0.4175415,
+          "p95_ms": 0.664958,
+          "mean_ms": 0.45216643333333334,
+          "max_ms": 1.353584
+        }
+      },
+      "clock_calibration": {
+        "api": "MTLDevice sampleTimestamps; raw device/CPU timestamp units; durations use command GPU seconds",
+        "cpu_after": 516149271348625,
+        "cpu_before": 516147054716291,
+        "gpu_after": 516149271348625,
+        "gpu_before": 516147054716291
+      },
+      "source_p50_lower_rank_ms": 4.126249987166375,
+      "gpu_adapter_interval": {
+        "count": 360,
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "p95_ms": 0.0,
+        "mean_ms": 0.0,
+        "max_ms": 0.0
+      },
+      "warmup_worlds": 360,
+      "measured_worlds": 360,
+      "device": {
+        "compiler": "21.0.0 (clang-2100.1.1.101)",
+        "name": "Apple M1 Max",
+        "os": "Version 26.5.2 (Build 25F84)",
+        "registry_id": 4294970133,
+        "unified_memory": true
+      }
+    },
+    "aurora-off": {
+      "gpu_complete_envelope": {
+        "count": 360,
+        "min_ms": 10.58025,
+        "median_ms": 10.996103999999999,
+        "p95_ms": 12.846334,
+        "mean_ms": 11.260215841666668,
+        "max_ms": 15.173042
+      },
+      "source_timing_scope": {
+        "adapter": "Supported M1 Max render-pass timestamp begin/end, duration only; ticks are not calibrated to native command-buffer seconds",
+        "cpu": "Wall encode and queue-submit intervals measured separately; deliberate waits occur outside both",
+        "excluded": "CPU input generation/uploads, phase-copy preparation CB, waits, query resolution/readback, output validation/readback and file IO;208-byte per-world uniform staging belongs to normal host encoding/queue write and its GPU copy is outside observed reconstruction CB",
+        "fsr_pass_envelope": "First autogen stage beginning to latest color/display-depth terminal end; does not include preceding reconstructed-depth clear. Complete total above includes that clear.",
+        "total": "Supported M1 Max stage timestamps: earliest adapter/autogen beginning to latest color-terminal/display-depth end, including input conversion, reconstructed-depth clear, every FSR graph pass and optional RCAS"
+      },
+      "memory": {
+        "after_inputs": {
+          "helper_cumulative_texture_creations": 0,
+          "metal_device_current_allocated_bytes": 977666048,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 2,
+            "command_encoders": 2,
+            "memory_allocations": 0,
+            "query_sets": 0,
+            "texture_memory": 0,
+            "texture_views": 0,
+            "textures": 54
+          }
+        },
+        "after_measurement": {
+          "helper_cumulative_texture_creations": 18,
+          "metal_device_current_allocated_bytes": 1473871872,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 5,
+            "command_encoders": 3,
+            "memory_allocations": 0,
+            "query_sets": 1,
+            "texture_memory": 0,
+            "texture_views": 52,
+            "textures": 78
+          }
+        },
+        "after_warmup": {
+          "helper_cumulative_texture_creations": 18,
+          "metal_device_current_allocated_bytes": 1473871872,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 5,
+            "command_encoders": 3,
+            "memory_allocations": 0,
+            "query_sets": 1,
+            "texture_memory": 0,
+            "texture_views": 52,
+            "textures": 78
+          }
+        },
+        "before_inputs": {
+          "helper_cumulative_texture_creations": 0,
+          "metal_device_current_allocated_bytes": 1048576,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 3,
+            "command_encoders": 1,
+            "memory_allocations": 0,
+            "query_sets": 0,
+            "texture_memory": 0,
+            "texture_views": 0,
+            "textures": 0
+          }
+        },
+        "fixed_input_payload_bytes": 53305344,
+        "fsr_buffer_payload_bytes": {
+          "new_locks_source_descriptor": 29970432,
+          "params": 208,
+          "reconstructed_depth": 13326336
+        },
+        "limitation": "Device/counter values are live footprints and net growth, not a cumulative count of invisible driver allocations. FSR-owned allocation calls are only in construction; command encoders and208-byte uniform staging remain ordinary backend activity.",
+        "owned_textures_actual_allocations": [
+          {
+            "format": "R8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 3801088,
+            "mip_levels": 1,
+            "name": "reactive",
+            "width": 2304
+          },
+          {
+            "format": "Rg16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "dilated_motion",
+            "width": 2304
+          },
+          {
+            "format": "R32Float",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "dilated_depth",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "farthest",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "luma0",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "luma1",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 723,
+            "metal_allocated_bytes": 1835008,
+            "mip_levels": 1,
+            "name": "farthest_mip1",
+            "width": 1152
+          },
+          {
+            "format": "R8Unorm",
+            "height": 723,
+            "metal_allocated_bytes": 950272,
+            "mip_levels": 1,
+            "name": "shading_change",
+            "width": 1152
+          },
+          {
+            "format": "Rgba8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "masks",
+            "width": 2304
+          },
+          {
+            "format": "R8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 3801088,
+            "mip_levels": 1,
+            "name": "accumulation0",
+            "width": 2304
+          },
+          {
+            "format": "R8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 3801088,
+            "mip_levels": 1,
+            "name": "accumulation1",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 27394048,
+            "mip_levels": 1,
+            "name": "luma_history0",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 27394048,
+            "mip_levels": 1,
+            "name": "luma_history1",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "instability",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 2168,
+            "metal_allocated_bytes": 60686336,
+            "mip_levels": 1,
+            "name": "internal0",
+            "width": 3456
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 2168,
+            "metal_allocated_bytes": 60686336,
+            "mip_levels": 1,
+            "name": "internal1",
+            "width": 3456
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 2168,
+            "metal_allocated_bytes": 60686336,
+            "mip_levels": 1,
+            "name": "output",
+            "width": 3456
+          },
+          {
+            "format": "Rg16Float",
+            "height": 723,
+            "metal_allocated_bytes": 4947968,
+            "mip_levels": 3,
+            "name": "shading_pyramid",
+            "width": 1152
+          },
+          {
+            "format": "Depth32Float",
+            "height": 2168,
+            "metal_allocated_bytes": 30605312,
+            "mip_levels": 1,
+            "name": "display_depth",
+            "width": 3456
+          },
+          {
+            "format": "Depth32Float",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "adapter_depth",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 27394048,
+            "mip_levels": 1,
+            "name": "adapter_motion",
+            "width": 2304
+          }
+        ],
+        "post_measurement_query_buffers_payload_bytes": 28800,
+        "query_set_count": 1800,
+        "resident_input_pool_payload_bytes": 959496192
+      },
+      "cpu": {
+        "encode": {
+          "count": 360,
+          "min_ms": 0.175625,
+          "median_ms": 0.286375,
+          "p95_ms": 0.35625,
+          "mean_ms": 0.2750841305555556,
+          "max_ms": 0.48050000000000004
+        },
+        "submit": {
+          "count": 360,
+          "min_ms": 0.02125,
+          "median_ms": 0.027979,
+          "p95_ms": 0.046417,
+          "mean_ms": 0.030225016666666667,
+          "max_ms": 0.113041
+        },
+        "completion_gate_excluded": {
+          "count": 360,
+          "min_ms": 10.946166999999999,
+          "median_ms": 11.3417085,
+          "p95_ms": 13.279875,
+          "mean_ms": 11.624162183333333,
+          "max_ms": 15.710958
+        },
+        "producer_wait_excluded": {
+          "count": 360,
+          "min_ms": 0.38825,
+          "median_ms": 0.5248539999999999,
+          "p95_ms": 0.779041,
+          "mean_ms": 0.5577330944444444,
+          "max_ms": 1.264542
+        }
+      },
+      "timestamp_period_ns": 1.0,
+      "gpu_adapter_interval": {
+        "count": 360,
+        "min_ms": 0.071125,
+        "median_ms": 0.10918749999999999,
+        "p95_ms": 0.707125,
+        "mean_ms": 0.23173565555555556,
+        "max_ms": 1.569541
+      },
+      "fsr_stage_envelope": {
+        "count": 360,
+        "min_ms": 10.490458,
+        "median_ms": 10.844104,
+        "p95_ms": 12.661167,
+        "mean_ms": 11.137935075,
+        "max_ms": 15.034584
+      },
+      "intraworld_stage_overlap": {
+        "adapter_end_after_first_fsr_begin_samples": 140,
+        "display_depth_end_before_color_end_samples": 7,
+        "note": "Adapter and FSR stage intervals are elapsed envelopes, not additive exclusive shader times."
+      },
+      "memory_counter_limit": "Metal HAL buffer_memory/texture_memory/memory_allocations zeros are unimplemented counters, not proof of zero memory or allocations.",
+      "warmup_worlds": 360,
+      "measured_worlds": 360,
+      "device": {
+        "backend": "Metal",
+        "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+        "driver": "",
+        "driver_info": "",
+        "name": "Apple M1 Max",
+        "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+        "wgpu": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23"
+      }
+    },
+    "aurora-ordinary": {
+      "gpu_complete_envelope": {
+        "count": 360,
+        "min_ms": 10.943209,
+        "median_ms": 11.374166,
+        "p95_ms": 13.104667,
+        "mean_ms": 11.649094086111111,
+        "max_ms": 15.895625
+      },
+      "source_timing_scope": {
+        "adapter": "Supported M1 Max render-pass timestamp begin/end, duration only; ticks are not calibrated to native command-buffer seconds",
+        "cpu": "Wall encode and queue-submit intervals measured separately; deliberate waits occur outside both",
+        "excluded": "CPU input generation/uploads, phase-copy preparation CB, waits, query resolution/readback, output validation/readback and file IO;208-byte per-world uniform staging belongs to normal host encoding/queue write and its GPU copy is outside observed reconstruction CB",
+        "fsr_pass_envelope": "First autogen stage beginning to latest color/display-depth terminal end; does not include preceding reconstructed-depth clear. Complete total above includes that clear.",
+        "total": "Supported M1 Max stage timestamps: earliest adapter/autogen beginning to latest color-terminal/display-depth end, including input conversion, reconstructed-depth clear, every FSR graph pass and optional RCAS"
+      },
+      "memory": {
+        "after_inputs": {
+          "helper_cumulative_texture_creations": 0,
+          "metal_device_current_allocated_bytes": 977666048,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 2,
+            "command_encoders": 2,
+            "memory_allocations": 0,
+            "query_sets": 0,
+            "texture_memory": 0,
+            "texture_views": 0,
+            "textures": 54
+          }
+        },
+        "after_measurement": {
+          "helper_cumulative_texture_creations": 18,
+          "metal_device_current_allocated_bytes": 1473871872,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 5,
+            "command_encoders": 3,
+            "memory_allocations": 0,
+            "query_sets": 1,
+            "texture_memory": 0,
+            "texture_views": 52,
+            "textures": 78
+          }
+        },
+        "after_warmup": {
+          "helper_cumulative_texture_creations": 18,
+          "metal_device_current_allocated_bytes": 1473871872,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 5,
+            "command_encoders": 3,
+            "memory_allocations": 0,
+            "query_sets": 1,
+            "texture_memory": 0,
+            "texture_views": 52,
+            "textures": 78
+          }
+        },
+        "before_inputs": {
+          "helper_cumulative_texture_creations": 0,
+          "metal_device_current_allocated_bytes": 1048576,
+          "wgpu_hal_active": {
+            "buffer_memory": 0,
+            "buffers": 3,
+            "command_encoders": 1,
+            "memory_allocations": 0,
+            "query_sets": 0,
+            "texture_memory": 0,
+            "texture_views": 0,
+            "textures": 0
+          }
+        },
+        "fixed_input_payload_bytes": 53305344,
+        "fsr_buffer_payload_bytes": {
+          "new_locks_source_descriptor": 29970432,
+          "params": 208,
+          "reconstructed_depth": 13326336
+        },
+        "limitation": "Device/counter values are live footprints and net growth, not a cumulative count of invisible driver allocations. FSR-owned allocation calls are only in construction; command encoders and208-byte uniform staging remain ordinary backend activity.",
+        "owned_textures_actual_allocations": [
+          {
+            "format": "R8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 3801088,
+            "mip_levels": 1,
+            "name": "reactive",
+            "width": 2304
+          },
+          {
+            "format": "Rg16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "dilated_motion",
+            "width": 2304
+          },
+          {
+            "format": "R32Float",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "dilated_depth",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "farthest",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "luma0",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "luma1",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 723,
+            "metal_allocated_bytes": 1835008,
+            "mip_levels": 1,
+            "name": "farthest_mip1",
+            "width": 1152
+          },
+          {
+            "format": "R8Unorm",
+            "height": 723,
+            "metal_allocated_bytes": 950272,
+            "mip_levels": 1,
+            "name": "shading_change",
+            "width": 1152
+          },
+          {
+            "format": "Rgba8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "masks",
+            "width": 2304
+          },
+          {
+            "format": "R8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 3801088,
+            "mip_levels": 1,
+            "name": "accumulation0",
+            "width": 2304
+          },
+          {
+            "format": "R8Unorm",
+            "height": 1446,
+            "metal_allocated_bytes": 3801088,
+            "mip_levels": 1,
+            "name": "accumulation1",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 27394048,
+            "mip_levels": 1,
+            "name": "luma_history0",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 27394048,
+            "mip_levels": 1,
+            "name": "luma_history1",
+            "width": 2304
+          },
+          {
+            "format": "R16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 7045120,
+            "mip_levels": 1,
+            "name": "instability",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 2168,
+            "metal_allocated_bytes": 60686336,
+            "mip_levels": 1,
+            "name": "internal0",
+            "width": 3456
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 2168,
+            "metal_allocated_bytes": 60686336,
+            "mip_levels": 1,
+            "name": "internal1",
+            "width": 3456
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 2168,
+            "metal_allocated_bytes": 60686336,
+            "mip_levels": 1,
+            "name": "output",
+            "width": 3456
+          },
+          {
+            "format": "Rg16Float",
+            "height": 723,
+            "metal_allocated_bytes": 4947968,
+            "mip_levels": 3,
+            "name": "shading_pyramid",
+            "width": 1152
+          },
+          {
+            "format": "Depth32Float",
+            "height": 2168,
+            "metal_allocated_bytes": 30605312,
+            "mip_levels": 1,
+            "name": "display_depth",
+            "width": 3456
+          },
+          {
+            "format": "Depth32Float",
+            "height": 1446,
+            "metal_allocated_bytes": 13828096,
+            "mip_levels": 1,
+            "name": "adapter_depth",
+            "width": 2304
+          },
+          {
+            "format": "Rgba16Float",
+            "height": 1446,
+            "metal_allocated_bytes": 27394048,
+            "mip_levels": 1,
+            "name": "adapter_motion",
+            "width": 2304
+          }
+        ],
+        "post_measurement_query_buffers_payload_bytes": 28800,
+        "query_set_count": 1800,
+        "resident_input_pool_payload_bytes": 959496192
+      },
+      "cpu": {
+        "encode": {
+          "count": 360,
+          "min_ms": 0.195,
+          "median_ms": 0.3142085,
+          "p95_ms": 0.38525000000000004,
+          "mean_ms": 0.30498888888888886,
+          "max_ms": 0.486041
+        },
+        "submit": {
+          "count": 360,
+          "min_ms": 0.022458000000000002,
+          "median_ms": 0.0303955,
+          "p95_ms": 0.045625,
+          "mean_ms": 0.03282952777777778,
+          "max_ms": 0.146792
+        },
+        "completion_gate_excluded": {
+          "count": 360,
+          "min_ms": 11.250207999999999,
+          "median_ms": 11.6985,
+          "p95_ms": 13.465416,
+          "mean_ms": 11.9788412,
+          "max_ms": 16.238708000000003
+        },
+        "producer_wait_excluded": {
+          "count": 360,
+          "min_ms": 0.38333300000000003,
+          "median_ms": 0.48525,
+          "p95_ms": 0.703042,
+          "mean_ms": 0.5197359777777778,
+          "max_ms": 1.393334
+        }
+      },
+      "timestamp_period_ns": 1.0,
+      "gpu_adapter_interval": {
+        "count": 360,
+        "min_ms": 0.065542,
+        "median_ms": 0.10931199999999999,
+        "p95_ms": 0.698542,
+        "mean_ms": 0.23293469444444445,
+        "max_ms": 1.612042
+      },
+      "fsr_stage_envelope": {
+        "count": 360,
+        "min_ms": 10.809959,
+        "median_ms": 11.2086665,
+        "p95_ms": 12.9575,
+        "mean_ms": 11.517088875,
+        "max_ms": 15.892583
+      },
+      "intraworld_stage_overlap": {
+        "adapter_end_after_first_fsr_begin_samples": 132,
+        "display_depth_end_before_color_end_samples": 17,
+        "note": "Adapter and FSR stage intervals are elapsed envelopes, not additive exclusive shader times."
+      },
+      "memory_counter_limit": "Metal HAL buffer_memory/texture_memory/memory_allocations zeros are unimplemented counters, not proof of zero memory or allocations.",
+      "warmup_worlds": 360,
+      "measured_worlds": 360,
+      "device": {
+        "backend": "Metal",
+        "compiler": "rustc 1.99.0 (b940084d7 2026-09-28) (Homebrew)",
+        "driver": "",
+        "driver_info": "",
+        "name": "Apple M1 Max",
+        "upstream": "ee458fbf1d95e98c5b3a55c0027a523bb28d7e7f",
+        "wgpu": "6c13013b3f9c8a7e45154d45d120ada0cbe55a23"
+      }
+    },
+    "metalfx-a1": {
+      "gpu_complete_envelope": {
+        "count": 360,
+        "min_ms": 3.738250001333654,
+        "median_ms": 4.146937484620139,
+        "p95_ms": 5.773333308752626,
+        "mean_ms": 4.341478702392326,
+        "max_ms": 8.557333319913596
+      },
+      "source_timing_scope": "GPUStartTime..GPUEndTime of one command containing native MetalFX plus unchanged glow-alpha resolve; includes internal execution/dependencies, not exclusive shader self-time. Untimed resident producer copy is separate preceding command. Native accepts R32 depth/RG16 pixel motion directly: zero reconstruction adapter pass. Core/resolve not separately partitioned. Input-ready span additionally measures producer GPU-end through main GPU-end and includes submission/transfer/gaps; it is not exclusive GPU execution time.",
+      "memory": {
+        "after_drain_bytes": 1471774720,
+        "after_native_scaler_creation_bytes": 300843008,
+        "after_preparation_bytes": 1471430656,
+        "after_warmup_bytes": 1471774720,
+        "algorithm_outputs_bytes": 120848384,
+        "common_resident_phase_pool_bytes": 990904320,
+        "device_base_bytes": 393216,
+        "explicit_gpu_buffer_creations_preparation": 1,
+        "explicit_gpu_texture_creations": 61,
+        "explicit_owned_except_common_phase_pool_bytes": 179699840,
+        "explicit_persistent_texture_bytes": 1170604160,
+        "fixed_source_input_bytes": 55050240,
+        "observed_warm_residual_device_bytes": 300777344,
+        "opaque_internal_limit": "MetalFX does not expose per-resource history/temporary allocation inventory. currentAllocatedSize snapshots include opaque history, pipeline caches and driver storage; net/observed plateau is not proof of no hidden transient allocations.",
+        "preparation_staging_peak_bytes": 53313536,
+        "preparation_staging_retained_during_benchmark": false,
+        "steady_gpu_resource_creations": 0,
+        "steady_observed_max_bytes": 1471774720,
+        "steady_observed_min_bytes": 1471774720
+      },
+      "cpu": {
+        "encode": {
+          "count": 360,
+          "min_ms": 0.047583,
+          "median_ms": 0.08085400000000001,
+          "p95_ms": 0.198,
+          "mean_ms": 0.10829626388888888,
+          "max_ms": 1.594708
+        },
+        "submit": {
+          "count": 360,
+          "min_ms": 0.009625,
+          "median_ms": 0.01575,
+          "p95_ms": 0.026208,
+          "mean_ms": 0.017589619444444444,
+          "max_ms": 0.16
+        },
+        "completion_gate_excluded": {
+          "count": 360,
+          "min_ms": 4.788083,
+          "median_ms": 5.295624999999999,
+          "p95_ms": 7.232292,
+          "mean_ms": 5.536485444444445,
+          "max_ms": 9.646791
+        },
+        "producer_wait_excluded": {
+          "count": 360,
+          "min_ms": 0.354625,
+          "median_ms": 0.41483349999999997,
+          "p95_ms": 0.847917,
+          "mean_ms": 0.4665511583333333,
+          "max_ms": 1.713917
+        }
+      },
+      "clock_calibration": {
+        "api": "MTLDevice sampleTimestamps; raw device/CPU timestamp units; durations use command GPU seconds",
+        "cpu_after": 516179088285125,
+        "cpu_before": 516176853036500,
+        "gpu_after": 516179088285125,
+        "gpu_before": 516176853036500
+      },
+      "source_p50_lower_rank_ms": 4.144916660152376,
+      "gpu_adapter_interval": {
+        "count": 360,
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "p95_ms": 0.0,
+        "mean_ms": 0.0,
+        "max_ms": 0.0
+      },
+      "warmup_worlds": 360,
+      "measured_worlds": 360,
+      "device": {
+        "compiler": "21.0.0 (clang-2100.1.1.101)",
+        "name": "Apple M1 Max",
+        "os": "Version 26.5.2 (Build 25F84)",
+        "registry_id": 4294970133,
+        "unified_memory": true
+      }
+    }
+  },
+  "pipelined_diagnostic": {
+    "metalfx-a0": {
+      "role": "Retained superseded3-in-flight scheduling diagnostic, not primary isolated component cost.",
+      "stage_or_command_envelope": {
+        "count": 360,
+        "min_ms": 3.727291652467102,
+        "median_ms": 3.87681249412708,
+        "p95_ms": 4.760499985422939,
+        "mean_ms": 3.987879167026323,
+        "max_ms": 6.091749994084239
+      }
+    },
+    "aurora-off": {
+      "role": "Retained superseded3-in-flight scheduling diagnostic, not primary isolated component cost.",
+      "stage_or_command_envelope": {
+        "count": 360,
+        "min_ms": 10.874167,
+        "median_ms": 23.2608335,
+        "p95_ms": 25.767791,
+        "mean_ms": 23.24148101666667,
+        "max_ms": 28.567875
+      },
+      "terminal_completion_intervals": {
+        "count": 359,
+        "min_ms": 10.648875,
+        "median_ms": 11.333875,
+        "p95_ms": 13.430292,
+        "mean_ms": 11.762718662952647,
+        "max_ms": 16.855958
+      },
+      "first_start_to_last_terminal_per_world_ms": 11.760250463888887,
+      "interpretation": "Earlier-world write-after-read/resource hazards are included in these overlapping stage envelopes; approximately23ms is not the isolated reconstruction service time and not a query clock bug."
+    },
+    "aurora-ordinary": {
+      "role": "Retained superseded3-in-flight scheduling diagnostic, not primary isolated component cost.",
+      "stage_or_command_envelope": {
+        "count": 360,
+        "min_ms": 13.248125,
+        "median_ms": 23.859354500000002,
+        "p95_ms": 27.23325,
+        "mean_ms": 23.897313897222222,
+        "max_ms": 29.945042
+      },
+      "terminal_completion_intervals": {
+        "count": 359,
+        "min_ms": 11.017792,
+        "median_ms": 11.530833,
+        "p95_ms": 14.381917,
+        "mean_ms": 12.126483635097493,
+        "max_ms": 17.147666
+      },
+      "first_start_to_last_terminal_per_world_ms": 12.129599305555555,
+      "interpretation": "Earlier-world write-after-read/resource hazards are included in these overlapping stage envelopes; approximately23ms is not the isolated reconstruction service time and not a query clock bug."
+    },
+    "metalfx-a1": {
+      "role": "Retained superseded3-in-flight scheduling diagnostic, not primary isolated component cost.",
+      "stage_or_command_envelope": {
+        "count": 360,
+        "min_ms": 3.7147916737012565,
+        "median_ms": 3.7703124980907887,
+        "p95_ms": 4.498000023886561,
+        "mean_ms": 3.8976116904652574,
+        "max_ms": 5.6345000048168
+      }
+    }
+  },
+  "source_identities": {
+    "primary/metalfx-a0": {
+      "name": "metalfx-a0.json",
+      "bytes": 294060,
+      "sha256": "fceadf148e94eb7821bd64f3a2f6f3de26f4d239c161cb9b3a31096b0db0e91a"
+    },
+    "primary/aurora-off": {
+      "name": "benchmark.json",
+      "bytes": 274097,
+      "sha256": "8a0b08d86188432624c84ab2dc99a7eb859d3a13cc13dda6550e1fff8e6aa86d"
+    },
+    "primary/aurora-ordinary": {
+      "name": "benchmark.json",
+      "bytes": 274258,
+      "sha256": "2f81a125ff0bacdfd705538faf0c84f19cafc97daedc1354fe822b3591ff96c8"
+    },
+    "primary/metalfx-a1": {
+      "name": "metalfx-a1.json",
+      "bytes": 294015,
+      "sha256": "35c4d7ca832ccac1ef4be5da23ec78e9395031a2baeb96ca4a1290fcb6418041"
+    },
+    "pipelined/metalfx-a0": {
+      "name": "metalfx-a0.json",
+      "bytes": 277534,
+      "sha256": "b30b0e8855673803e63c48173005a238e5ae02d6bdb09cd9098ca3c7726b0cfe"
+    },
+    "pipelined/aurora-off": {
+      "name": "benchmark.json",
+      "bytes": 239904,
+      "sha256": "e4f522067aa577aff88c00b494936cf510a8e6c1f657d8092fc30310699a85b6"
+    },
+    "pipelined/aurora-ordinary": {
+      "name": "benchmark.json",
+      "bytes": 240454,
+      "sha256": "e8aa2c80e6ebfd37059959c2e561edcc2e5810595579999bdbf90e36b0636681"
+    },
+    "pipelined/metalfx-a1": {
+      "name": "metalfx-a1.json",
+      "bytes": 277432,
+      "sha256": "020f827651da577c8fd2bf99009e169151fb82b530fee0142c0f7cfc574d4cfa"
+    }
+  },
+  "clock_domains": "Native MTLCommandBuffer timestamps are GPU seconds with sampleTimestamps calibration. WGPU values are stage-counter ticks with recorded ns/tick; there is no cross-API clock alignment. Durations are comparable; absolute timestamps are not joined.",
+  "gpu_boundary_limit": "Aurora complete envelope includes conversion, reconstructed-depth clear, completeFSRgraph, RCASifselected and display-depth. Normal208B/world uniform GPUtransfer precedes observedstagebounds; its exact isolatedGPUcost is missing. CPU encoding includes the queue write. See the bounded observed transfer calibration; do not add its scheduler/host-inclusive span as exactGPUselftime.",
+  "allocation_limit": "CurrentAllocatedSize is live device footprint, not a cumulative allocation counter or guaranteed residency. Stable before/after values do not prove absent hidden driver temporaries. Native/ WGPU input pools have different allocation/payload accounting; do not equate them.",
+  "ordered_execution_receipt": {
+    "identity": {
+      "name": "receipt.json",
+      "bytes": 9759,
+      "sha256": "af1ed32328e330aa606378d13fe9eab7de88390cfea89bdc8b6e5f8122e1f252"
+    },
+    "checkpoint": "c31ffd288bcc555891634fb02070b5d58fd75b34",
+    "started_utc": "2026-11-26T15:58:46.487526+00:00",
+    "finished_utc": "2026-11-26T15:59:23.391489+00:00",
+    "protocol_sha256": "d2eee1c42cb9ae04498461663dc3a8427299f4e8cebf098c2310e2627fd49802",
+    "shared_workload_sha256": "64acd34c37ae6cc1b95cc82a387ffdcd964a0f033b9a6f6e588b99635adf3531",
+    "binary_identities": {
+      "native": {
+        "name": "metalfx-benchmark-quiescent",
+        "sha256": "1c41442a7e9e1c3d38cf9e39178427408b2c2df51816c9643ae823c71e7bd9f0"
+      },
+      "aurora": {
+        "name": "aurora-eval",
+        "sha256": "3243996a4feb98c30b89ea5a50fea4d2a5db511b427468dee28fd8cf25ae419a"
+      },
+      "library": {
+        "name": "almetal_builtin.metallib",
+        "sha256": "5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a"
+      }
+    },
+    "runs": [
+      {
+        "label": "metalfx-a0",
+        "started_utc": "2026-11-26T15:58:46.507301+00:00",
+        "finished_utc": "2026-11-26T15:58:53.575564+00:00",
+        "exit_code": 0,
+        "binary_sha256": "1c41442a7e9e1c3d38cf9e39178427408b2c2df51816c9643ae823c71e7bd9f0",
+        "data_sha256": "fceadf148e94eb7821bd64f3a2f6f3de26f4d239c161cb9b3a31096b0db0e91a"
+      },
+      {
+        "label": "aurora-off",
+        "started_utc": "2026-11-26T15:58:53.581375+00:00",
+        "finished_utc": "2026-11-26T15:59:04.841980+00:00",
+        "exit_code": 0,
+        "binary_sha256": "3243996a4feb98c30b89ea5a50fea4d2a5db511b427468dee28fd8cf25ae419a",
+        "data_sha256": "8a0b08d86188432624c84ab2dc99a7eb859d3a13cc13dda6550e1fff8e6aa86d"
+      },
+      {
+        "label": "aurora-ordinary",
+        "started_utc": "2026-11-26T15:59:04.846150+00:00",
+        "finished_utc": "2026-11-26T15:59:16.366894+00:00",
+        "exit_code": 0,
+        "binary_sha256": "3243996a4feb98c30b89ea5a50fea4d2a5db511b427468dee28fd8cf25ae419a",
+        "data_sha256": "2f81a125ff0bacdfd705538faf0c84f19cafc97daedc1354fe822b3591ff96c8"
+      },
+      {
+        "label": "metalfx-a1",
+        "started_utc": "2026-11-26T15:59:16.367582+00:00",
+        "finished_utc": "2026-11-26T15:59:23.390652+00:00",
+        "exit_code": 0,
+        "binary_sha256": "1c41442a7e9e1c3d38cf9e39178427408b2c2df51816c9643ae823c71e7bd9f0",
+        "data_sha256": "35c4d7ca832ccac1ef4be5da23ec78e9395031a2baeb96ca4a1290fcb6418041"
+      }
+    ]
+  },
+  "phase_input_fingerprints_fnv64": [
+    "cb2e837da0c1dde1",
+    "4cebfd00d0705721",
+    "8bdfbd56782c25d4",
+    "521ca07bfd8be8fa",
+    "5a4c8c723b1e2fb1",
+    "9981e4b41037bf3e",
+    "90ca1e48b6a52b44",
+    "91dd308a9bb9347f",
+    "ce0ee0cc16854f1f",
+    "88b66540da9474e7",
+    "5b6ad4ab6eddb585",
+    "0d8b12d50e06132b",
+    "30edcbc6abae7162",
+    "300bfb108a66062f",
+    "f556aeb9182eb061",
+    "671cf5781027c079",
+    "0434db7151e1524b",
+    "cc043af7230408d1"
+  ],
+  "bracketing_native_drift": {
+    "median_difference_ms": 0.019187515135854483,
+    "median_percent": 0.4648419908595214,
+    "p95_difference_ms": 0.07108331192284822,
+    "p95_percent": 1.2465835759983834
+  },
+  "uniform_transfer_calibration": {
+    "source_identity": {
+      "name": "uniform-calibration.json",
+      "bytes": 32939,
+      "sha256": "aec791535f98701fa55e58b3a26d72505a6b3081b7fa06f356b52a3b1a1fe98c"
+    },
+    "sample_count": 64,
+    "bytes_per_write": 208,
+    "observed_upper_envelope": {
+      "count": 64,
+      "min_ms": 0.34604163374751806,
+      "median_ms": 0.420250027673319,
+      "p95_ms": 0.4603749839589,
+      "mean_ms": 0.4192005171717028,
+      "max_ms": 0.5212916876189411
+    },
+    "scope": "ONE bounded exact-API transfer calibration,64samples after16warm; NOT isolated GPU self-time, NOT directly additive to reconstruction",
+    "api": "wgpu::Queue::write_buffer208B then submit([]) and pollcompletion",
+    "order": "native four-byte markerA commit/wait; exact wgpu upload/submit/poll; markerB commit/wait",
+    "proof": "Both marker GPU times are the same native clock. Completion is observed before submitting markerB; actual transfer occurs wholly within A.GPUEnd\u2192B.GPUStart. Deliberate host waits, upload CPU staging, callback and driver/scheduling gaps are INCLUDED, making this an observed conservative envelope only, not a general worst-case guarantee.",
+    "limitation": "This observed64sample envelope contains host wait/submission/scheduling. It is not isolated GPUtransfer time, not directly additive and not a universal bound."
+  },
+  "raw_sample_export": {
+    "name": "cost-samples.csv",
+    "bytes": 868057,
+    "sha256": "0838ba24f98a5d2be281ead2fa03a29aeaa03f709d5c7ca2f900517e770d25f1",
+    "rows": 2944,
+    "missing_fields": "EmptyCSVcells are absent in the source, not zeros or inferred records. Source per-sample names and units are preserved."
+  }
+}

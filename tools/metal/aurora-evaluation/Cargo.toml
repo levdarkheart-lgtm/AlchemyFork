@@ -19,6 +19,12 @@ path = "src/main.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "aurora-uniform-calibration"
+path = "src/uniform_calibration.rs"
+test = false
+bench = false
+
 [dependencies]
 bytemuck = { version = "=1.25.2", features = ["derive"] }
 glam = { version = "=0.34.3", features = ["bytemuck"] }
@@ -29,6 +35,8 @@ serde_json = "=1.0.154"
 anyhow = "=1.0.104"
 wgpu = { version = "=30.0.1", default-features = false, features = ["std", "metal", "wgsl", "counters"] }
 naga = { version = "=30.0.1", features = ["wgsl-in"] }
+objc2 = "=0.6.5"
+objc2-metal = { version = "=0.3.2", default-features = false, features = ["MTLCommandBuffer", "MTLDevice", "MTLResource", "MTLTexture", "objc2-core-foundation"] }
 
 [patch.crates-io]
 naga = { git = "https://github.com/Aurora-Viewer/wgpu", rev = "6c13013b3f9c8a7e45154d45d120ada0cbe55a23" }

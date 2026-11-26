@@ -1,3 +1,8 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+static CREATED_TEXTURES: AtomicU64 = AtomicU64::new(0);
+pub(crate) fn created_texture_count() -> u64 {
+    CREATED_TEXTURES.load(Ordering::Relaxed)
+}
 // The upstream allocation helper, with COPY_SRC added only to the final output
 // and two explicitly observed diagnostic inputs. No filter/format changes.
 pub(crate) fn make_view(
@@ -15,6 +20,7 @@ pub(crate) fn make_view(
     ) {
         usage |= wgpu::TextureUsages::COPY_SRC;
     }
+    CREATED_TEXTURES.fetch_add(1, Ordering::Relaxed);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d {
