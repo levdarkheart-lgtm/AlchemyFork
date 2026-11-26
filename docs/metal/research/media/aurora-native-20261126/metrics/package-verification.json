@@ -30,10 +30,35 @@
     }
   ],
   "local_iCloud_bytes_verified": true,
-  "remote_upload_confirmed": false,
-  "upload_check_utc": "2026-11-26T18:15:09Z",
-  "upload_error_code": 4355,
-  "upload_disposition": "PPD618; no remote readiness claim while account/service access fails",
+  "remote_upload_confirmed": true,
+  "upload_check_utc": "2026-11-26T18:16:49Z",
+  "upload_error_code": null,
+  "upload_disposition": "All three files uploaded=true, uploading=false, no error; destination hashes verified.",
   "application_and_shader_identity_receipt": "review-verification.json",
-  "subsequent_commit_scope": "Documentation, sanitized receipts and inherited surface test oracle only; packaged production source remains b6f18c24f4."
+  "subsequent_commit_scope": "Documentation, sanitized receipts and inherited surface test oracle only; packaged production source remains b6f18c24f4.",
+  "initial_upload_observation": {
+    "confirmed": false,
+    "error_code": 4355,
+    "disposition": "Retained first failure; transient condition cleared without account/security changes, recopy or repackaging."
+  },
+  "upload_files": [
+    {
+      "name": "Alchemy-Aurora-Temporal-Experimental-69516-AppleSilicon.dmg",
+      "uploaded": true,
+      "uploading": false,
+      "upload_error": null
+    },
+    {
+      "name": "Alchemy-Aurora-Temporal-Experimental-69516-Review.zip",
+      "uploaded": true,
+      "uploading": false,
+      "upload_error": null
+    },
+    {
+      "name": "Alchemy-Aurora-Temporal-Experimental-69516-SHA256SUMS.txt",
+      "uploaded": true,
+      "uploading": false,
+      "upload_error": null
+    }
+  ]
 }

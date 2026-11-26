@@ -52,15 +52,16 @@ PPD617 limits its evidence to shipped defaults/session overrides after the priva
 launcher’s cloned-settings path failed; actual owner XML matches retained baseline.
 No account login, permanent graphics change or live rendering claim is made.
 Mounted-package verification is complete: all 8293 app entries match; signatures,
-346 ARM64 checks, ZIP CRC and selected hashes pass. PPD618 blocks confirmed remote
-delivery: local iCloud Desktop copies are correct, but upload metadata reports
-account access unavailable (NSCocoa4355); read-only service access is denied.
+346 ARM64 checks, ZIP CRC and selected hashes pass. All three iCloud Desktop files
+are confirmed uploaded at18:16:49UTC, with no error and matching destination
+hashes. PPD618 preserves the transient initial account-access error and recovery.
 
 Build directory: `build-aurora-native-release`; OpenHTJ2K0.27 is the sole pixel decoder.
 Private full outputs/failed attempts/receipts: `artifacts/metal/aurora-native-20261126/`.
 Compact synthetic evidence is linked from the native report. One Ninja owner at a
 time includes metadata commands; dependency-log recovery remains a separate follow-up.
-Packages exist locally on iCloud Desktop; do not claim remote upload completion.
+DMG, review ZIP and checksum file are ready on iCloud Desktop. The new feature
+branch is published; only final delivery documentation follows application b6f.
 
 ## Preserved branches and previous repairs
 
@@ -105,6 +106,8 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Publish the authorized feature branch. Recheck the existing iCloud artifacts when
-service/account access returns; do not rebuild or recopy unchanged packages.
-The owner performs the first live quality/FPS review; no broader profiling is requested.
+Owner launches build69516 and selects 67% (Aurora Temporal · Experimental), checking
+the effective Active status. Review stationary palms/grass, move-stop response and
+whole-viewer performance; use macOS screen capture, not the snapshot route.
+No implementation, offline qualification or upload work remains for this handoff.
+Live acceptance remains unclaimed; no broader profiling is requested.

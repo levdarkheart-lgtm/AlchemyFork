@@ -15184,17 +15184,19 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-618 — New review artifacts cannot confirm iCloud upload
 
-- Status: open
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Private review delivery
 - Discovered: 2026-11-26
 - Original reference: Delivery requires Foundation URL metadata uploaded=true, uploading=false and no upload error; a local copy alone is insufficient.
 - Evidence: [69516 delivery](research/aurora-native-temporal-20261126.md). All three iCloud Desktop files match the verified local package hashes, but fresh metadata returns NSCocoaErrorDomain 4355, could not access the iCloud account. Retained older 69507 files still report uploaded. Read-only brctl status/quota return BRCloudDocsErrorDomain 141 access denied.
-- Next action: Recheck the existing three files when iCloud service/account access is available; do not replace packages, modify account/security settings or claim remote readiness from local existence. All implementation, build and package work can be reviewed independently.
-- Verification: Read-only DMG content comparison matches all 8293 app entries; deep/strict signing, 346 ARM64 checks, ZIP CRC and per-file hashes pass. New-file upload remains unconfirmed after the first recheck. Raw service diagnostics remain private; no account identifier or credential is published.
+- Next action: Owner downloads the confirmed-uploaded review artifacts. No service/account repair, recopy or rebuild is needed. Preserve initial failure history rather than presenting local copy as the original proof of remote delivery.
+- Verification: Read-only DMG content comparison matches all 8293 app entries; deep/strict signing, 346 ARM64 checks, ZIP CRC and per-file hashes pass. At 18:16:49 UTC all three files report uploaded=true, uploading=false and no error; destination hashes match. Raw service diagnostics remain private; no account identifier or credential is published.
 - Owner verification: pending
 - Push approval: granted
 
 ### History
 
 - 2026-11-26: Registered external delivery failure immediately after local package verification/copy. No Apple ID changes, daemon reset or security bypass attempted. This is separate from viewer correctness and PPD610 image-quality acceptance.
+
+- 2026-11-26 recovery: Second bounded metadata recheck confirms complete upload of all three unchanged files. The transient condition cleared without an intervention. Review build and bundle are available for owner download; no remote availability claim preceded that observation.

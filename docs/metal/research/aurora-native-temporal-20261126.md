@@ -221,17 +221,15 @@ file hashes pass. Package SHA-256:
 | DMG | `83e2665069929c32068e73a0f5c36611838fd5d4c1cb32da5e987c806dbd0052` |
 | Review ZIP | `d73e17bc3c0c3aa04c0e6311f24b300a397fb36e9949a04422a67a1997e51ba0` |
 
-**PPD618: remote delivery is not confirmed.** Local iCloud Desktop copies match
-these hashes, but fresh upload metadata reports NSCocoaErrorDomain4355 (account
-access unavailable), uploaded=false. A read-only service check returns access
-denied; the older preserved packages still have completed-upload metadata. No
-account/security changes were attempted. Do not equate local availability with
-readiness on another machine. The existing files can be rechecked without
-repackaging once iCloud access recovers.
+**Delivery confirmed at 2026-11-26 18:16:49 UTC.** All three iCloud Desktop files
+report uploaded=true, uploading=false, no upload error, with destination hashes
+matching the verified packages. PPD618 preserves an initial transient account-
+access error4355 and failed read-only service check; a later metadata recheck
+cleared it without account/security changes, daemon restart, recopy or repackaging.
 
 [Application/regression receipt](media/aurora-native-20261126/metrics/review-verification.json)
 and [package/delivery receipt](media/aurora-native-20261126/metrics/package-verification.json)
-retain the exact scope, including the initial failure and upload limitation.
+retain the exact scope, including the initial failure and completed upload.
 
 After owner login: Advanced Graphics → World resolution →
 **67% (Aurora Temporal · Experimental)**. Require adjacent status

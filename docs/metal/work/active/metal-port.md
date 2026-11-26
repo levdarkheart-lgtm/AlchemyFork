@@ -18,7 +18,7 @@ Commit `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` pins experimentalAurora69516 a
 | Submission/resource safety | complete |12componentcases +2actualrenderer cases/204assertions API/GPU pass. |
 | PPD610 quality | open | Area.821401<.85;stop18/36.015886/.012319>1/255; ownerliveacceptancepending. |
 | Actualtarget nativecost | complete |10.926median/12.392p95ms, allintegrationpasses included; noFPSclaim. |
-| Release review delivery | blocked | 69516 full build, regressions, login smoke and mounted package checks pass; PPD618 iCloud account/service access prevents confirmed upload. |
+| Release review delivery | complete | 69516 full build, regressions, login smoke, mounted package checks and all three iCloud uploads verified; owner live review next. |
 
 Release build69516, deep/strict ad-hoc signing and 346 ARM64 checks pass. All three
 CPU and fifteen affected Metal suites pass after the inherited PPD616 test-only
@@ -29,10 +29,11 @@ override and verified actual preference bytes. No login or live rendering test.
 Initial wrong entry names, dependency-log recovery and fixture oracle failures
 are retained; no quality threshold relaxation. Component memory plateaus.
 Mounted DMG matches all 8293 app entries; signatures/346 ARM64 checks and ZIP CRC/
-hashes pass. Local iCloud copies match, but account-access error4355 leaves upload
-unconfirmed (PPD618). Next action: publish only the authorized new branch, then
-recheck existing uploads when service access recovers. No rebuild is required.
-Preserve evaluation/Temporal/Spatial/usual branches.
+hashes pass. All three iCloud uploads are confirmed at18:16:49UTC with matching
+destination bytes. PPD618 retains the initial transient error and recovery.
+The authorized new branch is pushed; application source stays b6f, with only
+test/documentation follow-up. Owner live review is next. Evaluation/Temporal/
+Spatial/usual branches and prior packages remain unchanged.
 
 ## Preserved Spatial parent checkpoint
 
