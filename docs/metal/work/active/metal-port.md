@@ -12,14 +12,16 @@ Corrected69520/source2af7ebba82 passes31final glass/history cases,18affected GPU
 suites, content-publication and CPU checks. Full Release,346ARM64/deep-strict
 signing and full-screen login-only smoke pass; original settings are restored and
 viewer closed. Mounted DMG matches8293entries, ZIP CRC/hashes pass, all three
-69520iCloud uploads confirmed20:57:47UTC.69516 is retained. Publish evidence/docs
-on the authorized Aurora branch; owner live fence/palm/grass review is next.
+69520iCloud uploads confirmed20:57:47UTC.69516 is retained. Code/tests/evidence
+are pushed through57ae4591ec on the authorized Aurora branch; owner live
+fence/palm/grass review is next.
 The intermediate bf90/69519 build was stopped before packaging after PPD622;
 its history and initial fixture failures remain, without weaker quality bounds.
 
 Commit `2af7ebba82b6bfd15886069f1eb9613f34fcef18` pins corrected glass69520 application source; verified private delivery complete.
 Preserved69516 remains at `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
-[Native report](../../research/aurora-native-temporal-20261126.md) is authoritative;
+[Glass report](../../research/aurora-temporal-glass-20261126.md) owns69520 delivery;
+[native report](../../research/aurora-native-temporal-20261126.md) preserves69516;
 [evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) retainsoldquality/cost.
 
 | Item | State | Acceptance / next boundary |

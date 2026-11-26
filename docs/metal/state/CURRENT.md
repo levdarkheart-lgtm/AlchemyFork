@@ -22,13 +22,14 @@ corrected and passes1076assertions separately. Intermediate bf90c0dd72/69519 ful
 build was interrupted and never packaged. Corrected69520 is built and delivered:31final glass/history cases pass,346ARM64
 checks/signing pass, login-only smoke closes normally and original settings are
 restored. Mounted8293-entry comparison/ZIP CRC/hashes pass. All three iCloud
-uploads confirmed20:57:47UTC. Authorized branch publication is the final step;
-owner live fence/palm/grass review remains pending.
+uploads confirmed20:57:47UTC. Code/tests/evidence are pushed through57ae4591ec;
+owner live fence/palm/grass review is next. No further implementation is pending
+within this bounded glass task.
 
 **Renderer code checkpoint:** `2af7ebba82b6bfd15886069f1eb9613f34fcef18` — corrected glass69520 application source; verified private delivery complete.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
-The [native report](../research/aurora-native-temporal-20261126.md) owns the source
-map, qualification and delivery. New saved ID8 /effective4 selects exact2/3 Aurora
+The [native report](../research/aurora-native-temporal-20261126.md) records the preserved69516 port;
+the glass report owns corrected69520 qualification and delivery. New saved ID8 /effective4 selects exact2/3 Aurora
 OFF. IDs0–7, output-sized shadows and native UI remain unchanged. The component
 uses existing motion/poses, jitter, main-post transactions and retirement. Genuine
 opaque/final HDR drives upstream reactivity; the final resolve preserves glow.
