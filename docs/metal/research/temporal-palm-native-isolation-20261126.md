@@ -68,5 +68,7 @@ package. It contains1023manifestedfiles: the complete198input/golden frames, bot
 SDK-only ARM64 executable/source, exact build/dependency receipts and findings. It requires no Alchemy
 library, shader library, login or preferences. The included README documents standalone compilation and
 replay. SHA256:`8a300a02f75e2b82ee130ea968a1f159c925d9c333dc0762535ebf64b3450622` (61209375bytes).
-The ZIP is placed on the private iCloud Desktop; upload confirmation is recorded separately. Different
+The ZIP and checksum file are on the private iCloud Desktop; Foundation confirmed both uploaded,
+not uploading and no error at2026-11-26 10:53:03UTC. Compiled source files match sourcecommit
+`6b2dcd8e44464a06d77ba5611e34cc7c0dffab18` exactly; final handoff receipt is private `final-handoff.json`. Different
 GPU/OS kernels may produce different output; strict golden equality is scoped to the recorded M1 Max.

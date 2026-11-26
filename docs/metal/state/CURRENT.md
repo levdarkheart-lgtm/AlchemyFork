@@ -15,7 +15,7 @@ image equivalence. No owner acceptance or push approval is inferred from builds 
 ## Active PBR MASK isolation — PPD610 remains unresolved
 
 **Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`;69507renderer/shaders unchanged.
-Task starts from branch945246965c; tests now expose immediate native and resolved output independently.
+Test source6b2dcd8e44, based on945246965c, exposes immediate native/resolved output independently.
 [Palm native isolation](../research/temporal-palm-native-isolation-20261126.md) is the current evidence map.
 All144main+54reference worlds have identical raw/resolved RGB. Direct native execution with independent
 scaler/textures/queue also matches; SDK-only standalone binary repeats all43,794,432RGBcomponents exactly.
@@ -153,5 +153,5 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Finish source/evidence publication, then hand off the SDK-only complete
-PBR MASK reproducer. No new viewer package or live-scene request for unchanged foliage. PPD610 stays open.
+Source/evidence is published; SDK-only complete PBR MASK ZIP/checksums uploaded10:53UTC.
+Review that reproducer. No new viewer package or live-scene request for unchanged foliage. PPD610 stays open.

@@ -21,8 +21,9 @@ SDK-only replay reproduce all43,794,432RGBcomponents exactly. Complete warm-up/h
 Edge.00431436,recall.854469,area.721729 andstop18.00598857 remain4failed bounds per stage (12/10515checks).
 Native output already carries the failure; no resolve/wrapper correction is justified. No Apple-defect claim.
 The unknown is the native thin-detail/history response to verified inputs and a quality-preserving remedy.
-Original20baseline and69507packages stay preserved.15correctness suites pass API/GPU validation; publish tests and
-concise report, deliver standalone reproducer without a newviewerDMG. PPD610 stays investigating.
+Original20baseline and69507packages stay preserved.15correctness suites pass API/GPU validation.
+Tests/evidence published at6b2dcd8e44; SDK-only ZIP/checksums uploaded10:53UTC. No newviewerDMG.
+PPD610 stays investigating; no further source correction is justified by the established comparison.
 
 ## Preserved Spatial parent checkpoint
 
