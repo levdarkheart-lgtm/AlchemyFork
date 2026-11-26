@@ -410,13 +410,18 @@ TEST_CASE("Temporal alpha proxy selects nearest represented motion and depth ind
     }
 }
 
-TEST_CASE("Temporal alpha rejection uses a fixed opaque anchor and strict nearest depth", "[almetal][temporal][motion][transparency][depth][fixed-anchor]")
+TEST_CASE("Temporal partial alpha rejects motion chaining and selects strict nearest contributing depth", "[almetal][temporal][motion][transparency][depth][fixed-anchor]")
 {
     for (bool reverse_z : {false, true}) for (bool reverse_order : {false, true})
         for (bool close_depths : {false, true})
     {
         CAPTURE(reverse_z, reverse_order, close_depths);
         Fixture f;
+        // These are genuinely contributing transparent layers. Alpha1 would
+        // replace preceding color in a read-only-depth alpha pass; requiring
+        // hidden layers to keep rejecting that opaque result was a bad oracle.
+        for (auto& color : f.geometry.colors) color[3] = 191;
+        f.vertices = f.buffer(&f.geometry, sizeof(f.geometry));
         auto opaque = f.batch(0); auto previous_opaque = previousDraw(opaque);
         auto world = f.scene(); world.batches = &opaque; world.batch_count = 1; world.reverse_z = reverse_z;
         auto gbuffer = f.renderer->render(world, &f.error); INFO(f.error); REQUIRE(gbuffer);
@@ -439,7 +444,7 @@ TEST_CASE("Temporal alpha rejection uses a fixed opaque anchor and strict neares
                 : (reverse_z ? .5f + i * .1f : .5f - i * .1f);
             layer.modelview_projection[14] = (reverse_z ? depth : depth * 2.f - 1.f) - .25f;
             prior[i] = previousDraw(layer);
-            const float motion = close_depths ? i * .005f : i * .020f;
+            const float motion = close_depths ? 0.f : i * .020f;
             prior[i].modelview_projection[12] = motion / (side * .5f);
         }
         if (reverse_order) { std::reverse(layers.begin(), layers.end()); std::reverse(prior.begin(), prior.end()); }
@@ -460,8 +465,9 @@ TEST_CASE("Temporal alpha rejection uses a fixed opaque anchor and strict neares
         CHECK(std::abs(float(motion[center][0]) - (close_depths ? 0.f : .040f)) < .0001f);
         CHECK(std::abs(depth[center] - (close_depths ? (reverse_z ? .8f : .2f) : (reverse_z ? .7f : .3f))) < .0000001f);
         CHECK(rejection[center] == (close_depths ? 0 : 255));
-        // .000 -> .020 -> .040 cannot chain through a rolling .025-pixel
-        // tolerance: the final layer differs from the immutable opaque anchor.
+        // .000 -> .020 -> .040 cannot chain through a rolling tolerance.
+        // The close-depth arm independently tests strict nearest selection
+        // with exactly equal motion, rather than conflating the two policies.
     }
 }
 

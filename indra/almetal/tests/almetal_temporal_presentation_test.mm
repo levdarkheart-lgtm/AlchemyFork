@@ -47,12 +47,7 @@ struct Fixture
         dd.width = IW; dd.height = IH; dd.color_attachment_count = 0;
         dd.depth_stencil_format = ALMetalPixelFormat::depth32_float; dd.depth_stencil_shader_read = true;
         depth = ALMetalRenderTarget::create(*device, dd, &error); REQUIRE(depth);
-        ALMetalRenderTargetDescriptor md;
-        md.width = IW; md.height = IH; md.color_attachment_count = 3;
-        md.colors[0].format = ALMetalPixelFormat::rg16_float;
-        md.colors[1].format = ALMetalPixelFormat::r8_unorm;
-        md.colors[2].format = ALMetalPixelFormat::r32_float;
-        motion = ALMetalRenderTarget::create(*device, md, &error); REQUIRE(motion);
+        motion = renderer->prepareTemporalMotionTarget(IW, IH, &error); REQUIRE(motion);
         reconstructed = renderer->prepareTemporalTarget(OW, OH, true, &error); REQUIRE(reconstructed); INFO(error);
         resolved = renderer->prepareTemporalTarget(OW, OH, false, &error); REQUIRE(resolved); INFO(error);
         auto upload = device->makeCommandBuffer("Temporal presentation authored HDR inputs", &error); REQUIRE(upload);
@@ -425,9 +420,12 @@ TEST_CASE("Temporal repeated post transactions reach steady-state pooled target 
             auto config = f.postConfig();
             const char* configuration = "display, presentation and per-world opaque depth";
             bool capture_opaque_depth = true;
+            bool reacquire_visibility = false;
             SECTION("same configuration as the historical 69494 twelve-world fixture")
             { configuration = "display and presentation (historical no snapshot)"; capture_opaque_depth = false; }
             SECTION("per-world pristine depth is reused after completion") {}
+            SECTION("per-world private visibility depth is pooled after completion")
+            { configuration = "display, presentation, opaque snapshot and visibility input pack"; reacquire_visibility = true; }
             SECTION("bloom pyramid without halation")
             {
                 configuration = "bloom and per-world opaque depth"; config.bloom_mip_count = 4; config.bloom_resolution_scale = 2;
@@ -439,18 +437,26 @@ TEST_CASE("Temporal repeated post transactions reach steady-state pooled target 
                 config.bloom_halation = true; config.cross_filter = true; config.reference_capture = true;
             }
             if (capture_opaque_depth) f.prepareOpaqueDepthSource();
+            if (reacquire_visibility) f.motion.reset();
             const auto created = alMetalResourceAllocationStats().textures_created;
             std::uint64_t warm_created = created, warm_reuses = 0, warm_deferrals = 0;
             std::size_t targets_per_world = 0;
             const void* warm_opaque_backing = nullptr;
+            const void* warm_visibility_backing = nullptr;
             for (unsigned index = 0; index < 12; ++index)
             {
                 f.frame_data->beginFrame(index + 1);
+                if (reacquire_visibility)
+                    f.motion = f.renderer->prepareTemporalMotionTarget(IW, IH, &f.error);
+                REQUIRE(f.motion);
+                const auto* visibility_depth = f.motion->depthStencilTexture(); REQUIRE(visibility_depth);
+                REQUIRE(visibility_depth->descriptor().storage == ALMetalStorageMode::memoryless);
+                const auto* visibility_backing = visibility_depth->nativeHandle();
                 auto snapshot = capture_opaque_depth ? f.opaqueDepth() : nullptr;
                 const void* opaque_backing = snapshot ? snapshot->colorTexture(0)->nativeHandle() : nullptr;
                 REQUIRE(f.renderer->beginMainFrameBatch(index + 1, "Temporal steady-state pool sequence", &f.error));
                 auto targets = f.postTargets(config);
-                targets_per_world = 2 + (snapshot ? 1 : 0) + targets.bloom.levels.size() +
+                targets_per_world = 2 + (snapshot ? 1 : 0) + (reacquire_visibility ? 1 : 0) + targets.bloom.levels.size() +
                     (config.cross_filter ? 3 : 0) + (config.reference_capture ? 1 : 0);
                 const auto display_backing = targets.display->colorTexture(0)->nativeHandle();
                 const auto presentation_backing = targets.presentation->colorTexture(0)->nativeHandle();
@@ -497,14 +503,17 @@ TEST_CASE("Temporal repeated post transactions reach steady-state pooled target 
                     warm_created = alMetalResourceAllocationStats().textures_created;
                     warm_reuses = pool.reuses; warm_deferrals = pool.dependency_deferrals;
                     warm_opaque_backing = opaque_backing;
+                    warm_visibility_backing = visibility_backing;
                 }
                 if (index > 3)
                 {
                     REQUIRE(alMetalResourceAllocationStats().textures_created == warm_created);
                     REQUIRE(pool.dependency_deferrals == warm_deferrals);
                     REQUIRE(opaque_backing == warm_opaque_backing); // Specifically reuse the added R32 owner.
+                    REQUIRE(visibility_backing == warm_visibility_backing);
                 }
                 REQUIRE(pool.cached_bytes <= 2048ull * 1024ull * 1024ull);
+                if (reacquire_visibility) f.motion.reset();
             }
             REQUIRE(f.scaler->stats().creation_successes == 1);
             REQUIRE(f.scaler->stats().reset_calls == 1);

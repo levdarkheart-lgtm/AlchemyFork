@@ -3,10 +3,10 @@ namespace
 {
 struct alignas(16) WorldTemporalMotionConstants
 {
-    float current_mvp[16]{}, previous_mvp[16]{}, texture_matrix[16]{};
+    float current_mvp[16]{}, previous_mvp[16]{}, texture_matrix[16]{}, current_modelview[16]{};
     float current_wind[4]{}, current_sin[4]{}, current_gravity[4]{}, current_cloth_depth[4]{};
     float previous_wind[4]{}, previous_sin[4]{}, previous_gravity[4]{}, previous_cloth_depth[4]{};
-    float extent_bias[4]{}, raster[4]{};
+    float extent_bias[4]{}, raster[4]{}, water_plane[4]{};
     std::uint32_t config[4]{}, coverage[4]{};
     float thresholds[8][4]{};
     float impostor_center[4]{}, impostor_left[4]{}, impostor_up[4]{};
@@ -24,21 +24,23 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     if (!mImpl || !mImpl->device || !mImpl->library)
     { setError(error, "Temporal motion renderer is unavailable"); return false; }
     if (mImpl->temporal_motion_background && mImpl->temporal_motion_geometry[0] &&
-        mImpl->temporal_motion_geometry[1] && mImpl->temporal_motion_geometry[2] &&
+        mImpl->temporal_motion_geometry[1] &&
         mImpl->temporal_motion_reactive_background &&
-        mImpl->temporal_motion_impostor && mImpl->temporal_opaque_depth_copy) return true;
+        mImpl->temporal_motion_impostor && mImpl->temporal_opaque_depth_copy &&
+        mImpl->temporal_motion_seed_depth && mImpl->temporal_motion_overlay_depth) return true;
     ALMetalRenderPipelineDescriptor descriptor;
     descriptor.library = mImpl->library.get();
     descriptor.color_attachment_count = 3;
     descriptor.colors[0].format = ALMetalPixelFormat::rg16_float;
     descriptor.colors[1].format = ALMetalPixelFormat::r8_unorm;
     descriptor.colors[2].format = ALMetalPixelFormat::r32_float;
+    descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
     descriptor.vertex_function = "almetal_resample_vertex";
     descriptor.fragment_function = "almetal_temporal_camera_motion_fragment";
     descriptor.label = "Alchemy Temporal camera/background motion";
     auto background = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
     if (!background) return false;
-    std::array<std::shared_ptr<ALMetalRenderPipeline>, 3> geometry;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> geometry;
     descriptor.vertex_function = "almetal_temporal_motion_vertex";
     descriptor.fragment_function = "almetal_temporal_motion_fragment";
     descriptor.label = "Alchemy Temporal object/skin motion and matched coverage";
@@ -46,24 +48,15 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     if (!geometry[0]) return false;
     descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
     descriptor.colors[2].write_mask = ALMetalColorWriteMask::none;
+    descriptor.colors[1].write_mask = ALMetalColorWriteMask::none;
+    descriptor.label = "Alchemy Temporal alpha depth-only visibility";
+    geometry[1] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
+    if (!geometry[1]) return false;
+    descriptor.colors[1].write_mask = ALMetalColorWriteMask::all;
     descriptor.colors[1].blending_enabled = true;
     descriptor.colors[1].source_rgb = ALMetalBlendFactor::one;
     descriptor.colors[1].destination_rgb = ALMetalBlendFactor::one;
     descriptor.colors[1].rgb_operation = ALMetalBlendOperation::maximum;
-    descriptor.label = "Alchemy Temporal transparent history rejection";
-    geometry[1] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
-    if (!geometry[1]) return false;
-    descriptor.colors[0].write_mask = ALMetalColorWriteMask::all;
-    descriptor.colors[2].write_mask = ALMetalColorWriteMask::all;
-    descriptor.colors[1].write_mask = ALMetalColorWriteMask::none;
-    descriptor.label = "Alchemy Temporal supported alpha nearest surface motion and depth";
-    geometry[2] = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
-    if (!geometry[2]) return false;
-    // The final union and unsupported impostors must not replace a qualified
-    // foreground proxy merely because they run after its nearest-depth choice.
-    descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
-    descriptor.colors[2].write_mask = ALMetalColorWriteMask::none;
-    descriptor.colors[1].write_mask = ALMetalColorWriteMask::all;
     descriptor.vertex_function = "almetal_resample_vertex";
     descriptor.fragment_function = "almetal_temporal_camera_motion_fragment";
     descriptor.label = "Alchemy Temporal background/water rejection union";
@@ -75,6 +68,7 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     auto impostor = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
     if (!impostor) return false;
     descriptor.color_attachment_count = 1;
+    descriptor.depth_stencil_format = ALMetalPixelFormat::invalid;
     descriptor.colors[0] = {};
     descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
     descriptor.vertex_function = "almetal_resample_vertex";
@@ -82,11 +76,22 @@ bool ALMetalWorldGBufferRenderer::prepareTemporalMotion(std::string* error)
     descriptor.label = "Alchemy Temporal pristine opaque depth copy";
     auto depth_copy = ALMetalRenderPipeline::create(*mImpl->device, descriptor, error);
     if (!depth_copy) return false;
+    ALMetalDepthStencilDescriptor seed;
+    seed.depth_compare = ALMetalCompareFunction::always;
+    seed.depth_write_enabled = true;
+    seed.label = "Alchemy Temporal seed private visibility depth";
+    auto seed_depth = ALMetalDepthStencilState::create(*mImpl->device, seed, error);
+    seed.depth_write_enabled = false;
+    seed.label = "Alchemy Temporal background rejection depth-independent overlay";
+    auto overlay_depth = ALMetalDepthStencilState::create(*mImpl->device, seed, error);
+    if (!seed_depth || !overlay_depth) return false;
     mImpl->temporal_opaque_depth_copy = std::move(depth_copy);
     mImpl->temporal_motion_impostor = std::move(impostor);
     mImpl->temporal_motion_reactive_background = std::move(reactive_background);
     mImpl->temporal_motion_background = std::move(background);
     mImpl->temporal_motion_geometry = std::move(geometry);
+    mImpl->temporal_motion_seed_depth = std::move(seed_depth);
+    mImpl->temporal_motion_overlay_depth = std::move(overlay_depth);
     return true;
 }
 
@@ -144,6 +149,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::prepareTempora
     desc.colors[1].label = "Alchemy Temporal reactive rejection";
     desc.colors[2].format = ALMetalPixelFormat::r32_float;
     desc.colors[2].label = "Alchemy Temporal raw device depth";
+    // Reproduce color's evolving depth test independently of the motion/depth
+    // proxy. In particular post-water alpha is read-only while pre-water alpha
+    // writes depth. Tile-local storage lives for this single render encoder.
+    desc.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+    desc.memoryless_depth_stencil = true;
     desc.label = "Alchemy Temporal motion/depth/rejection inputs";
     return mImpl->makeRenderTarget(*mImpl->device, desc, error);
 }
@@ -181,7 +191,8 @@ try
             descriptor.sample_count != 1 || descriptor.color_attachment_count != 3 ||
             descriptor.colors[0].format != ALMetalPixelFormat::rg16_float ||
             descriptor.colors[1].format != ALMetalPixelFormat::r8_unorm ||
-            descriptor.colors[2].format != ALMetalPixelFormat::r32_float)
+            descriptor.colors[2].format != ALMetalPixelFormat::r32_float ||
+            descriptor.depth_stencil_format != ALMetalPixelFormat::depth32_float)
         { setError(error, "Temporal prepared motion target is incompatible"); return {}; }
     }
     else target = prepareTemporalMotionTarget(scene.width, scene.height, error);
@@ -189,6 +200,8 @@ try
     ALMetalRenderPassConfig config;
     for (unsigned i = 0; i != 3; ++i)
     { config.colors[i].load = ALMetalLoadAction::clear; config.colors[i].store = ALMetalStoreAction::store; }
+    config.clear_depth = scene.reverse_z ? 0. : 1.;
+    config.depth_store = ALMetalStoreAction::dont_care;
     auto pass = target->makeRenderPass(config, error);
     std::unique_ptr<ALMetalCommandBuffer> owned;
     auto* command = pass ? mImpl->acquireCommandBuffer("Alchemy Temporal motion inputs", owned, error) : nullptr;
@@ -238,6 +251,7 @@ try
         encoder->setScissor({0, 0, scene.width, scene.height}, error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setDepthStencilState(mImpl->temporal_motion_seed_depth.get(), error) &&
         bind_background() &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
@@ -255,22 +269,21 @@ try
         palette_storage.push_back(std::move(buffer)); return bound;
     };
     const auto draw_motion = [&](const ALMetalWorldDraw& draw,
-        const ALMetalWorldTemporalPreviousDraw* previous, bool forward, bool surface_only = false) -> bool
+        const ALMetalWorldTemporalPreviousDraw* previous, bool forward) -> bool
     {
         const auto& batch = draw.source();
         // Terrain deformation is already represented by the authoritative depth; static region geometry uses
         // camera reprojection. Water's dedicated generated mesh is handled by the main-view reactive owner.
         if (batch.terrain || batch.water_surface || batch.water_exclusion || batch.water_haze ||
-            batch.atmospheric_haze || batch.legacy_glow || batch.pbr_glow || batch.post_water_glow ||
-            batch.post_water_depth_only) return true;
+            batch.atmospheric_haze || batch.legacy_glow || batch.pbr_glow || batch.post_water_glow) return true;
         if (batch.impostor)
         {
-            if (surface_only) return true;
             auto view = opaque;
             view.temporal_jitter_pixels[0] = scene.jitter_pixels[0];
             view.temporal_jitter_pixels[1] = scene.jitter_pixels[1];
             const auto constants = buildWorldImpostorConstants(view, batch);
             return encoder->setPipeline(*mImpl->temporal_motion_impostor, error) &&
+                encoder->setDepthStencilState(mImpl->temporal_motion_overlay_depth.get(), error) &&
                 encoder->setCullMode(ALMetalCullMode::none, error) &&
                 mImpl->setVertexData(*encoder, *command, 0, &constants, sizeof(constants), error) &&
                 encoder->setFragmentTextureLinear(0, batch.impostor_textures[0], error) &&
@@ -287,10 +300,12 @@ try
         const bool palette_valid = !palette || (previous && previous->skin_joint_count == draw.skinJointCount() &&
             previous->skin_palette.size() == palette_count);
         const bool valid = previous && previous->valid && palette_valid && !scene.reset;
+        const bool alpha_family = forward && (batch.pre_water_alpha || batch.post_water_alpha || batch.avatar_alpha);
         WorldTemporalMotionConstants constants;
         std::memcpy(constants.current_mvp, draw.modelviewProjection(), sizeof(constants.current_mvp));
         std::memcpy(constants.previous_mvp, valid ? previous->modelview_projection : draw.modelviewProjection(), sizeof(constants.previous_mvp));
         std::memcpy(constants.texture_matrix, draw.textureMatrix(), sizeof(constants.texture_matrix));
+        std::memcpy(constants.current_modelview, draw.modelview(), sizeof(constants.current_modelview));
         std::memcpy(constants.current_wind, batch.avatar_wind, sizeof(constants.current_wind));
         std::memcpy(constants.current_sin, batch.avatar_sin_wave, sizeof(constants.current_sin));
         std::memcpy(constants.current_gravity, batch.avatar_gravity, sizeof(constants.current_gravity));
@@ -303,7 +318,7 @@ try
         constants.extent_bias[2] = opaque.material_mip_bias;
         constants.extent_bias[3] = valid && !previous->reactive ? 0.f : 1.f;
         constants.raster[0] = scene.jitter_pixels[0]; constants.raster[1] = scene.jitter_pixels[1];
-        constants.raster[2] = forward ? batch.pre_water_minimum_alpha : batch.alpha_cutoff;
+        constants.raster[2] = alpha_family ? batch.pre_water_minimum_alpha : batch.alpha_cutoff;
         constants.config[0] = attachment ? 1 : body ? (batch.avatar_cloth ? 3 : 2) : 0;
         constants.config[1] = draw.skinJointCount(); constants.config[2] = valid ? previous->skin_joint_count : draw.skinJointCount();
         constants.config[3] = scene.reverse_z;
@@ -312,10 +327,20 @@ try
         constants.coverage[2] = batch.material_alpha_mode;
         constants.coverage[3] = (batch.alpha_mask ? 1u : 0u) | (batch.use_vertex_color ? 2u : 0u) |
             (batch.alpha_cutoff_bias ? 4u : 0u) | (forward ? 8u : 0u) | ((batch.avatar_skinning || batch.avatar_rigid) ? 16u : 0u);
+        if (alpha_family) constants.coverage[3] |= 512u;
+        // Opaque-forward fullbright MASK tests texture alpha only, using its
+        // fixed quantized cutoff. Streamed vertex alpha is shininess there.
+        if (forward && !alpha_family && batch.impostor_fullbright && batch.alpha_mask)
+            constants.coverage[3] |= 4u;
         const bool animated_uv = valid && std::memcmp(previous->texture_matrix, draw.textureMatrix(), sizeof(previous->texture_matrix)) != 0;
-        // Retain the old library's full-forward rejection contract. Only the
-        // new shader recognizes this narrowly qualified motion-match flag.
         if (forward || animated_uv) constants.extent_bias[3] = 1.f;
+        if (alpha_family && scene.forward_scene && scene.forward_scene->alpha_environment)
+        {
+            const auto& environment = *scene.forward_scene->alpha_environment;
+            std::copy_n(environment.water_plane, 4, constants.water_plane);
+            constants.raster[3] = environment.water_fog[2] * (batch.post_water_alpha ? -1.f : 1.f);
+            constants.coverage[3] |= 256u;
+        }
         const bool generic_alpha = forward && !family &&
             (batch.pre_water_alpha || batch.post_water_alpha) &&
             (batch.pre_water_fullbright || batch.pre_water_simple) &&
@@ -342,9 +367,7 @@ try
             // history is unavailable. History permission is a separate flag.
             constants.coverage[3] |= 128u;
             if (valid && !previous->reactive && !animated_uv) constants.coverage[3] |= 32u;
-            constants.raster[3] = .025f; // input pixels; below a reconstruction subpixel
         }
-        if (surface_only && (constants.coverage[3] & 128u) == 0u) return true;
         for (unsigned i = 0; i < 8; ++i)
         {
             constants.thresholds[i][0] = batch.alpha_cutoff;
@@ -354,9 +377,16 @@ try
             { constants.thresholds[i][0] = batch.pbrSlots()[i].alpha_cutoff;
               constants.thresholds[i][1] = batch.pbrSlots()[i].base_color_factor[3]; }
         }
-        const unsigned motion_pipeline = !forward ? 0u : surface_only ? 2u : 1u;
+        const unsigned motion_pipeline = forward && batch.post_water_depth_only ? 1u : 0u;
+        const bool writes_depth = forward && worldForwardWritesDepth(batch, attachment || body);
+        // Opaque replay retains its existing explicit depth-match tolerance;
+        // only forward composition needs the evolving hardware visibility test.
+        const auto* depth_state = !forward ? mImpl->temporal_motion_overlay_depth.get() : scene.reverse_z
+            ? (writes_depth ? mImpl->reverse_depth.get() : mImpl->reverse_readonly_depth.get())
+            : (writes_depth ? mImpl->forward_depth.get() : mImpl->forward_readonly_depth.get());
         bool encoded = encoder->setPipeline(*mImpl->temporal_motion_geometry[motion_pipeline], error) &&
-            encoder->setCullMode((batch.double_sided || forward) ? ALMetalCullMode::none :
+            encoder->setDepthStencilState(depth_state, error) &&
+            encoder->setCullMode(forward ? worldAlphaCullMode(batch) : batch.double_sided ? ALMetalCullMode::none :
                 (body || batch.avatar_rigid) ? batch.avatar_cull_mode : ALMetalCullMode::back, error) &&
             encoder->setVertexBuffer(0, *batch.vertices, batch.position_offset, error) &&
             encoder->setVertexBuffer(1, *batch.vertices, batch.normal_offset, error) &&
@@ -386,29 +416,20 @@ try
     ALMetalWorldDrawCursor cursor(opaque);
     for (std::size_t i = 0; ok && i < opaque.drawCount(); ++i, cursor.advance())
         ok = draw_motion(cursor.draw(), i < scene.previous_opaque_count ? scene.previous_opaque + i : nullptr, false);
+    // Classify background contributions before ordered alpha composition. A
+    // later fully covering reliable foreground can replace hidden background;
+    // partial transparency preserves its rejection. Water in FRONT of a full
+    // foreground is checked again at that foreground's actual eye position.
+    reprojection.config[3] |= 4u;
+    ok = ok && bind_background() &&
+        encoder->setPipeline(*mImpl->temporal_motion_reactive_background, error) &&
+        encoder->setDepthStencilState(mImpl->temporal_motion_overlay_depth.get(), error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (scene.forward_scene)
-    {
-        // Compare every layer against the unchanged opaque motion first.
-        // Updating the anchor while checking layers would make acceptance
-        // depend on draw order (.000 -> .020 -> .040 can otherwise chain).
         for (std::size_t i = 0; ok && i < scene.forward_scene->batch_count; ++i)
             ok = draw_motion(ALMetalWorldDraw(scene.forward_scene->batches[i]),
                 i < scene.previous_forward_count ? scene.previous_forward + i : nullptr, true);
-        // Then choose current nearest supported surfaces. This pipeline never
-        // writes rejection, preserving the complete fixed-anchor MAX union.
-        for (std::size_t i = 0; ok && i < scene.forward_scene->batch_count; ++i)
-            ok = draw_motion(ALMetalWorldDraw(scene.forward_scene->batches[i]),
-                i < scene.previous_forward_count ? scene.previous_forward + i : nullptr, true, true);
-    }
-    // Evaluate dynamic sky layers only in this final union. The initial camera
-    // pass needs their directional motion but not a mask that geometry overwrites.
-    reprojection.config[3] |= 4u;
-    // Opaque replays may overwrite the initial mask and its sky bindings.
-    // Union scoped sky/water/reset rejection without replacing object motion.
-    ok = ok && bind_background() &&
-        encoder->setPipeline(*mImpl->temporal_motion_reactive_background, error) &&
-        encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(owned, ok && ended, error)) return {};
     transaction.succeeded = true;

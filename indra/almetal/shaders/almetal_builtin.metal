@@ -21075,10 +21075,10 @@ kernel void almetal_world_modern_sky_layout_probe(
 // color is added solely for raster coverage. Motion excludes jitter and points from current to previous.
 struct ALMetalTemporalMotionConstants
 {
-    float4x4 current_mvp, previous_mvp, texture_matrix;
+    float4x4 current_mvp, previous_mvp, texture_matrix, current_modelview;
     float4 current_wind, current_sin, current_gravity, current_cloth_depth;
     float4 previous_wind, previous_sin, previous_gravity, previous_cloth_depth;
-    float4 extent_bias, raster;
+    float4 extent_bias, raster, water_plane;
     uint4 config, coverage;
     float4 thresholds[8];
     float4 impostor_center, impostor_left, impostor_up;
@@ -21096,12 +21096,20 @@ struct ALMetalTemporalMotionOutput
     float reactive [[color(1)]];
     float depth [[color(2)]];
 };
+struct ALMetalTemporalBackgroundOutput
+{
+    float2 motion [[color(0)]];
+    float reactive [[color(1)]];
+    float depth [[color(2)]];
+    float visibility_depth [[depth(any)]];
+};
 struct ALMetalTemporalMotionVaryings
 {
     float4 position [[position, invariant]];
     float4 current_clip;
     float4 previous_clip;
     float2 texcoord;
+    float3 eye_position;
     float vertex_alpha;
     uint material_index [[flat]];
 };
@@ -21115,7 +21123,21 @@ fragment float almetal_temporal_opaque_depth_fragment(
     return depth_texture.read(uint2(input.position.xy)).x;
 }
 
-fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
+// True only when the dynamic water plane/wave band contributes in front of
+// this eye-space point. A fully covering leaf in front of it can retain history.
+static bool almetal_temporal_water_visible(float3 eye, bool background,
+    constant ALMetalTemporalReprojectionConstants& c)
+{
+    if (c.config.z == 0u) return false;
+    const float denominator = dot(c.eye_water_plane.xyz, eye);
+    const float margin = c.water_parameters.x * length(c.eye_water_plane.xyz);
+    const float distance = c.eye_water_plane.w;
+    const float nearest_plane = distance - copysign(margin, distance);
+    const float t = abs(denominator) > 1.e-8 ? -nearest_plane / denominator : -1.0;
+    return abs(distance) <= margin || (t > 0.0 && (background || t <= 1.00001));
+}
+
+fragment ALMetalTemporalBackgroundOutput almetal_temporal_camera_motion_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> depth_texture [[texture(32)]],
     texture2d<float> opaque_depth_texture [[texture(33)]],
@@ -21161,7 +21183,7 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
         previous_clip.xy / previous_clip.w * .5 + .5 : current_uv;
     const float2 motion = (previous_uv - current_uv) * extent;
     valid = valid && all(isfinite(motion)) && all(abs(motion) <= 65504.0);
-    ALMetalTemporalMotionOutput output;
+    ALMetalTemporalBackgroundOutput output;
     output.motion = valid ? motion : float2(0.0);
     // Evaluate neighboring sky lanes coherently so texture derivatives remain
     // identical at mixed foliage/sky edges. Entirely opaque quads do no sky work.
@@ -21172,27 +21194,15 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_camera_motion_fragment(
             bloom_map,bloom_next,cloud_map,cloud_next,
             optics_sampler,body_sampler,point_sampler,hdri_sampler).reactive;
     if ((c.config.w & 2u) != 0u) sky_reactive = 1.0;
-    bool water = false;
-    if (c.config.z != 0u)
-    {
-        const float4 eye_h = c.inverse_projection * current_clip;
-        // Parameterize an eye ray by the opaque point. A positive plane intersection before t=1 is visible water.
-        const float3 eye = eye_h.xyz / (abs(eye_h.w) > 1.e-8 ? eye_h.w : 1.e-8);
-        const float denominator = dot(c.eye_water_plane.xyz, eye);
-        // Expand the plane to the known wave-height slab. A camera inside that band has no conservative
-        // per-pixel plane separation; reject its history explicitly rather than ghosting dynamic crests.
-        const float margin = c.water_parameters.x * length(c.eye_water_plane.xyz);
-        const float signed_distance = c.eye_water_plane.w;
-        const bool inside_wave_band = abs(signed_distance) <= margin;
-        const float nearest_plane = signed_distance - copysign(margin, signed_distance);
-        const float t = abs(denominator) > 1.e-8 ? -nearest_plane / denominator : -1.0;
-        water = inside_wave_band || (t > 0.0 && (background || t <= 1.00001));
-    }
+    const float4 eye_h = c.inverse_projection * current_clip;
+    const float3 eye = eye_h.xyz / (abs(eye_h.w) > 1.e-8 ? eye_h.w : 1.e-8);
+    const bool water = almetal_temporal_water_visible(eye, background, c);
     output.reactive = valid && !water ? (background ? sky_reactive : 0.0) : 1.0;
     // Start the Temporal depth proxy at the opaque surface. Qualifying blended
     // surfaces publish their own depth below; the viewer's depth attachment is
     // retained independently for post-processing and occlusion.
     output.depth = depth;
+    output.visibility_depth = depth;
     return output;
 }
 
@@ -21211,12 +21221,13 @@ vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
     uint vertex_id [[vertex_id]])
 {
     const float4 position = float4(positions[vertex_id].xyz, 1.0);
-    float4 current_clip, previous_clip;
+    float4 current_clip, previous_clip, current_eye;
     if (c.config.x == 1u)
     {
         const auto current = almetal_object_skin_vertex(position, float4(0.0), weights[vertex_id], current_palette, c.config.y);
         const auto previous = almetal_object_skin_vertex(position, float4(0.0), weights[vertex_id], previous_palette, c.config.z);
         current_clip = almetal_object_skin_transform(c.current_mvp, current.position, current_palette[0].xyz);
+        current_eye = almetal_object_skin_transform(c.current_modelview, current.position, current_palette[0].xyz);
         previous_clip = almetal_object_skin_transform(c.previous_mvp, previous.position, previous_palette[0].xyz);
     }
     else if (c.config.x == 2u || c.config.x == 3u)
@@ -21230,16 +21241,19 @@ vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
                 previous_palette, c.previous_wind, c.previous_sin, c.previous_gravity, c.previous_cloth_depth)
             : almetal_lit_preview_avatar_skin_vertex(position, normals[vertex_id], body_weights[vertex_id], previous_palette);
         current_clip = c.current_mvp * current.position;
+        current_eye = c.current_modelview * current.position;
         previous_clip = c.previous_mvp * previous.position;
     }
     else
     {
         current_clip = c.current_mvp * position;
+        current_eye = c.current_modelview * position;
         previous_clip = c.previous_mvp * position;
     }
     ALMetalTemporalMotionVaryings output;
     output.current_clip = current_clip;
     output.previous_clip = previous_clip;
+    output.eye_position = current_eye.xyz;
     current_clip.xy += 2.0 * c.raster.xy / c.extent_bias.xy * current_clip.w;
     current_clip.y = -current_clip.y;
     output.position = c.config.w != 0u ? current_clip : almetal_clip_from_gl(current_clip);
@@ -21257,31 +21271,42 @@ vertex ALMetalTemporalMotionVaryings almetal_temporal_motion_vertex(
 fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     ALMetalTemporalMotionVaryings input [[stage_in]],
     float2 underlying_motion [[color(0), raster_order_group(0)]],
+    float underlying_reactive [[color(1), raster_order_group(0)]],
     float underlying_depth [[color(2), raster_order_group(0)]],
     array<texture2d<float>, 32> textures [[texture(0)]],
     texture2d<float> depth_texture [[texture(32)]],
     texture2d<float> opaque_depth_texture [[texture(33)]],
     sampler material_sampler [[sampler(0)]],
-    constant ALMetalTemporalMotionConstants& c [[buffer(1)]])
+    constant ALMetalTemporalMotionConstants& c [[buffer(1)]],
+    constant ALMetalTemporalReprojectionConstants& view [[buffer(0)]])
 {
     const bool forward = (c.coverage.w & 8u) != 0u;
+    if (forward && (c.coverage.w & 256u) != 0u)
+    {
+        const float side = dot(input.eye_position, c.water_plane.xyz) + c.water_plane.w;
+        if ((c.raster.w > 0.0 && side < 0.0) || (c.raster.w <= 0.0 && side > 0.0)) discard_fragment();
+    }
     const bool alpha_mask = (c.coverage.w & 1u) != 0u;
     const uint material_index = input.material_index;
     float alpha = material_index < c.coverage.x ?
         textures[material_index].sample(material_sampler, input.texcoord, bias(c.extent_bias.z)).a : 1.0;
     if (c.coverage.y == 2u) alpha *= input.vertex_alpha;
-    if (c.coverage.y == 0u && (c.coverage.w & (2u | 64u)) != 0u) alpha *= input.vertex_alpha;
+    if (c.coverage.y == 0u && ((!forward && (c.coverage.w & 2u) != 0u) ||
+        ((c.coverage.w & 512u) != 0u && (c.coverage.w & (2u | 64u)) != 0u)))
+        alpha *= input.vertex_alpha;
     const bool masked = alpha_mask || (c.coverage.y == 1u && c.coverage.z == 2u);
     const float threshold = c.coverage.y ? c.thresholds[min(material_index, 7u)].x : c.raster.z;
     const float quantization_bias = c.coverage.y != 0u || (c.coverage.y == 0u && (c.coverage.w & 4u) != 0u)
         ? 1.0 / 512.0 : 0.0;
-    if ((masked && alpha < threshold - quantization_bias) || (forward && alpha < c.raster.z)) discard_fragment();
+    if ((masked && alpha < threshold - quantization_bias) ||
+        ((c.coverage.w & 512u) != 0u && alpha < c.raster.z)) discard_fragment();
     const uint2 pixel = min(uint2(input.position.xy), uint2(c.extent_bias.xy) - 1u);
     const float reference_depth = opaque_depth_texture.read(pixel).x;
     const float depth = input.position.z;
     const float epsilon = 2.e-6;
-    if (forward ? (c.config.w != 0u ? depth < reference_depth - epsilon : depth > reference_depth + epsilon)
-                : abs(depth - reference_depth) > epsilon) discard_fragment();
+    // Forward color's actual read/write depth policy is reproduced by the
+    // private hardware depth attachment, rather than by a proxy comparison.
+    if (!forward && abs(depth - reference_depth) > epsilon) discard_fragment();
     bool valid = input.current_clip.w > 1.e-7 && input.previous_clip.w > 1.e-7 &&
         all(isfinite(input.current_clip)) && all(isfinite(input.previous_clip));
     const float2 motion = valid ? (input.previous_clip.xy / input.previous_clip.w -
@@ -21290,23 +21315,41 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     ALMetalTemporalMotionOutput output;
     output.motion = valid ? motion : float2(0.0);
     output.reactive = max(c.extent_bias.w, valid ? 0.0 : 1.0);
-    // The rejection replay runs before surface-proxy writes, so every layer is
-    // checked against the same opaque motion. The later nearest-surface replay
-    // disables mask writes. MAX preserves invalid or differently moving layers.
     output.depth = reference_depth;
+    if (forward)
+    {
+        output.motion = underlying_motion;
+        output.depth = underlying_depth;
+        output.reactive = 1.0;
+    }
     if (forward && (c.coverage.w & 128u) != 0u)
     {
-        const bool coherent = valid && all(isfinite(underlying_motion)) && isfinite(underlying_depth);
-        output.reactive = (c.coverage.w & 32u) != 0u && coherent &&
-            all(abs(motion - underlying_motion) <= c.raster.w) ? 0.0 : 1.0;
-        // A blended leaf must not reconstruct from the background's depth and
-        // motion. Select the nearest contributing supported surface regardless
-        // of replay order. Farther transparent layers still contribute to the
-        // MAX rejection union when their motion disagrees with this surface.
-        const bool nearer = !isfinite(underlying_depth) ||
+        // Exactly zero standard-alpha contribution leaves the represented
+        // color unchanged. Retain the visible inputs, while fixed-function
+        // depth still follows color's real read/write policy.
+        if (alpha == 0.0)
+        {
+            output.reactive = underlying_reactive;
+            return output;
+        }
+        const bool full_coverage = alpha == 1.0;
+        const bool reliable = (c.coverage.w & 32u) != 0u && valid && alpha <= 1.0;
+        const bool coherent = reliable && all(isfinite(underlying_motion)) && isfinite(underlying_depth);
+        // Equality in the actual RG16 motion representation is transitive.
+        // A rolling tolerance would allow .000 -> .020 -> .040 to accumulate
+        // disagreement while each adjacent pair appeared compatible.
+        const bool same_motion = all(float2(half2(motion)) == underlying_motion);
+        const bool water_in_front = almetal_temporal_water_visible(input.eye_position, false, view);
+        output.reactive = full_coverage
+            ? (reliable && !water_in_front ? 0.0 : 1.0)
+            : max(underlying_reactive, coherent && same_motion ? 0.0 : 1.0);
+        // A full-alpha standard blend replaces all preceding color, even in
+        // a read-only-depth far-after-near order. Partial layers retain every
+        // unsafe visible contribution; choose their nearest represented depth.
+        const bool replace = full_coverage || !isfinite(underlying_depth) ||
             (c.config.w != 0u ? depth > underlying_depth : depth < underlying_depth);
-        output.motion = nearer ? (valid ? motion : float2(0.0)) : underlying_motion;
-        output.depth = nearer ? depth : underlying_depth;
+        output.motion = replace ? (valid ? motion : float2(0.0)) : underlying_motion;
+        output.depth = replace ? depth : underlying_depth;
     }
     return output;
 }

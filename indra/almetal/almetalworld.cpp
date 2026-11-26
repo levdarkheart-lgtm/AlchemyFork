@@ -51,6 +51,23 @@ namespace
 {
     using CommandSettlementObserver = std::function<void(bool)>;
 
+    // Forward color and Temporal visibility replay consume the same faces.
+    // Generic alpha's double_sided field does not override its color contract.
+    ALMetalCullMode worldAlphaCullMode(const ALMetalWorldSimpleBatch& batch) noexcept
+    {
+        if (batch.avatar_alpha) return batch.avatar_cull_mode;
+        return batch.pre_water_particle || (batch.pre_water_pbr && batch.double_sided)
+            ? ALMetalCullMode::none : ALMetalCullMode::back;
+    }
+
+    bool worldForwardWritesDepth(const ALMetalWorldSimpleBatch& batch, bool rigged) noexcept
+    {
+        if (!batch.pre_water_alpha && !batch.post_water_alpha && !batch.avatar_alpha)
+            return !batch.impostor_emboss;
+        return batch.avatar_alpha ? batch.avatar_depth_write :
+            batch.pre_water_alpha || rigged || batch.post_water_depth_only;
+    }
+
     std::optional<std::uint64_t> currentThreadCpuNanoseconds() noexcept
     {
         timespec value{};
@@ -3070,7 +3087,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> temporal_resolve_pipeline;
     std::shared_ptr<ALMetalRenderPipeline> temporal_motion_background, temporal_motion_reactive_background, temporal_motion_impostor;
     std::shared_ptr<ALMetalRenderPipeline> temporal_opaque_depth_copy;
-    std::array<std::shared_ptr<ALMetalRenderPipeline>, 3> temporal_motion_geometry;
+    std::array<std::shared_ptr<ALMetalRenderPipeline>, 2> temporal_motion_geometry;
+    std::unique_ptr<ALMetalDepthStencilState> temporal_motion_seed_depth, temporal_motion_overlay_depth;
     ALMetalWorldAnimatedStats animated_stats;
     ALMetalWorldLightingTileStats lighting_tile_stats;
     void noteLightingTiles(bool base, ALMetalRasterTileSize requested,
@@ -22147,10 +22165,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 if (!alpha_pipeline) return fail_command();
             }
 
-            const bool writes_depth = batch.avatar_alpha
-                ? batch.avatar_depth_write
-                : batch.pre_water_alpha || rigged ||
-                      batch.post_water_depth_only;
+            const bool writes_depth = worldForwardWritesDepth(batch, rigged);
             const ALMetalDepthStencilState* depth = scene.reverse_z
                 ? (writes_depth ? mImpl->reverse_depth.get()
                                 : mImpl->reverse_readonly_depth.get())
@@ -22159,13 +22174,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoded =
                 encoder->setDepthStencilState(depth, error) &&
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
-                encoder->setCullMode(
-                    batch.avatar_alpha
-                        ? batch.avatar_cull_mode
-                        : batch.pre_water_particle ||
-                            (batch.pre_water_pbr && batch.double_sided)
-                        ? ALMetalCullMode::none : ALMetalCullMode::back,
-                    error) &&
+                encoder->setCullMode(worldAlphaCullMode(batch), error) &&
                 encoder->setTriangleFillMode(pool_fill_mode, error) &&
                 encoder->setPipeline(*alpha_pipeline, error) &&
                 encoder->setFragmentSampler(
@@ -22741,11 +22750,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     scene.mirror_clip_plane,
                     sizeof(shiny_world.mirror_clip_plane));
 
-        const ALMetalDepthStencilState* depth = batch.impostor_emboss
-            ? (scene.reverse_z ? mImpl->reverse_readonly_depth.get()
-                               : mImpl->forward_readonly_depth.get())
-            : (scene.reverse_z ? mImpl->reverse_depth.get()
-                               : mImpl->forward_depth.get());
+        const bool writes_depth = worldForwardWritesDepth(batch, rigged);
+        const ALMetalDepthStencilState* depth = scene.reverse_z
+            ? (writes_depth ? mImpl->reverse_depth.get() : mImpl->reverse_readonly_depth.get())
+            : (writes_depth ? mImpl->forward_depth.get() : mImpl->forward_readonly_depth.get());
         encoded =
             encoder->setDepthStencilState(depth, error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
