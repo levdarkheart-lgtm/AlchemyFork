@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-612 -->
+<!-- next-defect-id: PPD-614 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15034,3 +15034,38 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26: Exact live semantic comparison establishes erroneous history rejection and its correction with unchanged same-phase color/depth inputs. This scopes611 to history identity; it does not assign all residual fine-detail instability to that mechanism. Active shader UV lanes are canonical; reserved lanes are excluded conservatively after source proof. Owner verification remains pending.
 
 - 2026-11-26 publication authorization: Owner explicitly requests pushing these changes to codex/metalfx-temporal-20261125 so another AI can review. Authorization covers corrective code, tests and documentation only; private recordings/artifacts stay local. This does not grant quality acceptance, usual/Spatial branch changes or release publication.
+
+
+## PPD-612 — Forward Temporal replay ignores color-pass backface culling
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Temporal visibility
+- Discovered: 2026-11-26
+- Original reference: Alchemy1eb44bbd1bdc76d0100c75699bad1fb337e8cb45 lldrawpoolalpha.cpp renderAlpha preserves backface culling except particles and explicitly double-sided glTF; Temporal is a new consumer of that visible-color contract.
+- Evidence: [Frozen69506quality baseline](research/temporal-foliage-quality-69506-baseline.md). Native alpha color uses avatar policy, particles/PBR double-sided none, otherwise back; almetalworld_motion.inl disables culling for every forward row. Invisible backfaces can supply proxy depth/motion/rejection.
+- Next action: Share the actual alpha culling policy and render front/back generic/PBR and double-sided controls before/after.
+- Verification: Source mismatch confirmed at publicationf2f841305c; rendered counterexample pending. Separate from attribution to every live MASK palm pixel.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered before repair after owner review. Scope is visible forward color and both Temporal replays; preserve avatar/particle exceptions and all existing history/ownership invariants. Owner requests corrective source/test/report publication on the Temporal branch and a new private review build.
+
+## PPD-613 — Temporal rejection includes hidden background contributions
+
+- Status: investigating
+- Confirmation: source_confirmed
+- Owner: Temporal contribution visibility
+- Discovered: 2026-11-26
+- Original reference: Temporal is new. Original Alchemy alpha composition and existing native standard-alpha color/depth order define visible contributions; Aurora is a selective-history reference, not a replacement backend.
+- Evidence: [Frozen69506quality baseline](research/temporal-foliage-quality-69506-baseline.md). Qualified forward motion must match opaque motion within.025inputpixel even at alpha1; final sky/water union classifies pristine opaque-only depth after foreground proxy selection. Perspective parallax or hidden dynamic backgrounds can therefore reject fully covering reliable foreground.
+- Next action: Render perspective full/partial foreground, dynamic sky/water and overlap controls; implement an explicit opacity/visibility policy with matching foreground inputs and conservative genuine-transparency protection.
+- Verification: Source dependencies confirmed; targeted rendered counterexamples and correction pending. Do not globally accept history or increase the tolerance.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered before repair. Full, partial and near-zero opacity require distinct contribution treatment. Preserve valid history advancement, cancellation and pooled ownership; report any additional pass/allocation cost. PPD610 owns separate MASK/settling quality failures.

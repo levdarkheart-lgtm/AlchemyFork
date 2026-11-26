@@ -10,32 +10,26 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `f969bd53245a26b79df3abcb41c047f28558f455` contains local foliage corrections. PPD610 actual front-yard routing is
-proven: PBR MASK palms/dense leaves, generic/PBR BLEND grass. Original camera/poses are static with tiny
-motion, but sky/forward history is broadly rejected. Corrected sky direction/scoped layers and independent
-nearest foreground blend depth/motion preserve reliable history while retaining unsafe-layer MAX rejection.
-PPD611 removes immutable-wrapper address significance with exact bounded active material/resource semantics.
-Targeted54-world proof retains36/24equivalent publication changes with54/54valid poses; four opaque center
-rejection counts44/41/53/53→0/0/0/0. All72matched GBuffer and72pristine-depth file pairs are byte-identical.
-Generation/topology/duplicate/budget guards remain. Quality acceptance is pending; owner authorizes source push for AI review on2026-11-26.
+Commit `f969bd53245a26b79df3abcb41c047f28558f455` is69506application source. New task starts from
+publicationf2f841305c; fetched remote has no subsequent commits. Preserve its semantic equality, corrected
+sky and qualified foreground inputs, submission/cancellation and pooling corrections. Native default,
+Spatial and combined-lighting OFF remain. No live login/capture/FPS campaign; owner reviews the new app.
 
-All earlier live runs were WINDOWED2304x1278→3456x1916: macOS startup ignores FullScreen. Some also have
-illumination drift, so their descriptive image metrics are not isolated final quality/FPS claims. Root now
-uses actual native window fullscreen plus fixedMidday, verified2304x1446→3456x2168, for final original/
-corrected stationary and move-stop comparison. Original and69505 sessions are closed normally; saved login
-was explicitly authorized. No broad FPS campaign, mip tuning or unrelated shader work.
+[Frozen69506quality baseline](../../research/temporal-foliage-quality-69506-baseline.md) recovers all20failed
+bounds from retained logs/CSV before implementation:16MASK,3BLEND,1control. PBR MASK uses grass texture;
+add an explicit PBR palm case. Stationary color/depth/motion coverage agrees in retained inputs; MASK
+coverage/detail and18/36-world settling remain failures, not a demonstrated PBR-only sampling mismatch.
 
-52motion/history/presentation/orchestration/sky cases passed API/GPU validation before the semantic repair;
-44semantic/affected cases then passed435928assertions. Reserved inactive PBR UV lanes are now excluded,
-with active-lane changes still invalidating history;19history cases/1851assertions and14affected suites pass.20strict foliage quality
-bounds remain failed: thin detail and settling are open. Do not blur or weaken the test to call it fixed.
-Previous PPD608/609 allocation/cancellation corrections and optional pool plateaus are preserved.
+PPD612 registers forward color/replay culling mismatch; share actual color policy and render backface
+counterexamples. PPD613 registers hidden-background parallax/sky/water rejection; resolve visible full/partial
+contributions with correct motion/depth and overlap controls. PPD610 remains the independent MASK quality
+task. Root owns shared native/shader/integration/docs, agents own disjoint baseline/fixture/visibility files.
+GPU/Ninja use is serialized. First reproduce new targeted failures on old code, then apply bounded repairs,
+compare every frozen bound and retain unresolved precise cases without weakening criteria.
 
-Clean69506/sourcef969bd5324 builds/signs and passes346ARM64 checks/login smoke. Fullscreen grass/palm
-variation falls≈85%/77%; settling remains. Quiet sanity observes8%lower rate without restoredcontrol. Next:
-DMG/signature/content checks pass; DMG/ZIP/checksums uploaded to iCloudDesktop. Next: owner quality/cost review. Hooks/mip counterfactual
-have been removed from pipeline source; diagnostic executables/evidence remain private. Source publication is owner-authorized for AI review.
-Restore settings/shared environment, leave viewer closed. Never query an app-bound CUA object after Quit.
+Finish affected Native/Spatial/history/ownership tests, clean source-pinned review build, active shader and
+mounted-package identity checks, login-screen-only smoke, private iCloud delivery/upload confirmation, and
+commit/push on Temporal branch as owner explicitly requests. Usual/Spatial branches and prior69506 preserved.
 
 ## Preserved Spatial parent checkpoint
 
