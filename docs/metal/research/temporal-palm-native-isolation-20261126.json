@@ -1,0 +1,130 @@
+{
+  "scope": "Deterministic explicit PBR MASK palm. No live scene or new viewer build. Production renderer/shaders unchanged from69507.",
+  "base": "945246965c7325a39a427bc3d6efc0f676f65045",
+  "fixture_executable_sha256": "059551fab4780cacac2350da5b9d86c546a54390ababb045a20b40c152ec601f",
+  "shader_sha256": "5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a",
+  "source_sha256": {
+    "indra/almetal/tests/almetal_temporal_foliage_stability_test.mm": "ebbb3b964ea99123d96023be3e6e9b808816fc05d031d247c6839125cc9c1b38",
+    "indra/almetal/tests/almetal_temporal_direct_fixture.h": "eeb76519231cfa5bb7c47b827df119c2eeb128d0714d17b98571152af619ca10",
+    "indra/almetal/tests/almetal_temporal_direct_replay.mm": "a2e5ed17e42afef2032e88ac42f4010a2021cb4e7bb50b78c5d31192793cfd1d",
+    "indra/almetal/CMakeLists.txt": "f9ab955a6ecf7cfbb168b03006fddc19afc11b38653de36f5a8dbf14c650c062"
+  },
+  "sequence": {
+    "main_worlds": 144,
+    "reference_worlds": 54,
+    "warm_worlds": 36,
+    "stationary_worlds": 54,
+    "moving_worlds": 18,
+    "stopped_worlds": 36,
+    "jitter_phases": 18,
+    "input": [
+      256,
+      128
+    ],
+    "output": [
+      384,
+      192
+    ],
+    "normal_depth": true,
+    "pre_exposure": 1,
+    "first_world_only_reset": true
+  },
+  "raw_resolved_RGB_differences": 0,
+  "direct_native": {
+    "standalone-main-01": {
+      "complete": true,
+      "frames": 144,
+      "reset_frames": 1,
+      "input_width": 256,
+      "input_height": 128,
+      "output_width": 384,
+      "output_height": 192,
+      "rgb_components": 31850496,
+      "rgb_differences": 0,
+      "rgb_max_error": 0,
+      "alpha_differences_observational": 0,
+      "alpha_nonfinite_observational": 0,
+      "alpha_max_error_observational": 0
+    },
+    "standalone-reference-01": {
+      "complete": true,
+      "frames": 54,
+      "reset_frames": 1,
+      "input_width": 256,
+      "input_height": 128,
+      "output_width": 384,
+      "output_height": 192,
+      "rgb_components": 11943936,
+      "rgb_differences": 0,
+      "rgb_max_error": 0,
+      "alpha_differences_observational": 0,
+      "alpha_nonfinite_observational": 0,
+      "alpha_max_error_observational": 0
+    }
+  },
+  "stage_metric_strings": {
+    "native": {
+      "mean_rgb_change": "0.0036729858417721907",
+      "edge_band_change": "0.004314364957619261",
+      "edge_band_p95": "0.0045685057890792174",
+      "minimum_recall": "0.85446920949441629",
+      "minimum_area": "0.72172860622982393",
+      "edge_energy": "0.20455696902988851",
+      "stop18_phase_error": "0.0059885653451804913",
+      "stop36_phase_error": "0.002298313084378386",
+      "stop18_old_fraction": "0.00043351592909049132",
+      "stop36_old_fraction": "0.00017885918770396472"
+    },
+    "resolved": {
+      "mean_rgb_change": "0.0036729858417721907",
+      "edge_band_change": "0.004314364957619261",
+      "edge_band_p95": "0.0045685057890792174",
+      "minimum_recall": "0.85446920949441629",
+      "minimum_area": "0.72172860622982393",
+      "edge_energy": "0.20455696902988851",
+      "stop18_phase_error": "0.0059885653451804913",
+      "stop36_phase_error": "0.002298313084378386",
+      "stop18_old_fraction": "0.00043351592909049132",
+      "stop36_old_fraction": "0.00017885918770396472"
+    },
+    "direct": {
+      "mean_rgb_change": "0.0036729858417721907",
+      "edge_band_change": "0.004314364957619261",
+      "edge_band_p95": "0.0045685057890792174",
+      "minimum_recall": "0.85446920949441629",
+      "minimum_area": "0.72172860622982393",
+      "edge_energy": "0.20455696902988851",
+      "stop18_phase_error": "0.0059885653451804913",
+      "stop36_phase_error": "0.002298313084378386",
+      "stop18_old_fraction": "0.00043351592909049132",
+      "stop36_old_fraction": "0.00017885918770396472"
+    }
+  },
+  "failed_bounds_each_stage": [
+    "edge_band_change<=1/255",
+    "minimum_recall>=0.90",
+    "minimum_area>=0.85",
+    "stop18_phase_error<=1/255"
+  ],
+  "quality_assertions": {
+    "total": 10515,
+    "passed": 10503,
+    "failed": 12
+  },
+  "interpretation": "Immediate native loss/variation and settling reproduce without Alchemy wrapper/pool/history/resolve. No demonstrated AppleAPIviolation and no Appledefect claim. Private internal reconstruction/filter response and any quality-preserving remedy remain unresolved.",
+  "artifact_root": "artifacts/metal/temporal-palm-native-isolation-20261126",
+  "contract_audit_identities": {
+    "audit_utc": "2026-11-26T10:35:59.881740+00:00",
+    "base_head": "945246965c7325a39a427bc3d6efc0f676f65045",
+    "note": "Root is adding private fixture observations concurrently; fixture hash is observed local source, not a claim that baseHEAD contains those edits. No GPU/build executed by this audit.",
+    "sha256": {
+      "indra/almetal/almetaltemporalscaler.mm": "0c7afa93991ea55c68288db94ab128d7e1b156443bf5458412ac4053dfbd95ea",
+      "indra/almetal/almetaltemporalscaler.h": "e4ae785c97c89648b3f7b616cb8ce2ab92a67accd989633da2b37113468f182a",
+      "indra/almetal/tests/almetal_temporal_foliage_stability_test.mm": "0fac7a31baa67b194033ae6542954d326359000fc8fda24f725125b10c1d0398",
+      "indra/almetal/tests/almetal_temporal_scaler_test.mm": "9f4abf742a2d7a6875808f7dd822aca1d2b42e80ed9d5fed248ec7b34aa4d023",
+      "indra/almetal/shaders/almetal_builtin.metal": "5d5f5e37c1e874f0dc37d0b983042be29be63dd4e21345464afba2e63e32ac5e",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/MetalFX.framework/Headers/MTLFXTemporalScaler.h": "a4168d18184ff1b143e16cfc8d615b6cf80151b8ac35cf521520f0551dd44f57"
+    }
+  },
+  "official_integration_reference": "https://developer.apple.com/videos/play/wwdc2022/10103/"
+}

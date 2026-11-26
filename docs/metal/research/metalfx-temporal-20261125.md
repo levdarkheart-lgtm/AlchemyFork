@@ -512,3 +512,13 @@ fullscreen smoke passes,17settingsXML restored/appclosed. DMG,verificationZIP/ch
 are confirmeduploaded at08:39:33UTC. Temporal-only publication is owner-authorized; usual/Spatial and69506
 are preserved. See the compact69507review for exact identities and allremainingqualityfailures. No fixed
 live foliage claim or FPS result; owner live review is next.
+
+
+### PBR MASK native isolation — no replacement viewer
+
+The [complete native isolation](temporal-palm-native-isolation-20261126.md) separates immediate MetalFX RGB
+from Alchemy resolve, direct SDK execution and a standalone SDK-only replay. All144main+54reference
+worlds match exactly; the same4palm bounds fail at all outputs. No production fix or new DMG is justified.
+Tests preserve69507visibility/ownership and frozen bounds;15affectedcorrectness suites pass. The complete
+portable reproducer, source and concise machine-readable evidence replace another unchanged review app.
+PPD610 stays investigating; no Apple-defect/intrinsic-limit claim or live/FPS acceptance is made.

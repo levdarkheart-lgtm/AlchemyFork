@@ -12,26 +12,25 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
-## Active image-quality work — PPD610/611/612/613
+## Active PBR MASK isolation — PPD610 remains unresolved
 
-**Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`; experimental69507 Release verified.
-Started from remote publicationf2f841305c; reviewed69506 sourcef969bd5324 and all artifacts are preserved.
-[69507review](../research/temporal-foliage-69507-review.md) owns the compact correction/quality matrix;
-[frozen69506baseline](../research/temporal-foliage-quality-69506-baseline.md) retains all20original failures.
-PPD612/613 correct actual alpha culling, depth-write/order, alpha cutoff and visible-contribution rejection.
-Full alpha can hide background parallax/sky/water; partial/zero alpha retain their actual contributing inputs.
-A memoryless depth attachment reproduces forward color visibility; no new command/submission wait.
-Final10visibility cases pass19777assertions;15focused correctness suites pass API/GPU validation.
-Repeated12world pool arms plateau afterwarm4, including visibility-pack45reuses/0deferrals.
-Original quality fixture STILL fails20bounds/6972assertions; explicit PBR palm fails16bounds/23684assertions.
-Matched input/history checks pass; current-frame reconstruction loses contrast, retained history improves it.
-Sign reversal/reset-every-world worsen quality; input-alpha/clear-versus-finite-depth controls do not fix it.
-No production quality-policy diagnostics retained; no intrinsic-vendor-limit or live-complaint-fixed claim.
-PPD610 stays investigating. PPD611semantic equality,608/609allocation/cancellation corrections preserved.
-Owner requests Temporal-only commit/push and new experimental package; usual/Spatial remain untouched.
-Release/346ARM64/signatures and8272mounted app entries verified; intended test/app/mounted shader identical.
-Fullscreenlogin-only smoke passes,17XMLfiles restored byte-exact, appclosed. iCloud uploaded08:39UTC.
-Owner alone performs live login/quality acceptance; exact hashes and package receipt are in the69507review.
+**Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`;69507renderer/shaders unchanged.
+Task starts from branch945246965c; tests now expose immediate native and resolved output independently.
+[Palm native isolation](../research/temporal-palm-native-isolation-20261126.md) is the current evidence map.
+All144main+54reference worlds have identical raw/resolved RGB. Direct native execution with independent
+scaler/textures/queue also matches; SDK-only standalone binary repeats all43,794,432RGBcomponents exactly.
+The complete36warm/54stationary/18moving/36stopped sequence is retained, not a repeated stationary cycle.
+PBR palm edge.00431436,recall.854469,area.721729,stop18.00598857 still fail frozen bounds in all3outputs;
+stop36.00229831 passes. New isolation case retains12failures/10515assertions (4same failures per stage).
+The tested failure precedes resolve and persists without wrapper/pool/history orchestration. No demonstrated
+Apple API violation or Apple-defect claim; exact internal reconstruction response/remedy remains unknown.
+Alpha intentionally differs after resolve; finite sampler precision invalidated a new ideal-alpha oracle,
+not the existing unchanged glow-alpha/frozen quality checks. Production quality policies are untouched.
+PPD611semantic identity,612/613visibility and608/609cancellation/pooling corrections remain preserved.
+15affectedcorrectness suites pass API/GPU validation. No viewer launch/login/settings change/newDMG.
+Deliver minimal reproducer/tests/concise evidence on Temporal
+branch only. Owner live acceptance remains unclaimed; require actual palm improvement before a new app.
+Preserved69507app/DMG and prior20failure matrix remain at their existing paths; Native default/Spatial intact.
 
 ## Preserved69494 Temporal checkpoint — PPD598
 
@@ -154,6 +153,5 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Finish experimental69507 delivery and owner review. Use Advanced Graphics → World resolution →
-67% MetalFX Temporal; inspect effective status. Use macOS screenshots/recording, not independent snapshots.
-No live login or new Home investigation during offline qualification. PPD610 stays open for MASK quality.
+Finish source/evidence publication, then hand off the SDK-only complete
+PBR MASK reproducer. No new viewer package or live-scene request for unchanged foliage. PPD610 stays open.

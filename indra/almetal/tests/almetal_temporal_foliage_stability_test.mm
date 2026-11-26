@@ -5,6 +5,7 @@
  */
 #include "almetal_world_inputs_fixture.h"
 #include "../almetaltemporalworldhistory.h"
+#include "almetal_temporal_direct_fixture.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -34,7 +35,7 @@ float luminance(const Color& p) { return .2126f*p[0] + .7152f*p[1] + .0722f*p[2]
 
 struct FramePixels
 {
-    std::vector<Color> input, output;
+    std::vector<Color> input, output, native_output;
     std::vector<float> depth, motion_depth, opaque_depth;
     std::vector<std::array<__fp16,2>> motion;
     std::vector<std::uint8_t> reactive;
@@ -106,6 +107,7 @@ struct FoliageFixture : Fixture
     std::filesystem::path output_dir;
     const float mip_bias = std::log2(float(InputWidth)/float(OutputWidth))-1.f;
     bool reverse_z = false;
+    bool observe_native_output = false;
 
     explicit FoliageFixture(bool reversed = false) : reverse_z(reversed)
     {
@@ -495,6 +497,14 @@ struct FoliageFixture : Fixture
         pixels.resets=history.stats().resets;
         pixels.input=readColors(*color_target->colorTexture(0),*device,error);
         pixels.output=readColors(*resolved->colorTexture(0),*device,error);
+        // Read the distinct vendor-written texture before another world can
+        // reuse it. Resolve samples it read-only; this captures its original
+        // RGB/alpha independently of Alchemy's resolve destination.
+        if(observe_native_output)
+        {
+            REQUIRE(raw->colorTexture(0)->nativeHandle()!=resolved->colorTexture(0)->nativeHandle());
+            pixels.native_output=readColors(*raw->colorTexture(0),*device,error);
+        }
         pixels.depth.resize(InputWidth*InputHeight);pixels.motion_depth.resize(InputWidth*InputHeight);
         pixels.opaque_depth.resize(InputWidth*InputHeight);
         pixels.motion.resize(InputWidth*InputHeight);pixels.reactive.resize(InputWidth*InputHeight);
@@ -648,6 +658,8 @@ void dumpFrame(const std::filesystem::path& directory,const std::string& name,co
     dumpImage(directory/(name+"-output.ppm"),frame.output,OutputWidth,OutputHeight);
     dumpRaw(directory/(name+"-input.rgba32f"),frame.input.data(),frame.input.size()*sizeof(Color));
     dumpRaw(directory/(name+"-output.rgba32f"),frame.output.data(),frame.output.size()*sizeof(Color));
+    if(!frame.native_output.empty())
+        dumpRaw(directory/(name+"-native-output.rgba32f"),frame.native_output.data(),frame.native_output.size()*sizeof(Color));
     dumpRaw(directory/(name+"-depth.r32f"),frame.depth.data(),frame.depth.size()*sizeof(float));
     dumpRaw(directory/(name+"-proxy-depth.r32f"),frame.motion_depth.data(),frame.motion_depth.size()*sizeof(float));
     dumpRaw(directory/(name+"-motion.rg16f"),frame.motion.data(),frame.motion.size()*sizeof(frame.motion[0]));
@@ -1118,6 +1130,199 @@ TEST_CASE("Temporal67 PBR MASK palm separates background depth from material cov
                 CHECK(stopped[1].phase_matched_error<=1./255.);CHECK(stopped[2].phase_matched_error<=1./255.);
                 CHECK(stopped[1].old_history_fraction<=.02);CHECK(stopped[2].old_history_fraction<=.02);
             }
+        }
+    }
+}
+
+namespace
+{
+std::vector<Color> directPalmFrame(almetal_test::DirectTemporalFixture& direct,
+    const FramePixels& current,unsigned index,std::string& error)
+{
+    // Readback floats represent the original16F color exactly; prove that
+    // packing into the independently owned native input loses no source bits.
+    std::vector<almetal_test::DirectTemporalFixture::HalfPixel> color(current.input.size());
+    unsigned mismatches=0;
+    for(std::size_t i=0;i<color.size();++i)for(unsigned c=0;c<4;++c)
+    {color[i][c]=current.input[i][c];mismatches+=float(color[i][c])!=current.input[i][c];}
+    REQUIRE(mismatches==0);
+    const almetal_test::DirectTemporalFixture::PackedInputs inputs{
+        std::as_bytes(std::span(color)),std::as_bytes(std::span(current.motion_depth)),
+        std::as_bytes(std::span(current.motion)),std::as_bytes(std::span(current.reactive))};
+    almetal_test::DirectTemporalFixture::Frame frame;
+    frame.world_id=index+1;frame.jitter_x=current.jitter[0];frame.jitter_y=current.jitter[1];
+    frame.pre_exposure=1.f;frame.depth_reversed=false;frame.reset=index==0;
+    almetal_test::DirectTemporalFixture::Result result;
+    REQUIRE(direct.render(inputs,frame,result,error));INFO(error);REQUIRE(result.world_id==index+1);
+    std::vector<Color> pixels(result.rgba16.size());
+    for(std::size_t i=0;i<pixels.size();++i)for(unsigned c=0;c<4;++c)pixels[i][c]=result.rgba16[i][c];
+    return pixels;
+}
+}
+
+TEST_CASE("Temporal67 failing PBR palm separates native reconstruction from Alchemy resolve",
+          "[metal][temporal][foliage-native-isolation]")
+{
+    @autoreleasepool
+    {
+        const Region palm{"pbr_palm",192,0,true,true};
+        FoliageFixture f;f.usePBRPalm(false);f.observe_native_output=true;
+        if(!f.output_dir.empty()){f.output_dir/="native-isolation";std::filesystem::create_directories(f.output_dir);}
+        const auto reference=f.native(0.f),shifted_reference=f.native(.05f);
+        const auto truth=f.coverageReference(0.f);
+        using Direct=almetal_test::DirectTemporalFixture;
+        auto direct=Direct::create((__bridge id<MTLDevice>)f.device->nativeHandle(),
+            {InputWidth,InputHeight,OutputWidth,OutputHeight,true},f.error);
+        REQUIRE(direct);INFO(f.error);
+        constexpr unsigned Stages=3;
+        const std::array<const char*,Stages> names{"native","resolved","direct"};
+        std::array<std::array<std::vector<Color>,Phases>,Stages> initial,stationary_final;
+        if(!f.output_dir.empty())
+        {
+            dumpRaw(f.output_dir/"native-detail-reference.rgba32f",reference.data(),reference.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"shifted-native-detail-reference.rgba32f",shifted_reference.data(),shifted_reference.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"coverage-reference.r32f",truth.coverage.data(),truth.coverage.size()*sizeof(float));
+            dumpImage(f.output_dir/"native-detail-reference.ppm",reference,OutputWidth,OutputHeight);
+        }
+        // Each stage is compared with its OWN full-history, final-camera
+        // reference, including all warm-up worlds from the initial reset.
+        {
+            FoliageFixture independent;independent.usePBRPalm(false);independent.observe_native_output=true;
+            auto direct_reference=Direct::create((__bridge id<MTLDevice>)independent.device->nativeHandle(),
+                {InputWidth,InputHeight,OutputWidth,OutputHeight,true},independent.error);
+            REQUIRE(direct_reference);INFO(independent.error);
+            std::ofstream reference_frames;
+            if(!f.output_dir.empty())
+            {
+                reference_frames.open(f.output_dir/"reference-sequence.csv");reference_frames<<std::setprecision(17);
+                reference_frames<<"frame,world_id,phase,jitter_x,jitter_y,camera_shift,reset,history_resets,valid_previous,input_width,input_height,output_width,output_height,depth_reversed,pre_exposure\n";
+            }
+            for(unsigned i=0;i<WarmFrames+Phases;++i)
+            {
+                auto current=independent.render(i,.05f);
+                auto direct_output=directPalmFrame(*direct_reference,current,i,independent.error);
+                std::uint64_t reference_rgb_differences=0;
+                for(std::size_t p=0;p<direct_output.size();++p)for(unsigned c=0;c<3;++c)
+                    reference_rgb_differences+=direct_output[p][c]!=current.native_output[p][c];
+                CHECK(reference_rgb_differences==0);
+                if(reference_frames)reference_frames<<i<<','<<i+1<<','<<current.phase<<','<<current.jitter[0]<<','<<current.jitter[1]<<','<<.05f<<','<<(i==0)<<','<<current.resets<<','<<current.previous_valid<<','<<InputWidth<<','<<InputHeight<<','<<OutputWidth<<','<<OutputHeight<<",0,1\n";
+                if(!f.output_dir.empty())
+                {std::ostringstream label;label<<"reference-world-"<<std::setw(3)<<std::setfill('0')<<i;dumpFrame(f.output_dir,label.str(),current);dumpRaw(f.output_dir/(label.str()+"-direct-output.rgba32f"),direct_output.data(),direct_output.size()*sizeof(Color));}
+                if(i>=WarmFrames)
+                {
+                    stationary_final[0][current.phase]=std::move(current.native_output);
+                    stationary_final[1][current.phase]=std::move(current.output);
+                    stationary_final[2][current.phase]=std::move(direct_output);
+                }
+            }
+        }
+        std::array<Stability,Stages> metrics;
+        std::array<std::array<StopQuality,3>,Stages> stopped;
+        FramePixels previous;std::vector<Color> previous_direct;
+        std::ofstream frames;
+        if(!f.output_dir.empty())
+        {
+            frames.open(f.output_dir/"sequence.csv");frames<<std::setprecision(17);
+            frames<<"frame,world_id,phase,jitter_x,jitter_y,camera_shift,reset,history_resets,valid_previous,input_width,input_height,output_width,output_height,depth_reversed,pre_exposure,rgb_differences,rgb_max_error,alpha_differences,alpha_max_error,resolve_alpha_max_error,direct_rgb_differences,direct_rgb_max_error,direct_alpha_differences,direct_alpha_max_error\n";
+        }
+        std::uint64_t rgb_differences=0,alpha_differences=0;double rgb_max=0,alpha_max=0,alpha_expected_max=0;
+        std::uint64_t direct_rgb=0,direct_alpha=0;double direct_rgb_max=0,direct_alpha_max=0;
+        constexpr unsigned MovingFrames=18,total=WarmFrames+StableFrames+MovingFrames+2*Phases;
+        for(unsigned i=0;i<total;++i)
+        {
+            const unsigned moving=i>=WarmFrames+StableFrames?i-(WarmFrames+StableFrames)+1:0;
+            const float shift=.05f*float(std::min(moving,MovingFrames))/float(MovingFrames);
+            auto current=f.render(i,shift);REQUIRE(current.native_output.size()==current.output.size());
+            auto direct_output=directPalmFrame(*direct,current,i,f.error);
+            REQUIRE(direct_output.size()==current.native_output.size());
+            REQUIRE(current.resets==1);REQUIRE(current.phase==i%Phases);
+            std::uint64_t frame_rgb=0,frame_alpha=0,frame_direct_rgb=0,frame_direct_alpha=0;double frame_direct_rgb_max=0,frame_direct_alpha_max=0;unsigned nonfinite=0;double frame_rgb_max=0,frame_alpha_max=0,frame_expected_max=0;
+            for(unsigned y=0;y<OutputHeight;++y)for(unsigned x=0;x<OutputWidth;++x)
+            {
+                const auto p=y*OutputWidth+x;
+                for(unsigned c=0;c<3;++c)
+                {
+                    nonfinite+=!std::isfinite(current.native_output[p][c]) || !std::isfinite(current.output[p][c]);
+                    const double error=std::abs(current.output[p][c]-current.native_output[p][c]);
+                    frame_rgb+=error!=0;frame_rgb_max=std::max(frame_rgb_max,error);
+                    const double direct_error=std::abs(direct_output[p][c]-current.native_output[p][c]);
+                    frame_direct_rgb+=direct_error!=0;frame_direct_rgb_max=std::max(frame_direct_rgb_max,direct_error);
+                }
+                const double alpha_error=std::abs(current.output[p][3]-current.native_output[p][3]);
+                frame_alpha+=alpha_error!=0;frame_alpha_max=std::max(frame_alpha_max,alpha_error);
+                const double direct_alpha_error=std::abs(direct_output[p][3]-current.native_output[p][3]);
+                frame_direct_alpha+=direct_alpha_error!=0;frame_direct_alpha_max=std::max(frame_direct_alpha_max,direct_alpha_error);
+                // Independently evaluate only the documented alpha resolve:
+                // linear/clamp original input at output center + input jitter.
+                const float sx=(float(x)+.5f)*InputWidth/OutputWidth+current.jitter[0]-.5f;
+                const float sy=(float(y)+.5f)*InputHeight/OutputHeight+current.jitter[1]-.5f;
+                const int x0=std::floor(sx),y0=std::floor(sy);const float tx=sx-x0,ty=sy-y0;
+                const auto alpha=[&](int xx,int yy){return current.input[std::clamp(yy,0,int(InputHeight)-1)*InputWidth+std::clamp(xx,0,int(InputWidth)-1)][3];};
+                const float expected=(alpha(x0,y0)*(1-tx)+alpha(x0+1,y0)*tx)*(1-ty)+
+                    (alpha(x0,y0+1)*(1-tx)+alpha(x0+1,y0+1)*tx)*ty;
+                frame_expected_max=std::max(frame_expected_max,double(std::abs(current.output[p][3]-expected)));
+            }
+            REQUIRE(nonfinite==0);
+            rgb_differences+=frame_rgb;rgb_max=std::max(rgb_max,frame_rgb_max);
+            alpha_differences+=frame_alpha;alpha_max=std::max(alpha_max,frame_alpha_max);
+            alpha_expected_max=std::max(alpha_expected_max,frame_expected_max);
+            direct_rgb+=frame_direct_rgb;direct_alpha+=frame_direct_alpha;
+            direct_rgb_max=std::max(direct_rgb_max,frame_direct_rgb_max);direct_alpha_max=std::max(direct_alpha_max,frame_direct_alpha_max);
+            if(i>=WarmFrames && i<WarmFrames+StableFrames)
+            {
+                FramePixels raw_previous=previous,raw_current=current;
+                raw_previous.output=previous.native_output;raw_current.output=current.native_output;
+                measure(metrics[0],raw_previous,raw_current,reference,truth,palm);
+                measure(metrics[1],previous,current,reference,truth,palm);
+                raw_previous.output=previous_direct;raw_current.output=direct_output;
+                measure(metrics[2],raw_previous,raw_current,reference,truth,palm);
+                if(i<WarmFrames+Phases)
+                {initial[0][current.phase]=current.native_output;initial[1][current.phase]=current.output;initial[2][current.phase]=direct_output;}
+            }
+            const unsigned first_stop=WarmFrames+StableFrames+MovingFrames;
+            if(i==first_stop || i==first_stop+Phases-1 || i==total-1)
+            {
+                const unsigned sample=i==total-1?2:i==first_stop?0:1;
+                stopped[0][sample]=stopQuality(reference,shifted_reference,initial[0][current.phase],stationary_final[0][current.phase],current.native_output,palm);
+                stopped[1][sample]=stopQuality(reference,shifted_reference,initial[1][current.phase],stationary_final[1][current.phase],current.output,palm);
+                stopped[2][sample]=stopQuality(reference,shifted_reference,initial[2][current.phase],stationary_final[2][current.phase],direct_output,palm);
+            }
+            if(!f.output_dir.empty())
+            {std::ostringstream label;label<<"world-"<<std::setw(3)<<std::setfill('0')<<i;dumpFrame(f.output_dir,label.str(),current);dumpRaw(f.output_dir/(label.str()+"-direct-output.rgba32f"),direct_output.data(),direct_output.size()*sizeof(Color));}
+            if(frames)frames<<i<<','<<i+1<<','<<current.phase<<','<<current.jitter[0]<<','<<current.jitter[1]<<','<<shift<<','<<(i==0)<<','<<current.resets<<','<<current.previous_valid<<','<<InputWidth<<','<<InputHeight<<','<<OutputWidth<<','<<OutputHeight<<",0,1,"<<frame_rgb<<','<<frame_rgb_max<<','<<frame_alpha<<','<<frame_alpha_max<<','<<frame_expected_max<<','<<frame_direct_rgb<<','<<frame_direct_rgb_max<<','<<frame_direct_alpha<<','<<frame_direct_alpha_max<<'\n';
+            previous=std::move(current);previous_direct=std::move(direct_output);
+        }
+        std::cout<<std::setprecision(17)<<"PBR palm native/resolve worlds="<<total<<", rgb_differences="<<rgb_differences
+            <<", rgb_max_error="<<rgb_max<<", alpha_differences="<<alpha_differences<<", alpha_max_error="<<alpha_max
+            <<", resolve_alpha_max_error="<<alpha_expected_max<<'\n';
+        std::cout<<"PBR palm direct worlds="<<direct->submittedFrames()<<", resets="<<direct->resetFrames()
+            <<", rgb_differences="<<direct_rgb<<", rgb_max_error="<<direct_rgb_max
+            <<", alpha_differences="<<direct_alpha<<", alpha_max_error="<<direct_alpha_max<<'\n';
+        CHECK(direct->submittedFrames()==total);CHECK(direct->resetFrames()==1);
+        CHECK(direct_rgb==0); // Vendor alpha is observed, not assigned a viewer glow contract.
+        CHECK(rgb_differences==0); // Intentionally independent of alpha's different contract.
+        // Ideal real-valued interpolation is an observation, not a valid
+        // sharp-alpha oracle: the native linear sampler has finite filter
+        // weight precision. The existing analytical glow-alpha fixtures retain
+        // their original bounds and separately check the intended alpha rule.
+        for(unsigned stage=0;stage<Stages;++stage)
+        {
+            CAPTURE(names[stage]);const auto& m=metrics[stage];const auto& stop=stopped[stage];
+            const double change=m.absolute_change/m.pixels,edge_change=m.edge_band_change/m.edge_band_pixels;
+            auto sorted=m.frame_edge_changes;std::sort(sorted.begin(),sorted.end());
+            const double p95=sorted[std::min(sorted.size()-1,std::size_t(std::ceil(sorted.size()*.95)-1))];
+            std::cout<<std::setprecision(17)<<"PBR palm stage="<<names[stage]<<", mean_rgb_change="<<change<<", edge_band_change="<<edge_change
+                <<", edge_band_p95="<<p95<<", minimum_recall="<<m.minimum_recall<<", minimum_area="<<m.minimum_area
+                <<", edge_energy="<<m.edge_energy/m.comparisons<<", stop18_phase_error="<<stop[1].phase_matched_error
+                <<", stop36_phase_error="<<stop[2].phase_matched_error<<", stop18_old_fraction="<<stop[1].old_history_fraction
+                <<", stop36_old_fraction="<<stop[2].old_history_fraction<<'\n';
+            // The same failing palm gates; no weakened thresholds or new blur oracle.
+            CHECK(change<=1./255.);CHECK(edge_change<=1./255.);CHECK(p95<=2./255.);
+            CHECK(double(m.coverage_changes)/m.pixels<=.005);CHECK(m.reference_error/(3.*m.pixels)<=.12);
+            CHECK(m.minimum_recall>=.90);CHECK(m.minimum_precision>=.90);CHECK(m.minimum_area>=.85);CHECK(m.maximum_area<=1.15);
+            CHECK(m.edge_energy/m.comparisons>=.5*referenceEnergy(reference,palm));
+            CHECK(stop[1].phase_matched_error<=1./255.);CHECK(stop[2].phase_matched_error<=1./255.);
+            CHECK(stop[1].old_history_fraction<=.02);CHECK(stop[2].old_history_fraction<=.02);
         }
     }
 }

@@ -10,22 +10,19 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` implements PPD612/613 visibility repairs;
-experimental69507 Release is verified. Started from publicationf2f841305c, no remote advancement; reviewed69506
-sourcef969bd5324 and prior artifacts remain. Semantic equality, sky motion, submit/cancel ownership and
-Native/Spatial behavior are preserved. Native default/combined-lighting OFF remain. No live login.
+Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains the unchanged69507renderer checkpoint.
+Current task starts at publication945246965c. Isolate the explicit PBR MASK palm output; no new DMG unless
+its actual quality improves. Native default, Spatial, quality controls and all accepted visibility/ownership
+repairs remain unchanged. No login, live capture, broad profiling or rejected quality variants.
 
-[69507review](../../research/temporal-foliage-69507-review.md) and
-[frozen69506baseline](../../research/temporal-foliage-quality-69506-baseline.md) retain exact quality results.
-Correctness:15/15suites and10visibility cases/19777assertions pass API/GPU validation. Pool reuse plateaus.
-Quality:original20bounds/6972assertions and explicit PBR palm16bounds/23684assertions STILL fail.
-MASK inputs/history pass independent checks; current-frame contrast loss and remaining settling are
-reproduced, without an established quality-preserving repair. No production jitter/mip tuning retained.
-PPD610 remains investigating; owner scene acceptance is unclaimed. PPD612/613 are ready for owner review.
-
-Build/signature/346ARM64 checks, fullscreenlogin-only smoke and8272entry mounted equality pass.
-Test/app/mounted shader is identical;17XMLsettings restored/appclosed. iCloud upload confirmed08:39UTC.
-Temporal-only code/tests/report published with owner authorization; usual/Spatial unchanged. Owner review next.
+[Native isolation](../../research/temporal-palm-native-isolation-20261126.md) retains exact results.
+Immediate native/resolved RGB match all144main+54reference worlds; independent native scaler and separate
+SDK-only replay reproduce all43,794,432RGBcomponents exactly. Complete warm-up/history inputs are retained.
+Edge.00431436,recall.854469,area.721729 andstop18.00598857 remain4failed bounds per stage (12/10515checks).
+Native output already carries the failure; no resolve/wrapper correction is justified. No Apple-defect claim.
+The unknown is the native thin-detail/history response to verified inputs and a quality-preserving remedy.
+Original20baseline and69507packages stay preserved.15correctness suites pass API/GPU validation; publish tests and
+concise report, deliver standalone reproducer without a newviewerDMG. PPD610 stays investigating.
 
 ## Preserved Spatial parent checkpoint
 

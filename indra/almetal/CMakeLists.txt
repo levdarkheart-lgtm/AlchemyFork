@@ -237,6 +237,15 @@ set_source_files_properties(
 )
 
 if(AL_BUILD_TESTS)
+  # External complete-sequence reproducer, intentionally not an ordinary CTest:
+  # it needs the foliage fixture's exported inputs, including initial warm-up.
+  # Link only the native SDK so pool/wrapper/history code cannot affect replay.
+  add_executable(almetal_temporal_direct_replay tests/almetal_temporal_direct_replay.mm)
+  set_target_properties(almetal_temporal_direct_replay PROPERTIES
+    OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED YES)
+  target_compile_options(almetal_temporal_direct_replay PRIVATE -fobjc-arc)
+  target_link_libraries(almetal_temporal_direct_replay PRIVATE
+    al::flags "-framework Foundation" "-framework Metal" "-framework MetalFX")
   # Catch assigns included cases the fragment's file tag. Register those
   # fragments explicitly, while compiling them only through their owning TU.
   set(almetal_native_case_fragments
