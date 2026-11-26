@@ -522,3 +522,13 @@ worlds match exactly; the same4palm bounds fail at all outputs. No production fi
 Tests preserve69507visibility/ownership and frozen bounds;15affectedcorrectness suites pass. The complete
 portable reproducer, source and concise machine-readable evidence replace another unchanged review app.
 PPD610 stays investigating; no Apple-defect/intrinsic-limit claim or live/FPS acceptance is made.
+
+
+### Bounded75%palm comparison — not suitable for live qualification
+
+Owner accepts the native-isolation finding. The [single75quality comparison](temporal-palm-75-quality-20261126.md)
+freshly rasterizes288x144→384x192with existing productionmode7/mip/15phasepolicy;67baseline is retained.
+Recall/detail improve, butedgevariation,area and18-world settling stillfail unchangedbounds. No production
+change/newDMG or liveFPSclaim. Stop qualification of theseTemporal settings for thispalm; Native/Spatial
+remain. A bounded Aurora algorithm comparison is recommended before integration, without assuming benefit;
+it has not started. Apple quality-feedback draft is private and unsubmitted. PPD610 stays open for quality.

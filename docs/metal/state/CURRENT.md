@@ -12,25 +12,24 @@ remains the default; global resolution/shadow controls are preserved. Combined
 lighting remains OFF. This is a performance/quality trade-off, not exact native
 image equivalence. No owner acceptance or push approval is inferred from builds or measurements.
 
-## Active PBR MASK isolation — PPD610 remains unresolved
+## PBR MASK quality —75%notqualified; PPD610 stays open
 
-**Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`;69507renderer/shaders unchanged.
-Test source6b2dcd8e44, based on945246965c, exposes immediate native/resolved output independently.
-[Palm native isolation](../research/temporal-palm-native-isolation-20261126.md) is the current evidence map.
-All144main+54reference worlds have identical raw/resolved RGB. Direct native execution with independent
-scaler/textures/queue also matches; SDK-only standalone binary repeats all43,794,432RGBcomponents exactly.
-The complete36warm/54stationary/18moving/36stopped sequence is retained, not a repeated stationary cycle.
-PBR palm edge.00431436,recall.854469,area.721729,stop18.00598857 still fail frozen bounds in all3outputs;
-stop36.00229831 passes. New isolation case retains12failures/10515assertions (4same failures per stage).
-The tested failure precedes resolve and persists without wrapper/pool/history orchestration. No demonstrated
-Apple API violation or Apple-defect claim; exact internal reconstruction response/remedy remains unknown.
-Alpha intentionally differs after resolve; finite sampler precision invalidated a new ideal-alpha oracle,
-not the existing unchanged glow-alpha/frozen quality checks. Production quality policies are untouched.
-PPD611semantic identity,612/613visibility and608/609cancellation/pooling corrections remain preserved.
-15affectedcorrectness suites pass API/GPU validation. No viewer launch/login/settings change/newDMG.
-Deliver minimal reproducer/tests/concise evidence on Temporal
-branch only. Owner live acceptance remains unclaimed; require actual palm improvement before a new app.
-Preserved69507app/DMG and prior20failure matrix remain at their existing paths; Native default/Spatial intact.
+**Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`;69507productionunchanged.
+Owner accepts [native isolation](../research/temporal-palm-native-isolation-20261126.md): wrapper/pool/history/
+resolve do not introduce the retained67failure. Do not reopen integration debugging without a new defect.
+[75quality comparison](../research/temporal-palm-75-quality-20261126.md) uses fresh288x144→384x192 inputs,
+mode7/productionmip−1.4150375/15phases,45warm+45stationary+18moving+36stoppedworlds.67baseline preserved.
+Recall.904331passes;edge.00430953,area.750082,stop18.00485880 stillfail3bounds/9584assertions.
+Contrast73.7611→75.9588%,edgeenergy+8.86%show some detail gain;edgevariation is nearlyflat.
+Native and targetcoverage references are identical. History ages/phases differ and are disclosed;stop18/36
+use eachmode's own phase. Inputpixels+26.5625%is arithmetic,not aGPUcost/FPSresult.
+No shader/rejection/mip experiment or production/settings change; no newviewerDMG or owner live request.
+Three sizing/history/glow regressions pass;genericlabel-only final validation yields identical metrics.
+Retain matchedcrops and stationary/move-stop clips. Apple draft is PRIVATE and unsubmitted.
+Stop qualifying theseTemporal settings for thisfoliage;Native/Spatial remain. Recommend bounded Aurora
+reconstruction comparison on samepalm with correctalgorithm inputs/unchangedbounds before fullintegration.
+Do not assume Aurora wins; no comparison/integration has begun. PPD610 imagequality stays unresolved.
+All69507visibility/semanticidentity/cancellation/pooling repairs and priorartifacts remain preserved.
 
 ## Preserved69494 Temporal checkpoint — PPD598
 
@@ -153,5 +152,6 @@ A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Source/evidence is published; SDK-only complete PBR MASK ZIP/checksums uploaded10:53UTC.
-Review that reproducer. No new viewer package or live-scene request for unchanged foliage. PPD610 stays open.
+75result/tests and media/privateApplefeedbackdraft are complete. Decision:not suitable for live quality/
+performance review. Stop Temporalsettings qualification; no newDMG. Bounded Aurora comparison recommended,
+not started.

@@ -10,20 +10,17 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains the unchanged69507renderer checkpoint.
-Current task starts at publication945246965c. Isolate the explicit PBR MASK palm output; no new DMG unless
-its actual quality improves. Native default, Spatial, quality controls and all accepted visibility/ownership
-repairs remain unchanged. No login, live capture, broad profiling or rejected quality variants.
-
-[Native isolation](../../research/temporal-palm-native-isolation-20261126.md) retains exact results.
-Immediate native/resolved RGB match all144main+54reference worlds; independent native scaler and separate
-SDK-only replay reproduce all43,794,432RGBcomponents exactly. Complete warm-up/history inputs are retained.
-Edge.00431436,recall.854469,area.721729 andstop18.00598857 remain4failed bounds per stage (12/10515checks).
-Native output already carries the failure; no resolve/wrapper correction is justified. No Apple-defect claim.
-The unknown is the native thin-detail/history response to verified inputs and a quality-preserving remedy.
-Original20baseline and69507packages stay preserved.15correctness suites pass API/GPU validation.
-Tests/evidence published at6b2dcd8e44; SDK-only ZIP/checksums uploaded10:53UTC. No newviewerDMG.
-PPD610 stays investigating; no further source correction is justified by the established comparison.
+Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` remains69507productioncheckpoint, unchanged.
+Owner accepts retained67nativeisolation; wrapper/pool/history/resolve are not this reproduced cause.
+[75quality](../../research/temporal-palm-75-quality-20261126.md) freshly renders288x144 at384x192output,
+production15phases/mip−1.4150375;45warm+45stationary+18move+36stop, with correctphase-specific references.
+Recall passes butedge.00430953,area.750082 andstop18.00485880 fail3bounds/9584assertions.75notqualified.
+Some contrast/detail gain is measured; no blur/ref-oracle substitution. Inputpixels+26.5625%, noFPSclaim.
+Baseline67/tests/results remain; targetreference byteidentity and allmetadata/limits are retained.
+Three sizing/history/glow regressions pass. No production/qualitypolicy/settings changes or newDMG.
+Result/media/private unsubmitted Apple draft complete. Stop Temporalsettings qualification for thispalm;
+recommend bounded Aurora reconstruction comparison before fullintegration, without assuming itwins.
+PPD610 remains investigating for imagequality;69507visibility/identity/ownership corrections preserved.
 
 ## Preserved Spatial parent checkpoint
 

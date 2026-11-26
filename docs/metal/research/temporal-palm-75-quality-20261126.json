@@ -1,0 +1,137 @@
+{
+  "scope": "OneboundedexistingproductionTemporal75qualitycomparison;67retainedbaseline,notresized. No production changes/liveFPS/integrationdebugging.",
+  "decision": "75% is not suitable for live foliage quality/performance review;3targetboundsstillfail. StoptheseTemporalsettingsqualification;recommendboundedAuroraalgorithmcomparisonbeforefullintegrationwithoutassumingitwins.",
+  "baseline67": {
+    "metrics": {
+      "PBR palm stage": "native",
+      "mean_rgb_change": "0.0036729858417721907",
+      "edge_band_change": "0.004314364957619261",
+      "edge_band_p95": "0.0045685057890792174",
+      "minimum_recall": "0.85446920949441629",
+      "minimum_area": "0.72172860622982393",
+      "edge_energy": "0.20455696902988851",
+      "stop18_phase_error": "0.0059885653451804913",
+      "stop36_phase_error": "0.002298313084378386",
+      "stop18_old_fraction": "0.00043351592909049132",
+      "stop36_old_fraction": "0.00017885918770396472"
+    },
+    "phase_count": 18,
+    "warmup": 36,
+    "measured_worlds": 54,
+    "source_receipt": "../temporal-palm-native-isolation-20261126/direct-final-02.json",
+    "contrast_retention": 0.737611227828848
+  },
+  "actual75": {
+    "metrics": {
+      "PBR palm75 input": "288x144",
+      "output": "384x192",
+      "mode": "7",
+      "bias": "-1.4150375127792358",
+      "phases": "15",
+      "warm": "45",
+      "stable": "45",
+      "mean_rgb_change": "0.003668965601935041",
+      "edge_band_change": "0.0043095348865212265",
+      "edge_band_p95": "0.0046924812333725193",
+      "coverage_change": "0.00012282690854119424",
+      "mean_reference_error": "0.045743625618763314",
+      "minimum_recall": "0.9043314498700209",
+      "minimum_precision": "0.99989551401883603",
+      "minimum_area": "0.75008171745598695",
+      "maximum_area": "0.76278618000764287",
+      "edge_energy": "0.22267468779468313",
+      "reference_edge_energy": "0.32655210055151274",
+      "stop18_phase_error": "0.0048588025873222843",
+      "stop36_phase_error": "0.0016502992057410375",
+      "stop18_old_fraction": "0.0010124810294345234",
+      "stop36_old_fraction": "0.00030904561061914946",
+      "max_motion_error": "9.7900629043579102e-05",
+      "coverage_mismatches": "0",
+      "raster_mismatches": "0",
+      "rejected_foreground": "0"
+    },
+    "phase_count": 15,
+    "warmup": 45,
+    "measured_worlds": 45,
+    "source_receipt": {
+      "start_utc": "2026-11-26T11:34:46.196032+00:00",
+      "argv": [
+        "/Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/metalfx-temporal/build-metalfx-temporal/almetal/Release/almetal_tests.app/Contents/MacOS/almetal_tests",
+        "[foliage-75-quality]"
+      ],
+      "head": "9e093806d790267ec63dd7ec0dee25ca3bbf19b7",
+      "source_sha256": "f430d02d769370b86736a37dd4076c62d89b59952be36df3bb42b48052db5348",
+      "executable_sha256": "7c5b19b8e1d58f2a63b2ae5920161c8a81c4532d2d15b6ee608d7a4be6cec8fe",
+      "shader_sha256": "5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a",
+      "validation": {
+        "MTL_DEBUG_LAYER": "1",
+        "MTL_SHADER_VALIDATION": "1"
+      },
+      "scope": "One genuine75raster-input comparison. Retained67baseline is not requalified or overwritten. Standalone18phase replay is not used.",
+      "exit_code": 42,
+      "end_utc": "2026-11-26T11:34:49.913877+00:00"
+    },
+    "contrast_retention": 0.759588003486984
+  },
+  "bounds": {
+    "edge_change_max": 0.00392156862745098,
+    "minimum_recall": 0.9,
+    "minimum_area": 0.85,
+    "stop_error_max": 0.00392156862745098,
+    "old_history_max": 0.02
+  },
+  "remaining75failed_bounds": [
+    "edge_band_change",
+    "minimum_area",
+    "stop18_phase_error"
+  ],
+  "quality_run": {
+    "assertions": 9584,
+    "passed": 9581,
+    "failed": 3,
+    "exit_code": 42
+  },
+  "reference_scope": {
+    "native_full_frame_identical": true,
+    "shifted_native_full_frame_identical": true,
+    "pbr96x96_coverage_identical": true,
+    "pbr84x84_scored_coverage_identical": true,
+    "global_blend_only_coverage_differences": 1173,
+    "maximum_global_coverage_float_error": 5.960464477539063e-08
+  },
+  "input_pixels": {
+    "baseline67": 32768,
+    "actual75": 41472,
+    "increase_percent": 26.5625,
+    "FPS_claim": false
+  },
+  "final_source_validation": {
+    "start_utc": "2026-11-26T11:41:17.166442+00:00",
+    "argv": [
+      "/Users/dekstroza/Programming/AI/Secondlife/Alchemy/worktrees/metalfx-temporal/build-metalfx-temporal/almetal/Release/almetal_tests.app/Contents/MacOS/almetal_tests",
+      "[foliage-75-quality]"
+    ],
+    "executable_sha256": "e7654463a7254d2a11611c95f228d3e3a412cf1b5a2c38c784d2b5ac07ba4c1a",
+    "source_sha256": "bee952d51ee4b7c664588bb4b88fa860ff3eb2333222770a35206116dd1caf94",
+    "scope": "Nondumping final-source verification after inherited67command label became mode-neutral; no changed input or new comparisonarm.",
+    "exit_code": 42,
+    "metrics_exactly_match_collected_run": true
+  },
+  "regressions": {
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "build-metalfx-temporal",
+      "-C",
+      "Release",
+      "--output-on-failure",
+      "-R",
+      "alrenderresourceplan_test|almetal_tests/almetal_temporal_history_test$|almetal_tests/almetal_temporal_presentation_test$"
+    ],
+    "exit_code": 0,
+    "validation": true,
+    "scope": "Relevant sizing/history/glowalpha regressions; no resumednativeisolationinvestigation."
+  },
+  "feedback": "Private owner draft only; not submitted externally or published in Git",
+  "artifact_root": "artifacts/metal/temporal-palm-75-20261126"
+}

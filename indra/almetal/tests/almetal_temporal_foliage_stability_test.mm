@@ -6,6 +6,7 @@
 #include "almetal_world_inputs_fixture.h"
 #include "../almetaltemporalworldhistory.h"
 #include "almetal_temporal_direct_fixture.h"
+#include "../../alrender/alrenderresourceinputs.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -41,6 +42,7 @@ struct FramePixels
     std::vector<std::uint8_t> reactive;
     std::array<float,2> jitter{};
     unsigned phase = 0;
+    unsigned input_width = InputWidth, input_height = InputHeight;
     std::size_t previous_valid = 0;
     std::uint64_t resets = 0;
 };
@@ -93,8 +95,14 @@ void dumpImage(const std::filesystem::path& path,const std::vector<Color>& pixel
     REQUIRE(file.good());
 }
 
-struct FoliageFixture : Fixture
+template<ALRenderResourceInputs::MainResolutionMode Mode>
+struct ScaledFoliageFixture : Fixture
 {
+    static constexpr auto Dimensions=[]{
+        ALRenderResourceInputs input;input.mWidth=OutputWidth;input.mHeight=OutputHeight;
+        input.mMainResolutionMode=Mode;return input.mainViewDimensions();
+    }();
+    static constexpr unsigned InputWidth=Dimensions.mSceneWidth,InputHeight=Dimensions.mSceneHeight;
     ALMetalTemporalWorldHistory history;
     std::unique_ptr<ALMetalTemporalScaler> scaler;
     ALMetalTemporalScalerDescriptor descriptor{InputWidth,InputHeight,OutputWidth,OutputHeight};
@@ -105,11 +113,11 @@ struct FoliageFixture : Fixture
     ALMetalWorldLegacyAlphaLighting alpha_lighting;
     const ALMetalTexture* black_environment = nullptr;
     std::filesystem::path output_dir;
-    const float mip_bias = std::log2(float(InputWidth)/float(OutputWidth))-1.f;
+    const float mip_bias = ALRenderResourceInputs::materialMipBias(Mode,InputWidth,OutputWidth,true);
     bool reverse_z = false;
     bool observe_native_output = false;
 
-    explicit FoliageFixture(bool reversed = false) : reverse_z(reversed)
+    explicit ScaledFoliageFixture(bool reversed = false) : reverse_z(reversed)
     {
         if(const char* path=std::getenv("ALCHEMY_TEMPORAL_FOLIAGE_LIBRARY"))
         { REQUIRE(renderer->reloadShaders(std::string(path),&error)); INFO(error); }
@@ -168,7 +176,7 @@ struct FoliageFixture : Fixture
         for(unsigned face=0;face<6;++face) REQUIRE(black->upload(*command,0,face,{},black_pixel.data(),4,&error));
         REQUIRE(command->commitAndWait(&error)); black_environment=black.get(); resources->textures.push_back(black);
     }
-    ~FoliageFixture()
+    ~ScaledFoliageFixture()
     { renderer->cancelCommandBatch(); device->waitUntilIdle(); }
 
     const ALMetalTexture* uploadMips(std::vector<Texel> pixels)
@@ -461,16 +469,16 @@ struct FoliageFixture : Fixture
         auto w=world(InputWidth,InputHeight,camera_shift,mip_bias,{0,0});bind(w);
         ALMetalTemporalWorldHistory::FrameInput input;
         input.world_id=frame_index+1;input.input_width=InputWidth;input.input_height=InputHeight;
-        input.output_width=OutputWidth;input.output_height=OutputHeight;input.mode=6;
+        input.output_width=OutputWidth;input.output_height=OutputHeight;input.mode=static_cast<int>(Mode);
         input.reverse_z=reverse_z;cameraMatrix(input.camera_mvp,camera_shift);
         REQUIRE(history.beginFrame(input,&error)); INFO(error);
         REQUIRE(history.stage(w.gbuffer,w.forward_scene,&error)); INFO(error);
-        FramePixels pixels;pixels.jitter=history.jitterPixels();
+        FramePixels pixels;pixels.input_width=InputWidth;pixels.input_height=InputHeight;pixels.jitter=history.jitterPixels();
         pixels.phase=history.stats().jitter_phase;pixels.previous_valid=history.stats().valid_previous_draws;
-        REQUIRE(history.jitterPhaseCount()==Phases);
+        REQUIRE(history.jitterPhaseCount()==ALMetalTemporalWorldHistory::recommendedJitterPhaseCount(InputWidth,InputHeight,OutputWidth,OutputHeight));
         if(frame_index) REQUIRE(pixels.previous_valid==opaque.size()+forward.size());
         std::copy(pixels.jitter.begin(),pixels.jitter.end(),w.gbuffer.temporal_jitter_pixels);
-        REQUIRE(renderer->beginMainFrameBatch(frame_index+1,"Production stationary foliage Temporal67",&error));
+        REQUIRE(renderer->beginMainFrameBatch(frame_index+1,"Production stationary foliage Temporal",&error));
         auto color_target=color(w,*hdr,pixels.jitter);
         ALMetalWorldTemporalMotionScene motion_scene;
         motion_scene.width=InputWidth;motion_scene.height=InputHeight;
@@ -516,6 +524,11 @@ struct FoliageFixture : Fixture
         return pixels;
     }
 };
+
+using FoliageFixture=ScaledFoliageFixture<ALRenderResourceInputs::MainResolutionMode::Temporal67>;
+using FoliageFixture75=ScaledFoliageFixture<ALRenderResourceInputs::MainResolutionMode::Temporal75>;
+static_assert(FoliageFixture::InputWidth==InputWidth && FoliageFixture::InputHeight==InputHeight);
+static_assert(FoliageFixture75::InputWidth==288 && FoliageFixture75::InputHeight==144);
 
 double referenceEnergy(const std::vector<Color>& image,const Region& r)
 {
@@ -615,10 +628,10 @@ MaskMotionContract maskMotionContract(const FramePixels& frame,float expected_x,
 {
     MaskMotionContract result;
     const auto& r=Regions[2];
-    for(unsigned y=(r.y+6)*InputHeight/OutputHeight;y<(r.y+90)*InputHeight/OutputHeight;++y)
-        for(unsigned x=(r.x+6)*InputWidth/OutputWidth;x<(r.x+90)*InputWidth/OutputWidth;++x)
+    for(unsigned y=(r.y+6)*frame.input_height/OutputHeight;y<(r.y+90)*frame.input_height/OutputHeight;++y)
+        for(unsigned x=(r.x+6)*frame.input_width/OutputWidth;x<(r.x+90)*frame.input_width/OutputWidth;++x)
         {
-            const auto i=y*InputWidth+x;
+            const auto i=y*frame.input_width+x;
             const bool foreground=leaf(frame.input[i]);
             const float authored_depth=reverse_z?.675f:.325f;
             const bool foreground_depth=std::abs(frame.depth[i]-authored_depth)<2.e-6f;
@@ -633,9 +646,9 @@ MaskMotionContract maskMotionContract(const FramePixels& frame,float expected_x,
 }
 unsigned straightEdgeRasterMismatches(const FramePixels& frame,float camera_shift,bool reverse_z)
 {
-    const float offset=.5f*InputWidth*camera_shift+frame.jitter[0];
-    const float left=292.f*InputWidth/OutputWidth+offset;
-    const float right=334.4f*InputWidth/OutputWidth+offset;
+    const float offset=.5f*frame.input_width*camera_shift+frame.jitter[0];
+    const float left=292.f*frame.input_width/OutputWidth+offset;
+    const float right=334.4f*frame.input_width/OutputWidth+offset;
     unsigned mismatches=0;
     // Track this control's authored moving bounds. A fixed screen window
     // would include the neighboring opaque-texture tile after camera motion.
@@ -646,7 +659,7 @@ unsigned straightEdgeRasterMismatches(const FramePixels& frame,float camera_shif
         const float center=float(x)+.5f;
         if(std::min(std::abs(center-left),std::abs(center-right))<1.e-4f)continue;
         const bool expected=center>=left && center<right;
-        const float depth=frame.depth[y*InputWidth+x];
+        const float depth=frame.depth[y*frame.input_width+x];
         const bool actual=reverse_z?depth>.5f:depth<.5f;
         mismatches+=expected!=actual;
     }
@@ -729,11 +742,11 @@ void measure(Stability& m,const FramePixels& previous,const FramePixels& current
     m.edge_energy+=referenceEnergy(current.output,r);
     m.edge_band_change+=frame_edge_change;m.edge_band_pixels+=frame_edge_pixels;
     m.frame_edge_changes.push_back(frame_edge_pixels?frame_edge_change/frame_edge_pixels:0.);
-    const unsigned left=(r.x+6)*InputWidth/OutputWidth,right=(r.x+90)*InputWidth/OutputWidth;
-    const unsigned top=(r.y+6)*InputHeight/OutputHeight,bottom=(r.y+90)*InputHeight/OutputHeight;
+    const unsigned left=(r.x+6)*current.input_width/OutputWidth,right=(r.x+90)*current.input_width/OutputWidth;
+    const unsigned top=(r.y+6)*current.input_height/OutputHeight,bottom=(r.y+90)*current.input_height/OutputHeight;
     for(unsigned y=top;y<bottom;++y)for(unsigned x=left;x<right;++x)
     {
-        const auto i=y*InputWidth+x;
+        const auto i=y*current.input_width+x;
         if(leaf(current.input[i])){++m.leaf_pixels;m.reactive_leaf+=current.reactive[i];}
         else {++m.background_pixels;m.reactive_background+=current.reactive[i];}
         m.maximum_stationary_motion=std::max(m.maximum_stationary_motion,std::max(std::abs(float(current.motion[i][0])),std::abs(float(current.motion[i][1]))));
@@ -1324,5 +1337,113 @@ TEST_CASE("Temporal67 failing PBR palm separates native reconstruction from Alch
             CHECK(stop[1].phase_matched_error<=1./255.);CHECK(stop[2].phase_matched_error<=1./255.);
             CHECK(stop[1].old_history_fraction<=.02);CHECK(stop[2].old_history_fraction<=.02);
         }
+    }
+}
+
+TEST_CASE("Temporal75 freshly rasterized PBR palm meets the existing foliage quality bounds",
+          "[metal][temporal][foliage-75-quality]")
+{
+    @autoreleasepool
+    {
+        const Region palm{"pbr_palm",192,0,true,true};
+        constexpr unsigned Width=FoliageFixture75::InputWidth,Height=FoliageFixture75::InputHeight;
+        const unsigned phases=ALMetalTemporalWorldHistory::recommendedJitterPhaseCount(Width,Height,OutputWidth,OutputHeight);
+        REQUIRE(phases==15);
+        // Three full warm-up cycles, followed by three measured cycles. Both
+        // modes begin the SAME18-world motion at index90 and stop at108.
+        const unsigned warm=3*phases,stable=3*phases;
+        constexpr unsigned moving_frames=18,stopped_frames=36;
+        const unsigned first_move=warm+stable,first_stop=first_move+moving_frames,total=first_stop+stopped_frames;
+        REQUIRE(first_move==90);REQUIRE(total==144);
+        FoliageFixture75 f;f.usePBRPalm(false);
+        if(!f.output_dir.empty()){f.output_dir/="temporal75";std::filesystem::create_directories(f.output_dir);}
+        const auto reference=f.native(0.f),shifted_reference=f.native(.05f);
+        const auto truth=f.coverageReference(0.f);
+        std::vector<std::vector<Color>> initial(phases),stationary_final(phases);
+        std::ofstream reference_frames;
+        if(!f.output_dir.empty())
+        {
+            dumpRaw(f.output_dir/"native-detail-reference.rgba32f",reference.data(),reference.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"shifted-native-detail-reference.rgba32f",shifted_reference.data(),shifted_reference.size()*sizeof(Color));
+            dumpRaw(f.output_dir/"coverage-reference.r32f",truth.coverage.data(),truth.coverage.size()*sizeof(float));
+            dumpImage(f.output_dir/"native-detail-reference.ppm",reference,OutputWidth,OutputHeight);
+            reference_frames.open(f.output_dir/"reference-sequence.csv");reference_frames<<std::setprecision(17);
+            reference_frames<<"frame,world_id,phase,phase_count,jitter_x,jitter_y,camera_shift,reset,history_resets,valid_previous,input_width,input_height,output_width,output_height,mode,mip_bias\n";
+        }
+        {
+            FoliageFixture75 independent;independent.usePBRPalm(false);
+            for(unsigned i=0;i<warm+phases;++i)
+            {
+                auto current=independent.render(i,.05f);
+                REQUIRE(current.phase==i%phases);REQUIRE(current.resets==1);
+                if(!f.output_dir.empty())
+                {std::ostringstream label;label<<"reference-world-"<<std::setw(3)<<std::setfill('0')<<i;dumpFrame(f.output_dir,label.str(),current);}
+                if(reference_frames)reference_frames<<i<<','<<i+1<<','<<current.phase<<','<<phases<<','<<current.jitter[0]<<','<<current.jitter[1]<<','<<.05f<<','<<(i==0)<<','<<current.resets<<','<<current.previous_valid<<','<<Width<<','<<Height<<','<<OutputWidth<<','<<OutputHeight<<",7,"<<f.mip_bias<<'\n';
+                if(i>=warm)stationary_final[current.phase]=std::move(current.output);
+            }
+        }
+        FramePixels previous;Stability metrics;std::array<StopQuality,3> stopped{};
+        float previous_shift=0,max_vector_error=0;unsigned coverage_mismatches=0,rejected_foreground=0,raster_mismatches=0;
+        std::ofstream frames;
+        if(!f.output_dir.empty())
+        {
+            frames.open(f.output_dir/"sequence.csv");frames<<std::setprecision(17);
+            frames<<"frame,world_id,phase,phase_count,jitter_x,jitter_y,camera_shift,reset,history_resets,valid_previous,input_width,input_height,output_width,output_height,mode,mip_bias,expected_motion_x,maximum_motion_error\n";
+        }
+        for(unsigned i=0;i<total;++i)
+        {
+            const unsigned moving=i>=first_move?i-first_move+1:0;
+            const float shift=.05f*float(std::min(moving,moving_frames))/float(moving_frames);
+            auto current=f.render(i,shift);REQUIRE(current.phase==i%phases);REQUIRE(current.resets==1);
+            REQUIRE(f.current_gbuffer->descriptor().width==Width);REQUIRE(f.current_gbuffer->descriptor().height==Height);
+            REQUIRE(current.input.size()==Width*Height);REQUIRE(current.motion.size()==Width*Height);
+            REQUIRE(current.motion_depth.size()==Width*Height);REQUIRE(current.reactive.size()==Width*Height);
+            const float expected_motion=-(shift-previous_shift)*(.5f*Width);previous_shift=shift;
+            const auto contract=maskMotionContract(current,expected_motion,false);
+            if(i){REQUIRE(contract.foreground_samples>100);coverage_mismatches+=contract.coverage_mismatches;
+                rejected_foreground+=contract.rejected_foreground;max_vector_error=std::max(max_vector_error,contract.maximum_vector_error);}
+            raster_mismatches+=straightEdgeRasterMismatches(current,shift,false);
+            if(i>=warm && i<first_move)
+            {
+                measure(metrics,previous,current,reference,truth,palm);
+                if(i<warm+phases)initial[current.phase]=current.output;
+            }
+            if(i==first_stop || i==first_stop+17 || i==first_stop+35)
+            {
+                const unsigned sample=i==first_stop?0:i==first_stop+17?1:2;
+                REQUIRE(!initial[current.phase].empty());REQUIRE(!stationary_final[current.phase].empty());
+                stopped[sample]=stopQuality(reference,shifted_reference,initial[current.phase],stationary_final[current.phase],current.output,palm);
+            }
+            if(!f.output_dir.empty())
+            {std::ostringstream label;label<<"world-"<<std::setw(3)<<std::setfill('0')<<i;dumpFrame(f.output_dir,label.str(),current);}
+            if(frames)frames<<i<<','<<i+1<<','<<current.phase<<','<<phases<<','<<current.jitter[0]<<','<<current.jitter[1]<<','<<shift<<','<<(i==0)<<','<<current.resets<<','<<current.previous_valid<<','<<Width<<','<<Height<<','<<OutputWidth<<','<<OutputHeight<<",7,"<<f.mip_bias<<','<<expected_motion<<','<<contract.maximum_vector_error<<'\n';
+            previous=std::move(current);
+        }
+        CHECK(f.scaler->stats().creation_successes==1);CHECK(f.scaler->stats().submitted_calls==total);
+        CHECK(f.scaler->stats().reset_calls==1);
+        const double change=metrics.absolute_change/metrics.pixels,edge_change=metrics.edge_band_change/metrics.edge_band_pixels;
+        auto sorted=metrics.frame_edge_changes;std::sort(sorted.begin(),sorted.end());
+        const double p95=sorted[std::min(sorted.size()-1,std::size_t(std::ceil(sorted.size()*.95)-1))];
+        const double energy=metrics.edge_energy/metrics.comparisons,reference_energy=referenceEnergy(reference,palm);
+        std::cout<<std::setprecision(17)<<"PBR palm75 input="<<Width<<'x'<<Height<<", output="<<OutputWidth<<'x'<<OutputHeight
+            <<", mode=7, bias="<<f.mip_bias<<", phases="<<phases<<", warm="<<warm<<", stable="<<stable
+            <<", mean_rgb_change="<<change<<", edge_band_change="<<edge_change<<", edge_band_p95="<<p95
+            <<", coverage_change="<<double(metrics.coverage_changes)/metrics.pixels<<", mean_reference_error="<<metrics.reference_error/(3.*metrics.pixels)
+            <<", minimum_recall="<<metrics.minimum_recall<<", minimum_precision="<<metrics.minimum_precision
+            <<", minimum_area="<<metrics.minimum_area<<", maximum_area="<<metrics.maximum_area
+            <<", edge_energy="<<energy<<", reference_edge_energy="<<reference_energy
+            <<", stop18_phase_error="<<stopped[1].phase_matched_error<<", stop36_phase_error="<<stopped[2].phase_matched_error
+            <<", stop18_old_fraction="<<stopped[1].old_history_fraction<<", stop36_old_fraction="<<stopped[2].old_history_fraction
+            <<", max_motion_error="<<max_vector_error<<", coverage_mismatches="<<coverage_mismatches
+            <<", raster_mismatches="<<raster_mismatches<<", rejected_foreground="<<rejected_foreground<<'\n';
+        CHECK(max_vector_error<.002f);CHECK(coverage_mismatches==0);CHECK(raster_mismatches==0);CHECK(rejected_foreground==0);
+        // Exactly the existing quality bounds; changing resolution does not
+        // change the output-space oracle or turn the18/36world horizons into15/30.
+        CHECK(change<=1./255.);CHECK(edge_change<=1./255.);CHECK(p95<=2./255.);
+        CHECK(double(metrics.coverage_changes)/metrics.pixels<=.005);CHECK(metrics.reference_error/(3.*metrics.pixels)<=.12);
+        CHECK(metrics.minimum_recall>=.90);CHECK(metrics.minimum_precision>=.90);CHECK(metrics.minimum_area>=.85);CHECK(metrics.maximum_area<=1.15);
+        CHECK(energy>=.5*reference_energy);
+        CHECK(stopped[1].phase_matched_error<=1./255.);CHECK(stopped[2].phase_matched_error<=1./255.);
+        CHECK(stopped[1].old_history_fraction<=.02);CHECK(stopped[2].old_history_fraction<=.02);
     }
 }
