@@ -426,3 +426,53 @@ Midday at2304x1446→3456x2168, same camera/mode/mip policy.36stationary worlds 
 move-stop arms adopt the same25actual camera states. Exact matched quality analysis and clean review package
 identities will follow in the handoff. No claim of fully fixed foliage, native parity, zero ghosting or FPS gain.
 Private source/video/metrics remain under artifacts/metal/temporal-foliage-20261125; no push authorization.
+
+
+### Review69506: demonstrated correction and remaining quality boundary
+
+Application source is `f969bd53245a26b79df3abcb41c047f28558f455`, parent949944f7a9, local review branch only.
+The clean Release app69506 removes all private readback/mip-counterfactual hooks. ExecutableSHA256
+`4a95d21a6ed38594346bf5ae81d6edc708655e6ce747030d9629a326c3b14e2e`; shader librarySHA256
+`f9f6735cf82b2a8a9a1232b30e122ce992ceb341f65c97dfab9b4158d832297b`. Native remains default.
+
+Final actualfullscreen/fixedMidday36-world comparison (2304x1446→3456x2168, Temporal67, originalbias/jitter):
+
+| Region | Original→corrected adjacent-world luma change,8bit levels |
+| --- | --- |
+| Left/right grass |3.818/3.766→.588/.581|
+| Dense foliage |2.967→1.144|
+| Palm/sky |6.233→1.413|
+| Pillar/fence controls |.806/.625→.475/.613|
+
+SixROI GBuffer/depth crop files match exactly across36phase-pairs; trunk has small genuine foreground
+differences and is excluded from exact-input claims. HDR brightness differs, particularly dense/palm
+foreground−6.8%/−6.6%. Mean-normalized source variation differs≤1.7%; normalized output reductions remain
+grass≈85%, dense60%, palm77%. Mean-image gradients increase9–46%in foliage, opposing a simple blur explanation.
+These are scene-specific phase-balanced image differences, not independent statistical trials or native parity.
+No corrected opaque samples are fully rejected in any of sevenROIs; changed/dynamic background remains scoped.
+
+Actual-output clips include stationary controls and108-world move-stop arms with the same25camera matrices.
+Stop-relative comparison uses30common static worlds; no reset occurs. Selected stills show no obvious
+persistent displaced duplicate, but grass is initially softer and fine detail continues settling. Strict
+fixture08 still fails20/6201assertions, principally detail/coverage/variance/settling. It detects the original
+failure and is retained unchanged as an open quality gate. Native is the concrete alternative when these
+Temporal limits are unacceptable; no claim that the remaining effect is an intrinsic vendor defect.
+
+Quiet ordinary20s sanity (readbacks/profilers off, same fullscreen camera/fixedMidday) observes433/398joined
+successful worlds:21.64→19.90/s, median45.61→49.52ms,p9549.48→55.49ms. This≈8%lower observed rate is a potential
+cost, not an FPS improvement or isolated regression proof: no restored control,1/11enclosed sequence holes
+and differing probe/update/upload observations. Full joins and exclusions remain private; do not transfer
+windowed results or synchronous capture cadence into this observation. No additional performance campaign.
+
+Build,14affected correctness suites with API/GPU validation,346ARM64 slices, owned imports and deep/strict
+ad-hoc signature pass. Deployment remains macOS26.0; no notarization. Login-screen smoke has AutoLoginfalse;
+explicit authorized saved login supplies the short cost check. Shared environment and original settings are
+restored; viewer closes normally. PPD611 is ready for owner review; PPD610 remains open for residual quality.
+Private review package/COMPARISON/source patch/stills/clips/checksums are under temporal-foliage-20261125.
+The independent snapshot path is unsuitable for judging displayed Temporal quality; use macOS recordings.
+
+Review69506DMG read-only verification matches all8272app entries (7839files,2symlinks,431directories),
+with346ARM64Mach-O checks and deep/strict signature passing. Native fullscreen login smoke and the authorized
+Home sanity session both finish normally. Original normal/custom graphics settings are byte-restored and
+shared environment is restored; no viewer remains running. The correction source commit above differs from
+the later documentation-only handoff commit. No push or usual/Spatial branch modification is performed.

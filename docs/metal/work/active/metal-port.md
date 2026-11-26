@@ -10,7 +10,7 @@ feature branch for AI review only. Private evidence stays local; no usual-branch
 
 ## Immediate executable action
 
-Preserved69501 source64023b8b16/fetched949944f7a9 differ only in docs. PPD610 actual front-yard routing is
+Commit `f969bd53245a26b79df3abcb41c047f28558f455` contains local foliage corrections. PPD610 actual front-yard routing is
 proven: PBR MASK palms/dense leaves, generic/PBR BLEND grass. Original camera/poses are static with tiny
 motion, but sky/forward history is broadly rejected. Corrected sky direction/scoped layers and independent
 nearest foreground blend depth/motion preserve reliable history while retaining unsafe-layer MAX rejection.
@@ -31,8 +31,9 @@ with active-lane changes still invalidating history;19history cases/1851assertio
 bounds remain failed: thin detail and settling are open. Do not blur or weaken the test to call it fixed.
 Previous PPD608/609 allocation/cancellation corrections and optional pool plateaus are preserved.
 
-Next: finish the focused retest and matched fullscreen analysis, build a clean numbered review app, verify
-package/login smoke and deliver privately with precise limitations. Private capture hooks/mip counterfactual
+Clean69506/sourcef969bd5324 builds/signs and passes346ARM64 checks/login smoke. Fullscreen grass/palm
+variation falls≈85%/77%; settling remains. Quiet sanity observes8%lower rate without restoredcontrol. Next:
+DMG content/signature verification passes; deliver privately with precise limitations. Hooks/mip counterfactual
 have been removed from pipeline source; diagnostic executables/evidence remain retained. No new push.
 Restore settings/shared environment, leave viewer closed. Never query an app-bound CUA object after Quit.
 

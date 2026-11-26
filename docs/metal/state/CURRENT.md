@@ -14,17 +14,17 @@ image equivalence. No owner acceptance or push approval is inferred from builds 
 
 ## Active image-quality work — PPD610/611
 
-**Renderer checkpoint:** preserved69501 application64023b8b16; fetched949944f7a9 differs only in docs.
+**Renderer code checkpoint:** `f969bd53245a26b79df3abcb41c047f28558f455` (local foliage corrections;69501 preserved).
 Actual palms/dense leaves use PBR MASK mesh; grass uses generic/PBR BLEND. Original front-yard sequences
 show static camera/poses, near-zero unjittered motion and broad history rejection. Local corrections use
 infinite-direction/scoped sky history and true foreground blend depth/motion with fixed-anchor rejection.
 PPD611 semantic identity retains valid poses through equal publication churn:54/54valid, four rejection
 centers44/41/53/53→0/0/0/0,72matched color/depth pairs each byte-identical. Generation/budget guards remain.
 Earlier live runs were windowed2304x1278→3456x1916 despite FullScreen setting; some had lighting drift.
-Final actualnative-fullscreen fixedMidday comparison uses2304x1446→3456x2168. No FPS improvement claimed.
-20strict rendered quality bounds remain failed; thin detail and settling remain open under610.
+Final actualfullscreen fixedMidday2304x1446→3456x2168 shows grass≈85%/palm77%less adjacent variation.
+20strict quality bounds remain failed; detail/settling stay open. Quiet sanity observes8%lower rate, unisolated.
 Final14affected suites pass API/GPU validation; strict fixture retains20failures/6201assertions.
-Clean review build/packaging is pending. Owner permits saved login while asleep.
+Clean69506/sourcef969bd5324: Release/signature/346ARM64/DMGcontent checks pass; settings restored, appclosed.
 See [Temporal report](../research/metalfx-temporal-20261125.md). No new push approval.
 
 Preserved PPD608/609 correction source64023b8b16/build69501 passes15 suites, Release/static/signature checks,
