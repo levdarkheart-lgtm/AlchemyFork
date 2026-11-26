@@ -49,6 +49,7 @@
     // Forward alpha-depth is allowed to update the G-buffer attachment. Keep
     // the original opaque visibility for matching composite motion afterward.
     std::unique_ptr<ALMetalRenderTarget> temporal_opaque_depth;
+    std::unique_ptr<ALMetalRenderTarget> temporal_water_inputs;
     ALMetalTemporalScaler::Ticket temporal_ticket = 0;
     std::array<F32, 2> temporal_jitter{};
     U64 temporal_world_serial = 0, temporal_gpu_failures = 0;
@@ -127,7 +128,7 @@
         temporal_submitted = false;
         temporal_jitter = {};
         temporal_raw_output.reset(); temporal_resolved_output.reset(); temporal_motion.reset();
-        temporal_opaque_depth.reset(); aurora_opaque_color.reset();
+        temporal_opaque_depth.reset(); temporal_water_inputs.reset(); aurora_opaque_color.reset();
         temporal_fallback.clear();
         if (!inputs.mainResolutionPolicy().usesTemporal())
         {

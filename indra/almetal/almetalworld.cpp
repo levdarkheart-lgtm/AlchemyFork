@@ -1031,6 +1031,89 @@ namespace
         return true;
     }
 
+    bool invertibleSSRMatrix(const float* values)
+    {
+        if (!values || !finiteValues(values, 16))
+        {
+            return false;
+        }
+        double rows[4][4]{};
+        for (std::size_t row = 0; row < 4; ++row)
+        {
+            for (std::size_t column = 0; column < 4; ++column)
+            {
+                rows[row][column] = values[column * 4 + row];
+            }
+        }
+        for (std::size_t column = 0; column < 4; ++column)
+        {
+            std::size_t pivot = column;
+            for (std::size_t row = column + 1; row < 4; ++row)
+            {
+                if (std::abs(rows[row][column]) > std::abs(rows[pivot][column]))
+                {
+                    pivot = row;
+                }
+            }
+            if (rows[pivot][column] == 0.0 ||
+                !std::isfinite(rows[pivot][column]))
+            {
+                return false;
+            }
+            if (pivot != column)
+            {
+                for (std::size_t item = column; item < 4; ++item)
+                {
+                    std::swap(rows[column][item], rows[pivot][item]);
+                }
+            }
+            for (std::size_t row = column + 1; row < 4; ++row)
+            {
+                const double amount = rows[row][column] / rows[column][column];
+                for (std::size_t item = column + 1; item < 4; ++item)
+                {
+                    rows[row][item] -= amount * rows[column][item];
+                }
+            }
+        }
+        return true;
+    }
+
+    bool validSSRProjectionPair(const float* projection, const float* inverse)
+    {
+        if (!invertibleSSRMatrix(projection) || !invertibleSSRMatrix(inverse))
+        {
+            return false;
+        }
+        // Check both orders using double accumulation. This accommodates the
+        // float camera inverse while rejecting finite but unrelated coordinates;
+        // it does not modify, rederive or unjitter either supplied matrix.
+        constexpr double max_identity_error = 1.e-3;
+        for (std::size_t order = 0; order < 2; ++order)
+        {
+            const float* left = order == 0 ? projection : inverse;
+            const float* right = order == 0 ? inverse : projection;
+            for (std::size_t column = 0; column < 4; ++column)
+            {
+                for (std::size_t row = 0; row < 4; ++row)
+                {
+                    double value = 0.0;
+                    for (std::size_t inner = 0; inner < 4; ++inner)
+                    {
+                        value += static_cast<double>(left[inner * 4 + row]) *
+                            right[column * 4 + inner];
+                    }
+                    if (!std::isfinite(value) ||
+                        std::abs(value - (row == column ? 1.0 : 0.0)) > max_identity_error)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     bool finiteShadowTextureMatrix(const float* values) noexcept
     {
         // Dynamic UV is outside source certification. Reject NaN/Inf even
@@ -3212,6 +3295,7 @@ struct ALMetalWorldGBufferRenderer::Impl
         exposure_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         ssr_history_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> temporal_water_inputs_pipeline;
     std::array<OpaqueForwardMaskPipelines, 2>
         opaque_forward_fullbright_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
@@ -4033,7 +4117,9 @@ ALMetalWorldGBufferRenderer::stageShaderReload(
         !rebuild_optional(rebuild_optional, mImpl->spatial_presentation_pipeline,
                           next.spatial_presentation_pipeline) ||
         !rebuild_optional(rebuild_optional, mImpl->temporal_resolve_pipeline,
-                          next.temporal_resolve_pipeline)) return {};
+                          next.temporal_resolve_pipeline) ||
+        !rebuild_optional(rebuild_optional, mImpl->temporal_water_inputs_pipeline,
+                          next.temporal_water_inputs_pipeline)) return {};
     if (mImpl->temporal_motion_background && !replacement->prepareTemporalMotion(error)) return {};
     // These experimental/blend-specialized PSOs are created lazily rather
     // than by create(). Rebuild already-used variants before committing too.
@@ -16392,10 +16478,221 @@ bool ALMetalWorldGBufferRenderer::readSceneColorPixel(
     return true;
 }
 
+bool ALMetalWorldGBufferRenderer::prepareTemporalWaterInputsPipeline(std::string* error)
+{
+    if (!mImpl || !mImpl->device || !mImpl->library || !mImpl->meter_water_depth)
+    {
+        setError(error, "Temporal water-input renderer is unavailable");
+        return false;
+    }
+    if (mImpl->temporal_water_inputs_pipeline)
+    {
+        return true;
+    }
+    ALMetalRenderPipelineDescriptor pipeline;
+    pipeline.library = mImpl->library.get();
+    pipeline.vertex_function = "almetal_resample_vertex";
+    pipeline.fragment_function = "almetal_temporal_water_inputs_fragment";
+    pipeline.color_attachment_count = 2;
+    pipeline.colors[0].format = ALMetalPixelFormat::r32_float;
+    pipeline.colors[1].format = ALMetalPixelFormat::r8_unorm;
+    pipeline.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+    pipeline.label = "Alchemy Temporal actual water depth and coverage";
+    mImpl->temporal_water_inputs_pipeline = ALMetalRenderPipeline::create(
+        *mImpl->device, pipeline, error);
+    return mImpl->temporal_water_inputs_pipeline != nullptr;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::prepareTemporalWaterInputs(
+    std::uint32_t width, std::uint32_t height, std::string* error)
+{
+    if (width == 0 || height == 0 || !prepareTemporalWaterInputsPipeline(error))
+    {
+        if (width == 0 || height == 0)
+        {
+            setError(error, "Temporal water-input dimensions are invalid");
+        }
+        return nullptr;
+    }
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = width;
+    descriptor.height = height;
+    descriptor.color_attachment_count = 2;
+    descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+    descriptor.colors[0].label = "Alchemy Temporal actual water depth";
+    descriptor.colors[1].format = ALMetalPixelFormat::r8_unorm;
+    descriptor.colors[1].label = "Alchemy Temporal visible water coverage";
+    descriptor.label = "Alchemy Temporal actual water inputs";
+    return mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+}
+
+bool ALMetalWorldScreenSpaceReflectionHistory::valid() const noexcept
+{
+    if (!mTarget || !mPublication || mGeneration == 0 ||
+        mCoordinates.camera_generation == 0)
+    {
+        return false;
+    }
+    switch (mPublication->status())
+    {
+        case ALMetalCommandStatus::committed:
+        case ALMetalCommandStatus::scheduled:
+        case ALMetalCommandStatus::completed:
+            return true;
+        default:
+            return false;
+    }
+}
+
+const ALMetalRenderTarget*
+ALMetalWorldScreenSpaceReflectionHistory::target() const noexcept
+{
+    return valid() ? mTarget.get() : nullptr;
+}
+
+const ALMetalWorldScreenSpaceReflectionCoordinates*
+ALMetalWorldScreenSpaceReflectionHistory::coordinates() const noexcept
+{
+    return valid() ? &mCoordinates : nullptr;
+}
+
+std::uint64_t ALMetalWorldScreenSpaceReflectionHistory::generation() const noexcept
+{
+    return valid() ? mGeneration : 0;
+}
+
+void ALMetalWorldScreenSpaceReflectionHistory::reset() noexcept
+{
+    mTarget.reset();
+    mPublication.reset();
+    mCoordinates = {};
+    // Preserve the serial across invalidation; zero remains the invalid result.
+}
+
+bool ALMetalWorldScreenSpaceReflectionHistory::bind(
+    ALMetalWorldScreenSpaceReflections& reflections,
+    const float current_inverse_modelview[16],
+    const double current_world_origin[3],
+    std::string* error) const
+{
+    if (!valid() || !current_inverse_modelview || !current_world_origin ||
+        !invertibleSSRMatrix(current_inverse_modelview))
+    {
+        reflections = {};
+        setError(error, "Metal world SSR-history coordinates are unavailable");
+        return false;
+    }
+    for (std::size_t axis = 0; axis < 3; ++axis)
+    {
+        if (!std::isfinite(current_world_origin[axis]) ||
+            current_world_origin[axis] != mCoordinates.world_origin[axis])
+        {
+            reflections = {};
+            setError(error, "Metal world SSR-history origin is incompatible");
+            return false;
+        }
+    }
+
+    auto next = reflections;
+    next.scene_color = mTarget->colorTexture(0);
+    next.scene_depth = mTarget->colorTexture(1);
+    std::copy(std::begin(mCoordinates.projection),
+              std::end(mCoordinates.projection), next.constants.projection);
+    std::copy(std::begin(mCoordinates.inverse_projection),
+              std::end(mCoordinates.inverse_projection),
+              next.constants.inverse_projection);
+    // Multiply the column-major arrays consumed by Metal. LLMatrix4a's stored
+    // row-vector convention transposes its apparent setMul order here.
+    for (std::size_t column = 0; column < 4; ++column)
+    {
+        for (std::size_t row = 0; row < 4; ++row)
+        {
+            float value = 0.f;
+            for (std::size_t inner = 0; inner < 4; ++inner)
+            {
+                value += mCoordinates.modelview[inner * 4 + row] *
+                    current_inverse_modelview[column * 4 + inner];
+            }
+            next.constants.inverse_modelview_delta[column * 4 + row] = value;
+        }
+    }
+    if (!finiteValues(next.constants.inverse_modelview_delta, 16))
+    {
+        reflections = {};
+        setError(error, "Metal world SSR-history camera transform is incompatible");
+        return false;
+    }
+    const auto& descriptor = mTarget->descriptor();
+    next.constants.screen[0] = static_cast<float>(descriptor.width);
+    next.constants.screen[1] = static_cast<float>(descriptor.height);
+    next.constants.screen[2] = static_cast<float>(descriptor.height);
+    next.constants.config[0] = mCoordinates.reverse_z ? 1u : 0u;
+    next.constants.config[1] = 1u;
+    reflections = next;
+    return true;
+}
+
+bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistory(
+    const ALMetalRenderTarget& source,
+    bool hdr,
+    const ALMetalWorldScreenSpaceReflectionCoordinates& coordinates,
+    ALMetalWorldScreenSpaceReflectionHistory& history,
+    std::string* error)
+{
+    bool valid_coordinates = coordinates.camera_generation != 0 &&
+        validSSRProjectionPair(coordinates.projection, coordinates.inverse_projection) &&
+        invertibleSSRMatrix(coordinates.modelview);
+    for (const double value : coordinates.world_origin)
+    {
+        valid_coordinates = valid_coordinates && std::isfinite(value);
+    }
+    if (!valid_coordinates)
+    {
+        setError(error, "Metal world SSR-history source coordinates are incompatible");
+        return false;
+    }
+    if (history.mPublication && !history.valid())
+    {
+        // A failed native producer must never be resurrected by target reuse.
+        history.reset();
+    }
+    std::unique_ptr<ALMetalCommandBuffer> publication;
+    if (!updateScreenSpaceReflectionHistoryInternal(
+            source, hdr, history.mTarget, &publication, error))
+    {
+        if (publication && publication->status() == ALMetalCommandStatus::error)
+        {
+            // Submission was accepted but already failed: an in-place target
+            // may no longer contain the previous successful image.
+            history.reset();
+        }
+        return false;
+    }
+    history.mCoordinates = coordinates;
+    history.mPublication = std::move(publication);
+    if (++history.mGeneration == 0)
+    {
+        ++history.mGeneration;
+    }
+    return true;
+}
+
 bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistory(
     const ALMetalRenderTarget& source,
     bool hdr,
     std::unique_ptr<ALMetalRenderTarget>& history,
+    std::string* error)
+{
+    return updateScreenSpaceReflectionHistoryInternal(
+        source, hdr, history, nullptr, error);
+}
+
+bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistoryInternal(
+    const ALMetalRenderTarget& source,
+    bool hdr,
+    std::unique_ptr<ALMetalRenderTarget>& history,
+    std::unique_ptr<ALMetalCommandBuffer>* publication,
     std::string* error)
 {
     if (!mImpl || !mImpl->device)
@@ -16489,6 +16786,16 @@ bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistory(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))
     {
+        return false;
+    }
+    const bool failed = command->status() == ALMetalCommandStatus::error;
+    if (publication)
+    {
+        *publication = std::move(command);
+    }
+    if (failed)
+    {
+        setError(error, "Metal world SSR-history publication failed");
         return false;
     }
     if (replacement)
@@ -17187,6 +17494,23 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             d.colors[0].format != ALMetalPixelFormat::rgba16_float ||
             !scene.reconstruction_opaque->colorTexture(0))
         { setError(error, "Aurora opaque preservation requires a prepared matching linear HDR target"); return nullptr; }
+    }
+    if (scene.temporal_water_inputs)
+    {
+        const auto& descriptor = scene.temporal_water_inputs->descriptor();
+        if (descriptor.width != scene.width || descriptor.height != scene.height ||
+            descriptor.sample_count != 1 || descriptor.color_attachment_count != 2 ||
+            descriptor.colors[0].format != ALMetalPixelFormat::r32_float ||
+            descriptor.colors[1].format != ALMetalPixelFormat::r8_unorm ||
+            descriptor.depth_stencil_format != ALMetalPixelFormat::invalid ||
+            !sampleableTexture(scene.temporal_water_inputs->colorTexture(0)) ||
+            !sampleableTexture(scene.temporal_water_inputs->colorTexture(1)) ||
+            !prepareTemporalWaterInputsPipeline(error))
+        {
+            if (!error || error->empty())
+                setError(error, "Temporal actual water inputs require a prepared matching depth/coverage target");
+            return nullptr;
+        }
     }
     if (scene.highlight_batch_count != 0 && !scene.highlight_batches)
     {
@@ -20513,7 +20837,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     }
 
     const bool needs_shader_read_depth = water_wave_occlusion || scene.exposure_depth ||
-        scene.publish_screen_space_reflection_history;
+        scene.publish_screen_space_reflection_history || scene.temporal_water_inputs;
     if (continue_composed_target && needs_shader_read_depth &&
         !lighting.depth_stencil_shader_read)
     {
@@ -20623,6 +20947,21 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
         }
     }
+    if (has_water_surface && scene.temporal_water_inputs && !water_depth_snapshot)
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = scene.width;
+        descriptor.height = scene.height;
+        descriptor.color_attachment_count = 0;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+        descriptor.depth_stencil_shader_read = true;
+        descriptor.label = "Alchemy Temporal actual water depth snapshot";
+        water_depth_snapshot = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+        if (!water_depth_snapshot)
+        {
+            return nullptr;
+        }
+    }
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
     ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
         "Alchemy native world opaque post-deferred", owned_command, error);
@@ -20643,6 +20982,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
               *command, *scene.gbuffer->depthStencilTexture(), {}, error))))
     {
         return fail_command();
+    }
+    if (scene.temporal_water_inputs && !has_water_surface)
+    {
+        // No water draw will reach the capture boundary. Define an empty pair
+        // rather than exposing a previous pooled target's contents.
+        ALMetalRenderPassConfig clear;
+        clear.colors[0].clear = {scene.reverse_z ? 0.0 : 1.0, 0.0, 0.0, 0.0};
+        auto clear_pass = scene.temporal_water_inputs->makeRenderPass(clear, error);
+        auto clear_encoder = clear_pass ? ALMetalRenderEncoder::begin(*command, *clear_pass,
+            "Alchemy Temporal empty water inputs", error) : nullptr;
+        if (!clear_encoder || !clear_encoder->end(error))
+        {
+            return fail_command();
+        }
     }
 
     ALMetalProbeCandidateBinding forward_candidates;
@@ -21902,6 +22255,77 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         sizeof(water_constants), error) &&
                     draw_water_patches() &&
                     draw_water_field();
+            }
+            if (encoded && scene.temporal_water_inputs)
+            {
+                // Preserve the actual water surface after exclusion, shoreline
+                // and opaque-depth testing, before any later alpha depth write.
+                // Sampling a distinct copy avoids attachment/read feedback.
+                if (!encoder->end(error) || !water_depth_snapshot ||
+                    !water_depth_snapshot->copyDepthStencilFrom(
+                        *command, *output->depthStencilTexture(), {}, error))
+                {
+                    return fail_command();
+                }
+                ALMetalRenderTargetDescriptor descriptor;
+                descriptor.width = scene.width;
+                descriptor.height = scene.height;
+                descriptor.color_attachment_count = 2;
+                descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+                descriptor.colors[0].texture = scene.temporal_water_inputs->colorTexture(0);
+                descriptor.colors[1].format = ALMetalPixelFormat::r8_unorm;
+                descriptor.colors[1].texture = scene.temporal_water_inputs->colorTexture(1);
+                descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float_stencil8;
+                descriptor.depth_stencil_shader_read = true;
+                descriptor.depth_stencil_texture = output->depthStencilTexture();
+                descriptor.label = "Alchemy Temporal water inputs with actual stencil";
+                auto capture_target = mImpl->makeRenderTarget(*mImpl->device, descriptor, error);
+                ALMetalRenderPassConfig capture_config;
+                capture_config.colors[0].clear = {scene.reverse_z ? 0.0 : 1.0, 0.0, 0.0, 0.0};
+                capture_config.depth_load = capture_config.stencil_load = ALMetalLoadAction::load;
+                capture_config.depth_store = capture_config.stencil_store = ALMetalStoreAction::store;
+                auto capture_pass = capture_target
+                    ? capture_target->makeRenderPass(capture_config, error) : nullptr;
+                auto capture_encoder = capture_pass ? ALMetalRenderEncoder::begin(
+                    *command, *capture_pass, "Alchemy Temporal actual water-input capture", error) : nullptr;
+                const bool captured = capture_encoder &&
+                    capture_encoder->setPipeline(*mImpl->temporal_water_inputs_pipeline, error) &&
+                    capture_encoder->setDepthStencilState(mImpl->meter_water_depth.get(), error) &&
+                    capture_encoder->setStencilReferenceValue(2u, error) &&
+                    capture_encoder->setViewport(viewport, error) &&
+                    capture_encoder->setScissor(scissor, error) &&
+                    capture_encoder->setCullMode(ALMetalCullMode::none, error) &&
+                    capture_encoder->setTriangleFillMode(ALMetalTriangleFillMode::fill, error) &&
+                    capture_encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                    capture_encoder->setFragmentTexture(
+                        0, water_depth_snapshot->depthStencilTexture(), error) &&
+                    capture_encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+                    capture_encoder->end(error);
+                if (!captured)
+                {
+                    return fail_command();
+                }
+                // All following ordinary draws need a live color encoder and
+                // fresh bindings; never reuse the ended water encoder.
+                auto continuation = pass_config;
+                continuation.stencil_load = ALMetalLoadAction::load;
+                auto continuation_pass = output->makeRenderPass(continuation, error);
+                encoder = continuation_pass ? ALMetalRenderEncoder::begin(
+                    *command, *continuation_pass,
+                    "Alchemy world forward after actual water-input capture", error) : nullptr;
+                if (!encoder)
+                {
+                    return fail_command();
+                }
+                mImpl->noteLightingTiles(false, scene.lighting_raster_tile_size,
+                    lighting_raster_tile_size, *encoder);
+                encoded = mImpl->setMaterialSampling(*encoder, scene.material_mip_bias, error) &&
+                    encoder->setViewport(viewport, error) &&
+                    encoder->setScissor(scissor, error) &&
+                    encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+                    encoder->setTriangleFillMode(ALMetalTriangleFillMode::fill, error) &&
+                    encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error) &&
+                    bind_forward_resources(*encoder);
             }
             continue;
         }

@@ -184,6 +184,12 @@ try
         (scene.opaque_depth && (scene.opaque_depth->descriptor().format != ALMetalPixelFormat::r32_float ||
             scene.opaque_depth->descriptor().sample_count != 1 || !sampleableTexture(scene.opaque_depth) ||
             scene.opaque_depth->width() != scene.width || scene.opaque_depth->height() != scene.height)) ||
+        (scene.water_inputs && (scene.water_inputs->descriptor().width != scene.width ||
+            scene.water_inputs->descriptor().height != scene.height || scene.water_inputs->descriptor().sample_count != 1 ||
+            scene.water_inputs->descriptor().color_attachment_count != 2 ||
+            !sampleableTexture(scene.water_inputs->colorTexture(0)) || !sampleableTexture(scene.water_inputs->colorTexture(1)) ||
+            scene.water_inputs->colorTexture(0)->descriptor().format != ALMetalPixelFormat::r32_float ||
+            scene.water_inputs->colorTexture(1)->descriptor().format != ALMetalPixelFormat::r8_unorm)) ||
         !finiteValues(scene.clip_to_previous_clip, 16) || !finiteValues(scene.jitter_pixels, 2) ||
         !std::isfinite(scene.water_rejection_margin) || scene.water_rejection_margin < 0.f ||
         ((scene.reject_water || scene.modern_sky) && !finiteValues(scene.inverse_projection, 16)) ||
@@ -235,6 +241,9 @@ try
     reprojection.config[0] = scene.reverse_z; reprojection.config[1] = scene.reset;
     reprojection.config[2] = scene.reject_water;
     reprojection.config[3] = (scene.modern_sky ? 1u : 0u) | (scene.reject_sky_history ? 2u : 0u);
+    if (scene.water_inputs) reprojection.config[3] |= 16u;
+    const auto* water_depth = scene.water_inputs ? scene.water_inputs->colorTexture(0) : mImpl->inactive_ssr_depth.get();
+    const auto* water_coverage = scene.water_inputs ? scene.water_inputs->colorTexture(1) : mImpl->inactive_ssr_color.get();
     constexpr std::array<float,16> exact_identity{1.f,0.f,0.f,0.f, 0.f,1.f,0.f,0.f,
         0.f,0.f,1.f,0.f, 0.f,0.f,0.f,1.f};
     if (std::memcmp(scene.clip_to_previous_clip, exact_identity.data(), sizeof(scene.clip_to_previous_clip)) == 0)
@@ -249,7 +258,9 @@ try
             mImpl->setFragmentData(*encoder, *command, 1, &sky.constants, sizeof(sky.constants), error) &&
             mImpl->setFragmentData(*encoder, *command, 2, sky.meteor_data, sizeof(sky.meteor_data), error) &&
             encoder->setFragmentTextureLinear(32, scene.depth, error) &&
-            encoder->setFragmentTextureLinear(33, scene.opaque_depth ? scene.opaque_depth : scene.depth, error);
+            encoder->setFragmentTextureLinear(33, scene.opaque_depth ? scene.opaque_depth : scene.depth, error) &&
+            encoder->setFragmentTextureLinear(42, water_depth, error) &&
+            encoder->setFragmentTextureLinear(43, water_coverage, error);
         const ALMetalTexture* maps[] = {sky.rainbow_texture, sky.halo_texture, sky.hdri_texture,
             sky.stars_texture, sky.sun_texture, sky.sun_next_texture, sky.moon_texture,
             sky.bloom_texture, sky.bloom_next_texture, sky.cloud_texture, sky.cloud_next_texture};
@@ -463,6 +474,8 @@ try
             mImpl->setFragmentData(*encoder, *command, legacy_alpha ? 12u : 0u, &reprojection, sizeof(reprojection), error) &&
             encoder->setFragmentTextureLinear(32, scene.depth, error) &&
             encoder->setFragmentTextureLinear(33, scene.opaque_depth ? scene.opaque_depth : scene.depth, error) &&
+            encoder->setFragmentTextureLinear(42, water_depth, error) &&
+            encoder->setFragmentTextureLinear(43, water_coverage, error) &&
             encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
         WorldPBRConstants pbr{};
         if (family == 2) pbr = buildWorldPBRConstants(opaque, batch);

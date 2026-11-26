@@ -164,6 +164,61 @@ struct ALMetalWorldScreenSpaceReflections
     ALMetalWorldScreenSpaceReflectionConstants constants;
 };
 
+// Exact raster/camera coordinates belonging to one published raw SSR pair.
+// Matrices use the column-major upload arrays consumed by MSL: projection includes the
+// raster jitter, and modelview maps world positions into the stored eye space.
+// Storage retains the existing lower-row-first contract; no Y flip is added.
+struct ALMetalWorldScreenSpaceReflectionCoordinates
+{
+    float projection[16]{};
+    float inverse_projection[16]{};
+    float modelview[16]{};
+    double world_origin[3]{};
+    std::uint64_t camera_generation = 0;
+    std::uint64_t source_world = 0;
+    bool reverse_z = false;
+};
+
+// The texture pair and its coordinates advance together after submission.
+// A skipped/rejected publisher cannot pair old pixels with a new camera.
+// Native queue ordering permits consumption while publication is in flight;
+// a known command failure invalidates all access without a CPU wait.
+class ALMetalWorldScreenSpaceReflectionHistory final
+{
+public:
+    ALMetalWorldScreenSpaceReflectionHistory() = default;
+    ALMetalWorldScreenSpaceReflectionHistory(
+        const ALMetalWorldScreenSpaceReflectionHistory&) = delete;
+    ALMetalWorldScreenSpaceReflectionHistory& operator=(
+        const ALMetalWorldScreenSpaceReflectionHistory&) = delete;
+    ALMetalWorldScreenSpaceReflectionHistory(
+        ALMetalWorldScreenSpaceReflectionHistory&&) noexcept = default;
+    ALMetalWorldScreenSpaceReflectionHistory& operator=(
+        ALMetalWorldScreenSpaceReflectionHistory&&) noexcept = default;
+
+    bool valid() const noexcept;
+    const ALMetalRenderTarget* target() const noexcept;
+    const ALMetalWorldScreenSpaceReflectionCoordinates* coordinates() const noexcept;
+    std::uint64_t generation() const noexcept;
+    void reset() noexcept;
+
+    // Preserve caller trace/sampling tuning. Rays arrive in current eye space;
+    // stored_modelview * current_inverse_modelview maps them into the exact
+    // history eye space before its projection/depth reconstruction is used.
+    // Failure clears the destination so stale pointers cannot remain active.
+    bool bind(ALMetalWorldScreenSpaceReflections& reflections,
+              const float current_inverse_modelview[16],
+              const double current_world_origin[3],
+              std::string* error = nullptr) const;
+
+private:
+    std::unique_ptr<ALMetalRenderTarget> mTarget;
+    std::unique_ptr<ALMetalCommandBuffer> mPublication;
+    ALMetalWorldScreenSpaceReflectionCoordinates mCoordinates;
+    std::uint64_t mGeneration = 0;
+    friend class ALMetalWorldGBufferRenderer;
+};
+
 struct alignas(16) ALMetalWorldLegacyAlphaLight
 {
     float position[4]{};
@@ -1780,6 +1835,10 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::uint32_t diagnostic_view_index = 0;
     // Immutable per-view experiment; automatic preserves Metal's tile choice.
     ALMetalRasterTileSize lighting_raster_tile_size = ALMetalRasterTileSize::automatic;
+    // Optional frame-owned R32F actual water depth + R8 visible-water coverage.
+    // Captured after real water/exclusion rasterization and before later alpha;
+    // the target itself has no depth attachment and never owns view history.
+    ALMetalRenderTarget* temporal_water_inputs = nullptr;
 };
 
 // The display-transfer base of colorCorrectF.glsl. This owner
@@ -1973,6 +2032,9 @@ struct ALMetalWorldTemporalMotionScene
     std::uint32_t width = 0, height = 0;
     bool reverse_z = true;
     bool reset = true;
+    // Actual rasterized water depth/coverage, captured before later alpha.
+    // Independent of the opaque-only snapshot and final forward depth.
+    const ALMetalRenderTarget* water_inputs = nullptr;
 };
 
 // Both owners are acquired before MetalFX makes the command resource scope
@@ -3159,6 +3221,10 @@ public:
         ALMetalRenderTarget& prepared_output, std::string* error = nullptr);
     std::unique_ptr<ALMetalRenderTarget> prepareTemporalMotionTarget(std::uint32_t width,
         std::uint32_t height, std::string* error = nullptr);
+    // Pre-acquire the active view's water depth/coverage while normal pooled
+    // generation reuse is legal, before native reconstruction becomes opaque.
+    std::unique_ptr<ALMetalRenderTarget> prepareTemporalWaterInputs(std::uint32_t width,
+        std::uint32_t height, std::string* error = nullptr);
     bool prepareTemporalMotion(std::string* error = nullptr);
     std::unique_ptr<ALMetalRenderTarget> renderTemporalMotion(
         const ALMetalWorldTemporalMotionScene&, std::string* error = nullptr,
@@ -3305,6 +3371,17 @@ public:
         const ALMetalRenderTarget& source,
         bool hdr,
         std::unique_ptr<ALMetalRenderTarget>& history,
+        std::string* error = nullptr);
+
+    // Production publisher: resources, exact camera coordinates and successful
+    // publication generation settle atomically. camera_generation must be a
+    // nonzero caller-owned source-camera snapshot identity; source_world may be zero.
+    // Exact coordinate-origin compatibility is checked separately during bind.
+    bool updateScreenSpaceReflectionHistory(
+        const ALMetalRenderTarget& source,
+        bool hdr,
+        const ALMetalWorldScreenSpaceReflectionCoordinates& coordinates,
+        ALMetalWorldScreenSpaceReflectionHistory& history,
         std::string* error = nullptr);
 
     // Retain one completed native hero-probe face in a private cube without
@@ -3500,6 +3577,13 @@ public:
         std::shared_ptr<const ALMetalCommandCompletion>* completion_out = nullptr);
 
 private:
+    bool prepareTemporalWaterInputsPipeline(std::string* error);
+    bool updateScreenSpaceReflectionHistoryInternal(
+        const ALMetalRenderTarget& source,
+        bool hdr,
+        std::unique_ptr<ALMetalRenderTarget>& history,
+        std::unique_ptr<ALMetalCommandBuffer>* publication,
+        std::string* error);
     std::unique_ptr<ALMetalRenderTarget> renderInternal(
         const ALMetalWorldGBufferScene& scene,
         bool validated_shape,

@@ -8,23 +8,20 @@ login or whole-viewer FPS claim. Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Current task — PPD619:** owner reports substantial foliage improvement in69516,
-but strong through-glass jitter. The [glass investigation](../research/aurora-temporal-glass-20261126.md)
-owns focused production-path reproduction and exact legacy/PBR coverage repair.
-No active viewer session; offline work does not wait for login. Preserve69516 and
-all existing foliage/history/ownership corrections. Source74c07274bb matched remote
-at task start. PPD619/620/621/622 corrections are offline-qualified for experimental
-review: final quality output lowers Aurora pane variation about21%, retaining
-more detail; generated transparency reactivity stays zero. Exact static surface
-and camera motion prevents numerical false rejection while tiny actual movement
-remains protected. Eighteen affected GPU suites pass; new sky fixture setup was
-corrected and passes1076assertions separately. Intermediate bf90c0dd72/69519 full
-build was interrupted and never packaged. Corrected69520 is built and delivered:31final glass/history cases pass,346ARM64
-checks/signing pass, login-only smoke closes normally and original settings are
-restored. Mounted8293-entry comparison/ZIP CRC/hashes pass. All three iCloud
-uploads confirmed20:57:47UTC. Code/tests/evidence are pushed through57ae4591ec;
-owner live fence/palm/grass review is next. No further implementation is pending
-within this bounded glass task.
+**Current task — PPD623–627:** owner confirms69520 glass fixed; preserve its
+repair and foliage. Investigate background water outside pool separately from
+warm pool highlights. [Water/history report](../research/temporal-water-history-20261126.md)
+owns source audit, coordinate-generation regression and production water checks.
+Startbc09268714 clean/matched remote. Root owns pipeline/shaders/docs/build;
+native history API and focused test have exclusive delegated ownership. No
+active viewer session; source/offline work proceeds without login. Preserve69520.
+Typed SSR tests now pass1987assertions/four cases, matching exact-coordinate
+oracles after baseline failures. Water inverse pairing matches independently
+inverted P exactly but alone does not reduce dominant water variation. Actual
+water depth/coverage now replaces the opaque/plane proxy while preserving
+animated-water rejection. Focused empty-water and4311assertion forward-pane checks pass after fixture-only
+vector-read correction. Settled8+8worlds reuse56targets without new textures;
+18affected regressions and Release packaging are next. Do not claim the background-water complaint fixed.
 
 **Renderer code checkpoint:** `2af7ebba82b6bfd15886069f1eb9613f34fcef18` — corrected glass69520 application source; verified private delivery complete.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
@@ -127,8 +124,11 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Owner launches build69516 and selects 67% (Aurora Temporal · Experimental), checking
-the effective Active status. Review stationary palms/grass, move-stop response and
-whole-viewer performance; use macOS screen capture, not the snapshot route.
-No implementation, offline qualification or upload work remains for this handoff.
-Live acceptance remains unclaimed; no broader profiling is requested.
+Finish the18affected Metal suites and actual finalizer CPU check; pin source,
+complete the new Water Experimental Release, exact-library/package checks and
+login-screen-only smoke. Restore preferences, close viewer and verify all three
+iCloud uploads before reporting ready. Preserve69520 and publish only this feature
+branch as authorized. SSR coordinate and water-input correctness are demonstrated;
+PPD624/625 owner-region attribution and material shimmer improvement remain open.
+The owner will review the original background-water/pool regions and accepted
+glass/foliage controls using macOS screen capture, not independent snapshots.

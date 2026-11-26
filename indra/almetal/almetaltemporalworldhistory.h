@@ -19,6 +19,13 @@
 void alMetalApplyTemporalJitter(float matrix[16], float x, float y,
                                 std::uint32_t width, std::uint32_t height) noexcept;
 
+// Water/haze reconstruct sampled scene depth as well as rasterizing a field.
+// Jitter the copied field MVP and its depth inverse together. The inverse is
+// for projection alone, not MVP; J acts on clip coordinates in both cases.
+// Logical water state and independent views remain unchanged.
+void alMetalApplyTemporalWaterJitter(ALMetalWorldWaterHaze& field, float x, float y,
+                                    std::uint32_t width, std::uint32_t height) noexcept;
+
 // Expand a copied culling projection by one input pixel on every edge, covering
 // all subpixel jitter phases. This may also be used while a requested Temporal
 // view preflights fallback; admitting the small guard band changes no raster or

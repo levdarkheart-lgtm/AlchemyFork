@@ -25,6 +25,7 @@
                 if (scene.water_surface && !scene.water_surface->underwater)
                 {
                     motion.reject_water=true;
+                    motion.water_inputs=capture.temporal_water_inputs.get();
                     std::copy_n(scene.water_surface->field.water_plane,4,motion.eye_water_plane);
                     motion.water_rejection_margin=scene.water_surface->waves ?
                         std::abs(scene.water_surface->wave_reach_amplitude[1]) : 0.f;

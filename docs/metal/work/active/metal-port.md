@@ -7,16 +7,18 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-PPD619/620/621/622 corrections are complete for experimental owner review.
-Corrected69520/source2af7ebba82 passes31final glass/history cases,18affected GPU
-suites, content-publication and CPU checks. Full Release,346ARM64/deep-strict
-signing and full-screen login-only smoke pass; original settings are restored and
-viewer closed. Mounted DMG matches8293entries, ZIP CRC/hashes pass, all three
-69520iCloud uploads confirmed20:57:47UTC.69516 is retained. Code/tests/evidence
-are pushed through57ae4591ec on the authorized Aurora branch; owner live
-fence/palm/grass review is next.
-The intermediate bf90/69519 build was stopped before packaging after PPD622;
-its history and initial fixture failures remain, without weaker quality bounds.
+PPD619glass is owner-confirmed fixed in69520. Preserve its code, packages and
+foliage behavior. Current work PPD623–627: pair SSR textures with exact stored
+jitter/camera coordinates; reproduce background water separately from pool
+highlights and correct demonstrated Temporal-input defects. No broad FPS audit.
+Root owns pipeline/shader/docs/build, native agent owns paired history API,
+validation agent owns focused publisher/consumer regression; source audit is
+read-only. [Water/history report](../../research/temporal-water-history-20261126.md)
+records results and attribution limits. Startbc09268714 was clean and remote-matched.
+SSR4cases/1987assertions, water/pane4311assertions and fixed8+8world pool plateau
+pass. Full affected regressions and source-pinned Water Experimental packaging
+are next; actual owner water/streak producers and material quality gain remain
+unverified. The fixture-only empty-read crash is corrected with retained failure.
 
 Commit `2af7ebba82b6bfd15886069f1eb9613f34fcef18` pins corrected glass69520 application source; verified private delivery complete.
 Preserved69516 remains at `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.

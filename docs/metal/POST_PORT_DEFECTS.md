@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-623 -->
+<!-- next-defect-id: PPD-628 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15211,15 +15211,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
 
-- Status: ready_for_owner
-- Confirmation: reported
+- Status: verified
+- Confirmation: reproduced
 - Owner: Main-view transparency integration
 - Discovered: 2026-11-26
 - Original reference: Original Alchemy upstream/develop 408fd6c014e6 class3/deferred/materialF.glsl preserves lighting-dependent max(diffuse.a,glare)*vertexAlpha coverage. Temporal reconstruction is new; pinned Aurora ee458fb consumes actual opaque/final HDR and an independent composition marker.
 - Evidence: [Glass investigation](research/aurora-temporal-glass-20261126.md). Owner reports improved foliage in69516 but strong jitter through a glass fence, also observed with earlier MetalFX modes. Source b6f18c24f4 excludes legacy material and multi-slot PBR forward BLEND from valid-history qualification; surviving draws force rejection1. Exact owner-fence family is not established by retained older fence observations.
-- Next action: Owner review of the corrected experimental build; identify the actual fence family if residual jitter remains. Preserve layer-motion protection and the original foliage quality failures.
+- Next action: Preserve owner-confirmed69520 glass repair and its rendered regression while investigating separate water/reflection symptoms PPD623–625.
 - Verification: Valid baseline03 reproduces255/255 unsafe confidence for legacy and multi-slot PBR glass while generated transparency reactivity is zero. Final authored production-path output reduces Aurora covered RGB variation about21% with about21% greater edge detail; MetalFX legacy improves about85%. Qualified30/31 run passes all original glass/history cases; its new sky test setup failed before encoding, was corrected, and passes1076assertions separately. The eighteen affected GPU regression suites pass. Exact owner-fence attribution remains pending.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: granted
 
 ### History
@@ -15232,6 +15232,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 final69520/source2af7ebba82: all eight glass cases/68498assertions and23history cases/2099assertions pass under API/GPU validation. Full Release,346ARM64 checks and deep/strict ad-hoc signing pass. Full-screen login-only smoke closes normally and verifies original settings restoration. Package/upload and owner-scene acceptance are separate boundaries.
 
 - 2026-11-26 delivery complete: experimental69520/source2af7ebba82 is mounted-package verified and all three iCloud uploads are confirmed20:57:47UTC.69516 is retained. Source/shader identities and matched output are in the glass report. Owner live fence/palm/grass review remains pending; no FPS claim.
+
+- 2026-11-26 owner confirms the glass-fence issue is fixed in69520 and asks to preserve the repair. This closes the reported glass incident; it does not identify the exact fence material or accept PPD610 quality limits.
 
 ## PPD-620 — Temporal material selector clamps differ from forward color
 
@@ -15304,3 +15306,101 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 final69520/source2af7ebba82: all eight glass cases/68498assertions and23history cases/2099assertions pass under API/GPU validation. Full Release,346ARM64 checks and deep/strict ad-hoc signing pass. Full-screen login-only smoke closes normally and verifies original settings restoration. Package/upload and owner-scene acceptance are separate boundaries.
 
 - 2026-11-26 delivery complete: experimental69520/source2af7ebba82 is mounted-package verified and all three iCloud uploads are confirmed20:57:47UTC.69516 is retained. Source/shader identities and matched output are in the glass report. Owner live fence/palm/grass review remains pending; no FPS claim.
+
+
+## PPD-623 — SSR retained history coordinates are assembled from the current jittered world
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Paired SSR publication
+- Discovered: 2026-11-26
+- Original reference: Original SSR projects rays into its color/depth source using matching projection and camera transforms; native history publication is a new owner.
+- Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Current fillMetalImpostorScreenSpaceReflections uses current-jitter projection/inverse and previous-app-frame camera delta, while retained raw history can belong to a different submitted generation.
+- Next action: Preserve the passing paired-history regression; finish affected regressions and package the source-pinned experimental candidate. Owner pool-contribution attribution remains separate.
+- Verification: Baseline69520 reproducesRGB coordinate-oracle MAE.0028287795 and.0039654968 with actual SSR contribution. Corrected typed publisher/consumer matches both oracles exactly; final1987assertions/four cases pass API/GPU validation including asymmetric depth rows, skips/rejections, transforms, origins, resize and reset.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Owner authorizes focused source/offline correction, experimental package/iCloud delivery and feature-branch push. No broad performance campaign or login is required.
+
+
+- 2026-11-26: Current corrective evidence recorded in the linked water/history report; preserve all failed/invalid setup receipts and keep source defects separate from unproved owner-region attribution.
+
+## PPD-624 — Background water fine pattern shimmers in Temporal output
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Water Temporal integration
+- Discovered: 2026-11-26
+- Original reference: Dedicated world water and object/material surfaces are distinct paths; actual owner-region producer is not yet established.
+- Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner explicitly identifies blue background water beyond terrace/palms outside the pool. Keep this separate from pool highlights and preserve natural animation.
+- Next action: Identify producer where available; reproduce fixed/animated production water, inspect raw HDR and reconstructed output, correct demonstrated coordinate/input defects before changing rejection policy.
+- Verification: Authored fixed/animated dedicated-water reproduction is complete. Inverse repair alone leaves variation essentially unchanged (.0031091483→.0031088035); actual-water inputs retain identical water-interior variation (.00384100768794). These source-contract repairs do not qualify the owner-region shimmer. Actual producer and remaining live input/rejection behavior are unverified.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Owner authorizes focused source/offline correction, experimental package/iCloud delivery and feature-branch push. No broad performance campaign or login is required.
+
+
+## PPD-625 — Warm pool highlight streaks visibly jitter
+
+- Status: investigating
+- Confirmation: reported
+- Owner: Pool reflection and material integration
+- Discovered: 2026-11-26
+- Original reference: Bright reflected/specular streaks are not evidence of shadows or SSR; source contribution must be established.
+- Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner identifies warm bright broken streaks inside pool under terrace lights. Video region is separate from background water; producer/contribution is initially unknown.
+- Next action: Use localized producer/contribution evidence or offline production paths. Test SSR coordinate repair where relevant without claiming it explains the owner pool until established.
+- Verification: Actual BASE SSR publisher/consumer coordinate counterexample is corrected (RGB oracle MAE.0039654968→0 with current raster jitter). This does not identify the owner pool surface or demonstrate that SSR creates its warm streaks. Owner-region contribution and quality remain unverified.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Owner authorizes focused source/offline correction, experimental package/iCloud delivery and feature-branch push. No broad performance campaign or login is required.
+
+
+## PPD-626 — Temporal water raster jitter retains an unjittered depth inverse
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Main-view water depth reconstruction
+- Discovered: 2026-11-26
+- Original reference: Original water haze clip4 and depth reconstruction use the inverse of the projection producing those samples; preserve PPD013 homogeneous interpolation and row-orientation repairs.
+- Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). ALWaterSurface::fillMetalWaterHaze builds an unjittered MVP/inverse pair; Temporal copies jitter only the MVP for water field and haze. Actual haze and above-water refraction shaders reconstruct current jittered depth with that stale inverse.
+- Next action: Preserve the passing perspective/production-water inverse tests and complete experimental build verification. Keep PPD624/625 open; coordinate parity alone does not establish visual acceptance.
+- Verification: First valid water baseline03 fails306analytical plus two rendered oracle bounds. Corrected paired inverse yields raw/output oracle error0 with normal animation active. Fixed-water variation is essentially unchanged; this is a matrix-contract repair, not qualification of the owner water complaint.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered the distinct matrix-pair defect during focused water audit. Preserve accepted PPD013 interpolation, natural water animation, row orientation and unrelated rendering paths.
+
+
+- 2026-11-26: Current corrective evidence recorded in the linked water/history report; preserve all failed/invalid setup receipts and keep source defects separate from unproved owner-region attribution.
+
+## PPD-627 — Temporal water uses opaque depth and an infinite-plane rejection proxy
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Visible water Temporal inputs
+- Discovered: 2026-11-26
+- Original reference: Dedicated water color writes actual depth and stencil2 only for visible nonexcluded surface; Temporal inputs should describe that contribution rather than an assumed infinite plane.
+- Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Motion replay skips water and seeds opaque depth. Plane/wave-band rejection does not encode actual field/cell/exclusion coverage. Fixed-water diagnostic only9.3%less variation after localized rejection relaxation; it does not justify trusting background depth/motion or animated water history.
+- Next action: Preserve actual-water capture/visibility and plateau tests; complete affected regressions and experimental delivery. Owner water-pattern quality remains PPD624/625.
+- Verification: Actual-water capture/replay tests pass, including102659 empty-water/input assertions and4311 water/pane assertions with API/GPU validation. Maximum depth/blend errors9.94653e-7/.000427246. Settled8+8worlds allocate0newtextures with56poolreuses,0deferrals,509952cachedbytes. Glass8cases/68498assertions pass. Full affected suite/build and owner scene remain separate.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Separate real source input gap from PPD626 matrix repair. Optional Temporal-only output will reuse existing resource planning/retirement; Native/Spatial retain their existing path. Actual owner region routes remain unconfirmed.
+
+- 2026-11-26 first actual-input run: four rendered/analytic cases pass, including exact color parity and real-water depth. The new empty-water check hit a fixture-only empty-vector read because its readback still excluded the no-water arm; fixed the readback condition and added explicit size requirements before pixel checks. This is not an application failure or water-quality result. Historical run retained.
+
+- 2026-11-26: Current corrective evidence recorded in the linked water/history report; preserve all failed/invalid setup receipts and keep source defects separate from unproved owner-region attribution.

@@ -21174,6 +21174,23 @@ struct ALMetalTemporalMotionVaryings
     uint material_index [[flat]];
 };
 
+// Extract only fragments that passed the actual water color stencil contract.
+// The sampled depth snapshot is distinct from the attached read-only stencil.
+struct ALMetalTemporalWaterInputOutput
+{
+    float depth [[color(0)]];
+    float coverage [[color(1)]];
+};
+fragment ALMetalTemporalWaterInputOutput almetal_temporal_water_inputs_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> completed_water_depth [[texture(0)]])
+{
+    ALMetalTemporalWaterInputOutput output;
+    output.depth = completed_water_depth.read(uint2(input.position.xy)).r;
+    output.coverage = 1.0;
+    return output;
+}
+
 // Preserve the exact opaque device depth before forward color/depth auxiliaries
 // mutate the borrowed G-buffer attachment. This is frame-owned pooled storage.
 fragment float almetal_temporal_opaque_depth_fragment(
@@ -21201,6 +21218,8 @@ fragment ALMetalTemporalBackgroundOutput almetal_temporal_camera_motion_fragment
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> depth_texture [[texture(32)]],
     texture2d<float> opaque_depth_texture [[texture(33)]],
+    texture2d<float> water_depth_texture [[texture(42)]],
+    texture2d<float> water_coverage_texture [[texture(43)]],
     constant ALMetalTemporalReprojectionConstants& c [[buffer(0)]],
     constant ALMetalWorldModernSkyConstants& sky [[buffer(1)]],
     constant float4* meteor_data [[buffer(2)]],
@@ -21215,7 +21234,9 @@ fragment ALMetalTemporalBackgroundOutput almetal_temporal_camera_motion_fragment
 {
     const float2 extent = c.extent_jitter.xy;
     const uint2 pixel = min(uint2(input.position.xy), uint2(extent) - 1u);
-    const float depth = opaque_depth_texture.read(pixel).x;
+    const bool actual_water_inputs = (c.config.w & 16u) != 0u;
+    const bool actual_water = actual_water_inputs && water_coverage_texture.read(pixel).r > 0.0;
+    const float depth = actual_water ? water_depth_texture.read(pixel).r : opaque_depth_texture.read(pixel).x;
     // Native world raster flips clip Y before the top-left Metal viewport, retaining original GL row-zero storage.
     const float2 current_uv = (float2(pixel) + .5 - c.extent_jitter.zw) / extent;
     const float clip_depth = c.config.x != 0u ? depth : depth * 2.0 - 1.0;
@@ -21260,7 +21281,8 @@ fragment ALMetalTemporalBackgroundOutput almetal_temporal_camera_motion_fragment
     if ((c.config.w & 2u) != 0u) sky_reactive = 1.0;
     const float4 eye_h = c.inverse_projection * current_clip;
     const float3 eye = eye_h.xyz / (abs(eye_h.w) > 1.e-8 ? eye_h.w : 1.e-8);
-    const bool water = almetal_temporal_water_visible(eye, background, c);
+    const bool water = c.config.z != 0u && (actual_water_inputs ? actual_water :
+        almetal_temporal_water_visible(eye, background, c));
     output.reactive = valid && !water ? (background ? sky_reactive : 0.0) : 1.0;
     // Start the Temporal depth proxy at the opaque surface. Qualifying blended
     // surfaces publish their own depth below; the viewer's depth attachment is
@@ -21341,6 +21363,7 @@ static ALMetalTemporalMotionOutput almetal_temporal_resolve_surface(
     ALMetalTemporalMotionVaryings input, float alpha,
     float2 underlying_motion, float underlying_reactive, float underlying_depth,
     texture2d<float> opaque_depth_texture,
+    texture2d<float> water_depth_texture, texture2d<float> water_coverage_texture,
     constant ALMetalTemporalMotionConstants& c,
     constant ALMetalTemporalReprojectionConstants& view)
 {
@@ -21352,6 +21375,16 @@ static ALMetalTemporalMotionOutput almetal_temporal_resolve_surface(
     // Forward color's actual read/write depth policy is reproduced by the
     // private hardware depth attachment, rather than by a proxy comparison.
     if (!forward && abs(depth - reference_depth) > epsilon) discard_fragment();
+    const bool actual_water = (view.config.w & 16u) != 0u && water_coverage_texture.read(pixel).r > 0.0;
+    const float water_depth = actual_water ? water_depth_texture.read(pixel).r : depth;
+    const bool water_in_front = view.config.z != 0u && (actual_water
+        ? (c.config.w != 0u ? water_depth >= depth - epsilon : water_depth <= depth + epsilon)
+        : (view.config.w & 16u) == 0u && almetal_temporal_water_visible(input.eye_position, false, view));
+    // Do not replace the actual visible water proxy with opaque geometry behind
+    // it. Changing water/refraction remains unsafe rather than inheriting that
+    // hidden opaque surface's depth, motion or history confidence.
+    if (!forward && actual_water && (c.config.w != 0u ? depth < water_depth - epsilon : depth > water_depth + epsilon))
+        discard_fragment();
     bool valid = input.current_clip.w > 1.e-7 && input.previous_clip.w > 1.e-7 &&
         all(isfinite(input.current_clip)) && all(isfinite(input.previous_clip));
     // The owner proves identical current/previous unjittered vertex inputs.
@@ -21389,7 +21422,6 @@ static ALMetalTemporalMotionOutput almetal_temporal_resolve_surface(
         // A rolling tolerance would allow .000 -> .020 -> .040 to accumulate
         // disagreement while each adjacent pair appeared compatible.
         const bool same_motion = all(float2(half2(motion)) == underlying_motion);
-        const bool water_in_front = almetal_temporal_water_visible(input.eye_position, false, view);
         output.reactive = full_coverage
             ? (reliable && !water_in_front ? 0.0 : 1.0)
             : max(underlying_reactive, coherent && same_motion ? 0.0 : 1.0);
@@ -21412,6 +21444,8 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     array<texture2d<float>, 32> textures [[texture(0)]],
     texture2d<float> depth_texture [[texture(32)]],
     texture2d<float> opaque_depth_texture [[texture(33)]],
+    texture2d<float> water_depth_texture [[texture(42)]],
+    texture2d<float> water_coverage_texture [[texture(43)]],
     sampler material_sampler [[sampler(0)]],
     constant ALMetalTemporalMotionConstants& c [[buffer(1)]],
     constant ALMetalTemporalReprojectionConstants& view [[buffer(0)]])
@@ -21437,7 +21471,7 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_motion_fragment(
     if ((masked && alpha < threshold - quantization_bias) ||
         ((c.coverage.w & 512u) != 0u && alpha < c.raster.z)) discard_fragment();
     return almetal_temporal_resolve_surface(input, alpha, underlying_motion,
-        underlying_reactive, underlying_depth, opaque_depth_texture, c, view);
+        underlying_reactive, underlying_depth, opaque_depth_texture, water_depth_texture, water_coverage_texture, c, view);
 }
 
 
@@ -21516,6 +21550,8 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_legacy_motion_fragment(
     texture2d<uint> reflection_irradiance [[texture(37)]],
     texturecube<float> legacy_sky [[texture(39)]],
     texture2d<float> opaque_depth_texture [[texture(41)]],
+    texture2d<float> water_depth_texture [[texture(42)]],
+    texture2d<float> water_coverage_texture [[texture(43)]],
     sampler material_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     sampler ssr_color_sampler [[sampler(2)]],
@@ -21546,7 +21582,7 @@ fragment ALMetalTemporalMotionOutput almetal_temporal_legacy_motion_fragment(
     motion.position=input.position; motion.current_clip=input.current_clip;
     motion.previous_clip=input.previous_clip; motion.eye_position=input.eye_position;
     return almetal_temporal_resolve_surface(motion, alpha, underlying_motion,
-        underlying_reactive, underlying_depth, opaque_depth_texture, c, view);
+        underlying_reactive, underlying_depth, opaque_depth_texture, water_depth_texture, water_coverage_texture, c, view);
 }
 
 fragment float4 almetal_world_temporal_color_fragment(

@@ -271,6 +271,22 @@ void alMetalApplyTemporalJitter(float matrix[16], float x, float y,
     }
 }
 
+void alMetalApplyTemporalWaterJitter(ALMetalWorldWaterHaze& field, float x, float y,
+    std::uint32_t width, std::uint32_t height) noexcept
+{
+    if (!width || !height || !std::isfinite(x) || !std::isfinite(y)) return;
+    // Pj = J * P and inverse(Pj) = inverse(P) * inverse(J). The shader's
+    // existing clip-Y conversion is downstream; introducing another flip here
+    // would break the accepted lower-row-first sampling contract.
+    alMetalApplyTemporalJitter(field.modelview_projection, x, y, width, height);
+    const float clip_x = 2.f * x / static_cast<float>(width);
+    const float clip_y = 2.f * y / static_cast<float>(height);
+    for (unsigned row = 0; row != 4; ++row)
+        field.inverse_projection[12 + row] -=
+            clip_x * field.inverse_projection[row] +
+            clip_y * field.inverse_projection[4 + row];
+}
+
 void alMetalExpandTemporalCullProjection(float matrix[16], std::uint32_t width,
     std::uint32_t height) noexcept
 {

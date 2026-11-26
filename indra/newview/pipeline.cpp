@@ -1436,7 +1436,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool reflection_probe_radiance = false;
     bool reflection_probe_realtime = false;
     bool reflection_probe_face_capture = false;
-    std::unique_ptr<ALMetalRenderTarget> impostor_ssr_history_target;
+    ALMetalWorldScreenSpaceReflectionHistory impostor_ssr_history_target;
+    std::optional<ALMetalWorldScreenSpaceReflectionCoordinates> ssr_source_coordinates;
     ALMetalWorldScreenSpaceReflections impostor_screen_space_reflections;
     bool continuous_world_capture = false;
     U32 continuous_world_frame = std::numeric_limits<U32>::max();
@@ -2721,7 +2722,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
     {
         capture.abandonTemporalFrame(); capture.temporal_history.invalidate();
         capture.temporal_scaler.reset(); capture.aurora_reconstructor.reset(); capture.aurora_opaque_color.reset(); capture.temporal_raw_output.reset();
-        capture.temporal_resolved_output.reset(); capture.temporal_motion.reset();
+        capture.temporal_resolved_output.reset(); capture.temporal_motion.reset(); capture.temporal_water_inputs.reset();
         capture.temporal_effective=false; capture.temporal_previous_camera_valid=false;
 
         capture.finishShadowEncoding(false);
@@ -2800,6 +2801,7 @@ void LLPipeline::initializeMetalWorldCaptureDevice(
         capture.hero_probe_valid_faces = 0;
         capture.hero_probe_native_generation = 0;
         capture.impostor_ssr_history_target.reset();
+        capture.ssr_source_coordinates.reset();
         capture.impostor_screen_space_reflections = {};
         capture.continuous_world_capture = false;
         capture.continuous_world_frame = std::numeric_limits<U32>::max();
@@ -4488,7 +4490,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     {
         capture.abandonTemporalFrame(); capture.temporal_history.invalidate();
         capture.temporal_scaler.reset(); capture.aurora_reconstructor.reset(); capture.aurora_opaque_color.reset(); capture.temporal_raw_output.reset();
-        capture.temporal_resolved_output.reset(); capture.temporal_motion.reset();
+        capture.temporal_resolved_output.reset(); capture.temporal_motion.reset(); capture.temporal_water_inputs.reset();
         capture.temporal_effective=false; capture.temporal_previous_camera_valid=false;
 
         capture.finishShadowEncoding(false);
@@ -4557,6 +4559,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe = {};
         capture.impostor_ssr_history_target.reset();
+        capture.ssr_source_coordinates.reset();
         capture.impostor_screen_space_reflections = {};
         capture.continuous_world_capture = false;
         capture.continuous_world_frame = std::numeric_limits<U32>::max();
@@ -9028,15 +9031,26 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 color_scene.batches=temporal_color_batches.data();
                 if (scene.water_surface)
                 {
+                    if (!scene.water_surface->underwater)
+                    {
+                        capture.temporal_water_inputs = capture.renderer->prepareTemporalWaterInputs(
+                            capture.width,capture.height,&error);
+                        if (!capture.temporal_water_inputs)
+                        {
+                            capture.renderer->cancelCommandBatch(); capture.abandonTemporalFrame();
+                            capture.markIncomplete(__LINE__); return;
+                        }
+                        color_scene.temporal_water_inputs = capture.temporal_water_inputs.get();
+                    }
                     temporal_water=*scene.water_surface;
-                    alMetalApplyTemporalJitter(temporal_water.field.modelview_projection,capture.temporal_jitter[0],
+                    alMetalApplyTemporalWaterJitter(temporal_water.field,capture.temporal_jitter[0],
                         capture.temporal_jitter[1],capture.width,capture.height);
                     color_scene.water_surface=&temporal_water;
                 }
                 if (scene.water_haze)
                 {
                     temporal_water_haze=*scene.water_haze;
-                    alMetalApplyTemporalJitter(temporal_water_haze.modelview_projection,capture.temporal_jitter[0],
+                    alMetalApplyTemporalWaterJitter(temporal_water_haze,capture.temporal_jitter[0],
                         capture.temporal_jitter[1],capture.width,capture.height);
                     color_scene.water_haze=&temporal_water_haze;
                 }
@@ -10855,7 +10869,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
             const bool first_continuous_frame =
                 !capture.continuous_world_capture;
-            if (ssr_active && target && capture.complete)
+            if (ssr_active && target && capture.complete && capture.ssr_source_coordinates)
             {
                 // Once the complete offscreen native chain exists, keep it
                 // advancing so this frame's sharp pre-DoF color/depth can
@@ -10864,16 +10878,26 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 capture.continuous_world_capture = true;
                 std::string history_error;
                 if (capture.renderer->updateScreenSpaceReflectionHistory(
-                        *target, capture.hdr, capture.impostor_ssr_history_target,
-                        &history_error))
+                        *target, capture.hdr, *capture.ssr_source_coordinates,
+                        capture.impostor_ssr_history_target, &history_error))
                 {
-                    capture.impostor_screen_space_reflections.scene_color =
-                        capture.impostor_ssr_history_target->colorTexture(0);
-                    capture.impostor_screen_space_reflections.scene_depth =
-                        capture.impostor_ssr_history_target->colorTexture(1);
+                    const auto* history = capture.impostor_ssr_history_target.target();
+                    if (history)
+                    {
+                        capture.impostor_screen_space_reflections.scene_color = history->colorTexture(0);
+                        capture.impostor_screen_space_reflections.scene_depth = history->colorTexture(1);
+                    }
+                    else
+                    {
+                        // An asynchronously reported native error cannot leave
+                        // a successful publication pack pointing at failed history.
+                        capture.impostor_screen_space_reflections = {};
+                    }
                 }
                 else
                 {
+                    if (!capture.impostor_ssr_history_target.valid())
+                        capture.impostor_screen_space_reflections = {};
                     LL_WARNS("Metal")
                         << "Native world final color retained the previous "
                            "native SSR history after publication failed: "
@@ -13313,21 +13337,12 @@ bool LLPipeline::fillMetalImpostorScreenSpaceReflections()
 
     ALMetalWorldScreenSpaceReflectionConstants constants;
     const LLCamera& camera = LLViewerCamera::getCurrent();
-    LLMatrix4a inverse_projection;
-    inverse_projection.setInverse(metalWorldProjection(camera.getProjection()));
-    std::memcpy(constants.projection,
-                metalWorldProjection(camera.getProjection()).getF32ptr(),
-                sizeof(constants.projection));
-    std::memcpy(constants.inverse_projection,
-                inverse_projection.getF32ptr(),
-                sizeof(constants.inverse_projection));
-    std::memcpy(constants.inverse_modelview_delta,
-                LLViewerCamera::getInstance()
-                    ->getInverseDeltaModelview().getF32ptr(),
-                sizeof(constants.inverse_modelview_delta));
-    constants.screen[0] = static_cast<F32>(capture.width);
-    constants.screen[1] = static_cast<F32>(capture.height);
-    constants.screen[2] = static_cast<F32>(capture.height);
+    LLMatrix4a inverse_modelview;
+    if (!inverse_modelview.setInverse(camera.getModelview()))
+    {
+        reflections = {};
+        return false;
+    }
     constants.trace[0] = static_cast<F32>(
         std::max(RenderScreenSpaceReflectionIterations, 0));
     constants.trace[1] = RenderScreenSpaceReflectionRayStep;
@@ -13337,10 +13352,10 @@ bool LLPipeline::fillMetalImpostorScreenSpaceReflections()
         RenderScreenSpaceReflectionGlossySamples, 1, 128));
     constants.sampling[1] =
         RenderScreenSpaceReflectionAdaptiveStepMultiplier;
-    constants.config[0] = capture.reverse_z ? 1u : 0u;
-    constants.config[1] = 1;
     reflections.constants = constants;
-    return constants.screen[0] > 0.f && constants.screen[1] > 0.f;
+    const auto origin = gAgent.getPosGlobalFromAgent(LLVector3::zero);
+    return capture.impostor_ssr_history_target.bind(reflections,
+        inverse_modelview.getF32ptr(), origin.mdV);
 }
 
 bool LLPipeline::fillMetalImpostorHeroProbe()
@@ -17438,6 +17453,27 @@ void LLPipeline::endMetalWorldGBufferCapture()
         }
     }
     const auto epoch = ++capture.world_input_epoch;
+    capture.ssr_source_coordinates.reset();
+    if (batch_main_world && wantsMetalScreenSpaceReflections())
+    {
+        const auto& camera = LLViewerCamera::getCurrent();
+        const auto projection = metalWorldProjection(camera.getProjection());
+        LLMatrix4a inverse_projection;
+        if (inverse_projection.setInverse(projection))
+        {
+            ALMetalWorldScreenSpaceReflectionCoordinates coordinates;
+            std::copy_n(projection.getF32ptr(),16,coordinates.projection);
+            std::copy_n(inverse_projection.getF32ptr(),16,coordinates.inverse_projection);
+            std::copy_n(camera.getModelview().getF32ptr(),16,coordinates.modelview);
+            const auto origin = gAgent.getPosGlobalFromAgent(LLVector3::zero);
+            std::copy_n(origin.mdV,3,coordinates.world_origin);
+            coordinates.camera_generation = epoch;
+            coordinates.source_world = capture.temporal_effective
+                ? capture.temporal_world_serial : static_cast<U64>(gFrameCount);
+            coordinates.reverse_z = capture.reverse_z;
+            capture.ssr_source_coordinates = coordinates;
+        }
+    }
     auto inputs = ALMetalWorldViewInputs::adopt(scene, std::move(capture.batches),
         std::move(capture.source_references), std::move(capture.draw_order),
         std::move(capture.source_cohorts),

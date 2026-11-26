@@ -123,7 +123,19 @@ struct FinalizePolicyPipeline
     {
         bool hdr = true, device = true;
         U32 width = 8, height = 6;
-        std::unique_ptr<int> impostor_ssr_history_target;
+        // Named CPU owner double: descriptor pointers alone cannot establish
+        // that a paired GPU publication is still valid after a native error.
+        struct HistoryOwner
+        {
+            std::unique_ptr<int> storage;
+            bool failed = false;
+            bool valid() const { return storage && !failed; }
+            explicit operator bool() const { return bool(storage); }
+            void reset() { storage.reset(); failed = false; }
+            HistoryOwner& operator=(std::unique_ptr<int> value)
+            { storage = std::move(value); failed = false; return *this; }
+        } impostor_ssr_history_target;
+        std::optional<int> ssr_source_coordinates;
         struct Reflections
         {
             const FinalizeHistoryTexture* scene_color = nullptr;
@@ -500,6 +512,11 @@ TEST_CASE("Native SSR isolation retires warm history until a new ordinary public
         std::make_unique<FinalizePolicyPipeline::MetalWorldSimpleCapture>();
     warm(main_capture); warm(*p.mMetalProbeWorldSimpleCapture);
     CHECK(p.wantsMetalScreenSpaceReflections());
+    CHECK(p.hasMetalScreenSpaceReflectionHistory());
+    main_capture.impostor_ssr_history_target.failed = true;
+    CHECK_FALSE(p.hasMetalScreenSpaceReflectionHistory());
+    CHECK(main_capture.impostor_screen_space_reflections.scene_color == &color);
+    warm(main_capture);
     CHECK(p.hasMetalScreenSpaceReflectionHistory());
     // This is the actual isolation caller order: clear BEFORE setting cutout.
     p.clearSceneMap();

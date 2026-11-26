@@ -517,6 +517,7 @@ void LLPipeline::clearSceneMap()
         if (!capture) continue;
         capture->impostor_screen_space_reflections = {};
         capture->impostor_ssr_history_target.reset();
+        capture->ssr_source_coordinates.reset();
     }
     // Binding the former scene target drained immediate work before the
     // isolation caller raised cutout. Preserve that ordering without a
@@ -541,6 +542,9 @@ bool LLPipeline::hasMetalScreenSpaceReflectionHistory() const
         return false;
     }
     const MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    // A failed native publication can invalidate/release its paired target.
+    // Check the owner before inspecting any borrowed texture descriptors.
+    if (!capture.impostor_ssr_history_target.valid()) return false;
     const auto& reflections =
         capture.impostor_screen_space_reflections;
     if (!reflections.scene_color || !reflections.scene_depth ||
