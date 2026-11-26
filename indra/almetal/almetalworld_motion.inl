@@ -235,6 +235,10 @@ try
     reprojection.config[0] = scene.reverse_z; reprojection.config[1] = scene.reset;
     reprojection.config[2] = scene.reject_water;
     reprojection.config[3] = (scene.modern_sky ? 1u : 0u) | (scene.reject_sky_history ? 2u : 0u);
+    constexpr std::array<float,16> exact_identity{1.f,0.f,0.f,0.f, 0.f,1.f,0.f,0.f,
+        0.f,0.f,1.f,0.f, 0.f,0.f,0.f,1.f};
+    if (std::memcmp(scene.clip_to_previous_clip, exact_identity.data(), sizeof(scene.clip_to_previous_clip)) == 0)
+        reprojection.config[3] |= 8u; // Exact stationary camera, independent of raster jitter.
     reprojection.water_parameters[0] = std::max(scene.water_rejection_margin, 0.f);
     const ALMetalWorldModernSkyScene empty_sky;
     const auto& sky = scene.modern_sky ? *scene.modern_sky : empty_sky;
@@ -346,6 +350,22 @@ try
         constants.coverage[2] = batch.material_alpha_mode;
         constants.coverage[3] = (batch.alpha_mask ? 1u : 0u) | (batch.use_vertex_color ? 2u : 0u) |
             (batch.alpha_cutoff_bias ? 4u : 0u) | (forward ? 8u : 0u) | ((batch.avatar_skinning || batch.avatar_rigid) ? 16u : 0u);
+        // Bit-identical vertex inputs describe exactly zero unjittered motion.
+        // Independently evaluating/interpolating equal clips can leave tiny
+        // numerical residuals that strict RG16 layer comparisons retain.
+        // This is a producer proof, not a motion tolerance or history grant.
+        const bool identical_palette = valid && previous->skin_joint_count == draw.skinJointCount() &&
+            previous->skin_palette.size() == palette_count &&
+            (palette_count == 0 || (palette && std::memcmp(previous->skin_palette.data(), palette,
+                palette_count * sizeof(float)) == 0));
+        const bool identical_cloth = !batch.avatar_cloth || (valid &&
+            std::memcmp(previous->avatar_wind,batch.avatar_wind,sizeof(batch.avatar_wind)) == 0 &&
+            std::memcmp(previous->avatar_sin_wave,batch.avatar_sin_wave,sizeof(batch.avatar_sin_wave)) == 0 &&
+            std::memcmp(previous->avatar_gravity,batch.avatar_gravity,sizeof(batch.avatar_gravity)) == 0 &&
+            std::memcmp(previous->avatar_cloth_depth,batch.avatar_cloth_depth,sizeof(batch.avatar_cloth_depth)) == 0);
+        if (valid && identical_palette && identical_cloth &&
+            std::memcmp(previous->modelview_projection,draw.modelviewProjection(),sizeof(previous->modelview_projection)) == 0)
+            constants.coverage[3] |= 1024u;
         if (alpha_family) constants.coverage[3] |= 512u;
         // Opaque-forward fullbright MASK tests texture alpha only, using its
         // fixed quantized cutoff. Streamed vertex alpha is shininess there.

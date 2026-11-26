@@ -21241,7 +21241,11 @@ fragment ALMetalTemporalBackgroundOutput almetal_temporal_camera_motion_fragment
     // has no parallax or camera rotation. Independent fixture views use it too.
     const float2 previous_uv = valid && !(background && !has_sky) ?
         previous_clip.xy / previous_clip.w * .5 + .5 : current_uv;
-    const float2 motion = (previous_uv - current_uv) * extent;
+    // CPU-proven exact identity reprojection has zero unjittered camera
+    // motion. Avoid UV-to-clip round-trip residue, without suppressing reset,
+    // invalid direction/depth, dynamic sky or water history protection.
+    const float2 motion = (c.config.w & 8u) != 0u ? float2(0.0) :
+        (previous_uv - current_uv) * extent;
     valid = valid && all(isfinite(motion)) && all(abs(motion) <= 65504.0);
     ALMetalTemporalBackgroundOutput output;
     output.motion = valid ? motion : float2(0.0);
@@ -21350,8 +21354,13 @@ static ALMetalTemporalMotionOutput almetal_temporal_resolve_surface(
     if (!forward && abs(depth - reference_depth) > epsilon) discard_fragment();
     bool valid = input.current_clip.w > 1.e-7 && input.previous_clip.w > 1.e-7 &&
         all(isfinite(input.current_clip)) && all(isfinite(input.previous_clip));
-    const float2 motion = valid ? (input.previous_clip.xy / input.previous_clip.w -
-        input.current_clip.xy / input.current_clip.w) * .5 * c.extent_bias.xy : float2(0.0);
+    // The owner proves identical current/previous unjittered vertex inputs.
+    // Separate clip evaluation/interpolation can leave numerical residuals;
+    // preserve the mathematical zero without tolerating any genuine movement.
+    const bool identical_positions = (c.coverage.w & 1024u) != 0u;
+    const float2 motion = valid && !identical_positions ?
+        (input.previous_clip.xy / input.previous_clip.w -
+         input.current_clip.xy / input.current_clip.w) * .5 * c.extent_bias.xy : float2(0.0);
     valid = valid && all(isfinite(motion)) && all(abs(motion) <= 65504.0);
     ALMetalTemporalMotionOutput output;
     output.motion = valid ? motion : float2(0.0);

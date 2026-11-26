@@ -12,6 +12,13 @@ legacy/multi-slot PBR glass color/motion/rejection/Aurora output; retain a faili
 baseline and implement exact color coverage before qualifying valid history.
 Root owns builds/docs/integration; delegated shader/host and new rendered fixture
 paths have exclusive ownership. No broad FPS campaign, algorithm tuning or login.
+The unqualified bf90c0dd72/69519 build was interrupted after PPD622 localized
+settled-overlap failure to tiny numerical surface/camera motion with identical
+poses. Final exact-zero proofs pass surface/sky/tiny-real-motion controls without
+loosening layer equality. Qualified quality output improves Aurora glass variation
+about21% and detail about21%; original foliage bounds remain unchanged. Eighteen
+GPU suites pass, plus content/publication, history and focused rendered checks.
+Pin final source, then complete Release/login-only smoke/package/upload/push.
 
 Commit `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` pins experimentalAurora69516 application source.
 [Native report](../../research/aurora-native-temporal-20261126.md) is authoritative;

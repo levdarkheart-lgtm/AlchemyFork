@@ -67,6 +67,12 @@ bool previousClip(const float* current, const float* previous, std::array<float,
             if (!std::isfinite(value) || std::abs(value) > std::numeric_limits<float>::max()) return false;
             out[c * 4 + r] = static_cast<float>(value);
         }
+    // Preserve all inversion/product validation, even when both byte sequences
+    // match. A proven stationary camera has an exact identity reprojection;
+    // inverse/multiply residue is not physical motion and can defeat strict
+    // layered-history coherency checks after conversion to RG16.
+    if (std::memcmp(current, previous, 16 * sizeof(float)) == 0)
+        out = identity();
     return true;
 }
 

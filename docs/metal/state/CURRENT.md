@@ -13,7 +13,14 @@ but strong through-glass jitter. The [glass investigation](../research/aurora-te
 owns focused production-path reproduction and exact legacy/PBR coverage repair.
 No active viewer session; offline work does not wait for login. Preserve69516 and
 all existing foliage/history/ownership corrections. Source74c07274bb matched remote
-at task start; new correction, tests and packaging are in progress, not yet qualified.
+at task start. PPD619/620/621/622 corrections are offline-qualified for experimental
+review: final quality output lowers Aurora pane variation about21%, retaining
+more detail; generated transparency reactivity stays zero. Exact static surface
+and camera motion prevents numerical false rejection while tiny actual movement
+remains protected. Eighteen affected GPU suites pass; new sky fixture setup was
+corrected and passes1076assertions separately. Intermediate bf90c0dd72/69519 full
+build was interrupted and never packaged. Pin corrected source, complete Release,
+login-only smoke, package/upload verification and authorized branch push next.
 
 **Renderer code checkpoint:** `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` — experimental build69516 source.
 The [native report](../research/aurora-native-temporal-20261126.md) owns the source

@@ -50,7 +50,7 @@ struct GlassPixels
     std::vector<std::array<__fp16, 2>> motion;
     std::vector<std::uint8_t>          actual_rejection, used_rejection, generated_reactivity;
     std::array<float, 2>               jitter{};
-    unsigned                           phase = 0, valid_previous = 0;
+    unsigned                           phase = 0, valid_previous = 0, identical_previous_forward_mvp = 0;
 };
 template<class T>
 void glassRaw(const std::filesystem::path& path, const std::vector<T>& pixels)
@@ -459,6 +459,10 @@ struct GlassFixture : Fixture
             previous_forward.back().valid = false;
         m.previous_forward       = previous_forward.data();
         m.previous_forward_count = previous_forward.size();
+        for (unsigned i = 0; i < std::min(forwards.size(), previous_forward.size()); ++i)
+            result.identical_previous_forward_mvp +=
+                previous_forward[i].valid && std::memcmp(previous_forward[i].modelview_projection, forwards[i].modelview_projection,
+                                                        sizeof(forwards[i].modelview_projection)) == 0;
         m.reset                  = history.resetRequired();
         std::copy(jitter.begin(), jitter.end(), m.jitter_pixels);
         std::copy(history.clipToPrevious().begin(), history.clipToPrevious().end(), m.clip_to_previous_clip);
@@ -700,6 +704,8 @@ void glassOverlapContract(const GlassPixels& actual, const GlassPixels& without,
     CHECK(actual.phase == without.phase);
     CHECK(actual.jitter == without.jitter);
     unsigned contributing = 0, uncovered = 0, wrong_contributing = 0, wrong_uncovered = 0, wrong_depth = 0;
+    unsigned             rejected = 0, nonzero_motion = 0;
+    std::array<float, 2> lo{ 1.e30f, 1.e30f }, hi{ -1.e30f, -1.e30f };
     for (unsigned y = 12; y < 52; ++y)
         for (unsigned x = 24; x < 62; ++x)
         {
@@ -711,6 +717,13 @@ void glassOverlapContract(const GlassPixels& actual, const GlassPixels& without,
             {
                 ++contributing;
                 wrong_contributing += actual.actual_rejection[i] != (unsafe ? 255 : 0);
+                rejected += actual.actual_rejection[i] == 255;
+                nonzero_motion += actual.motion[i][0] != 0 || actual.motion[i][1] != 0;
+                for (unsigned c = 0; c < 2; ++c)
+                {
+                    lo[c] = std::min(lo[c], float(actual.motion[i][c]));
+                    hi[c] = std::max(hi[c], float(actual.motion[i][c]));
+                }
             }
             else
             {
@@ -719,14 +732,273 @@ void glassOverlapContract(const GlassPixels& actual, const GlassPixels& without,
             }
             wrong_depth += std::abs(actual.depth[i] - without.depth[i]) > 1.e-6f;
         }
-    INFO("Actually contributing overlap pixels=" << contributing << " unchanged pixels=" << uncovered);
+    INFO("unsafe=" << unsafe << " Actually contributing overlap pixels=" << contributing << " unchanged pixels=" << uncovered
+                    << " rejected=" << rejected << " nonzero_motion=" << nonzero_motion << " motion_lo=" << lo[0] << ',' << lo[1]
+                    << " motion_hi=" << hi[0] << ',' << hi[1]);
     REQUIRE(contributing > 100);
     REQUIRE(uncovered > 100);
     CHECK(wrong_contributing == 0);
     CHECK(wrong_uncovered == 0);
     CHECK(wrong_depth == 0);
 }
+
+struct GlassBackgroundFixture : Fixture
+{
+    struct Result
+    {
+        std::vector<std::array<__fp16, 2>> motion;
+        std::vector<std::uint8_t>          rejection;
+        std::vector<float>                 depth;
+        unsigned                           valid_previous = 0;
+        bool                               reset = true;
+    };
+    ALMetalTemporalWorldHistory history;
+    ALMetalWorldSimpleBatch     surface;
+    ALMetalWorldModernSkyScene  sky;
+    std::unique_ptr<ALMetalRenderTarget> opaque_depth;
+    unsigned                   width, height;
+    bool                       glass;
+    std::uint64_t              world = 0;
+
+    GlassBackgroundFixture(unsigned w, unsigned h, bool partial_glass) : width(w), height(h), glass(partial_glass)
+    {
+        opaque_depth = renderer->prepareTemporalOpaqueDepth(width, height, &error);
+        REQUIRE(opaque_depth);
+        const auto projection = GlassFixture::projection();
+        simd_float4x4 p;
+        std::memcpy(&p, projection.data(), sizeof(p));
+        const auto inverse = simd_inverse(p);
+        sky.width          = width;
+        sky.height         = height;
+        auto& c            = sky.constants;
+        std::memcpy(c.inverse_projection, &inverse, sizeof(inverse));
+        for (unsigned axis = 0; axis < 3; ++axis)
+            c.eye_to_sky[axis][axis] = c.hdri_rotation[axis][axis] = 1.f;
+        c.config[1] = c.config[2] = 1;
+        c.dome.camera_local[3]    = 15000.f;
+        c.dome.light_density[1]   = 1.f;
+        c.dome.light_density[3]   = .001f;
+        c.dome.glow[0]            = 1.f;
+        c.dome.glow[2]            = -1.f;
+        c.dome.glow[3]            = 1000.f;
+        surface                  = batch(0);
+        Geometry authored        = geometry;
+        const float positions[3][3]{ { -1.6f, -.8f, -2.f }, { 1.6f, -.8f, -2.f }, { 0.f, .8f, -2.f } };
+        for (unsigned vertex = 0; vertex < 3; ++vertex)
+            std::copy_n(positions[vertex], 3, authored.positions[vertex]);
+        surface.vertices = buffer(&authored, sizeof(authored));
+        const std::uint8_t rgba[4]{ 90, 150, 190, 128 };
+        surface.diffuse_textures[0] = texture(ALMetalPixelFormat::rgba8_unorm, 1, rgba, 4);
+        surface.temporal_instance_id = 911;
+        surface.temporal_generation = 1;
+        surface.pre_water_fullbright = surface.post_water_alpha = true;
+        surface.pre_water_minimum_alpha = .004f;
+    }
+
+    Result render(float yaw = .031f, bool dynamic_sky = false)
+    {
+        data->beginFrame(++world);
+        const auto projection = GlassFixture::projection();
+        std::array<float, 16> view{}, mvp{};
+        identity(view.data());
+        view[0] = view[10] = std::cos(yaw);
+        view[8] = std::sin(yaw);
+        view[2] = -std::sin(yaw);
+        view[12] = -.1f;
+        view[13] = .13f;
+        for (unsigned column = 0; column < 4; ++column)
+            for (unsigned row = 0; row < 4; ++row)
+                for (unsigned k = 0; k < 4; ++k)
+                    mvp[column * 4 + row] += projection[k * 4 + row] * view[column * 4 + k];
+        auto draw = surface;
+        std::copy(mvp.begin(), mvp.end(), draw.modelview_projection);
+        std::copy(view.begin(), view.end(), draw.modelview);
+        auto g        = scene();
+        g.width       = width;
+        g.height      = height;
+        g.reverse_z   = true;
+        g.batches     = nullptr;
+        g.batch_count = 0;
+        ALMetalWorldOpaquePostDeferredScene forward;
+        forward.width       = width;
+        forward.height      = height;
+        forward.reverse_z   = true;
+        forward.batches     = glass ? &draw : nullptr;
+        forward.batch_count = glass ? 1 : 0;
+        ALMetalTemporalWorldHistory::FrameInput input;
+        input.world_id = world;
+        input.input_width = width;
+        input.input_height = height;
+        input.output_width = GOW;
+        input.output_height = GOH;
+        input.mode = 8;
+        input.reverse_z = true;
+        input.jitter_phase_count = GPhases;
+        std::copy(mvp.begin(), mvp.end(), input.camera_mvp);
+        REQUIRE(history.beginFrame(input, &error));
+        REQUIRE(history.stage(g, forward, &error));
+        REQUIRE(renderer->beginCommandBatch("Stationary sky fixture color-depth and motion inputs", &error));
+        auto gbuffer = renderer->render(g, &error);
+        INFO(error);
+        REQUIRE(gbuffer);
+        REQUIRE(renderer->captureTemporalOpaqueDepth(*gbuffer->depthStencilTexture(), *opaque_depth, &error));
+        ALMetalWorldTemporalMotionScene motion;
+        motion.width = width;
+        motion.height = height;
+        motion.reverse_z = true;
+        motion.opaque_scene = &g;
+        motion.forward_scene = glass ? &forward : nullptr;
+        motion.depth = gbuffer->depthStencilTexture();
+        motion.opaque_depth = opaque_depth->colorTexture(0);
+        motion.modern_sky = &sky;
+        motion.reject_sky_history = dynamic_sky;
+        motion.reset = history.resetRequired();
+        const auto previous = history.previousForward();
+        motion.previous_forward = previous.data();
+        motion.previous_forward_count = previous.size();
+        const auto jitter = history.jitterPixels();
+        std::copy(jitter.begin(), jitter.end(), motion.jitter_pixels);
+        std::copy(history.clipToPrevious().begin(), history.clipToPrevious().end(), motion.clip_to_previous_clip);
+        std::copy(sky.constants.inverse_projection, sky.constants.inverse_projection + 16, motion.inverse_projection);
+        auto rendered = renderer->renderTemporalMotion(motion, &error);
+        INFO(error);
+        REQUIRE(rendered);
+        const auto completion = renderer->commandBatchCompletion();
+        REQUIRE(completion);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        REQUIRE(completion->waitUntilCompleted(&error)); // Fixture-only observation boundary.
+        Result out;
+        out.motion.resize(width * height);
+        out.rejection.resize(width * height);
+        out.depth.resize(width * height);
+        out.valid_previous = history.stats().valid_previous_draws;
+        out.reset = motion.reset;
+        REQUIRE(rendered->colorTexture(0)->readback(*device, 0, 0, {}, out.motion.data(), width * 4, &error));
+        REQUIRE(rendered->colorTexture(1)->readback(*device, 0, 0, {}, out.rejection.data(), width, &error));
+        REQUIRE(rendered->colorTexture(2)->readback(*device, 0, 0, {}, out.depth.data(), width * 4, &error));
+        REQUIRE(history.commit(world, &error));
+        return out;
+    }
+};
 } // namespace
+
+TEST_CASE("Stationary modern sky agrees exactly with partial glass motion without accepting dynamic sky",
+          "[metal][temporal-glass][temporal-glass-static-sky]")
+{
+    for (auto [width, height] : std::array<std::array<unsigned, 2>, 2>{ { { GW, GH }, { 127, 63 } } })
+        for (bool glass : { false, true })
+        {
+            CAPTURE(width, height, glass);
+            GlassBackgroundFixture f(width, height, glass);
+            const auto first = f.render();
+            REQUIRE(first.reset);
+            CHECK(std::all_of(first.rejection.begin(), first.rejection.end(), [](auto v) { return v == 255; }));
+            for (unsigned phase = 0; phase < (width == GW ? GPhases : 2u); ++phase)
+            {
+                CAPTURE(phase);
+                const auto p = f.render();
+                REQUIRE_FALSE(p.reset);
+                REQUIRE(p.valid_previous == (glass ? 1 : 0));
+                CHECK(std::all_of(p.motion.begin(), p.motion.end(), [](auto v) { return v[0] == 0 && v[1] == 0; }));
+                CHECK(std::all_of(p.rejection.begin(), p.rejection.end(), [](auto v) { return v == 0; }));
+                const auto foreground = std::size_t(std::count_if(p.depth.begin(), p.depth.end(), [](float v) { return v > .01f; }));
+                if (glass)
+                {
+                    REQUIRE(foreground > 20);
+                    REQUIRE(foreground < p.depth.size() / 2);
+                }
+                else
+                    CHECK(foreground == 0);
+            }
+            const auto dynamic = f.render(.031f, true);
+            CHECK(std::all_of(dynamic.rejection.begin(), dynamic.rejection.end(), [](auto v) { return v == 255; }));
+            const auto moving = f.render(.0311f);
+            const auto background = std::size_t(std::count_if(moving.depth.begin(), moving.depth.end(), [](float v) { return v == 0; }));
+            unsigned nonzero_background = 0;
+            for (unsigned i = 0; i < moving.motion.size(); ++i)
+                if (moving.depth[i] == 0 && (moving.motion[i][0] != 0 || moving.motion[i][1] != 0))
+                    ++nonzero_background;
+            REQUIRE(background > 20);
+            CHECK(nonzero_background == background); // A real small rotation must not be classified as stationary.
+        }
+}
+
+TEST_CASE("Exactly stationary glass layers preserve zero motion throughout production jitter",
+          "[metal][temporal-glass][temporal-glass-stationary-motion]")
+{
+    for (auto family : { GlassFamily::legacy, GlassFamily::pbr_single, GlassFamily::pbr_multi })
+    {
+        GlassFixture  f(family), control(family);
+        GlassSettings s;
+        s.camera_x = s.pane_x = s.wall_x = .1f;
+        s.uv_shift = .1f;
+        // A stable zero-contribution front pane exposes the farther layer's
+        // motion directly. The original full overlap hid its tiny nonzero
+        // vectors beneath a nearer exact-zero vector while retaining rejection.
+        const auto* zero         = f.flatColor({ .13f, .4f, .6f, 0.f });
+        const auto* control_zero = control.flatColor({ .13f, .4f, .6f, 0.f });
+        for (unsigned slot = 0; slot < f.pane.texture_count; ++slot)
+        {
+            f.pane.diffuse_textures[slot]       = zero;
+            control.pane.diffuse_textures[slot] = control_zero;
+        }
+        auto no_layer = s;
+        s.overlap     = true;
+        f.render(s);
+        control.render(no_layer);
+        for (unsigned phase = 0; phase < GPhases; ++phase)
+        {
+            const auto p = f.render(s), background = control.render(no_layer);
+            CAPTURE(familyName(family), phase, p.phase, p.jitter[0], p.jitter[1]);
+            REQUIRE(p.phase == background.phase);
+            REQUIRE(p.jitter == background.jitter);
+            REQUIRE(p.valid_previous == 3);
+            REQUIRE(p.identical_previous_forward_mvp == 2);
+            unsigned nonzero = 0, reject = 0, contributors = 0, wrong_depth = 0;
+            for (unsigned y = 12; y < 52; ++y)
+                for (unsigned x = 24; x < 62; ++x)
+                {
+                    const auto i          = y * GW + x;
+                    float difference = 0;
+                    for (unsigned c = 0; c < 3; ++c)
+                        difference += std::abs(p.color[i][c] - background.color[i][c]);
+                    if (difference < 1.e-5f)
+                        continue;
+                    ++contributors;
+                    reject += p.actual_rejection[i] != 0;
+                    nonzero += p.motion[i][0] != 0 || p.motion[i][1] != 0;
+                    wrong_depth += std::abs(p.depth[i] - .04f) > 1.e-6f;
+                }
+            REQUIRE(contributors > 100);
+            CHECK(nonzero == 0); // Literal zero is required: no epsilon hides the original RG16 disagreement.
+            CHECK(reject == 0);
+            CHECK(wrong_depth == 0);
+        }
+        // Real movement smaller than the old .025-pixel agreement tolerance
+        // must remain represented and rejected against the stationary wall.
+        s.camera_x += .0001f;
+        auto moving_control    = s;
+        moving_control.overlap = false;
+        const auto moving      = f.render(s), moving_background = control.render(moving_control);
+        unsigned   contributors = 0, moving_pixels = 0, rejected = 0;
+        for (unsigned y = 12; y < 52; ++y)
+            for (unsigned x = 24; x < 62; ++x)
+            {
+                const auto i          = y * GW + x;
+                float difference = 0;
+                for (unsigned c = 0; c < 3; ++c)
+                    difference += std::abs(moving.color[i][c] - moving_background.color[i][c]);
+                if (difference < 1.e-5f)
+                    continue;
+                ++contributors;
+                moving_pixels += moving.motion[i][0] != 0 || moving.motion[i][1] != 0;
+                rejected += moving.actual_rejection[i] == 255;
+            }
+        REQUIRE(contributors > 100);
+        CHECK(moving_pixels == contributors);
+        CHECK(rejected == contributors);
+    }
+}
 
 TEST_CASE("Static tinted panes retain coherent history through actual Aurora reconstruction",
           "[metal][temporal-glass][temporal-glass-stability]")

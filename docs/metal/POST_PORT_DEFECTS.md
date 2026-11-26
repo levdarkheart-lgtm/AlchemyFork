@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-622 -->
+<!-- next-defect-id: PPD-623 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15207,14 +15207,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reported
 - Owner: Main-view transparency integration
 - Discovered: 2026-11-26
 - Original reference: Original Alchemy upstream/develop 408fd6c014e6 class3/deferred/materialF.glsl preserves lighting-dependent max(diffuse.a,glare)*vertexAlpha coverage. Temporal reconstruction is new; pinned Aurora ee458fb consumes actual opaque/final HDR and an independent composition marker.
 - Evidence: [Glass investigation](research/aurora-temporal-glass-20261126.md). Owner reports improved foliage in69516 but strong jitter through a glass fence, also observed with earlier MetalFX modes. Source b6f18c24f4 excludes legacy material and multi-slot PBR forward BLEND from valid-history qualification; surviving draws force rejection1. Exact owner-fence family is not established by retained older fence observations.
-- Next action: Reproduce legacy and multi-slot PBR glass through actual color/motion/jitter/Aurora paths; retain failing masks/output, isolate composition causality and implement exact color coverage plus valid-history policy. Preserve movement/disocclusion protection and existing foliage reconstruction.
-- Verification: Source audit establishes the exclusion and legacy raw-alpha coverage mismatch, not their attribution to the new owner scene. No corrective rendered result yet. Retain69516 and all unrelated quality failures; no broad FPS investigation or algorithm tuning.
+- Next action: Owner review of the corrected experimental build; identify the actual fence family if residual jitter remains. Preserve layer-motion protection and the original foliage quality failures.
+- Verification: Valid baseline03 reproduces255/255 unsafe confidence for legacy and multi-slot PBR glass while generated transparency reactivity is zero. Final authored production-path output reduces Aurora covered RGB variation about21% with about21% greater edge detail; MetalFX legacy improves about85%. Qualified30/31 run passes all original glass/history cases; its new sky test setup failed before encoding, was corrected, and passes1076assertions separately. The eighteen affected GPU regression suites pass. Exact owner-fence attribution remains pending.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15223,16 +15223,18 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26: Registered owner regression before repair. Current branch74c07274bb is clean and matches remote. No active local viewer session; offline production-path reproduction proceeds without login. Owner explicitly authorizes corrected experimental package, private iCloud delivery and branch publication.
 
 
+- 2026-11-26: Rendered correction qualified for experimental owner review; exact fence acceptance remains pending. Final source/build/package identity will be recorded in the glass report.
+
 ## PPD-620 — Temporal material selector clamps differ from forward color
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Temporal material coverage
 - Discovered: 2026-11-26
 - Original reference: Actual native PBR color clamps the streamed selector to the last populated material slot before texture and per-slot UV selection.
 - Evidence: [Glass input audit](research/aurora-temporal-glass-20261126.md). Temporal clamps to7, then only its UV lookup clamps to the active count; alpha sampling still uses the unclamped slot. With selector5 and two populated slots, color samples slot1 while Temporal can sample the slot0 fallback binding.
-- Next action: Use one matched populated-slot clamp before Temporal UV and texture selection; add a rendered out-of-range multi-slot counterexample. Preserve generic32-texture semantics.
-- Verification: Discovered during review of the newly generalized glass path before packaging. Rendered counterexample and corrected retest are pending; no quality threshold changes.
+- Next action: Owner review; preserve the matched populated-slot clamp and rendered selector5/two-slot regression.
+- Verification: Final production-path rendered regression verifies selector5 with two populated slots samples the same transformed slot1 alpha as color, including vertex alpha and zero-alpha controls. Included in qualified glass cases; no quality threshold was changed.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15241,19 +15243,44 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26: Registered source-confirmed coverage discrepancy. It is distinct from the legacy coverage/family exclusion in PPD619 and is repaired within the same bounded glass integration task.
 
 
+- 2026-11-26: Rendered correction qualified for experimental owner review; exact fence acceptance remains pending. Final source/build/package identity will be recorded in the glass report.
+
 ## PPD-621 — In-place published texture changes can retain Temporal material history
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: source_confirmed
 - Owner: Temporal material content identity
 - Discovered: 2026-11-26
 - Original reference: LLImageGL touchContents/nativePublication and ALScenePublicationNative DependencyRelay already invalidate actual authored texture content; same native backing can be reused safely after readers settle.
 - Evidence: [Glass content audit](research/aurora-temporal-glass-20261126.md). Temporal material tokens compare native texture allocation identity/generation, but not the existing source producer revision. Rebuilding a packet after an in-place media/image update can keep those allocation tokens and geometry publication revision unchanged, allowing old material history.
-- Next action: Carry the existing exact authored producer revision as transient per-draw material-history data. Preserve valid history across equivalent republication/cache eviction; do not add another resource lifetime system or reject ordinary object motion.
-- Verification: Source path identified from LLImageGL markMetalRenderTextureUpdated through DependencyRelay and source Payload.producer_revision. Corrective implementation and content/eviction/republication regressions are pending.
+- Next action: Retain the exact authored producer revision through raw published batches and static restoration. Owner reviews the corrected experimental glass build; preserve equivalent republication and ordinary motion.
+- Verification: Source path identified from LLImageGL markMetalRenderTextureUpdated through DependencyRelay and source Payload.producer_revision. Actual in-place GPU/image publication and cache-restoration tests pass131assertions/two cases; history tests pass1995assertions/22cases with API/GPU validation. Exact source epochs distinguish content changes while equivalent republication remains valid.
 - Owner verification: pending
 - Push approval: granted
 
 ### History
 
 - 2026-11-26: Registered during glass safety review before packaging. Newly qualifying static glass must distinguish real changing content, not rely only on stable allocation identity. This focused repair reuses the existing source publication protocol and preserves PPD611 semantic-material equality.
+
+
+## PPD-622 — Numerical motion from identical stationary poses triggers layered history rejection
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Temporal motion accuracy
+- Discovered: 2026-11-26
+- Original reference: Bit-identical submitted vertex-position inputs imply exact zero unjittered screen motion. Projection jitter is supplied separately; visible layered-motion disagreement remains protected.
+- Evidence: [Glass stationary-overlap diagnosis](research/aurora-temporal-glass-20261126.md). Three material families reproduce nonzero far-pane motion at958/1008 contributing pixels despite valid history and bit-identical current/previous MVPs; x range−7.7486e−7..7.1526e−7, y−8.3447e−7..4.1723e−7 input pixels. Exact RG16 comparison with the front pane's zero rejects980/1008 settled overlap pixels. Private debug-overlap-01 retains raw inputs, identity and exact pixel records.
+- Next action: Owner review of exact-static surface/camera motion correction. Preserve strict representable layer-motion equality and genuine tiny-motion protection.
+- Verification: Exact-static transformed surfaces and modern-sky camera inputs now produce literal zero through all18 jitter phases, including odd dimensions. Surface/input tests pass8684assertions/two cases; corrected sky transaction test passes1076assertions/one case. Genuine0.0001m camera movement remains nonzero and unsafe; dynamic sky protection remains. The full qualified run passes all23 history cases and all glass quality cases, with only the subsequently corrected new-sky fixture setup failure. Eighteen affected GPU suites pass under API/GPU validation. Intermediate69519 was not packaged.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered after the corrected visible-contribution overlap oracle still failed. Initial family/coverage repair improves simple stationary panes but does not close this remaining exact-motion failure. Preserve bf90c0dd72 and its results as an intermediate checkpoint, not a delivered69519 build.
+
+
+- 2026-11-26 PPD622 background follow-through: short static modern-sky probes reproduce the same false motion (128×64/18phases:23296 nonzero pixel observations;127×63/two phases:4714; maximum≈1.85e−6 input pixels). Clear/non-sky is exactly zero. The camera MVPs are identical, but inverse/multiply leaves tiny C2P entries and the UV round trip also contributes error. Canonicalize exactly identical validated camera transforms and preserve exact-zero camera motion; no tolerance or dynamic-sky rejection change.
+
+- 2026-11-26: Rendered correction qualified for experimental owner review; exact fence acceptance remains pending. Final source/build/package identity will be recorded in the glass report.

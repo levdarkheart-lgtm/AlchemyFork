@@ -11,6 +11,7 @@
 #include <catch2/catch_approx.hpp>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <limits>
 
 namespace
@@ -123,6 +124,48 @@ TEST_CASE("Temporal history advances jitter and poses only at successful world s
     REQUIRE(history.commit(3));
     CHECK(history.stats().submitted_worlds == 2);
     CHECK(history.stats().abandoned_worlds == 1);
+}
+
+TEST_CASE("Temporal stationary camera reprojection is exactly identity after invertibility validation", "[temporal-history][stationary-exact-motion]")
+{
+    History history;
+    auto frame = input(1);
+    frame.input_width=128; frame.input_height=64;
+    frame.output_width=192; frame.output_height=96; frame.mode=6;
+    // A real reverse-Z perspective/view product whose inverse and multiply
+    // formerly left small nonzero off-diagonal terms despite identical inputs.
+    const std::array<float,16> camera{
+        1.0865411758422852f,0.f,0.f,0.f,
+        0.f,.3707274794578552f,0.f,.9768249988555908f,
+        0.f,1.6919106245040894f,0.f,-.21403959393501282f,
+        -114.08682250976562f,-51.39891815185547f,.10000000149011612f,-13.972140312194824f};
+    std::copy(camera.begin(),camera.end(),frame.camera_mvp);
+    std::array<float,16> exact_identity{}; identity(exact_identity.data());
+    ALMetalWorldGBufferScene empty;
+    std::array<float,2> first_jitter{};
+    for (unsigned world=1; world<=19; ++world)
+    {
+        frame.world_id=world;
+        REQUIRE(history.beginFrame(frame));
+        CHECK(std::memcmp(history.clipToPrevious().data(),exact_identity.data(),sizeof(exact_identity)) == 0);
+        CHECK(history.resetRequired() == (world == 1));
+        if (world == 1) first_jitter=history.jitterPixels();
+        if (world == 2) CHECK(history.jitterPixels() != first_jitter);
+        REQUIRE(history.stage(empty,nullptr)); REQUIRE(history.commit(world));
+    }
+    frame.world_id=20; frame.camera_mvp[12]+=.25f;
+    REQUIRE(history.beginFrame(frame));
+    CHECK_FALSE(history.resetRequired());
+    CHECK(std::memcmp(history.clipToPrevious().data(),exact_identity.data(),sizeof(exact_identity)) != 0);
+    history.abandon();
+
+    History singular;
+    auto invalid=input(1); std::fill_n(invalid.camera_mvp,16,0.f);
+    CHECK_FALSE(singular.beginFrame(invalid));
+    CHECK_FALSE(singular.pending()); CHECK(singular.committedWorld() == 0);
+    // Equal singular matrices must not pass the stationary identity shortcut.
+    invalid=input(2);
+    REQUIRE(singular.beginFrame(invalid)); CHECK(singular.resetRequired());
 }
 
 TEST_CASE("Temporal jitter cycle follows rounded upscale extents and only submitted worlds", "[temporal-history]")
