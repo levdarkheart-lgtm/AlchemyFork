@@ -1,0 +1,39 @@
+{
+  "application_source_commit": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f",
+  "version": "26.4.0.69516",
+  "dmg_checksum_verified": true,
+  "mounted_app_entries": 8293,
+  "all_entries_equal": true,
+  "deep_strict_signature_verified": true,
+  "notarized": false,
+  "zip_content": {
+    "verified_utc": "2026-11-26T18:14:34.219663+00:00",
+    "regular_files_verified": 33,
+    "all_hashes_equal": true,
+    "zip_crc_test_passed": true
+  },
+  "delivery_files": [
+    {
+      "name": "Alchemy-Aurora-Temporal-Experimental-69516-AppleSilicon.dmg",
+      "bytes": 375857751,
+      "sha256": "83e2665069929c32068e73a0f5c36611838fd5d4c1cb32da5e987c806dbd0052"
+    },
+    {
+      "name": "Alchemy-Aurora-Temporal-Experimental-69516-Review.zip",
+      "bytes": 37189736,
+      "sha256": "d73e17bc3c0c3aa04c0e6311f24b300a397fb36e9949a04422a67a1997e51ba0"
+    },
+    {
+      "name": "Alchemy-Aurora-Temporal-Experimental-69516-SHA256SUMS.txt",
+      "bytes": 246,
+      "sha256": "b96780bdc681313c05f737ccde18c54e54582d795293e122171660d316b7fbad"
+    }
+  ],
+  "local_iCloud_bytes_verified": true,
+  "remote_upload_confirmed": false,
+  "upload_check_utc": "2026-11-26T18:15:09Z",
+  "upload_error_code": 4355,
+  "upload_disposition": "PPD618; no remote readiness claim while account/service access fails",
+  "application_and_shader_identity_receipt": "review-verification.json",
+  "subsequent_commit_scope": "Documentation, sanitized receipts and inherited surface test oracle only; packaged production source remains b6f18c24f4."
+}

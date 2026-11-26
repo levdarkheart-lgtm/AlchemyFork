@@ -320,8 +320,17 @@ TEST_CASE("Actual drawable rendering readback and presentation share one importe
         REQUIRE(drawable->prepareResourceUse(*f.device, &f.error));
         CHECK(drawable->resourceView().identity() == identity);
         CHECK(f.device->uniqueResourceStats().external_unknown_records == 1);
-        auto other_device = ALMetalDevice::create(&f.error, ALMetalResourcePlanMode::enabled);
+        // Wrappers of one native GPU and planning mode deliberately share the
+        // canonical execution owner and registry. They are valid consumers.
+        auto same_owner = ALMetalDevice::create(&f.error, ALMetalResourcePlanMode::enabled);
+        REQUIRE(same_owner);
+        REQUIRE(same_owner->resourcePlan() == f.device->resourcePlan());
+        REQUIRE(drawable->prepareResourceUse(*same_owner, &f.error));
+        // A different mode owns an independent registry. Keep the substantive
+        // negative ownership check against that genuinely different plan.
+        auto other_device = ALMetalDevice::create(&f.error, ALMetalResourcePlanMode::accounting_only);
         REQUIRE(other_device);
+        REQUIRE(other_device->resourcePlan() != f.device->resourcePlan());
         CHECK_FALSE(drawable->prepareResourceUse(*other_device, &f.error));
         CHECK(drawable->resourceView().identity() == identity);
         f.error.clear();

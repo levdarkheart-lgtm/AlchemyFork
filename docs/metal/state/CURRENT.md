@@ -1,160 +1,110 @@
 # Current engineering state — experimental native Aurora prototype
 
-Observed2026-11-26 on AppleM1Max/64GiB/macOS26.5.2/Xcode26.6. Isolated branch
-`codex/aurora-native-temporal-20261126` starts at `318f0ac8b6a8073fe8d22d0848c84c282ad8b212`.
-Evaluation, Temporal, Spatial and usual branches/builds are preserved. Owner authorizes
-implementation, offline validation, feature-branch push and private iCloud packaging;
-no live login or whole-viewerFPS claim. Native default and combined lighting OFF remain.
+Observed 2026-11-26 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
+Branch `codex/aurora-native-temporal-20261126` starts at evaluation checkpoint
+`318f0ac8b6a8073fe8d22d0848c84c282ad8b212`. The owner authorizes implementation,
+offline qualification, feature-branch push and private iCloud delivery. No live
+login or whole-viewer FPS claim. Native remains default; combined lighting OFF.
 
-## Active PPD610 prototype / PPD614 port qualification
+## Active implementation and qualification
 
-**Renderer code checkpoint:** `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a`; prior69507productionidentity.
-Current uncommitted native implementation is tracked in the
-[native report](../research/aurora-native-temporal-20261126.md). SavedID8/effective4 selects
-exact2/3 AuroraOFF, using existing sizing, shadowbudget, motion/poses, jitter, main-post
-transaction and retirement. Genuine pre-transparencyHDR preservation is encoded before
-compositing; native component runs the pinned translatedWGSL graph and resolves glow.
-No runtimeRust/wgpu or normalframeCPUwaits. Temporal/Spatial IDs0–7 retain meaning.
+**Renderer code checkpoint:** `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` — experimental build69516 source.
+The [native report](../research/aurora-native-temporal-20261126.md) owns the source
+map, qualification and delivery. New saved ID8 /effective4 selects exact2/3 Aurora
+OFF. IDs0–7, output-sized shadows and native UI remain unchanged. The component
+uses existing motion/poses, jitter, main-post transactions and retirement. Genuine
+opaque/final HDR drives upstream reactivity; the final resolve preserves glow.
+No runtime Rust/wgpu, new history scheduler or normal-frame CPU wait is added.
 
-PPD610 remainsopen: original67/75andAuroraarea/settling failures are unchanged.
-The [evaluation](../research/aurora-reconstruction-evaluation-20261126.md) supports only
-an experimental quality review: ~80%lessstationaryvariation, slowdetailredistribution,
-~11msOFF versus~4.14msMetalFX at2304x1446→3456x2168; notviewerFPS.
-Closed nativeMetalFX isolation staysclosed. No furtheralgorithmselection needed.
+PPD610 stays open: the owner’s palm/grass scene has not been reviewed with this
+prototype. All original67/75 and Aurora quality failures remain. The native port
+matches **195,084,288 RGB components across468main+414mature worlds exactly**.
+Edge variation.0008673, contrast.820113, recall.936028; area.821401<.85 and stop18/36
+errors.0158863/.0123194>1/255 still fail. Matched previews use fixture worlds at12fps,
+not live Home footage or viewer throughput.
 
-PPD614 blocks packaging until native port response is correct: firstworldexact but
-historyworlds divergeMAE.0021012/max.293335. MatchingMSL4toevaluatedbackend doesnot
-changefailure. Component/validation agents are isolating firstdivergentintermediate;
-failed468worldoutputs retained privately under `artifacts/metal/aurora-native-20261126/`.
-FirstAPI/GPU lifecycle checks pass; they donotqualifyportquality. FullReleasebuild is
-underway in `build-aurora-native-release`, OpenHTJ2K0.27 solepixeldecoder.
-198repositorytooltests pass(1existingskip); native/preset/source tests remain inprogress.
+PPD614’s initial port mismatch is corrected: Naga renamed two pyramid entry points;
+wrong names yielded accepted vertex-only pipelines. Generated reflection and
+mandatory vertex/fragment validation now prevent silent clear-only stages. Failed
+outputs and language-version countercheck remain retained. No quality bound changed.
 
-Next: resolvePPD614, complete main+mature-reference parity/frozenquality scoring,
-focused main integration/NativeSpatial/transaction regressions, targetcomponentcost,
-then commit source, rebuildpinnedapp, login-onlysmoke and privateiCloudDMG/ZIP/checksums.
-Never call the owner-scene foliage fixed from fixtures. Owner performs firstlive review.
+Actual-size native component:2304×1446→3456×2168,360warm/360samples, GPU median/p95
+**10.925625/12.392208ms**, including opaque copy, adapters, complete graph, depth and
+alpha resolve. CPU encode.294167/.720458ms; submit.011084/.022000ms. AC power, nominal
+thermal state, identical18input fingerprints. Owned allocations and physical device
+footprint plateau. The [earlier evaluation](../research/aurora-reconstruction-evaluation-20261126.md)
+measured ~11ms WGSL and ~4.14ms MetalFX; this is not a matched native speedup or FPS result.
 
-## Preserved69494 Temporal checkpoint — PPD598
+Twelve component cases pass API/GPU validation. Two actual renderer capture/borrowed
+transaction cases pass204assertions, including bloom, pre-display rejection,
+unsubmitted cancellation, retained presentation and recovery. Glow-edge error
+.000813611<.002; owned payload returns to zero at teardown.198tool tests pass with
+one existing skip; seven translation/analysis checks pass.
 
-Preserved69494 source: `663a591f2c543158d4e0bf5a68e4e7236f20a559`.
+## Current executable action
 
-Separate `worktrees/metalfx-temporal` / `codex/metalfx-temporal-20261125`, fetched parent
-`41e90aaadb938d77955f7c7e752362aab875fff6` unchanged. App **26.4.0.69494**, production source
-**663a591f2c543158d4e0bf5a68e4e7236f20a559**;841358a changes only new test-oracle code.
-Owner authorizes feature-branch publication and private iCloud package; usual/Spatial branches preserved.
-[Temporal review](../research/metalfx-temporal-20261125.md) is the authoritative implementation/evidence map.
+Release 26.4.0.69516 is complete at application source b6f18c24f4. All three CPU
+and fifteen affected Metal suites pass, including the PPD616 test-only oracle
+correction. PPD615 retains the incremental-cache issue; it does not block the
+verified full build. Deep/strict ad-hoc signing and 346 ARM64 checks pass.
+The full-screen login-only smoke reaches STATE_LOGIN_WAIT and closes normally.
+PPD617 limits its evidence to shipped defaults/session overrides after the private
+launcher’s cloned-settings path failed; actual owner XML matches retained baseline.
+No account login, permanent graphics change or live rendering claim is made.
+Mounted-package verification is complete: all 8293 app entries match; signatures,
+346 ARM64 checks, ZIP CRC and selected hashes pass. PPD618 blocks confirmed remote
+delivery: local iCloud Desktop copies are correct, but upload metadata reports
+account access unavailable (NSCocoa4355); read-only service access is denied.
 
-Native remains default; Temporal50/67/75, HDR reconstruction after reduced-depth DoF and before bloom/tonemap,
-output shadows/native UI, camera/rigid/body/attachment/cloth motion, finite reactive policies and submit-owned
-history are implemented. Early fallback stays unjittered; late failure cancels world publication. Saved AA/CAS
-remain available for other modes. Snapshots/captures do not advance main history. Live quality/FPS is unclaimed.
+Build directory: `build-aurora-native-release`; OpenHTJ2K0.27 is the sole pixel decoder.
+Private full outputs/failed attempts/receipts: `artifacts/metal/aurora-native-20261126/`.
+Compact synthetic evidence is linked from the native report. One Ninja owner at a
+time includes metadata commands; dependency-log recovery remains a separate follow-up.
+Packages exist locally on iCloud Desktop; do not claim remote upload completion.
 
-Full Release build,346 ARM64 inspections, deep/strict signing and readonly-DMG hash verification pass.
-API/GPU validation passes18 scaler/post/material cases and10 motion cases, plus15 existing regression suites.
-CPU history13/resource-plan34 cases,398 UI and116 real preset checks pass. Login smoke reaches fullscreen
-with AutoLoginfalse, then quits;17 original settings files restored byte-exact. No live login performed.
-PPD597/599/600 inherited repairs and PPD601–607 corrections retain failed evidence and verification limits.
-Fractional mip tests use a calibrated native explicit-LOD oracle; no production formula/tolerance relaxation.
+## Preserved branches and previous repairs
 
-Known review limits: reactive-only transparent/sky/water regions, terrain-edit and texture-content animation
-not explicitly classified, the historical allocation churn corrected under PPD608, and inherited third-party release gaps.
-Next action is the owner's live Temporal67 review: detail, moving avatars/camera, hair/foliage/transparency,
-water, resize/mode changes and snapshots. No additional Home FPS investigation or optimization is authorized
-by this handoff; the review branch and iCloud receipts record publication/delivery separately.
+- Evaluation remains `codex/aurora-reconstruction-evaluation-20261126` at318f0ac8b6.
+- Temporal remains `codex/metalfx-temporal-20261125` at86a7654fb1. The69507 application
+  source was b73abe1acd; later tests/docs differ. The [Temporal report](../research/metalfx-temporal-20261125.md)
+  and [69507 review](../research/temporal-foliage-69507-review.md) retain corrections,
+  all original20 failed quality bounds and private delivery identities.
+- Spatial remains `codex/metalfx-spatial-20261124` at41e90aaadb. Build69464 source was
+  a5142ae5c2. Its [quality review](../research/metalfx-quality-20261124.md) retains
+  historical live results; those are not measurements of this new executable.
+- The usual branch and all existing viewer packages remain unchanged.
 
-## Preserved Spatial parent checkpoint
+Submission-only pose history, semantic material equality, blended foreground depth/
+motion, visibility-aware rejection, sky motion, cancellation and pooled-target
+pre-acquisition are preserved. MetalFX wrapper/pool/history/resolve isolation is
+[closed for the retained case](../research/temporal-palm-native-isolation-20261126.md);
+do not reopen it without a new demonstrated integration defect.
 
-The sections below are historical Spatial observations; statements that Temporal was not implemented refer
-to that parent checkpoint and are superseded by the active Temporal state above.
-
-## Active quality expansion — PPD596
-
-The owner requests exact 2/3 and 3/4 Spatial choices and scale-aware material mip sampling, starting at
-091243d236 (code 12fb05f, build 69462). The preset, fallback and native snapshot repairs are preserved.
-Stable choices 3/4 map centrally to rational dimensions with upward rounding, native UI and output-based
-shadow budgets. Material bias is frozen before main draws from actual rounded widths; late linear fallback
-retains and reports that policy. Native, saved linear 50%, shadows, probes, impostors, snapshots and debug
-views remain unbiased. Shader sample bias is used because the validated M1 Max colored-mip check confirms
-that sampler-descriptor bias has no effect on this Apple7 GPU.
-
-Build **69464**, code **a5142ae5c2**, passes the full Release build, deep/strict signing, 346 ARM64 inspections,
-three CPU planning/UI/preset suites and fourteen relevant Metal suites with API/GPU Validation. New material,
-alpha coverage, terrain gradient, owned-input and zero-bias recovery cases pass after correcting the new
-fixture's omitted environment source. The older hidden probe-accumulator suite requires external source
-inputs and is excluded; it supplies no new probe experiment or performance result.
-
-Private evidence: `artifacts/metal/metalfx-quality-20261124/`. The [quality review](../research/metalfx-quality-20261124.md)
-records bounded 53-probe observed rates: Native15.14, unbiased50 35.68, biased50 35.58, 67%25.41, 75%21.07,
-restored unbiased50 35.90 worlds/s. The last row is an explicit20s prefix, not its invalid full25s window.
-Warming controls are excluded; only B2 passes all local population gates. Named observer holes and separate
-process identities remain. This is useful review evidence, not a lossless release comparison or zero-cost proof.
-
-Five lossless PNGs/crops and motion clips are retained. UI crops are byte-identical. 67% is recommended for
-balance;75% is the best scaled still, while50% retains obvious thin-edge artifacts. Modest mip detail gain is
-separate from extra source pixels. Motion evidence is qualitative/stepped, with unmatched sampled poses;
-continuous shimmer and broader material acceptance remain owner review. Final Native mode/original controls/CAS
-are restored, override false, capture utility restored to stills, and PID22729 is closed. Review app/bundle are
-on iCloud Desktop. No Temporal implementation. On 2026-11-25 the owner explicitly authorizes
-publication to `codex/metalfx-spatial-20261124` for another AI to review. Private evidence stays local;
-usual-branch integration, release and product acceptance remain unapproved. Application code remains a5142ae5c2.
-
-PPD597 records an existing hidden/manual probe fixture's incorrect ordinary CTest registration. It was excluded,
-not passed; its coherent maintenance disposition is retained separately without reopening probe experiments.
-
-## Observed implementation and verification
-
-Previous integration build69462/source12fb05f compiles and passes14 selected CTest
-suites:3CPU and11Metal with API+GPU Validation. Deep/strict signing and346 ARM64
-checks pass. PPD593 presets round-trip2→0→2 through real manager/XML I/O; older
-presets lacking the key select Standard, failed loads preserve the mode, generated
-Default stays Native. PPD594 shows committed effective mode/fallback reason beside
-the selector. PPD595 same-size ordinary snapshots explicitly request native scene
-detail in50% modes; custom/explicit/cutout/360 paths stay independent. The new
-borrowed-main failure case rejects final validation after real MetalFX encoding,
-denies commit/publication permission and retains the previous BGRA image.
-
-That69462 integration checkpoint had no new login, live UI/snapshot smoke test or FPS comparison. Owner review remains
-pending; precise overhead and zero Native regression are not established. Focused
-receipts are under `artifacts/metal/metalfx-integration-20261124/`.
-The verified69462 review DMG is separately named on iCloud Desktop; the69457
-package is retained unchanged. Neither packaging nor fixtures log in the owner.
-
-Initial69457 native/linear/Spatial performance, image and resize evidence remains in the
-[Spatial implementation record](../research/metalfx-spatial-20261124.md); it is historical and is not
-Temporal69501 evidence. OpenHTJ2K0.27 remains the sole pixel decoder.
-
-Owner-requested private DMG69457 is on iCloud Desktop. Mounted bytes/modes/symlinks,
-signing and346 ARM64 checks pass; exact68e59fc app retained. Apple Silicon/macOS26+
-is required; ad-hoc signing is not notarization. External-machine test is pending.
-PPD592 records inherited optional-VLC missing framework references; actual plugin
-selection/media impact remain unproved. No speculative package changes were made.
-
-The accepted earlier Review69454 resolution split justifies this feature attempt;
-it is not a measurement of the new executable. Probe/SSR/combined-pass experiments
-are closed and are not this task. Do not change admission or reopen those variants.
+PPD591–600 retain Spatial sizing, mip, preset, fallback and native snapshot decisions.
+The existing snapshot route is independent and does not represent displayed Temporal
+quality; owner review must use macOS screenshots/recordings. PPD608/609 retain the
+allocation/cancellation repairs. Transparency/water/sky/content-animation limitations
+remain explicit; no rejection, bias or sharpening tuning is part of this prototype.
 
 ## Complete-product advancement assessment
 
-The [production maintenance record](../research/production-maintenance-20261122.md)
-retains previously accepted repairs, register reconciliation and their validation.
-The earlier review branch preserves research-only evidence separately. Those facts
-are historical, not current claims that this new feature is already qualified.
-
-**Historical Spatial code checkpoint:** `a5142ae5c2c6dd1fe8b2fa89c9479eb213cff0f5` (actual build 69464; later test-fixture/documentation edits do not change its application identity).
+This prototype advances owner-reviewable reconstruction quality, not release
+acceptance. PPD610, PPD319 Home performance, broad feature parity, prolonged
+stability and third-party/release qualification remain open. The owner will review
+actual stationary palms/grass, moving avatars, camera stop/settling, transparency
+and whole-viewer performance. Native, Spatial and MetalFX remain comparison options.
 
 | ID | State | Remaining boundary |
 | --- | --- | --- |
 | M-008 | doing | Broad feature/visual acceptance and representative performance. |
 | M-011 | doing | Reproducible release and strict no-GL qualification. |
-| M-012 | doing | Maintained scripts verified; PPD597 manual-suite classification repaired; broader coverage remains. |
+| M-012 | doing | Maintained tools and meaningful automated/offline evidence. |
 | M-013 | doing | Retained features and prolonged stability. |
 
 Required independent build/review evidence and release gates remain open.
-PPD319 Home performance and broad visual/feature/release qualification remain open.
-A reviewable prototype does not establish complete-product or release readiness.
 
 ## Exact next actions
 
-Continue the active native prototype qualification above. Previous sections are preserved
-historical checkpoints, not claims that this new mode is already qualified or delivered.
+Publish the authorized feature branch. Recheck the existing iCloud artifacts when
+service/account access returns; do not rebuild or recopy unchanged packages.
+The owner performs the first live quality/FPS review; no broader profiling is requested.

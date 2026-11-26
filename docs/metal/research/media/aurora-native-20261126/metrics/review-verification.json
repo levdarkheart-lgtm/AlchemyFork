@@ -1,0 +1,178 @@
+{
+  "application_identity": {
+    "application_source_commit": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f",
+    "version": "26.4.0.69516",
+    "executable_sha256": "bc47d87026ccd33cd19c8e2cbbee20ec888ea189a805ccf833683520dcc4d651",
+    "builtin_metallib_sha256": "5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a",
+    "embedded_aurora_sources_header_sha256": "9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070",
+    "aurora_host_source_sha256": "c2164698b1b0b79a3edb15c3d24d2ecdcef92c84bce04e6db1782e260ab3497c",
+    "embedded_shader_modules_verified": {
+      "accumulate.metal": "aa8f84e72b8713bb5b4f251101daf8f57198ec245007538864a6da71d61278b8",
+      "prepare_inputs.metal": "2d4e371e0290836e7a110a8309c0e8a58ea8772c20b806d75b7c3ede4b9597cf",
+      "pyramids.metal": "d9dc80768093e261acc9102902d16638813d1a95816032e611cc9305955a443b",
+      "reactivity.metal": "846340ea23f978862a03b61b88821625a8d8b88c7d87b14b6a1d710b6de0bc68"
+    },
+    "adapter_shader_embedded_sha256": "460c122623d019f399d0739be002df9d961f991074a84a81a70738543ff4f21e",
+    "build_data": {
+      "Type": "viewer",
+      "Version": "26.4.0.69516",
+      "Channel Base": "Alchemy",
+      "Channel": "Alchemy Aurora Experimental Review",
+      "Platform": "mac",
+      "Address Size": 64,
+      "Update Service": "https://update.secondlife.com/update",
+      "Bundle Id": "org.alchemyviewer.viewer.aurora-experimental-review"
+    }
+  },
+  "signing": "Ad-hoc, deep/strict verified; not notarized",
+  "architecture": {
+    "macho_files": 346,
+    "all_arm64": true
+  },
+  "regressions": {
+    "application_source_commit": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f",
+    "cpu": {
+      "tests": "3",
+      "failures": "0",
+      "cases": [
+        {
+          "name": "alrender_tests/alrenderresourceplan_test",
+          "failed": false
+        },
+        {
+          "name": "newview/native_graphics_preferences",
+          "failed": false
+        },
+        {
+          "name": "newview/graphics_preset_roundtrip",
+          "failed": false
+        }
+      ]
+    },
+    "gpu_initial": {
+      "tests": "15",
+      "failures": "1",
+      "cases": [
+        {
+          "name": "almetal_tests/almetal_aurora_inputs_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_temporal_visibility_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_temporal_presentation_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_temporal_orchestration_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_temporal_scaler_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_temporal_motion_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_temporal_history_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_spatial_scaler_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_spatial_presentation_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_resource_plan_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_resource_plan_native_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_surface_resource_native_test",
+          "failed": true
+        },
+        {
+          "name": "almetal_tests/almetal_world_resources_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_world_inputs_test",
+          "failed": false
+        },
+        {
+          "name": "almetal_tests/almetal_gbuffer_constants_test",
+          "failed": false
+        }
+      ]
+    },
+    "surface_corrective_retest": {
+      "tests": 1,
+      "failures": 0,
+      "cases": 4,
+      "assertions": 25071,
+      "metal_api_validation": true,
+      "metal_gpu_validation": true
+    },
+    "final_unique_gpu_suites_passed": 15,
+    "inherited_surface_oracle": "PPD616: old pre-Aurora executable reproduces original single failure; test-only correction asserts canonical owner acceptance and independent-registry rejection. Production implementation unchanged.",
+    "tool_tests": {
+      "tests": 198,
+      "failures": 0,
+      "existing_skips": 1
+    },
+    "translation_and_analysis_tests": 7,
+    "api_gpu_validation_scope": "12 native component cases, 2 actual renderer cases/204 assertions, full 468+414-world RGB parity, affected CTest GPU suites. Cost measured separately with validation off.",
+    "source_after_app_build": "Only surface fixture and documentation change after application source; no packaged production source differs."
+  },
+  "login_smoke": {
+    "application_source_commit": "b6f18c24f4e32e5e8897f782c0e4b65bda521f8f",
+    "version": "26.4.0.69516",
+    "executable_sha256": "bc47d87026ccd33cd19c8e2cbbee20ec888ea189a805ccf833683520dcc4d651",
+    "observed_login_screen": true,
+    "observed_fullscreen": true,
+    "automatic_login_disabled": true,
+    "startup_reached": "STATE_LOGIN_WAIT",
+    "no_live_login": true,
+    "normal_quit": true,
+    "viewer_closed": true,
+    "runtime_device": "Apple M1 Max",
+    "pixel_decoder": "OpenHTJ2K 0.27.0",
+    "settings_launch_caveat": "Private launcher used an absolute --settings filename, which is resolved relative to AlchemyNext/user_settings and could not load/save. Session and CLI overrides loaded. The observed test used shipped defaults, not the intended cloned owner settings. No live rendering/quality conclusion is drawn.",
+    "actual_settings_observation": {
+      "settings.xml": {
+        "matches_retained_69507_baseline": true,
+        "sha256": "cf5aa1f918cf0c5a2d471076c385c7821f15c6153b864444188ceebbc0c00f9b"
+      },
+      "ignorable_dialogs.xml": {
+        "matches_retained_69507_baseline": true,
+        "sha256": "c75e229b8791589bf1d86201e95a8c6eba38644688cf75a548b65772df3d87d1"
+      },
+      "colors.xml": {
+        "matches_retained_69507_baseline": true,
+        "sha256": "71466383e1ff238aef6465f3d2e044e89c204576b104a1e7569770f6879fea74"
+      }
+    },
+    "restoration_scope": "No temporary graphics/login settings were persisted; actual settings.xml is byte-identical to the retained latest 69507 baseline and predates this smoke. Auxiliary XML also matches. The initial unused-directory restoration is not used as evidence.",
+    "private_logs_omitted": true
+  },
+  "production_changed_after_application_commit": false,
+  "test_only_followup": "almetal_surface_resource_native_test.mm canonical-owner oracle; no production source changes",
+  "verification_logs": {
+    "build-pinned.log": "37f99b21078c4e3c04e9aaf8e7902840963be469ff76b2a46bb0d342cd7aedde",
+    "cpu-regressions.log": "69cb0347bb1148b98d399ec52e84dfbe69cef986fef592c77da72a152076a728",
+    "gpu-regressions.log": "cc711e050bf75d8ee307c5212ab7b18ea1188ae403c90172a0a53a8d3ff38ef9",
+    "surface-retest.log": "39581b19174bed1f84aa4c9e807b4e0aa1382adde0a20f194bb276bb20a30d65",
+    "app-signature.log": "1bd8af74d93762a7cc7fb5fb006dfeb33d6f0eb00ff23ceb239ffa3fd64901c0",
+    "app-architecture.log": "dc9eaa5b39c294c37e788d838350a1ece70fe69efdaffcf727243202efa527dc"
+  }
+}

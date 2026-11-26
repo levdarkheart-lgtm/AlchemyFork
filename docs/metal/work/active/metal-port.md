@@ -7,27 +7,32 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-Commit `b73abe1acdb65f96239ce70ac4cdf4c0ca83827a` identifies prior69507 renderer; the new
-native component and integration are uncommitted in this isolated worktree.
-[Native implementation record](../../research/aurora-native-temporal-20261126.md) owns
-source map, qualification and eventualdelivery. [Evaluation](../../research/aurora-reconstruction-evaluation-20261126.md)
-retains frozenquality and componentcost. No repeated Homeprofiling oralgorithmselection.
+Commit `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f` pins experimentalAurora69516 application source.
+[Native report](../../research/aurora-native-temporal-20261126.md) is authoritative;
+[evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) retainsoldquality/cost.
 
 | Item | State | Acceptance / next boundary |
 | --- | --- | --- |
-| Native pinnedAuroraOFF graph + mainID8 | doing | Exactalgorithm + correctopaque/final/motion/depth/glow; no wgpu runtime. |
-| PPD614 firstworldexact/historydivergence | doing | Findfirstdivergentintermediate; no tolerance/qualityboundrelaxation. |
-| Submission-owned history/resource safety | doing | Existingposeowner; abandon/failure/reset/inflight + reusefixtures. |
-| Port renderedquality/reference | doing | Full468main/414mature histories and originalbounds; retainfailures. |
-| Actualtarget componentcost | todo | WarmGPUtime inclopaque-preservation, adapters/fullgraph/glow; noFPSclaim. |
-| Release reviewdelivery | todo | Sourcepinnedapp, signing/ARM64/dependencies, login-onlysmoke, verifiediCloudupload. |
+| Native pinnedAuroraOFF graph + mainID8 | complete | Realopaque/final/depth/motion/glow, existingworldownership, no wgpu runtime. |
+| PPD614 missingtranslatedpyramidfunctions | ready_for_owner | Reflectednames+functionvalidation;882worlds/195MRGBexact. |
+| Submission/resource safety | complete |12componentcases +2actualrenderer cases/204assertions API/GPU pass. |
+| PPD610 quality | open | Area.821401<.85;stop18/36.015886/.012319>1/255; ownerliveacceptancepending. |
+| Actualtarget nativecost | complete |10.926median/12.392p95ms, allintegrationpasses included; noFPSclaim. |
+| Release review delivery | blocked | 69516 full build, regressions, login smoke and mounted package checks pass; PPD618 iCloud account/service access prevents confirmed upload. |
 
-FirstnativeAPI/GPU lifecyclechecks pass; nativequalityportmismatch is notaccepted.
-198tools(1skip) pass; initial missingPyYAML testenv and invalidnewregistermetadata
-are corrected with retainedfailurelogs. Buildusesexistingpublicvcpkg/OpenHTJ2K,
-separateNinjaRelease directory. OnlyoneNinjaprocessowns it atatime.
-The next action is PPD614 isolation while the fullbuildcontinues; then remaining
-focusedvalidation, benchmark, package and deliverautonomously. No viewerlogin.
+Release build69516, deep/strict ad-hoc signing and 346 ARM64 checks pass. All three
+CPU and fifteen affected Metal suites pass after the inherited PPD616 test-only
+oracle correction; the application is unchanged. 198 tools (one existing skip)
+and seven translation/analysis checks pass. Full-screen login-only smoke reaches
+STATE_LOGIN_WAIT and closes normally; PPD617 records the failed cloned-settings
+override and verified actual preference bytes. No login or live rendering test.
+Initial wrong entry names, dependency-log recovery and fixture oracle failures
+are retained; no quality threshold relaxation. Component memory plateaus.
+Mounted DMG matches all 8293 app entries; signatures/346 ARM64 checks and ZIP CRC/
+hashes pass. Local iCloud copies match, but account-access error4355 leaves upload
+unconfirmed (PPD618). Next action: publish only the authorized new branch, then
+recheck existing uploads when service access recovers. No rebuild is required.
+Preserve evaluation/Temporal/Spatial/usual branches.
 
 ## Preserved Spatial parent checkpoint
 

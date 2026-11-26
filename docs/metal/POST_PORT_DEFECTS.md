@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-615 -->
+<!-- next-defect-id: PPD-619 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15114,7 +15114,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Byte-identical pinned Aurora ee458fb WGSL and retained full perspective palm sequences on the M1 Max; the native host is a new implementation.
 - Evidence: [Native prototype verification](research/aurora-native-temporal-20261126.md) retains private `artifacts/metal/aurora-native-20261126/` native replay preserves the first468-world comparison: world0 matches exactly but subsequent RGB differs (overall MAE approximately.0021,max.2933). This is a port-correctness gate, not a new quality threshold.
-- Next action: Complete the viewer integration regressions and pinned build/package verification. The port output mismatch is corrected by authoritative reflection; original PPD610 quality failures and owner live review remain separate.
+- Next action: Owner reviews the experimental native Aurora viewer; all focused integration regressions and the pinned Release build pass. Original PPD610 quality failures and live acceptance remain separate from corrected port parity.
 - Verification: Corrected468main+414independent mature worlds match all195,084,288referenceRGB components exactly with API/GPU validation. Generated reflection and mandatory shader-function validation prevent the original nil-fragment clear-only passes. Frozen area/settling failures remain unchanged.
 - Owner verification: pending
 - Push approval: granted
@@ -15128,3 +15128,73 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 PPD614 localization: two-frame intermediate comparison finds preceding motion/depth/luma exact. Naga emitted `fs_farthest_depth_mip1_` and `fs_shading_change_mip0_`, but initial native lookups used names without underscores; nil fragment functions yielded accepted vertex-only pipelines and cleared-zero pyramid targets. Generate/use reflection names and reject missing functions before pipeline creation. Full corrected histories are the next verification gate.
 
 - 2026-11-26 PPD614 corrective verification: full882world sequences are bit-exact to retainedWGSL OFF; every frozen metric is identical. Three reflection/embedding checks pass. Missing-entry failure is repaired; no live quality orFPS inference follows. Owner-review disposition remains separate from automated port evidence.
+
+## PPD-615 — Ninja dependency log repeatedly recovers from premature EOF
+
+- Status: open
+- Confirmation: reproduced
+- Owner: Local build infrastructure
+- Discovered: 2026-11-26
+- Original reference: Normal Release builds should retain a usable incremental dependency database; rendering output is not attributed to this build-cache symptom.
+- Evidence: [Native review build notes](research/aurora-native-temporal-20261126.md) retain private `build-pinned.log` and earlier build logs. Ninja reports premature EOF and recompiles most targets, including after a successful exclusive full build and version-only CMake refresh. Source/object corruption has not been demonstrated; full compilation and identity checks remain required.
+- Next action: Investigate dependency-log persistence separately; do not weaken dependency checks or relabel an old binary. The pinned 69516 Release build is complete and verified; no further rebuild is required for its test/documentation follow-up.
+- Verification: Initial concurrent metadata inspection could explain one incident, but recurrence under exclusive ownership means that is not an established complete cause. Disk space is ample. The complete exclusive Release build succeeds, deep/strict signing and 346 ARM64 checks pass, and packaged source identities are pinned. Cache persistence remains a build-latency issue, not a demonstrated rendering defect.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Retained repeated recovery logs and corrected the earlier concurrency-only attribution. A clean completed rebuild is the delivery route; no shader or scheduling workaround is introduced.
+
+## PPD-616 — Drawable fixture mistakes canonical device wrappers for different owners
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Native surface regression fixture
+- Discovered: 2026-11-26
+- Original reference: Existing ALMetalDevice::create intentionally shares one native execution owner, queue and registry for the same physical GPU and planning mode. Different planning modes deliberately own independent graphs.
+- Evidence: [Native review regression notes](research/aurora-native-temporal-20261126.md). Current and preserved pre-Aurora Temporal test executables both fail the same CHECK_FALSE at line325; each has25066/25067assertions passing. Device/surface implementation and this fixture are unchanged by the Aurora implementation at b6f18c24f4.
+- Next action: Retain the corrected positive and negative ownership checks. Owner review concerns the experimental application; this inherited test-only oracle repair does not alter the viewer or any image-quality bound.
+- Verification: Corrected fixture passes 25071 assertions in four cases with Metal API/GPU validation. It positively requires canonical same-owner acceptance and rejects a genuinely independent accounting-only registry. Preserved pre-Aurora and initial current failures remain; packaged application source b6f18c24f4 is unchanged by this test-only follow-up.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered inherited test-oracle contradiction before qualification. Preserve both failures, then require the corrected positive and negative ownership checks to pass Metal validation.
+
+- 2026-11-26 corrective retest: Normal Release test target rebuilt; the focused surface suite passes all four cases/25071 assertions. The other fourteen affected Metal suites and all three CPU suites already pass. No production resource-planning change was required.
+
+## PPD-617 — Private login-smoke launcher resolves settings against the wrong directory
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Review-delivery evidence
+- Discovered: 2026-11-26
+- Original reference: LLAppViewer resolves --settings as a filename under its actual AlchemyNext/user_settings directory; --sessionsettings supports the separately specified session path.
+- Evidence: [69516 review verification](research/aurora-native-temporal-20261126.md). The private launcher backed up unused Alchemy/user_settings and passed an absolute --settings path. The viewer log records the invalid expanded path and failed file load/save, while session settings and explicit AutoLogin=false load correctly.
+- Next action: Use the corrected private launcher for future smoke tests. Do not cite the unused-directory backup as owner-settings restoration or the completed default-profile smoke as a live rendering test. No application repair is required.
+- Verification: Exact pinned app reaches full-screen STATE_LOGIN_WAIT and quits normally; no STATE_STARTED or login occurs. Actual settings.xml, ignorable_dialogs.xml and colors.xml match the retained latest 69507 baseline byte-for-byte. The receipt explicitly preserves the failed override and limits the smoke claim. The private helper now uses the actual directory and a basename settings file; no second launch was needed to prove the observed login outcome.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered delivery-helper evidence error; preserved raw logs privately, corrected the receipt's scope and verified actual owner preference bytes against retained baseline. This does not establish a viewer settings defect or require a new quality/performance run.
+
+## PPD-618 — New review artifacts cannot confirm iCloud upload
+
+- Status: open
+- Confirmation: reproduced
+- Owner: Private review delivery
+- Discovered: 2026-11-26
+- Original reference: Delivery requires Foundation URL metadata uploaded=true, uploading=false and no upload error; a local copy alone is insufficient.
+- Evidence: [69516 delivery](research/aurora-native-temporal-20261126.md). All three iCloud Desktop files match the verified local package hashes, but fresh metadata returns NSCocoaErrorDomain 4355, could not access the iCloud account. Retained older 69507 files still report uploaded. Read-only brctl status/quota return BRCloudDocsErrorDomain 141 access denied.
+- Next action: Recheck the existing three files when iCloud service/account access is available; do not replace packages, modify account/security settings or claim remote readiness from local existence. All implementation, build and package work can be reviewed independently.
+- Verification: Read-only DMG content comparison matches all 8293 app entries; deep/strict signing, 346 ARM64 checks, ZIP CRC and per-file hashes pass. New-file upload remains unconfirmed after the first recheck. Raw service diagnostics remain private; no account identifier or credential is published.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Registered external delivery failure immediately after local package verification/copy. No Apple ID changes, daemon reset or security bypass attempted. This is separate from viewer correctness and PPD610 image-quality acceptance.

@@ -139,3 +139,109 @@ not fully inventoried by the typed counters.
 [teardown](media/aurora-native-20261126/metrics/component-teardown.json), and
 [matched preview manifest](media/aurora-native-20261126/visuals/manifest.json)
 make the scope reviewable. The preview clips are not live Home recordings.
+
+## Build-cache observation — PPD615
+
+Ninja repeatedly reports premature EOF in its dependency log and rebuilds most
+objects, including after an exclusive successful build followed by version-only
+CMake refresh. Earlier concurrent metadata inspection is not a complete causal
+explanation. Full logs are retained privately. This delays incremental builds;
+it has not demonstrated source/object corruption or a rendering failure. The
+source-pinned full Release build and package identity checks are required for
+this delivery. Dependency checks are not bypassed; cache persistence remains a
+separate follow-up rather than another rendering investigation.
+
+## Inherited surface-fixture oracle — PPD616
+
+The first affected regression run passes14/15suites. The surface fixture assumes
+that two wrappers of the same native GPU/planning mode have different ownership;
+the existing device implementation explicitly canonicalizes that owner/registry.
+The preserved pre-Aurora test executable reproduces the identical failure. The
+fixture repair asserts same-owner acceptance and tests rejection against a
+**genuinely different registry** using accounting-only mode. No resource-planning
+production code or image-quality threshold changes. The original failed runs and
+baseline executable identity are retained privately. The corrected retest passes
+all 25,071 assertions in four cases with Metal API/GPU validation. This is a
+test-only follow-up to the pinned application source; the viewer is unchanged.
+
+## Review build and verification
+
+Application **26.4.0.69516**, source
+`b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`, is a separately named
+**Alchemy Aurora Experimental Review.app**. Release compilation, deep/strict
+ad-hoc signature verification and all 346 ARM64 Mach-O checks pass. It is **not
+notarized** and requires macOS 26 or newer. No wgpu/Vulkan/OpenGL runtime is linked
+by the executable. The original viewer packages and branches remain unchanged.
+
+- Executable SHA-256: `bc47d87026ccd33cd19c8e2cbbee20ec888ea189a805ccf833683520dcc4d651`.
+- Builtin metallib SHA-256: `5d10cbcaefd65d98e50fb2894870a3364e30527b28b7dfd6addc7c7436c09e8a`.
+- Embedded Aurora MSL/reflection header SHA-256:
+  `9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070`.
+- Adapter shader source SHA-256:
+  `460c122623d019f399d0739be002df9d961f991074a84a81a70738543ff4f21e`.
+
+All four complete generated MSL modules and the adapter are verified inside the
+actual executable. The generated modules in Resources also match. Aurora compiles
+those embedded inputs once during preparation; the unchanged builtin metallib
+alone does not identify Aurora. The identity receipt includes each module hash.
+
+Three affected CPU suites pass (resource sizing, real preferences and preset
+round trip). Fourteen of fifteen Metal suites passed initially; the inherited
+PPD616 oracle failed identically on the pre-Aurora executable. Its corrected
+test-only retest passes, completing all fifteen affected suites. The 198 tool
+tests pass with one existing skip; seven translation/analysis checks pass.
+Fresh offline translation reproduces every checked-in MSL/embedding byte.
+
+The exact app reached the full-screen login screen with AutoLogin disabled and
+closed normally, without entering a world. PPD617 records a private launch-helper
+path mistake: the intended cloned settings file was not loaded, so this is a
+shipped-default login smoke with valid session/CLI overrides, not an owner-profile
+render test. The actual owner graphics/login settings and auxiliary XML match
+the retained latest 69507 baseline byte-for-byte. No permanent graphics changes
+were persisted; the viewer is closed. Raw account-bearing logs stay private.
+
+Delivery names on **iCloud Desktop** are:
+
+- `Alchemy-Aurora-Temporal-Experimental-69516-AppleSilicon.dmg`
+- `Alchemy-Aurora-Temporal-Experimental-69516-Review.zip`
+- `Alchemy-Aurora-Temporal-Experimental-69516-SHA256SUMS.txt`
+
+The review ZIP contains pinned application source, the evaluation-to-application
+diff, the test/documentation follow-up, synthetic sequences/metrics and sanitized
+verification receipts. Application source and subsequent branch documentation are
+distinct; later commits do not change the packaged executable. Package/mounted
+content verification and cloud-upload receipts govern delivery readiness.
+
+Read-only mounting verifies all **8,293 app entries** against the source bundle;
+mounted deep/strict signing and 346 ARM64 checks pass. ZIP CRC and all selected
+file hashes pass. Package SHA-256:
+
+| File | SHA-256 |
+| --- | --- |
+| DMG | `83e2665069929c32068e73a0f5c36611838fd5d4c1cb32da5e987c806dbd0052` |
+| Review ZIP | `d73e17bc3c0c3aa04c0e6311f24b300a397fb36e9949a04422a67a1997e51ba0` |
+
+**PPD618: remote delivery is not confirmed.** Local iCloud Desktop copies match
+these hashes, but fresh upload metadata reports NSCocoaErrorDomain4355 (account
+access unavailable), uploaded=false. A read-only service check returns access
+denied; the older preserved packages still have completed-upload metadata. No
+account/security changes were attempted. Do not equate local availability with
+readiness on another machine. The existing files can be rechecked without
+repackaging once iCloud access recovers.
+
+[Application/regression receipt](media/aurora-native-20261126/metrics/review-verification.json)
+and [package/delivery receipt](media/aurora-native-20261126/metrics/package-verification.json)
+retain the exact scope, including the initial failure and upload limitation.
+
+After owner login: Advanced Graphics → World resolution →
+**67% (Aurora Temporal · Experimental)**. Require adjacent status
+**Active: 67% Aurora Temporal (Experimental)**; **Linear** plus a reason is a
+fallback, and **Pending** is not execution. The tooltip gives actual dimensions.
+Use **Standard** to return to Native, or an existing Spatial/MetalFX choice.
+RCAS and CAS remain off only while Aurora is effective; saved preferences remain.
+
+Owner review is explicitly experimental: inspect stationary palm silhouettes,
+dense leaf interiors and grass against rigid edges, then move and stop; check
+settling, avatars/hair, transparency, resizing and mode changes. Use macOS window
+screenshots/recording, not the independent viewer snapshot route. No live quality
+acceptance or whole-viewer FPS improvement is claimed. PPD610 remains open.
