@@ -56,8 +56,13 @@ Frozen bounds require temporal RMS<.003, mean within3% of the retained compariso
 nonflat reflected contrast and nonnegligible SSR contribution. The69525 shader
 fails exactly the temporal bound; the receiver candidate passes. It also passes
 the unchanged earlier water-SSR noise bounds (MAE.005172/RMS.009021). Both cases
-pass113,240assertions with API/GPU validation. Other regressions, final source pin,
-Release, smoke and package checks are pending.
+pass113,240assertions with API/GPU validation. The source-pinned Release and all24selected checks pass:20Metal suites with
+API/GPU validation and4CPU suites (161.60s). These include water/SSR coordinates,
+glass/visibility, Native/Spatial presentation, history/cancellation and resource
+reuse. Full-screen login-only smoke passes and restores18original settingsfiles/
+24entries; viewerclosed. Mountedapp verification matches8293entries, signatures and346ARM64 checks pass;
+ZIP CRC/all127selected hashes pass. All three iCloud uploads are confirmed
+**2026-11-27 08:01:28UTC**, with no error and matching destination hashes.
 
 **Cost boundary:** retained owner ROI runs cannot establish a matched ordinary-view
 cost for the shared four-ray tile candidate: A0 has no qualified quiet stream;
@@ -75,6 +80,47 @@ not viewerFPS. Normal-animation/movement qualification uses matched final342worl
 wave motion remains nonzero and every untouched background/reflector pixel is exact
 over270savedworlds. No old frozen-animation reference is substituted for move/stop.
 Packaging follows separately.
+
+## Source-pinned 69527 delivery candidate
+
+Application source `5d44ab6411a47bad3e437ed2da78179b7121e978`, branch
+`codex/aurora-native-temporal-20261126`, Release26.4.0.69527. The code starts from
+reviewed app0a94/69525 plus documentation checkpoint4d8e; no later source changes
+were present at task start. Preserve69525 and accepted glass/foliage packages.
+
+| Identity | SHA-256 |
+| --- | --- |
+| Executable | `bac2cd70dc98ec8d483051ed3c8244872349e1aca1b75180cd41db01ce3ffbe9` |
+| Built-in metallib | `0e3114b033e28998f138d35a6706d2cf1b97da492ee9808e100200e387cb7aee` |
+| Aurora generated MSL compiler input, unchanged | `9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070` |
+
+The final CMake-built and app-bundled library is byte-identical to the qualified
+candidate. No privatebuffer8/inspection shader, global fixed seed, frozenhistory,
+omission, mask override or new setting ships. Existing bounds and all PPD610
+failures remain unchanged. Actual original-scene water acceptance is pending;
+the demonstrated source cause/improvement belongs to the authored production-path
+fixture. No live scene login was performed in this follow-up.
+
+The app is ad-hoc signed, not notarized, with the existing macOS26 target.
+Select **67% (Aurora Temporal · Experimental)** and check its effective status.
+Keep combined lighting OFF. Use macOS window screenshots/recording rather than
+independent viewer snapshots for displayed Temporal quality. Package/source/diff,
+raw ray fields and paired source packets, matched clips and verification remain
+private. The package verification succeeded; the initial cloud metadata at07:58:09UTC
+reported the retained PPD618 transient4355condition. The second bounded
+unchanged-file recheck confirms all three uploads at08:01:28UTC. No account/service
+change, recopy or rebuild was needed. `delivery-complete.json` owns that receipt.
+
+The ray observer counts27.230→27.521 depth evaluations per measured receiver
+(21pixels×18phases, about+1.07%). This is algorithm work, **not GPU time**. Selected
+rays can change trace duration despite the same ray/pass count; a net timing or
+zero-cost claim is not made.
+
+| Private package on iCloud Desktop | SHA-256 |
+| --- | --- |
+| `Alchemy-Aurora-Water-SSR-Experimental-69527-AppleSilicon.dmg` | `95afe006f274fd84ee5d7f31108abbb723d1ba74a7c3533664004508583c28d0` |
+| `Alchemy-Aurora-Water-SSR-Experimental-69527-Review.zip` | `30904db1518260b2751e8ca871e9cdad931d627708b5890d665894cb25250ff4` |
+| `Alchemy-Aurora-Water-SSR-Experimental-69527-SHA256SUMS.txt` | `6b82cb72bf0a188ae188719e9b5d79d46ec8e9d0d4e1404a3da7478e1c66080b` |
 
 ## Preserved69525 tile candidate and unresolved-water checkpoint
 
@@ -156,7 +202,7 @@ These are rendering/ownership/sampling regressions, not closure of PPD610's
 existing quality failures. New source pin/build identity, login-only smoke and
 private package delivery follow separately; the69523 section below is historical.
 
-## Source-pinned sampling candidate 69525
+## Preserved69525 source-pinned sampling candidate
 
 Application source `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` is pushed only to
 `codex/aurora-native-temporal-20261126`. The final Release build exits 0. Its

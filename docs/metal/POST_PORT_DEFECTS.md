@@ -15193,8 +15193,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Delivery requires Foundation URL metadata uploaded=true, uploading=false and no upload error; a local copy alone is insufficient.
 - Evidence: [69516 delivery](research/aurora-native-temporal-20261126.md). All three iCloud Desktop files match the verified local package hashes, but fresh metadata returns NSCocoaErrorDomain 4355, could not access the iCloud account. Retained older 69507 files still report uploaded. Read-only brctl status/quota return BRCloudDocsErrorDomain 141 access denied.
-- Next action: Owner downloads confirmed-uploaded69525;69523/69520/69516 remain preserved. Retain the transient/recovery history; no account/service repair is required.
-- Verification:69525 mounted app matches8293entries, deep/strict signing and346ARM64 checks pass; ZIP CRC and110selected-file hashes pass. At2026-11-27 01:28:25UTC all three69525files report uploaded=true, uploading=false and no error; destination hashes match. Initial4355 cleared without account/service changes. Earlier69516/69520/69523 delivery receipts remain retained.
+- Next action: Owner downloads confirmed-uploaded69527;69525/69523 and earlier packages remain preserved. Retain transient/recovery history; no account/service repair is required.
+- Verification:69527 mounted app matches8293entries, signatures and346ARM64 checks pass; ZIP CRC/all127file hashes pass. At2026-11-27 08:01:28UTC all three unchanged files report uploaded=true, uploading=false, no error and matching destination hashes. Initial4355 cleared on second bounded read-only recheck; no account/service changes. Older delivery receipts remain retained.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15216,6 +15216,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 01:26:30UTC69525 recurrence: mounted8293entries/signatures/346ARM64 and ZIP110-file hashes pass; all three local/iCloud hashes match. Initial Foundation metadata reports4355, uploaded=false/uploading=true. Delivery remains pending while bounded read-only metadata rechecks run; no account/service changes.
 
 - 2026-11-27 01:28:25UTC69525 recovery: third bounded read-only recheck confirms all three unchanged uploads and matching hashes. No account/service change, recopy or rebuild.
+
+- 2026-11-27 07:58:09UTC69527 recurrence: mounted8293entries/signatures/346ARM64 and ZIP127hashes pass; all three destinationhashes match. Initialuploaded=false/uploading=true/error4355 remains pending read-only recheck. No account/service change, recopy or remote-ready claim.
+
+- 2026-11-27 08:01:28UTC69527 recovery: second unchanged-file recheck confirms all three uploads and hashes. No account/service change, recopy or rebuild; remote readiness is reported after this observation.
 
 ## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
 
@@ -15342,14 +15346,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-624 — Background water fine pattern shimmers in Temporal output
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Water Temporal integration
 - Discovered: 2026-11-26
 - Original reference: The captured background ROI is confirmed dedicated world water by actual passed coverage/depth, distinct from pool/object surfaces.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner explicitly identifies blue background water beyond terrace/palms outside the pool. Keep this separate from pool highlights and preserve natural animation.
-- Next action: Finish source-pinned receiver-UV water candidate Release/regressions/package, then owner reviews the original scene. Retain static four-ray grain/high-budget-error tradeoff; do not claim exact reflection fidelity or owner acceptance.
-- Verification: Dedicated-water SSR refracted-UV hashing is isolated in a342-world production-path fixture. Private inspection matches ordinary HDR/native/presented across108stationary worlds. Rays change15.7–25.3degrees versus.40degree normal change; hit coverage and sampled reflector locations vary. Receiver-pixel seeding lowers presented temporalRMS .007548012→.002939398 (61.06%), mean within.75% of unchanged32-ray comparison. Static low-ray RGB error remains (.004886→.007997 vs reference); do not equate stability with high-sample fidelity. Original69525shader fails exactly1newbound; corrected342world plus unchanged252worldSSRcase pass113240assertions API/GPU. Animation continues throughmovement/stop; one skipped publication retains exactpacket, no reset. FullRelease/regression/package checks pending. Earlier69523 coordinate/input repairs alone did not qualify the complaint; original owner-scene acceptance remains unverified.
+- Next action: Owner reviews confirmed-uploaded69527 in the original scene. Retain static four-ray grain/high-budget-error tradeoff; do not claim exact reflection fidelity or owner acceptance.
+- Verification: Dedicated-water SSR refracted-UV hashing is isolated in a342-world production-path fixture. Private inspection matches ordinary HDR/native/presented across108stationary worlds. Rays change15.7–25.3degrees versus.40degree normal change; hit coverage and sampled reflector locations vary. Receiver-pixel seeding lowers presented temporalRMS .007548012→.002939398 (61.06%), mean within.75% of unchanged32-ray comparison. Static low-ray RGB error remains (.004886→.007997 vs reference); do not equate stability with high-sample fidelity. Original69525shader fails exactly1newbound; corrected342world plus unchanged252worldSSRcase pass113240assertions API/GPU. Animation continues throughmovement/stop; one skipped publication retains exactpacket, no reset. Source5d44/69527 Release,20MetalAPI/GPU+4CPU suites and full-screenlogin-onlysmoke pass; alloriginalsettings restored and viewerclosed. Mounted8293entry/signature/346ARM64 and ZIP127-file checks pass; all threecloud uploads confirmed08:01:28UTC, no error and matching hashes. Earlier69523 coordinate/input repairs alone did not qualify the complaint; original owner-scene acceptance remains unverified.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15365,6 +15369,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 directed342-world fixture: privateinspection is RGB-exact to ordinary shader over108stationaryworlds. Acceptedrays hit the authoredreflector, notwater; meanhits2.38–3.10/4 andalpha.1735–.2284 vary withjitter. Atpixel65,35 phases2/14, normaldirection changes.40degrees whileindividualrays change15.7–25.3degrees. Coherenthash-seed-only diagnostic lowers final temporalvariation81% withoutdarkening. Frozenpairedhistorydoesnotremovefailure. A boundedcoherent-water-pattern candidate is beingchecked againstfixedhigh-budgetdetail andmotion references; owner-sceneacceptance isnotclaimed.
 
 - 2026-11-27 receiver candidate: globally fixed seed rejected forbrightnessbias; unwarpedreceiverpixel retains original spatial distribution with61.06%less fixturecycling and reflecteddetail/brightness retained. Private afterinspection shows perreceiver/perray coefficients exactlyconstant across18phases and HDR-exact to candidate. Finalmovement/stop keepsnaturalwaves; originalsceneconfirmation and actual-viewtilecost remain owner-review boundaries.
+
+- 2026-11-27 final69527/source5d44:24selectedtests (20MetalAPI/GPU+4CPU) pass, fullRelease/login-onlysmoke/18settingsfile restoration pass, mounted8293entries/signature/346ARM64 and ZIP127hashes pass. All threecloud uploads confirmed08:01:28UTC. No owner-scene acceptance or actual-viewFPS claim; retained static4rayerror is explicit.
 
 ## PPD-625 — Warm pool highlight streaks visibly jitter
 
@@ -15441,7 +15447,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Original rough SSR uses randomized glossy rays; PBR roughness filtering and final grain/dither controls must be traced before attributing speckles to reconstruction.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner supplies Aurora and Spatial75% recordings, reports steady peppering on foreground tiles/lounger strip and possible camera-angle dependence. The owner-scene ROI is opaque PBR (median roughness .20075); pepper is present in opaque HDR before reconstruction. Owner SSR-off observation removes the grain.
-- Next action: Owner reviews confirmed-uploaded69525 for residual tile grain and cost. Bounded sampling, original counterexamples, mirror/high-budget controls and component cost are verified; preserve accepted glass/foliage.
+- Next action: Owner reviews preserved minimum-four candidate in69527. Obtain one ROI-disabled matched actual-view cost comparison when an existing authorized live session is available; current retained ROI runs do not qualify. Preserve accepted glass/foliage.
 - Verification: Owner SSR-off removes grain in Aurora and Spatial75%. Actual-scene A0/four-ray/restored A1 final high-pass RMS .03139691/.01462076/.03125021, 53.2–53.4% reduction versus <.47% control drift. All phase-matched G-buffer/depth inputs exact; mean final luminance within .54%. Residual grain remains. Original tile regression fails three bounds, candidate passes; material target-sized BASE cost is +2.438ms, not viewer FPS. Twenty affected Metal suites with API/GPU validation and four CPU suites pass at the pinned code state. Final69525 Release/full-screenlogin-onlysmoke,346ARM64, mounted8293-entry/signature and ZIP110-file checks pass. All18settingsfiles/24entries restored; viewerclosed. All three iCloud uploads confirmed01:28:25UTC; no owner quality acceptance is claimed.
 - Owner verification: pending
 - Push approval: granted
@@ -15457,3 +15463,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 experimental69525 application source0a94aa6fe2: final Release and exact-library smoke/package checks pass. The later documentation checkpoint is distinct from the app source. No water-cycle fix or viewerFPS gain is claimed. Original69523/69520 packages remain preserved.
 
 - 2026-11-27 01:28:25UTC: experimental69525 DMG/source-evidence ZIP/checksums are confirmed uploaded and hash-matched. Source0a94/shader361b remain exact; owner review of tile quality/performance is pending. Water PPD624/625 remain open.
+
+- 2026-11-27 follow-up69527 preserves the sharedminimum-four rule acrossrenderingmodes/materials. Retainedactual-viewA0/B/A1cost isunqualified (A0quietinvalid, B/A1ROIreadbacks; no matchingordinarycontrol), and no live session was running. Dense+2.438ms component result remains separate.24regressions and69527package checks pass; this is not a new live tile-performance measurement.

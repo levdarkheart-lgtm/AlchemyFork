@@ -13,11 +13,14 @@ passes2cases/113240assertions API/GPU; finalRMS .007548→.002939, mean within.7
 Keep residual static4rayerror explicit; common32rayMAE rises. Constantglobalseed
 is rejected, frozenhistorydoesnotfixcycle. Normalanimationcontinuesmovestop;
 skippedpublication retains exactpacket. Aurora/mips/rejection/ownership unchanged.
-Next: remainingregressions, sourcepin, Release/smoke/package/upload, ownerreview.
+69527Release/24selectedregressions/full-screenlogin-onlysmoke pass. Settings
+restored, viewerclosed. Mounted8293/signatures/346ARM64 and ZIP127hashes pass;
+all threecloud uploads confirmed08:01:28UTC, noerror/matchinghashes. Owner
+reviewsoriginalwater/detail/grain next; actual-viewtilecost remainsconditional.
 Actual-viewtilecost unavailable withouta live session; retain +2.438ms component
 cost and experimental sharedscope. Tileminimum4/glass/foliage remainpreserved.
-Commit `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` remains verified69525 appsource;
-newcandidate islocaluncommitted, allpreviouspackages preserved.
+Commit `5d44ab6411a47bad3e437ed2da78179b7121e978` is pinned69527 appsource;
+source/docspush followsfinaldeliveryrecord. Allpreviouspackages preserved.
 See [water report](../../research/temporal-water-history-20261126.md).
 
 | Item | State | Acceptance / next boundary |

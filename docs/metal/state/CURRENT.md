@@ -21,12 +21,16 @@ notremove originalcycle. Aurora/rejection/mips/normalanimation unchanged.
 New342world regression keepsanimationthroughmovestop and skipsonepublication,
 proving retainedpacketidentity. Original69525shader fails1frozenqualitybound;
 candidate2cases/113240assertions API/GPU pass; oldwaternoisebounds unchanged.
-Fullregressions/Release/sourcepin/smoke/package pending. No productionnewpass/ray/
+Source5d44/69527 Release and24selectedchecks (20MetalAPI/GPU+4CPU) pass.
+Full-screen login-only smoke restores18settingsfiles/24entries, viewerclosed.
+Mounted8293entries/signatures/346ARM64 and ZIP127hashes pass; all threecloud
+uploads confirmed08:01:28UTC withnoerror/matchinghashes. Initial4355cleared
+withoutaccount/servicechanges. Owner originalscenequality review remainsnext. No productionnewpass/ray/
 texture/wait. Tileminimum4 and owneracceptedglass/foliage are preserved.
 Actual-viewtilecost isunqualified: ROIcaptures perturbcost, A0quietinvalid, no live
 sessionavailable. Keep +2.438ms syntheticcost separate; no liveFPSclaim.
 
-**Renderer code checkpoint:** `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` — experimental SSR-sampling69525 application source; Release/smoke/mounted-package checks pass; all three iCloud uploads confirmed01:28:25UTC. Preserved69523/sourcec72fafcd3b remains verified and unchanged.
+**Renderer code checkpoint:** `5d44ab6411a47bad3e437ed2da78179b7121e978` — experimental WaterSSR69527 application source; Release/regressions/login smoke pass, mountedpackage verified; all threecloud uploads confirmed08:01:28UTC. Preserved69525/source0a94 and69523/sourcec72fafcd3b remain unchanged.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 The [native report](../research/aurora-native-temporal-20261126.md) records the preserved69516 port;
