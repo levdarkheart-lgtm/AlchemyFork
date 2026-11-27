@@ -14,7 +14,8 @@ retained. Release,21API/GPU tests/login-onlysmoke, mounted8293entries/50ZIPfiles
 iCloud uploads verified22:22:18UTC.69531availableforownerreview; notallwaterfixed.
 No more livecapture is needed. Settings restored, viewerclosed; rootsoleNinjaowner.
 Preserve accepted tiles/glass/foliage and coordinate/ownership corrections.
-Commit `5d44ab6411a47bad3e437ed2da78179b7121e978` remains69527 appsource.
+Commit `f971d11de29daf60233f9f5875cf957ca069e95c` is69531appsource.
+Preserved69527source is5d44ab6411a47bad3e437ed2da78179b7121e978.
 See [water report](../../research/temporal-water-history-20261126.md).
 
 | Item | State | Acceptance / next boundary |

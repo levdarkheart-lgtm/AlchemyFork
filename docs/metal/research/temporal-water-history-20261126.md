@@ -807,7 +807,7 @@ The permanent regression cases are `[water-ssr-self-depth]`,
 `indra/almetal/tests/almetal_temporal_water_test.mm`.
 
 
-###69531 Release and exact-application verification
+### 69531 Release and exact-application verification
 
 Normal `tools/metal/build.sh build` completes at sourcef971 (2486build targets);
 PPD615's known incremental-cache recovery is retained, without a code/build
@@ -837,7 +837,7 @@ The application is not notarized. Mounted package/ZIP/upload checks are the
 remaining delivery gates; their receipts will follow. PPD624 remains open.
 
 
-###69531 private delivery complete —2026-11-27 22:22:18UTC
+### 69531 private delivery complete —2026-11-27 22:22:18UTC
 
 The mounted DMG matches all8293application entries; deep/strict ad-hoc signatures
 and346ARM64 checks pass. All50selected review-ZIP files match their manifests
@@ -872,3 +872,8 @@ Actual-view GPU cost remains unmeasured; observed tracing work rises25.1%.
 correction, not a completed water-quality fix. PPD630ready_for_owner; PPD624open
 with residualAfinalrange+9.57%, B/Cimprovements, mean/detail/probe confounds and
 owner acceptance pending. Do not report all blinking removed or a viewerFPS gain.
+
+Final documentation harness initially catches the ledger retaining69527as its
+primary checkpoint while CURRENT identifies69531. Both primary checkpoints now
+name immutable application sourcef971; the69527reference is explicitly preserved
+as historical. This documentation correction does not rebuild or relabel69531.
