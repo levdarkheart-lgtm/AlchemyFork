@@ -7037,8 +7037,14 @@ static float4 almetal_sample_ssr(
 
     const float roughness = 1.0 - trace_glossiness;
     const int maximum_samples = max(1, int(ssr.sampling.x));
+    // A single randomized rough ray turns reflection hit/miss into visible
+    // peppering on otherwise smooth surfaces. Spend up to four rays within
+    // the configured cap; exact mirror rays and counts already at least four
+    // retain their existing behavior. Keep the same estimator, footprint and hit weighting.
+    const int minimum_samples = roughness > 0.0
+        ? min(4, maximum_samples) : 1;
     const int total_samples = clamp(
-        int(ceil(ssr.sampling.x * roughness)), 1, maximum_samples);
+        int(ceil(ssr.sampling.x * roughness)), minimum_samples, maximum_samples);
     float4 collected = 0.0;
     int hits = 0;
     for (int index = 0; index < total_samples; ++index)

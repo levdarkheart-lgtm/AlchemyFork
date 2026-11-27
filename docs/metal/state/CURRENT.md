@@ -1,6 +1,6 @@
 # Current engineering state — experimental native Aurora prototype
 
-Observed 2026-11-26 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
+Observed 2026-11-27 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
 Branch `codex/aurora-native-temporal-20261126` starts at evaluation checkpoint
 `318f0ac8b6a8073fe8d22d0848c84c282ad8b212`. The owner authorizes implementation,
 offline qualification, feature-branch push and private iCloud delivery. No live
@@ -8,16 +8,26 @@ login or whole-viewer FPS claim. Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Current task — PPD623–627:** experimental Water69523 is delivered; owner-confirmed
-69520 glass and foliage behavior are preserved. [Water/history report](../research/temporal-water-history-20261126.md)
-records paired SSR coordinates, water raster/inverse jitter and actual visible-water
-inputs. SSR4cases/1,987assertions and water/pane4,311assertions pass; settled8+8worlds
-reuse56targets without new textures.19Metal suites, finalizer CPU, full Release,
-346ARM64, login-only smoke and mounted8,293-entry/ZIP93-file checks pass. All three
-iCloud uploads are confirmed22:51:34UTC with matching hashes/no error. Original
-settings restored; viewer closed. Initial4355 transient/recovery is retained.
-Water variation is essentially flat; PPD624/625 actual producer attribution and
-quality remain open. Do not claim the original water complaints fixed.
+**Current task — PPD624/628 (2026-11-27):** starting HEAD7c25, reviewed69523c72.
+Tile source is confirmed roughSSR, shared by Aurora/Spatial. Within the existing
+sample cap, minimum4 reduces actual-scene final grain RMS53.2–53.4%; restoring
+original sampling returns grain, controls drift<.47%. All phase-matched material/
+depth inputs exact; mean luminance within.54%. Residual grain remains. Cost is
++2.438ms in dense2304×1446 fullBASE fixture; no liveFPS or zeroNativecost claim.
+Water is confirmed dedicatedworldwater. Frozen-normal primarySSR omission lowers
+final jitter-phase RGB variation79.7%, already in HDR, but is a lighting bypass,
+not a fix. Normal animation alone is not necessary for the cycle; coordinates
+are coherent, no resets, generatedreactivity0, nextaccumulation255. Four rays lower
+reflected energy/contrast but normal-water stability does not exceed control drift.
+PPD624/625 remainopen; no waterconfidence/algorithm/mip/sharpening policy changes.
+Actual five180world captures retain same-world ROIs and available native joins.
+Quiet cutoffs/invalid512MiB startup are explicit exclusions; later256MiB joins pass.
+All diagnostic viewers closed, original preferences restored. Privatepipelinehooks
+and completed test overrides removed; no diagnostic bypass enters shipping code.
+Current source:20selectedMetal suites API/GPU pass,4CPU pass; original tile/water
+SSR regressions fail3/2 bounds, candidatepasses frozenlimits. FullRelease passes
+at local code state; source pin/newnumbered build, smoke/package/upload remain.
+Preserve69523/69520 and acceptedglass/foliage repairs; originalPPD610 failures remain.
 
 **Renderer code checkpoint:** `c72fafcd3b6191134e861f37939e21f975eac938` — experimental Water69523 application source; Release, smoke, mounted package and iCloud delivery verified.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
@@ -121,9 +131,10 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Owner reviews experimental69523 in the original water/pool view, preserving69520
-for comparison. Select67% Aurora Experimental and verify Active; use macOS capture.
-Keep PPD624/625 open until material shimmer improvement and actual contributors are
-established. Native/Spatial remain available; no new broad FPS campaign requested.
-No implementation/build/package/upload work remains. Final delivery documentation
-is separate from application sourcec72fafcd3b; feature-branch publication is authorized.
+Finish privateROI diagnostic build and fix only compile issues. Measure target-size
+tileBASE A0/min4/A1 afterbuild and before launchingviewer; no GPUvalidation in cost.
+Then prepare exactlogin-screen diagnostic and request owner's single exact-scene
+login/position step. Arm180world/128MiB ROI only afterready; associatequietstream
+world/command/presentation identities and actual noise controls. Continue tile
+regression/cost integration independently; do not ship unproved watermask tweaks.
+Remove privatehooks before final source pin, regression, Release/DMG/iCloud delivery.

@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-628 -->
+<!-- next-defect-id: PPD-629 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15339,13 +15339,13 @@ or claim a runtime speedup from correcting conservative accounting alone.
 ## PPD-624 — Background water fine pattern shimmers in Temporal output
 
 - Status: investigating
-- Confirmation: reported
+- Confirmation: reproduced
 - Owner: Water Temporal integration
 - Discovered: 2026-11-26
-- Original reference: Dedicated world water and object/material surfaces are distinct paths; actual owner-region producer is not yet established.
+- Original reference: The captured background ROI is confirmed dedicated world water by actual passed coverage/depth, distinct from pool/object surfaces.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner explicitly identifies blue background water beyond terrace/palms outside the pool. Keep this separate from pool highlights and preserve natural animation.
-- Next action: Identify producer where available; reproduce fixed/animated production water, inspect raw HDR and reconstructed output, correct demonstrated coordinate/input defects before changing rejection policy.
-- Verification: Authored fixed/animated dedicated-water reproduction is complete. Inverse repair alone leaves variation essentially unchanged (.0031091483→.0031088035); actual-water inputs retain identical water-interior variation (.00384100768794). These source-contract repairs do not qualify the owner-region shimmer. Actual producer and remaining live input/rejection behavior are unverified.
+- Next action: Review the measured sampling candidate; primary water SSR omission with frozen normals reduces final phase variation79.7%, but the normally animated cycle is not qualified as fixed. Retain the precise reproducer and residual source question. Do not clear water history protection or conflate lower reflected energy with recovered detail.
+- Verification: Owner-view 180-world captures confirm a jitter-phase response already in HDR; it persists with frozen normal animation, no resets, generated reactivity zero and mature accumulation. Minimum-four SSR reduces reflected energy but normalized stability does not exceed control variation. The primary-water SSR cut isolates most frozen-normal phase flicker (79.7% final reduction), while residual and normally animated behavior remain unresolved. Preserved69523 authored fixed/animated dedicated-water reproduction is complete. Inverse repair alone leaves variation essentially unchanged (.0031091483→.0031088035); actual-water inputs retain identical water-interior variation (.00384100768794). These source-contract repairs do not qualify the owner-region shimmer. Actual producer and remaining live input/rejection behavior are unverified.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15353,6 +15353,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Owner authorizes focused source/offline correction, experimental package/iCloud delivery and feature-branch push. No broad performance campaign or login is required.
 
+
+- 2026-11-26 follow-up: owner reports repeatable water detail collapse/recovery at2.10→2.17→2.23–2.33seconds, with fixed surrounding silhouettes. Primary aurora-water-slow-flicker.mov and22.59.04 recording are retained privately. Reuse69523 repairs; correlate same-world HDR/native/final outputs, masks, generated reactivity and accumulation across multiple jitter cycles. Jitter wrapping alone is not a reset. No live producer attribution is assumed.
 
 ## PPD-625 — Warm pool highlight streaks visibly jitter
 
@@ -15420,3 +15422,24 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 experimental69523/sourcec72fafcd3b:19Metal suites and finalizer CPU pass, full Release/signature/346ARM64 pass, login-only smoke closes normally and restores original settings. Mounted8293entries and ZIP93hashes match. iCloud upload confirmation remains separate; no live water-shimmer or FPS acceptance is claimed.
 
 - 2026-11-26 22:51:34UTC: experimental69523 DMG, source/evidence ZIP and checksums are confirmed uploaded and hash-matched. Original69520 remains unchanged. Original-scene water quality/attribution remains PPD624/625; no FPS claim.
+
+## PPD-628 — Terrace tiles show conspicuous angle-dependent grain
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Main-world material/reflection/presentation integration
+- Discovered: 2026-11-26
+- Original reference: Original rough SSR uses randomized glossy rays; PBR roughness filtering and final grain/dither controls must be traced before attributing speckles to reconstruction.
+- Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner supplies Aurora and Spatial75% recordings, reports steady peppering on foreground tiles/lounger strip and possible camera-angle dependence. The owner-scene ROI is opaque PBR (median roughness .20075); pepper is present in opaque HDR before reconstruction. Owner SSR-off observation removes the grain.
+- Next action: Validate bounded rough-SSR minimum sampling within the configured cap, including original counterexample, mirror/high-budget controls and cost. Preserve tile appearance/detail and accepted glass/foliage.
+- Verification: Owner SSR-off removes grain in Aurora and Spatial75%. Actual-scene A0/four-ray/restored A1 final high-pass RMS .03139691/.01462076/.03125021, 53.2–53.4% reduction versus <.47% control drift. All phase-matched G-buffer/depth inputs exact; mean final luminance within .54%. Residual grain remains. Original tile regression fails three bounds, candidate passes; material target-sized BASE cost is +2.438ms, not viewer FPS. Build/regressions/package qualification pending.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-26: Start7c25d0b389 is clean and matches fetched remote; last reviewed application is69523/sourcec72fafcd3b. Owner authorizes focused implementation, rendered validation, source-pinned private package and feature-branch push. No login is performed; owner will review live.
+
+- 2026-11-27 PPD628: owner confirms conspicuous grain disappears with RenderScreenSpaceReflections=FALSE. Requested restoration to TRUE. The same-view 180-world ROI already places grain in opaque PBR HDR, with zero motion/unsafe/generated reactivity and no resets. This establishes the live tile SSR contribution; the four-ray correction remains under rendered qualification, not owner acceptance.
+
+- 2026-11-27 PPD628: owner independently confirms SSR-off also removes tile peppering in MetalFX Spatial75%, supporting the shared reflection producer rather than a reconstruction-only defect.

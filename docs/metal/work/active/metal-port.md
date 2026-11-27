@@ -7,25 +7,19 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-Experimental Water69523 is delivered. Preserve owner-confirmed PPD619 glass repair
-and successful foliage. PPD623/626/627 coordinate/input corrections pass rendered
-regressions; PPD624/625 original background-water/pool-highlight quality and producer
-attribution remain open. [Water/history report](../../research/temporal-water-history-20261126.md)
-records exact before/after values and limits. Stationary water variation is flat;
-this is not a demonstrated fix for both video regions or an FPS improvement.
-
-Commit `c72fafcd3b6191134e861f37939e21f975eac938` pins application source, build69523.
-19Metal suites, finalizer CPU, Release,346ARM64 and login-only smoke pass.
-Mounted8,293entries/signatures and ZIP93hashes match. All three iCloud files are
-confirmed uploaded22:51:34UTC without error and with matching hashes. Initial4355
-cleared on bounded read-only recheck; original settings restored, viewer closed.
-Owner original-scene review is next; use macOS capture, not independent snapshots.
-Final documentation follows application source; only this feature branch is pushed.
-Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
-Preserved69516 remains at `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
-[Glass report](../../research/aurora-temporal-glass-20261126.md) owns69520 delivery;
-[native report](../../research/aurora-native-temporal-20261126.md) preserves69516;
-[evaluation](../../research/aurora-reconstruction-evaluation-20261126.md) retainsoldquality/cost.
+PPD624/628 (2026-11-27): start7c25; ownerSSRoff removes tilesinAurora+Spatial.
+Minimum4 within existingcap reduces actual finalgrain53.2–53.4%, reverseswithA1;
+controldrift<.47%, phase-matched GBuffer/depth exact, residualgrain remains.
+Water primarySSRcut under frozen normals lowers finalphasevariation79.7%, but
+omitslighting; fourraysdo notqualifynormalwatercycleasfixed. No watermask, normal,
+algorithm, mip or sharpening change ships. Sourcecoordinates audited coherent.
+20Metal suites API/GPU+4CPU pass. Originaltile/waterSSRbounds fail3/2, candidatepass.
+Synthetic BASE cost+2.438ms,0extra steadytextures; noFPS/zeroNativeregressionclaim.
+Privatehooks/completedtestcuts removed, allviewersclosed/preferencesrestored.
+Pin source, finish newRelease/smoke/package/upload; keep water open and reportcost.
+Commit `c72fafcd3b6191134e861f37939e21f975eac938` remains reviewed69523 checkpoint.
+Preserve69523/69520, glass/foliage/water-coordinate fixes and originalqualityfailures.
+See [water report](../../research/temporal-water-history-20261126.md) for all evidence.
 
 | Item | State | Acceptance / next boundary |
 | --- | --- | --- |

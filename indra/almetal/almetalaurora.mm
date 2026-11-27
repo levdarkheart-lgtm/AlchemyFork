@@ -157,6 +157,7 @@ struct ALMetalAuroraReconstructor::Impl
     std::vector<std::shared_ptr<const ALMetalCommandCompletion>> submitted;
     bool                                                         encoded_reset            = false;
     bool                                                         encoded_failure_observed = false;
+    ALMetalAuroraDiagnosticSnapshot                               last_diagnostics;
     id<MTLLibrary>                                               library(const char* source, std::string* error)
     {
         NSError* native_error      = nil;
@@ -242,6 +243,7 @@ struct ALMetalAuroraReconstructor::Impl
     {
         needs_reset            = true;
         counters.history_valid = false;
+        last_diagnostics       = {};
     }
     void poll()
     {
@@ -423,6 +425,7 @@ bool ALMetalAuroraReconstructor::encode(ALMetalCommandBuffer& command, const ALM
     if (!prepare(d, error))
         return false;
     auto&      impl = *mImpl;
+    impl.last_diagnostics = {};
     const auto e    = impl.current;
     if (!std::isfinite(frame.jitter_x) || !std::isfinite(frame.jitter_y) || std::abs(frame.jitter_x) > .5f ||
         std::abs(frame.jitter_y) > .5f)
@@ -706,6 +709,27 @@ bool ALMetalAuroraReconstructor::encode(ALMetalCommandBuffer& command, const ALM
     impl.encoded_reset            = reset;
     impl.encoded_failure_observed = false;
     ticket                        = impl.encoded_ticket;
+    auto& diagnostic              = impl.last_diagnostics;
+    diagnostic.descriptor         = d;
+    diagnostic.generated_reactive = e->reactive.get();
+    diagnostic.dilated_motion     = e->dilated_motion.get();
+    diagnostic.shading_change     = e->shading_change.get();
+    diagnostic.masks              = e->masks.get();
+    diagnostic.accumulation       = e->accumulation[w].get();
+    diagnostic.previous_accumulation = e->accumulation[r].get();
+    diagnostic.luma_instability   = e->instability.get();
+    diagnostic.luma_history       = e->luma_history[w].get();
+    diagnostic.internal_history   = e->internal[w].get();
+    diagnostic.immediate_output   = e->output.get();
+    diagnostic.completion         = completion;
+    diagnostic.ticket             = ticket;
+    diagnostic.frame_index        = u.frame_index;
+    diagnostic.write_parity       = w;
+    diagnostic.read_parity        = r;
+    diagnostic.jitter_phase_count = static_cast<std::uint32_t>(u.jitter_sequence_length);
+    std::copy_n(u.jitter, 2, diagnostic.jitter);
+    std::copy_n(u.prev_jitter, 2, diagnostic.previous_jitter);
+    diagnostic.reset              = reset;
     ++impl.counters.encoded_calls;
     if (reset)
         ++impl.counters.reset_calls;
@@ -740,6 +764,7 @@ bool ALMetalAuroraReconstructor::submitted(Ticket ticket, std::string* error)
     i.needs_reset            = false;
     i.current->initialized   = true;
     i.counters.history_valid = true;
+    i.last_diagnostics.submitted = true;
     ++i.counters.submitted_calls;
     i.poll();
     return true;
@@ -778,6 +803,17 @@ const ALMetalTexture* ALMetalAuroraReconstructor::displayDepth() const noexcept
 const ALMetalTexture* ALMetalAuroraReconstructor::generatedReactive() const noexcept
 {
     return mImpl->current ? mImpl->current->reactive.get() : nullptr;
+}
+ALMetalAuroraDiagnosticSnapshot ALMetalAuroraReconstructor::diagnostics() const noexcept
+{
+    const auto& snapshot = mImpl->last_diagnostics;
+    if (!snapshot.ticket || !snapshot.completion ||
+        snapshot.completion->status() == ALMetalCommandStatus::error ||
+        snapshot.completion->status() == ALMetalCommandStatus::unknown)
+    {
+        return {};
+    }
+    return snapshot;
 }
 ALMetalAuroraStats ALMetalAuroraReconstructor::stats() const noexcept
 {

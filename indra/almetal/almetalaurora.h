@@ -51,6 +51,33 @@ struct ALMetalAuroraStats
     bool          history_valid = false;
 };
 
+// Read-only observation of the last successfully encoded algorithm graph.
+// Textures are borrowed and mutable: enqueue any ordered diagnostic copy before
+// another encode, incompatible prepare, invalidate, abandon or destruction.
+// The completion token identifies the producer; it does not freeze these
+// textures or imply submission/success. Reading performs no work and never waits.
+struct ALMetalAuroraDiagnosticSnapshot
+{
+    ALMetalAuroraDescriptor descriptor;
+    const ALMetalTexture* generated_reactive = nullptr;     // R8, input size
+    const ALMetalTexture* dilated_motion = nullptr;         // RG16F, input size
+    const ALMetalTexture* shading_change = nullptr;         // R8, half input size
+    const ALMetalTexture* masks = nullptr;                  // RGBA8, input size
+    const ALMetalTexture* accumulation = nullptr;           // R8, encoded write parity
+    const ALMetalTexture* previous_accumulation = nullptr;  // R8, encoded read parity
+    const ALMetalTexture* luma_instability = nullptr;       // R16F, input size
+    const ALMetalTexture* luma_history = nullptr;           // RGBA16F, encoded write parity
+    const ALMetalTexture* internal_history = nullptr;       // RGBA16F, output size/write parity
+    const ALMetalTexture* immediate_output = nullptr;       // RGBA16F, output size
+    std::shared_ptr<const ALMetalCommandCompletion> completion;
+    std::uint64_t ticket = 0;
+    float frame_index = 0.f;
+    std::uint32_t write_parity = 0, read_parity = 0, jitter_phase_count = 0;
+    float jitter[2]{}, previous_jitter[2]{};
+    bool reset = true;
+    bool submitted = false;
+};
+
 // One serialized main-world stream. Same native queue orders GPU history writes.
 // Encoding does NOT advance parity/frame/jitter; submitted() is the commit point.
 class ALMetalAuroraReconstructor final
@@ -71,6 +98,7 @@ public:
     const ALMetalTexture* rawOutput() const noexcept;
     const ALMetalTexture* displayDepth() const noexcept;
     const ALMetalTexture* generatedReactive() const noexcept;
+    ALMetalAuroraDiagnosticSnapshot diagnostics() const noexcept;
     ALMetalAuroraStats    stats() const noexcept;
     static const char*    algorithmIdentity() noexcept;
 

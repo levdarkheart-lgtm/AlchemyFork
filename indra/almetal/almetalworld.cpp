@@ -15240,6 +15240,16 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     constants.noise[1] = scene.grain_animated ? 1u : 0u;
     constants.noise[2] = scene.dither_bits;
     constants.noise[3] = scene.dither_animated ? 1u : 0u;
+    if (ALMetalDiagnosticTelemetry::enabled())
+    {
+        // Bound presentation values, not saved preference labels. Float fields
+        // retain their exact IEEE-754 bits; the record is tagged to this view.
+        ALMetalDiagnosticTelemetry::recordMetrics(
+            ALMetalDiagnosticTelemetry::currentFrameTag(), "presentation_noise",
+            {1u, scene.frame_id, std::bit_cast<std::uint32_t>(scene.grain_amount),
+                std::bit_cast<std::uint32_t>(scene.dither_amount), scene.dither_bits,
+                scene.grain_animated, scene.dither_animated, scene.grain_style});
+    }
     const auto output_width = scene.output_width ? scene.output_width : source.width;
     const auto output_height = scene.output_height ? scene.output_height : source.height;
     if (scene.upscaled_color)

@@ -1,4 +1,85 @@
-# Experimental water/history review 69523 — PPD623–627
+# Water detail and rough-SSR sampling review — PPD624/628
+
+The tile defect has a demonstrated source and reversible improvement. The sampled
+tiles are opaque PBR, around .20 roughness; the old glossy budget4 supplied one
+randomized SSR ray. The owner confirms SSR-off removes the grain in both Aurora
+and Spatial75%. A cap-respecting four-ray minimum reduces actual-scene final
+spatial grain RMS by53.2–53.4%, with less than .47% restored-control variation.
+Residual grain remains. This is a sampling-quality correction to the shared
+upstream policy, not evidence of a Metal-only port mismatch.
+
+| Actual tile stage, normalized RGB high-pass RMS | Original A0 | Four-ray B | Restored A1 |
+| --- | ---: | ---: | ---: |
+| Opaque HDR | .04892055 | .02424715 | .04914586 |
+| Pre-Aurora HDR | .04837234 | .02398046 | .04859516 |
+| Immediate Aurora | .02070341 | .01108163 | .02069114 |
+| Final world | .03139691 | .01462076 | .03125021 |
+
+Each arm has180worlds, ten18-phase cycles, identical camera/projection and
+phase-matched albedo/ORM/normal/depth. Mean final luminance changes+.44–.54%,
+rather than fading the reflection. All18phases improve. B/A1 each join180worlds
+to successful main-post completion, exact output resource/generation and current
+UI selection. Their same-frame bound film grain is0, dither1/8bits/animated.
+A0's quiet capture was disabled by a rejected512MiB request; its own completed
+producer tokens and parity/resource identities support stage comparison, but no
+native-command/UI join is invented. Subsequent captures use the accepted256MiB
+limit. This is one reversible visual comparison, not independent per-frame trials
+or an uninstrumented FPS measurement.
+
+**Water is not qualified as fixed.** The affected background patch is confirmed
+dedicated world water. Its repeating detail response already exists in HDR and
+persists when normal animation is frozen. No resets occur; generated reactivity
+stays0 and accumulation mature. Clearing composition does not qualify: it worsens
+movement/stop variation and settling in the controlled fixture. Four-ray SSR
+reduces high-frequency reflection energy in the actual water, but also contrast;
+normalized stability does not improve beyond restored-control variation. Preserve
+PPD624 open. Normal animation, primary SSR and other water-shading contributions
+must remain distinct. A final controlled cut holds the same normal animation
+phases fixed and omits only primary water SSR: phase-cycle RGB temporal standard
+deviation drops raw .014832→.005139, immediate .005512→.001136 and final
+.011465→.002326 (79.7% lower final). All phase-matched material/depth/motion/mask
+inputs remain exact; opaque shaded color drift is .0000625 MAE versus .018997
+water intervention MAE. This identifies the primary SSR contribution as the
+largest demonstrated component of this frozen-normal cycle, not all natural
+water animation or a measured exclusive function cost. Residual cycling remains;
+SSR omission changes lighting and is diagnostic only. No frozen animation,
+rejection override or shader bypass ships. The accepted paired-coordinate, actual-water-depth, glass and foliage
+repairs remain intact.
+
+The bounded source check also excludes double-applied water jitter: capture starts
+with logical P/P^-1, local Temporal copies receive J once, refraction snapshots
+share that raster's coordinates and paired inverse, and motion subtracts jitter
+once against the unjittered inverse. This closes that specific contract question,
+not every source-shading cause of the remaining water cycle.
+
+The new tile rendered regression fails three original-library bounds and passes
+with the candidate. The water SSR regression fails two source-noise bounds on the
+original library (.011795meanMAE/.020513centeredRMS), versus .005615/.010009 with
+four rays. All180water high-budget/off controls and72tile high-budget/off controls
+remain exact across variants. These higher-budget references are fixed common
+sampling references, not perfect reflection or Native-quality oracles.
+At2304×1446, full-BASE synthetic GPU medians A0/B/A1 are1.6814/4.1190/1.6801ms:
+**+2.438ms** is a material rendering cost. No extra steady textures, pool deferrals
+or ownership system are added. This is not SSR self-time or a viewer FPS result.
+
+Private evidence: `artifacts/metal/water-cycle-tiles-20261126/` retains authored
+fixture comparisons, exact source/library/compiler receipts, raw cost samples,
+failed setup/no-hit attempts, actual-scene ROIs and joined records. Owner images,
+locations and account data are excluded from Git. Public source carries only the
+common sampling rule, reusable read-only graph observations and focused tests;
+completed diagnostic overrides and exclusive test helpers are removed.
+
+Current local-source verification: full Release build exits0, then refreshed test
+targets and20selected Metal suites pass with API/GPU validation (157.60s). Four
+CPU input/resource/finalization checks pass. The cleaned water SSR counterexample
+fails exactly two frozen bounds on original175f library and passes57,501assertions
+with candidate361b; tile counterexample fails three bounds and candidate passes.
+These are rendering/ownership/sampling regressions, not closure of PPD610's
+existing quality failures. New source pin/build identity, login-only smoke and
+private package delivery follow separately; the69523 section below is historical.
+
+## Preserved 69523 water/history report
+
 
 Three source-contract defects are corrected and rendered regressions pass.
 **The original water complaints are not established as fixed.** Coordinate/input
@@ -156,3 +237,100 @@ Compare original background water and pool highlights separately, with normal
 animation, camera movement/stop, shoreline/exclusions and accepted glass/foliage
 controls. Their actual producers and material shimmer improvement remain the
 specific unresolved boundary. No live quality acceptance or FPS improvement claimed.
+
+## Continued water-cycle and tile-grain task — PPD624/628
+
+Start7c25d0b389 (reviewed app69523/sourcec72fafcd3b), clean and remote-matched.
+Two new private recordings define the symptom: aurora-water-slow-flicker.mov and
+Screen Recording2026-11-26at22.59.04.mov. Their mode/stream relationship is being
+checked before treating them as independent populations. Owner reports water
+detail collapse/recovery while silhouettes stay fixed, and steadier tile grain
+in both Aurora and Spatial75%, apparently dependent on viewing angle.
+Source inspection and bounded multi-cycle production fixtures precede correction;
+no jitter-wrap reset, dedicated-water identity or SSR attribution is assumed.
+
+### Follow-up observations before selecting a water correction
+
+The extended414world fixture (72warm,108fixed,108animated,18moving,108stopped)
+records no reset after first use and immediate/resolvedRGB equality. R8state
+reconstructs update_accumulation within1LSB. Composition is255 throughout the
+water ROI, but accumulation still varies with generated/dilated shading change.
+Locks and luma instability are0. A test-only generated-reactivityOFF arm makes
+accumulation mature but loses animated/stopped detail; a constant-high arm also
+does not remove the dominant animated trough. Neither is selected as a fix.
+The original new static-input oracle failed5phase-zero comparisons because
+.02f*18 differs from literal.36f by1ULP; only motion differed (3.04e-6inputpixels),
+while HDR/opaque/depth/unsafe were exact. The plateau now uses the same expression
+as the lastmoving camera, with an equalityassertion; no tolerance was relaxed.
+Baseline/cuts then pass. Retained data, including the failure, stayprivate.
+
+The authored constant-material PBR tile case places pepper in rawBASE SSR, before
+reconstruction/presentation. Four-ray minimum within the existing budget improves
+residualgradient29–58%;72frozen high-budget and SSRoff frames staybitexact. This
+is a source quality/cost candidate, not yet attribution to the owner's tile.
+Current privateROI diagnostic hooks exist only to join the exact scene stages;
+they are not shipping code and must be removed before final source pin.
+
+
+## Owner-view boundary check — 2026-11-27 (PPD624/628)
+
+Private diagnostic69524 used7c25d0b389 plus the retained ROI patch, executable
+`e3c454d07fe80a6d227ca040c380be42ba42155a177e6cbf8fa5045d8f9068d5`,
+with unchanged69523 builtin library175f2664. The owner logged in and positioned
+the affected view. At2304×1446→3456×2168,180 consecutive submitted Aurora worlds
+cover ten complete18-phase cycles. All6,480 bounded asynchronous ROI copies
+collected with producer status completed; zero drops. Camera matrices are
+bit-identical, jitter repeats every18worlds, parity alternates and all179 adjacent
+accumulation/previous-accumulation transitions match exactly. No history reset or
+GPU failure occurs. Private hooks are removed from shipping source afterward.
+
+The ordinary quiet stream reached its64MiB limit before arming. Consequently
+these data do **not** have a native-command-ID or final UI-selection join.
+Their own world/ticket/parity/resource-generation and completed producer tokens
+support same-world stage comparison, not presentation cadence or an FPS claim.
+No association is filled from averages. The diagnostic application is closed;
+its original18preference files/24entries and restorable metadata are restored.
+
+**Water:** the sampled background patch is actual dedicated water: coverage255
+at every texel/world, selected depth equals water depth, camera motion is zero.
+Unsafe confidence255 selects Aurora's binary composition/maximum-reactivity
+policy. Generated transparency reactivity is **zero** throughout this patch;
+next accumulation remains255, while small shading changes affect pre-increment
+accumulation. Hence the authored fixture's0↔.9 generated-reactivity cycle and
+history resets do not explain this particular owner capture.
+Raw-HDR spatial-detail CV is9.88%, immediate Aurora4.11%, final world3.72%.
+Phase accounts for88.7%/45.6%/34.7% respectively. Some input variation is expected
+from jitter; even after a bilinear jitter-alignment diagnostic it remains phase
+related. At matched phases the opaque input is effectively unchanged, but water
+HDR changes as normal phases and SSR history advance. Thus modulation is already
+present before reconstruction; this does not yet identify normal sampling, SSR
+or their interaction as the defective operation. Water waves=false disables
+geometry displacement, not scrolling normal animation. No water-policy fix is
+selected from these observations alone. Preserve PPD624 open.
+
+**Tiles:** all516,060 captured G-buffer texels are opaque PBR, median roughness
+.20075, metallic.4. At glossy budget4 this gives one stochastic SSR ray. Pepper
+is present in the opaque HDR snapshot (pre/post-transparency high-pass correlation
+.999999786). Motion, unsafe and generated reactivity are zero; accumulation1.
+All162 matched-phase albedo/ORM/normal comparisons are exact. Final grain RMS
+is~7.98display code levels; presentation dither is bounded by one code level.
+The earlier bound-noise record has grain0/dither1/bits8, but predates the ROI and
+is **not** represented as a same-frame noise binding. On the owner's explicit
+live SSR-off check, conspicuous tile pepper disappears in **both Aurora and
+MetalFX Spatial75%**. SSR is therefore the demonstrated shared contribution,
+not an Aurora-specific instability or an inferred film-grain setting.
+
+A bounded common rough-SSR correction raises the minimum to four samples within
+the user's existing cap; mirror rays and counts already≥4 retain their behavior.
+The footprint, random sequence, hit estimator, material maps and all histories
+are unchanged. Frozen authored tests fail three quality bounds on the original
+library; candidate retest is pending. Existing controlled results show residual
+gradient reductions29–58%, not complete elimination or owner acceptance.
+At2304×1446, retained full-BASE synthetic cost A0/candidate/A1 medians are
+1.6814165/4.118979/1.6800625ms (300samples each,360warm, validation off),
++2.43824ms versus mean controls. This is a material cost, not SSR self-time or
+viewer FPS. All arms add zero steady textures and reuse300 pooled targets.
+
+Source observations, invalid no-hit water-SSR attempts, composition-only and
+reactivity-only diagnostics remain distinct from accepted fixes. Only a valid
+rendered signal and controlled response can justify another water policy.
