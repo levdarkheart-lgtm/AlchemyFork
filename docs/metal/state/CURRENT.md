@@ -21,32 +21,21 @@ is available alongside the owner's uninstrumented active69531session. Do not
 disturb it or infer GPUtime from+25.1%depth-fetch work.
 Release69531/21API+GPU modules,346ARM64/signatures/login-onlysmoke, mounted
 8293entries/50ZIPfiles and allthreeiCloud uploads remain verified.
-Owner authorizes integration into codex/apple-silicon-metal and Alpha9build.
+Owner-authorized fast-forward integration is pushed to codex/apple-silicon-metal.
+Alpha9run46081361440is in_progress, source63779df8be, tag26.4.0.69535-alpha9.
+Hosted build/package/publication remains pending; see release-alpha9ledger.
 PPD631metadata-only host-provenance repair is qualified:4translation checks,
 198tool tests/1skip, strictGL source and ordinary harness pass. Runtime/shaders
 remain identical to acceptedf971; no new local viewer is built. PPD629/runtime dialect and PPD615/cache remain separate.
 
-
-**Preserved69527 receiver-seed investigation (2026-11-27):** start4d8e, app0a94/69525.
-Per-ray inspection is HDR/native/presented-exact for108stationary fixtureworlds:
-refracted-UV hashing redirects rays15.7–25.3degrees while normal changes.40degrees,
-changing hit coverage and sampled reflector colors. No acceptedwaterfeedbackhit.
-Receiver-screen-UV seeding retains the spatial distribution/roughness and lowers
-final temporalRMS .007548→.002939 (61.06%), mean within.75% of common32ray reference.
-Residual static4raygrain/error remains (referenceMAE .004886→.007997); noexact-quality
-claim. Constantglobalpattern rejected forbrightnessbias; coherentfrozenhistorydoes
-notremove originalcycle. Aurora/rejection/mips/normalanimation unchanged.
-New342world regression keepsanimationthroughmovestop and skipsonepublication,
-proving retainedpacketidentity. Original69525shader fails1frozenqualitybound;
-candidate2cases/113240assertions API/GPU pass; oldwaternoisebounds unchanged.
-Source5d44/69527 Release and24selectedchecks (20MetalAPI/GPU+4CPU) pass.
-Full-screen login-only smoke restores18settingsfiles/24entries, viewerclosed.
-Mounted8293entries/signatures/346ARM64 and ZIP127hashes pass; all threecloud
-uploads confirmed08:01:28UTC withnoerror/matchinghashes. Initial4355cleared
-withoutaccount/servicechanges. Owner originalscenequality review remainsnext. No productionnewpass/ray/
-texture/wait. Tileminimum4 and owneracceptedglass/foliage are preserved.
-Actual-viewtilecost isunqualified: ROIcaptures perturbcost, A0quietinvalid, no live
-sessionavailable. Keep +2.438ms syntheticcost separate; no liveFPSclaim.
+**Preserved historical69527/source5d44:** receiver-pixel SSR seeding reduced
+fixture variation61%, but the owner rejected its remaining water blinking.
+Static4rayerror, failed diagnostics,342-world history regression and exact
+package identities remain in the water report/Git history.69530/source136ce was
+withheld after receiver-water feedback was demonstrated; it is not an accepted
+reference.69531corrects that validity problem and is now owner-accepted only
+within the reported scene. The separate shared minimum-four-ray tile correction
+remains accepted; actual-view GPU cost was not measured.
 
 **Renderer code checkpoint:** `f971d11de29daf60233f9f5875cf957ca069e95c` —owner-accepted69531water receiver-validity reference; Release,21API/GPU modules, login-onlysmoke, mountedpackage and allthreeiCloud uploads pass22:22:18UTC. Preserved69527/source5d44,69525/source0a94 and69523/sourcec72fafcd3b remain unchanged.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
@@ -150,10 +139,11 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Metadata-only provenance and ordinary release-source qualification pass;
-fast-forward codex/apple-silicon-metal to the accepted reconstruction chain plus
-closure/release notes, then dispatch exactly one Alpha9workflow at an immutable
-source SHA and verify the run identity. No new local review build or visual tuning.
-Preserve69531reference and69530WITHHELD; no patchAwork absent a visual regression.
-Hosted artifact build/signature/publication is a distinct observation from owner
-acceptance and must not be claimed before its workflow completes.
+The owner-requested Alpha9build has been triggered exactly once:
+https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/46081361440 .
+Source is immutable63779df8beae1a81b3433b5e9e17ff9082899121; later documentation
+does not change it. GitHubbuild/package/publication is pending; report completion
+only when observed, or the exact failure if it occurs. No new reviewDMG, visual
+tuning, patchAinvestigation or further GPUcampaign is part of this closure.
+Preserve scene-scoped69531acceptance and exact identities, priorfailedhistory,
+receiver-band/mixed-comparison limitations and separately unmeasured actualGPUcost.

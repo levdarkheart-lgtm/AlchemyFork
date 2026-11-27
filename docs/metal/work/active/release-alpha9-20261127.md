@@ -77,3 +77,25 @@ dispatch, a focused follow-up adds the native manifest verifier and existing
 translation/provenance suite to the release's source-preflight step. This closes
 PPD631's recurrence gap without a new runtime dependency, shader or viewer build.
 Use the actual follow-up SHA/count for Alpha9, not the earlier preparation pin.
+
+
+## Dispatch verified
+
+Fast-forward integration and the provenance-preflight follow-up are pushed to
+codex/apple-silicon-metal. Exactly one workflow_dispatch request returns0 with
+workflow refcodex/apple-silicon-metal, source_ref
+63779df8beae1a81b3433b5e9e17ff9082899121, alpha_number9 and explicit release_tag
+26.4.0.69535-alpha9. Git count69535is verified from that immutable source. Its
+entire indra tree matches owner-acceptedf971; source/executable/shader identities
+of69531remain the accepted reference, not relabelled as the hosted build.
+
+Run [46081361440](https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/46081361440)
+is created2026-11-27T23:14:27Z. GitHub observes the expected branch, fullSHA,
+workflow_dispatch event and .github/workflows/tag-release.yaml path; it progresses
+fromqueued toin_progress. No duplicate dispatch is sent. Build, package and
+publication remain pending, not claimed successful. The workflow publishes the
+ad-hoc-signed Alpha9ZIP/checksum/provenance only after its gates pass.
+
+This dispatch record is documentation after the immutable build source; it does
+not require a new local viewer or a second workflow run. Default main and prior
+release/packages are unchanged. The owner's active69531session was not touched.

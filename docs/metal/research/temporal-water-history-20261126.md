@@ -554,7 +554,7 @@ Source observations, invalid no-hit water-SSR attempts, composition-only and
 reactivity-only diagnostics remain distinct from accepted fixes. Only a valid
 rendered signal and controlled response can justify another water policy.
 
-## Current owner-pulse correction — PPD624, 2026-11-27
+## Historical owner-pulse correction — PPD624, 2026-11-27
 
 **Current disposition:** the owner rejected build69527/source`5d44ab6411a47bad3e437ed2da78179b7121e978`:
 background water still flashed. The tile repair is owner-accepted (PPD628 verified),
@@ -914,3 +914,16 @@ Final documentation harness initially catches the ledger retaining69527as its
 primary checkpoint while CURRENT identifies69531. Both primary checkpoints now
 name immutable application sourcef971; the69527reference is explicitly preserved
 as historical. This documentation correction does not rebuild or relabel69531.
+
+
+## Accepted correction integrated — Alpha9build triggered
+
+Owner-accepted69531rendering is merged by fast-forward into
+`codex/apple-silicon-metal`. Release preparation63779df8beae1a81b3433b5e9e17ff9082899121
+has the identical indra tree to acceptedf971; only closure/notes/metadata/testing
+and provenance-preflight integration follow the accepted rendering. Exactly one
+Alpha9workflow is running:
+[46081361440](https://github.com/levdarkheart-lgtm/AlchemyFork/actions/runs/46081361440),
+intendedtag26.4.0.69535-alpha9. Hosted artifact completion and runtime validation
+are not yet established. No new local viewer, visual tuning, GPUmeasurements or
+changes to the owner's mounted69531session occurred during this closure.

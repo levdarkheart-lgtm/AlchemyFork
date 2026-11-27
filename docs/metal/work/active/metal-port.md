@@ -14,8 +14,9 @@ No further patchAinvestigation or visual changes solely for that metric. Mixed
 comparison and receiver-band limitations remain; reopen only on visual regression.
 GPU cost stays unmeasured because no existing readback-free/timed arm is available;
 do not interrupt the owner's running69531or create another profiling campaign.
-PPD631metadata-only repair and source gates pass. Fast-forward the usual Metal
-branch, dispatch one immutable-source Alpha9build and verify run identity.
+PPD631metadata-only repair/source gates pass; usual Metal branch fast-forwarded.
+Alpha9run46081361440is in_progress atsource63779df8be/tag26.4.0.69535-alpha9.
+Build/package/publication is pending; no duplicate dispatch or new local viewer.
 No new local viewer build needed; root owns integration, docs and release dispatch.
 Commit `f971d11de29daf60233f9f5875cf957ca069e95c` is69531appsource.
 Preserved69527source is5d44ab6411a47bad3e437ed2da78179b7121e978.
