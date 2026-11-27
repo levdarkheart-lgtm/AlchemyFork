@@ -16,8 +16,12 @@ algorithm, mip or sharpening change ships. Sourcecoordinates audited coherent.
 20Metal suites API/GPU+4CPU pass. Originaltile/waterSSRbounds fail3/2, candidatepass.
 Synthetic BASE cost+2.438ms,0extra steadytextures; noFPS/zeroNativeregressionclaim.
 Privatehooks/completedtestcuts removed, allviewersclosed/preferencesrestored.
-Pin source, finish newRelease/smoke/package/upload; keep water open and reportcost.
-Commit `c72fafcd3b6191134e861f37939e21f975eac938` remains reviewed69523 checkpoint.
+Application source pinned/pushed;69525Release/full-screenlogin-onlysmoke,346ARM64,
+mounted8293entries and ZIP110hashes pass.18settingsfiles/24entries restored, viewer
+closed. All three iCloud uploads confirmed01:28:25UTC with no error and matching
+hashes; initial4355/recovery retained. Owner reviews residual tile grain and cost.
+Commit `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` is the69525 source; keep water open.
+Reviewed69523/sourcec72fafcd3b remains preserved.
 Preserve69523/69520, glass/foliage/water-coordinate fixes and originalqualityfailures.
 See [water report](../../research/temporal-water-history-20261126.md) for all evidence.
 

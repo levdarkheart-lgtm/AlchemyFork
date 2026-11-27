@@ -15193,8 +15193,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Discovered: 2026-11-26
 - Original reference: Delivery requires Foundation URL metadata uploaded=true, uploading=false and no upload error; a local copy alone is insufficient.
 - Evidence: [69516 delivery](research/aurora-native-temporal-20261126.md). All three iCloud Desktop files match the verified local package hashes, but fresh metadata returns NSCocoaErrorDomain 4355, could not access the iCloud account. Retained older 69507 files still report uploaded. Read-only brctl status/quota return BRCloudDocsErrorDomain 141 access denied.
-- Next action: Owner downloads confirmed-uploaded69523 or retained69520/69516. Preserve the transient/recovery history; no account/service repair is required.
-- Verification:69516 upload was confirmed18:16:49UTC. Current69520 source/mounted checks match8293entries, deep/strict signing and346ARM64 checks pass, ZIP CRC/per-file hashes pass. At20:57:47UTC all three69520files report uploaded=true, uploading=false and no error; destination hashes match. Raw service/account details remain private.
+- Next action: Owner downloads confirmed-uploaded69525;69523/69520/69516 remain preserved. Retain the transient/recovery history; no account/service repair is required.
+- Verification:69525 mounted app matches8293entries, deep/strict signing and346ARM64 checks pass; ZIP CRC and110selected-file hashes pass. At2026-11-27 01:28:25UTC all three69525files report uploaded=true, uploading=false and no error; destination hashes match. Initial4355 cleared without account/service changes. Earlier69516/69520/69523 delivery receipts remain retained.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15212,6 +15212,10 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-26 22:49:57UTC69523 recurrence: mounted8293-entry/signature/346ARM64 and ZIP93-file checks pass; local/iCloud hashes match. New DMG/ZIP/checksum metadata initially reports4355 with uploaded=false/uploading=true. Keep delivery pending; bounded read-only rechecks only, no account/service changes.
 
 - 2026-11-26 22:51:34UTC69523 recovery: second bounded recheck confirms all three unchanged files uploaded=true, uploading=false, no error and matching hashes. No account/service change, recopy or rebuild.
+
+- 2026-11-27 01:26:30UTC69525 recurrence: mounted8293entries/signatures/346ARM64 and ZIP110-file hashes pass; all three local/iCloud hashes match. Initial Foundation metadata reports4355, uploaded=false/uploading=true. Delivery remains pending while bounded read-only metadata rechecks run; no account/service changes.
+
+- 2026-11-27 01:28:25UTC69525 recovery: third bounded read-only recheck confirms all three unchanged uploads and matching hashes. No account/service change, recopy or rebuild.
 
 ## PPD-619 — Valid static glass is conservatively rejected by Temporal material-family exclusions
 
@@ -15345,7 +15349,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - Original reference: The captured background ROI is confirmed dedicated world water by actual passed coverage/depth, distinct from pool/object surfaces.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner explicitly identifies blue background water beyond terrace/palms outside the pool. Keep this separate from pool highlights and preserve natural animation.
 - Next action: Review the measured sampling candidate; primary water SSR omission with frozen normals reduces final phase variation79.7%, but the normally animated cycle is not qualified as fixed. Retain the precise reproducer and residual source question. Do not clear water history protection or conflate lower reflected energy with recovered detail.
-- Verification: Owner-view 180-world captures confirm a jitter-phase response already in HDR; it persists with frozen normal animation, no resets, generated reactivity zero and mature accumulation. Minimum-four SSR reduces reflected energy but normalized stability does not exceed control variation. The primary-water SSR cut isolates most frozen-normal phase flicker (79.7% final reduction), while residual and normally animated behavior remain unresolved. Preserved69523 authored fixed/animated dedicated-water reproduction is complete. Inverse repair alone leaves variation essentially unchanged (.0031091483→.0031088035); actual-water inputs retain identical water-interior variation (.00384100768794). These source-contract repairs do not qualify the owner-region shimmer. Actual producer and remaining live input/rejection behavior are unverified.
+- Verification: Owner-view 180-world captures confirm a jitter-phase response already in HDR; it persists with frozen normal animation, no resets, generated reactivity zero and mature accumulation. Minimum-four SSR reduces reflected energy but normalized stability does not exceed control variation. The primary-water SSR cut isolates most frozen-normal phase flicker (79.7% final reduction), while residual and normally animated behavior remain unresolved. Preserved69523 authored fixed/animated dedicated-water reproduction is complete. Inverse repair alone leaves variation essentially unchanged (.0031091483→.0031088035); actual-water inputs retain identical water-interior variation (.00384100768794). These source-contract repairs do not qualify the owner-region shimmer. The later owner-scene captures establish the dedicated-water producer and recorded input/rejection behavior; the quality-preserving SSR correction remains unresolved.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15425,14 +15429,14 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-628 — Terrace tiles show conspicuous angle-dependent grain
 
-- Status: investigating
+- Status: ready_for_owner
 - Confirmation: reproduced
 - Owner: Main-world material/reflection/presentation integration
 - Discovered: 2026-11-26
 - Original reference: Original rough SSR uses randomized glossy rays; PBR roughness filtering and final grain/dither controls must be traced before attributing speckles to reconstruction.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner supplies Aurora and Spatial75% recordings, reports steady peppering on foreground tiles/lounger strip and possible camera-angle dependence. The owner-scene ROI is opaque PBR (median roughness .20075); pepper is present in opaque HDR before reconstruction. Owner SSR-off observation removes the grain.
-- Next action: Validate bounded rough-SSR minimum sampling within the configured cap, including original counterexample, mirror/high-budget controls and cost. Preserve tile appearance/detail and accepted glass/foliage.
-- Verification: Owner SSR-off removes grain in Aurora and Spatial75%. Actual-scene A0/four-ray/restored A1 final high-pass RMS .03139691/.01462076/.03125021, 53.2–53.4% reduction versus <.47% control drift. All phase-matched G-buffer/depth inputs exact; mean final luminance within .54%. Residual grain remains. Original tile regression fails three bounds, candidate passes; material target-sized BASE cost is +2.438ms, not viewer FPS. Build/regressions/package qualification pending.
+- Next action: Owner reviews confirmed-uploaded69525 for residual tile grain and cost. Bounded sampling, original counterexamples, mirror/high-budget controls and component cost are verified; preserve accepted glass/foliage.
+- Verification: Owner SSR-off removes grain in Aurora and Spatial75%. Actual-scene A0/four-ray/restored A1 final high-pass RMS .03139691/.01462076/.03125021, 53.2–53.4% reduction versus <.47% control drift. All phase-matched G-buffer/depth inputs exact; mean final luminance within .54%. Residual grain remains. Original tile regression fails three bounds, candidate passes; material target-sized BASE cost is +2.438ms, not viewer FPS. Twenty affected Metal suites with API/GPU validation and four CPU suites pass at the pinned code state. Final69525 Release/full-screenlogin-onlysmoke,346ARM64, mounted8293-entry/signature and ZIP110-file checks pass. All18settingsfiles/24entries restored; viewerclosed. All three iCloud uploads confirmed01:28:25UTC; no owner quality acceptance is claimed.
 - Owner verification: pending
 - Push approval: granted
 
@@ -15443,3 +15447,7 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 PPD628: owner confirms conspicuous grain disappears with RenderScreenSpaceReflections=FALSE. Requested restoration to TRUE. The same-view 180-world ROI already places grain in opaque PBR HDR, with zero motion/unsafe/generated reactivity and no resets. This establishes the live tile SSR contribution; the four-ray correction remains under rendered qualification, not owner acceptance.
 
 - 2026-11-27 PPD628: owner independently confirms SSR-off also removes tile peppering in MetalFX Spatial75%, supporting the shared reflection producer rather than a reconstruction-only defect.
+
+- 2026-11-27 experimental69525 application source0a94aa6fe2: final Release and exact-library smoke/package checks pass. The later documentation checkpoint is distinct from the app source. No water-cycle fix or viewerFPS gain is claimed. Original69523/69520 packages remain preserved.
+
+- 2026-11-27 01:28:25UTC: experimental69525 DMG/source-evidence ZIP/checksums are confirmed uploaded and hash-matched. Source0a94/shader361b remain exact; owner review of tile quality/performance is pending. Water PPD624/625 remain open.

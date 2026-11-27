@@ -78,6 +78,64 @@ These are rendering/ownership/sampling regressions, not closure of PPD610's
 existing quality failures. New source pin/build identity, login-only smoke and
 private package delivery follow separately; the69523 section below is historical.
 
+## Source-pinned sampling candidate 69525
+
+Application source `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` is pushed only to
+`codex/aurora-native-temporal-20261126`. The final Release build exits 0. Its
+built-in shader exactly matches the rendered candidate; Aurora's embedded shader
+source is unchanged. Later delivery/documentation commits are distinct from this
+application source.
+
+| Identity | SHA-256 |
+| --- | --- |
+| Executable | `e9ff71e51aac809e48b008a1408e6e0de5f1d04d704088fef3bb131226ec5bfc` |
+| Built-in metallib | `361b9f91fcbffd633c40c46688cf5e245f2e62ef01bac1c83cfeb5fc7f34a92f` |
+| Embedded Aurora generated MSL compiler input | `9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070` |
+
+The built-in shader diff against 7c25 is only the eight-line shared SSR sampling
+change. Read-only graph observations and focused rendered tests carry the
+evidence; no private pipeline ROI hook or completed water causal override ships.
+Mirror/transparent sampling and existing sample caps remain. Twenty affected
+Metal suites with API/GPU validation and four CPU suites pass at this same code
+state before version metadata was pinned; no rendering source changed afterward.
+Original PPD610 bounds remain unchanged.
+
+The exact copied app passes deep/strict ad-hoc signature checks and all 346 Mach-O
+ARM64 checks. Its full-screen, automatic-login-disabled smoke reaches
+STATE_LOGIN_WAIT, confirms OpenHTJ2K 0.27.0 pixel decoding, and closes normally
+without world login. All 18 original settings files and 24 entries are restored,
+including restorable metadata. Package verification receipts retain mounted app
+entry comparison, signatures, architecture and library checks; cloud upload
+confirmation is recorded separately after the immutable DMG/ZIP are created.
+The app is not notarized and retains the existing macOS 26 deployment target.
+
+This is an experimental tile-grain candidate with a measured material cost;
+water cycling is not repaired. Preserve 69523/69520 and owner-accepted glass and
+foliage. Select **67% (Aurora Temporal · Experimental)** under Advanced Graphics
+world resolution and check the effective status beside it. Native remains default;
+combined main lighting remains OFF. Use macOS window screenshots/recording for
+live review, rather than the independent viewer snapshot route.
+
+## Private package verification
+
+The immutable69525 DMG is mounted and compared against the exact smoke-tested
+app: all8,293entries match, signatures and346ARM64 checks pass. The review ZIP
+passes CRC and all110selected-file hashes. Full source/focused diff, selected
+actual-scene ROI metrics/joins/crops/clips, synthetic regressions and raw component
+cost samples are private; no raw settings or login screenshots are included.
+The first cloud observation at01:26:30UTC reports the retained PPD618 transient
+4355condition. Destination hashes match, but remote readiness is not inferred from
+that local copy. At **2026-11-27 01:28:25UTC**, the third bounded read-only recheck
+confirms all three unchanged files uploaded, no upload in progress/error and matching
+hashes. No account/service change, recopy or rebuild was needed. The private
+`delivery-complete.json` receipt owns that final upload observation.
+
+| Package on iCloud Desktop | SHA-256 |
+| --- | --- |
+| `Alchemy-Aurora-SSR-Sampling-Experimental-69525-AppleSilicon.dmg` | `54c2555bb2876530da0d7a7408ea41fa9c9d4ffec918c6b9bc625a8cf20dbf93` |
+| `Alchemy-Aurora-SSR-Sampling-Experimental-69525-Review.zip` | `84f25f696cfff3c8d1962ca4cd3be2541ba547e91853e1f33a192ebde25fba82` |
+| `Alchemy-Aurora-SSR-Sampling-Experimental-69525-SHA256SUMS.txt` | `cbd9390fd2355ceb964633ec8607206ece45a7d3de2f88bbce73396fbd98ed2c` |
+
 ## Preserved 69523 water/history report
 
 

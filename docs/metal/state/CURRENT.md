@@ -3,8 +3,9 @@
 Observed 2026-11-27 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
 Branch `codex/aurora-native-temporal-20261126` starts at evaluation checkpoint
 `318f0ac8b6a8073fe8d22d0848c84c282ad8b212`. The owner authorizes implementation,
-offline qualification, feature-branch push and private iCloud delivery. No live
-login or whole-viewer FPS claim. Native remains default; combined lighting OFF.
+offline qualification, feature-branch push and private iCloud delivery. The later
+owner-authorized targeted scene login is recorded below; no whole-viewer FPS claim.
+Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
@@ -26,10 +27,14 @@ All diagnostic viewers closed, original preferences restored. Privatepipelinehoo
 and completed test overrides removed; no diagnostic bypass enters shipping code.
 Current source:20selectedMetal suites API/GPU pass,4CPU pass; original tile/water
 SSR regressions fail3/2 bounds, candidatepasses frozenlimits. FullRelease passes
-at local code state; source pin/newnumbered build, smoke/package/upload remain.
+at the pinned code state; final69525 Release, exact-app full-screen login smoke,
+signature/346ARM64, mounted8293-entry and ZIP110-file checks pass. All18original
+settingsfiles/24entries are restored, viewerclosed. All three iCloud Desktop files
+are confirmed uploaded at01:28:25UTC, with no error and matching hashes. Owner
+reviews residual tile grain/cost next; water remains unresolved.
 Preserve69523/69520 and acceptedglass/foliage repairs; originalPPD610 failures remain.
 
-**Renderer code checkpoint:** `c72fafcd3b6191134e861f37939e21f975eac938` — experimental Water69523 application source; Release, smoke, mounted package and iCloud delivery verified.
+**Renderer code checkpoint:** `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` — experimental SSR-sampling69525 application source; Release/smoke/mounted-package checks pass; all three iCloud uploads confirmed01:28:25UTC. Preserved69523/sourcec72fafcd3b remains verified and unchanged.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 The [native report](../research/aurora-native-temporal-20261126.md) records the preserved69516 port;
