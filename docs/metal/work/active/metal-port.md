@@ -7,12 +7,13 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-PPD630 blocks69530handoff; that package is WITHHELD. Revised outgoing-ray and
-all-step receiver exclusion passes the exact-zero water-only case and unchanged
-real-reflector bounds. Run full water/API+GPU and exact saved-view ray checks,
-then create a new pinned Release package. No owner-ready claim yet. Root owns
-shader/build; original settings are restored. PPD624 stays open; preserve accepted
-tiles/glass/foliage and coordinate/ownership fixes.
+Sourcef971/build69531passes11water cases and exact-view ray safety;69530remains
+WITHHELD. PPD630ready_for_owner. PPD624quality remains open: B/Cfinal range
+improves65/75%, A worsens9.57%, brightness/detail and37→49probe differences are
+retained. Release,21API/GPU tests/login-onlysmoke, mounted8293entries/50ZIPfiles and allthree
+iCloud uploads verified22:22:18UTC.69531availableforownerreview; notallwaterfixed.
+No more livecapture is needed. Settings restored, viewerclosed; rootsoleNinjaowner.
+Preserve accepted tiles/glass/foliage and coordinate/ownership corrections.
 Commit `5d44ab6411a47bad3e437ed2da78179b7121e978` remains69527 appsource.
 See [water report](../../research/temporal-water-history-20261126.md).
 

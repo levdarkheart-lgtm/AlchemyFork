@@ -721,3 +721,154 @@ Private receipts: `receiver-validity/compile-frozen-receipt.json`,
 `water-only-candidate.log`, `visible-quality-result.json` under the retained
 `artifacts/metal/water-pulse-20261127/` root. Complete production water suite and
 exact-view candidate safety/quality joins are the next gates.
+
+
+### Sourcef971 /69531: receiver-validity repair and retained quality limit
+
+Application source `f971d11de29daf60233f9f5875cf957ca069e95c` supersedes the
+withheld69530renderer. All11production water cases pass with API/GPU validation
+(22,609,127assertions), including the exact-zero feedback counterexample,
+198-world genuine-reflector frozen bounds, normal animation/move-stop, skipped
+history publication, visibility/exclusion and pool reuse. Test-only export of
+the unchanged198-world sequence produces matched stationary and move-stop media
+(716,701assertions). Previews are18worlds/s,0.6×authored animation time, not FPS.
+
+The saved Midday camera was reproduced through the same69527host plus private
+observer instrumentation and the revised shader, not mislabelled as a69531live
+executable. Since69527, shipping viewer changes are only the builtin shader;
+CMake/test changes are test-only. After30main frames at49probes,64worlds and
+64observer packets join exactly; all2560ROI readbacks complete, no ROI/observer
+drops, no history resets. Native quiet stream has302contention drops (none
+budget/full); this is not lossless general timing or a performance comparison.
+The actual decoded coverage is86,460water pixels /345,840rays. All2333wrong-side
+rays terminate before stepping and have zero hit/terminal data. All68,796hits
+point upward; none is within1mm of the receiver plane or below it. Exact named
+source-world checks find no accepted water-coverage sample;67,610locations outside
+retained source ROIs and1169missing-first-source cases remain semantically
+unassigned. A plane-height classification is not object identity.
+
+The original first-depth near-source test terminated the whole ray on the water
+receiver. Continuing a valid outgoing ray fixes that rejection; testing every
+coarse/refined sample also prevents the69530feedback counterexample. The new
+rule does not alter receiver seeds, reflection blend strength, normal animation
+or Aurora. It does not fix every source of visual variation.
+
+Common eroded water interiors, first54worlds =three complete18phasecycles:
+
+| Region | Immediate Aurora phase-mean range, baseline→candidate | Final-world range, baseline→candidate | Immediate mean /detail change |
+| --- | --- | --- | --- |
+| A | .00275143→.00225581 (−18.0%) | .00538178→.00589685 (+9.57%) | −8.52% /+33.0% |
+| B | .00837274→.00290594 (−65.3%) | .01912146→.00662771 (−65.3%) | −2.57% /−7.08% |
+| C | .00573252→.00092602 (−83.85%) | .01188772→.00301068 (−74.67%) | −11.61% /−4.01% |
+
+Baseline05has37configured probes; candidate09has49. Animation time differs.
+These are descriptive scene comparisons, not identical-input quality estimates.
+The non-water control mean changes+.96% immediate /+.85%final. A's former
+phase16→17 immediate drop−.00150782 becomes+.000653934; other variation remains,
+and its final range is worse. Thus neither all-pulse removal nor original
+owner-scene acceptance is established. PPD624 stays open; reflected brightness,
+detail and residualA require owner review. PPD630moves only to ready_for_owner.
+
+Recorded per-valid-water-ray loop entries rise19.796→24.780; derived depth
+fetches19.785→24.760 (+25.1%). These are shader work counts, not GPU time.
+No pass, texture, buffer or CPU wait is added. Actual-view rendering cost is
+unqualified: this targeted capture ran alongside the Release CPU build and
+used readback observers. Do not transfer old dense tile +2.44ms into this view.
+The shared minimum-four-ray tile correction remains owner-accepted.
+
+Private evidence: `receiver-validity/live09-complete-analysis/analysis.json`,
+`live-ray-safety-09.json`, `live-water-feedback-proof-09.json`,
+`retained-arm-comparison-05-vs09.json`; `fixture-validity-comparison-media/`.
+Session08used an unsupported512MiB diagnostic cap and was closed without capture;
+09uses the supported256MiB cap, verified at startup. Both sessions restore all
+18original settings files/24entries and restorable metadata; all viewers close.
+Normal69531Release/regression/smoke/package gates remain pending at this checkpoint.
+
+
+The09quiet-native join also resolves64/64frames4155–4218 to64unique successful
+and GPU-timed main-post commands, exact Aurora/output resource generations and
+current-world UI selections, with0join exclusions. Clock calibration/units are
+retained in `receiver-validity/native09-joins/`. This is current-world UI selection,
+not independently observed drawable presentation; logical-group/admission IDs
+are not recorded here. General quiet losses remain302contention events as above.
+Three single-pixel generated-reactivity observations occur in A; B/C/control
+are zero. No reset occurs; those isolated pixels do not establish a cause of
+A's residual variation. Matched-phase actual-view clips are retained privately
+at fixed18worlds/s, not liveFPS; owner recordings are not published to GitHub.
+
+
+Responsible shader locations at applicationf971: `almetal_ssr_ray()` in
+`indra/almetal/shaders/almetal_builtin.metal`, current-camera-side test line6963,
+coarse receiver exclusion line6999, refinement exclusion line7055. The reused
+nearest-depth/receiver-band helper is immediately above. Generic material and
+far-rim callers pass zero receiver normal and retain their previous semantics.
+The permanent regression cases are `[water-ssr-self-depth]`,
+`[water-ssr-receiver-band]` and `[water-ssr-no-feedback]` in
+`indra/almetal/tests/almetal_temporal_water_test.mm`.
+
+
+###69531 Release and exact-application verification
+
+Normal `tools/metal/build.sh build` completes at sourcef971 (2486build targets);
+PPD615's known incremental-cache recovery is retained, without a code/build
+workaround. `doctor.sh` identifies the M1Max and required OpenHTJ2K0.27 decoder.
+All21affected Release CTest modules pass with API/GPU validation in181.85s,
+including11water cases /22,583,776assertions in the actual shipped-library module.
+Its real-reflector range is.000673392, detail.00812429, mean.140210; water-only
+RGB MAE/max remain exactly0. All original quality bounds remain unchanged.
+
+The staged review app is `Alchemy Aurora Water Validity Review69531.app`
+(filename has spaces around69531). Executable SHA256:
+`fd5228bbce87246903e631ed6570d77059f393dc453fedc58668d0a864f4f999`.
+Shipped builtin SHA256:
+`86ebf38d847cd9ef9b37afbbaff5981d1bdf57309e8e195f6ff83da0765e12a5`.
+Its compiler input SHA256 is the verified revised source
+`cad104596abc63d1e44fe979ef5de76a2d9c62ec097d587db2831e7d2a236896`;
+the full production Metal3.1/fast-math/invariance/min26compiler command is retained.
+The private media library05bd… has identical source/options and distinct binary
+identity; it is not mislabelled as the packaged86eb… asset. Normal Release tests
+exercise86eb… directly. Embedded Aurora sources remain9dd3a205… unchanged.
+
+Deep/strict ad-hoc signatures and346ARM64 checks pass. The exact application
+reaches the native-full-screen login screen with AutoLoginFALSE and no account
+login; it closes normally. All18original settings files/24entries and restorable
+metadata match the initial snapshot. No private login screenshot is published.
+The application is not notarized. Mounted package/ZIP/upload checks are the
+remaining delivery gates; their receipts will follow. PPD624 remains open.
+
+
+###69531 private delivery complete —2026-11-27 22:22:18UTC
+
+The mounted DMG matches all8293application entries; deep/strict ad-hoc signatures
+and346ARM64 checks pass. All50selected review-ZIP files match their manifests
+and ZIP CRC checks. The DMG, source/evidence ZIP and SHA256SUMS are confirmed
+uploaded on iCloud Desktop, with no remaining upload error and matching
+destination hashes. The initial4355account-access status clears without any
+account/service change.69527is preserved;69530remains explicitlyWITHHELD.
+
+- `Alchemy-Aurora-Water-SSR-Experimental-69531-AppleSilicon.dmg` —377163731bytes,
+  SHA256 `1b0ad6fcfc6fc5deacc228acaa330935a7d88f505a54c67fd925ce754c9135a7`.
+- `Alchemy-Aurora-Water-SSR-Experimental-69531-Review.zip` —39414037bytes,
+  SHA256 `6aab0e1ef70fbd43025de445d2e85336123091f94074b1efc939045b548e6523`.
+- `Alchemy-Aurora-Water-SSR-Experimental-69531-SHA256SUMS.txt`.
+
+Immutable application source staysf971 /69531. Final report/register/state
+publication is documentation-only after packaging; it does not relabel the
+application source. The ZIP preserves the source pin, actual executable/library
+identities, source diff, correctness logs, frozen bounds, synthetic and selected
+private water-only ROI before/after media. Original owner movies, raw recordings,
+account data and scene asset files are excluded; owner-scene media is not pushed
+to GitHub. The application's login screenshot stays private and excluded.
+
+Select Advanced Graphics → World resolution →67% (Aurora Temporal ·Experimental)
+and confirm effective Aurora status; combined main lighting staysOFF. Native
+remains default, and Spatial/MetalFX remain available. Review Midday outside-pool
+water, reflection brightness/detail, movement–stop, shoreline and accepted
+glass/foliage/tile controls with macOS screenshots/recording, not independent
+viewer snapshots. No routine CPU wait, extra pass or allocation was introduced.
+Actual-view GPU cost remains unmeasured; observed tracing work rises25.1%.
+
+**Disposition:** ready for owner review of a source-confirmed SSR receiver-validity
+correction, not a completed water-quality fix. PPD630ready_for_owner; PPD624open
+with residualAfinalrange+9.57%, B/Cimprovements, mean/detail/probe confounds and
+owner acceptance pending. Do not report all blinking removed or a viewerFPS gain.

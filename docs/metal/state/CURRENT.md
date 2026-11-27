@@ -9,13 +9,15 @@ Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Active PPD624/630 correction:**69530/source136ce remains WITHHELD in the
-labelled iCloud folder. Revised outgoing-ray/all-step receiver exclusion passes
-the water-only exact-zero counterexample and198-world real-reflector frozen
-bounds (range.000673403, detail.008124224, mean.140210183). Full-suite/exact-view
-verification and a new pinned build remain pending. No owner-ready claim yet.
-Original settings restored; preserve accepted tiles/glass/foliage and PPD629
-runtime dialect follow-up. PPD624 remains open for original-scene acceptance.
+**Active correction sourcef971 /69531:**11water cases pass22,609,127assertions
+with API/GPU validation. Exact saved-view09joins64worlds, noROI/observerdrops;
+all2333wrong-side rays reject before tracing, no68796accepted hit is coplanar
+with receiver water.69530remainsWITHHELD. PPD630ready_for_owner; PPD624open:
+B/Cfinal brightness range improves65/75%, A worsens9.57%; mean/detail tradeoffs
+and37→49probe confound remain explicit. No all-pulse/FPS claim. Release build,21affected
+API/GPU modules,346ARM64/signatures and full-screen login-onlysmoke pass. Mounted8293entries,50ZIPfiles and allthreeiCloud uploads are verified
+22:22:18UTC;69531is available for owner review, not a complete water-qualityfix. Original
+settings restored; preserve accepted tiles/glass/foliage and PPD629 follow-up.
 
 
 **Preserved69527 receiver-seed investigation (2026-11-27):** start4d8e, app0a94/69525.
@@ -39,7 +41,7 @@ texture/wait. Tileminimum4 and owneracceptedglass/foliage are preserved.
 Actual-viewtilecost isunqualified: ROIcaptures perturbcost, A0quietinvalid, no live
 sessionavailable. Keep +2.438ms syntheticcost separate; no liveFPSclaim.
 
-**Renderer code checkpoint:** `5d44ab6411a47bad3e437ed2da78179b7121e978` — experimental WaterSSR69527 application source; Release/regressions/login smoke pass, mountedpackage verified; all threecloud uploads confirmed08:01:28UTC. Preserved69525/source0a94 and69523/sourcec72fafcd3b remain unchanged.
+**Renderer code checkpoint:** `f971d11de29daf60233f9f5875cf957ca069e95c` —69531water receiver-validity candidate; Release,21API/GPU modules, login-onlysmoke, mountedpackage and allthreeiCloud uploads pass22:22:18UTC. Preserved69527/source5d44,69525/source0a94 and69523/sourcec72fafcd3b remain unchanged.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 The [native report](../research/aurora-native-temporal-20261126.md) records the preserved69516 port;
@@ -141,10 +143,10 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Finish privateROI diagnostic build and fix only compile issues. Measure target-size
-tileBASE A0/min4/A1 afterbuild and before launchingviewer; no GPUvalidation in cost.
-Then prepare exactlogin-screen diagnostic and request owner's single exact-scene
-login/position step. Arm180world/128MiB ROI only afterready; associatequietstream
-world/command/presentation identities and actual noise controls. Continue tile
-regression/cost integration independently; do not ship unproved watermask tweaks.
-Remove privatehooks before final source pin, regression, Release/DMG/iCloud delivery.
+Owner reviews69531in the originalMidday water view: residualpatchAfluctuation,
+brightness/reflecteddetail, movement–stop and acceptedglass/foliage/tile controls.
+PPD624remainsopen; do not treat passed rayvalidity as complete visible acceptance.
+PPD630ready_for_owner; PPD629runtimeMSLdialect and PPD615buildcache remain
+actionable follow-ups. No more livecapture/generalFPS work is authorized by this
+bounded repair. Preserve69530WITHHELD and priorpackages. Actual-view cost remains
+unqualified, with measured depth-fetch work+25.1%, not GPUmilliseconds.
