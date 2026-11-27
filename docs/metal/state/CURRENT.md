@@ -9,30 +9,22 @@ Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Current task — PPD624/628 (2026-11-27):** starting HEAD7c25, reviewed69523c72.
-Tile source is confirmed roughSSR, shared by Aurora/Spatial. Within the existing
-sample cap, minimum4 reduces actual-scene final grain RMS53.2–53.4%; restoring
-original sampling returns grain, controls drift<.47%. All phase-matched material/
-depth inputs exact; mean luminance within.54%. Residual grain remains. Cost is
-+2.438ms in dense2304×1446 fullBASE fixture; no liveFPS or zeroNativecost claim.
-Water is confirmed dedicatedworldwater. Frozen-normal primarySSR omission lowers
-final jitter-phase RGB variation79.7%, already in HDR, but is a lighting bypass,
-not a fix. Normal animation alone is not necessary for the cycle; coordinates
-are coherent, no resets, generatedreactivity0, nextaccumulation255. Four rays lower
-reflected energy/contrast but normal-water stability does not exceed control drift.
-PPD624/625 remainopen; no waterconfidence/algorithm/mip/sharpening policy changes.
-Actual five180world captures retain same-world ROIs and available native joins.
-Quiet cutoffs/invalid512MiB startup are explicit exclusions; later256MiB joins pass.
-All diagnostic viewers closed, original preferences restored. Privatepipelinehooks
-and completed test overrides removed; no diagnostic bypass enters shipping code.
-Current source:20selectedMetal suites API/GPU pass,4CPU pass; original tile/water
-SSR regressions fail3/2 bounds, candidatepasses frozenlimits. FullRelease passes
-at the pinned code state; final69525 Release, exact-app full-screen login smoke,
-signature/346ARM64, mounted8293-entry and ZIP110-file checks pass. All18original
-settingsfiles/24entries are restored, viewerclosed. All three iCloud Desktop files
-are confirmed uploaded at01:28:25UTC, with no error and matching hashes. Owner
-reviews residual tile grain/cost next; water remains unresolved.
-Preserve69523/69520 and acceptedglass/foliage repairs; originalPPD610 failures remain.
+**Current task — PPD624 primary-waterSSR (2026-11-27):** start4d8e, app0a94/69525.
+Per-ray inspection is HDR/native/presented-exact for108stationary fixtureworlds:
+refracted-UV hashing redirects rays15.7–25.3degrees while normal changes.40degrees,
+changing hit coverage and sampled reflector colors. No acceptedwaterfeedbackhit.
+Receiver-screen-UV seeding retains the spatial distribution/roughness and lowers
+final temporalRMS .007548→.002939 (61.06%), mean within.75% of common32ray reference.
+Residual static4raygrain/error remains (referenceMAE .004886→.007997); noexact-quality
+claim. Constantglobalpattern rejected forbrightnessbias; coherentfrozenhistorydoes
+notremove originalcycle. Aurora/rejection/mips/normalanimation unchanged.
+New342world regression keepsanimationthroughmovestop and skipsonepublication,
+proving retainedpacketidentity. Original69525shader fails1frozenqualitybound;
+candidate2cases/113240assertions API/GPU pass; oldwaternoisebounds unchanged.
+Fullregressions/Release/sourcepin/smoke/package pending. No productionnewpass/ray/
+texture/wait. Tileminimum4 and owneracceptedglass/foliage are preserved.
+Actual-viewtilecost isunqualified: ROIcaptures perturbcost, A0quietinvalid, no live
+sessionavailable. Keep +2.438ms syntheticcost separate; no liveFPSclaim.
 
 **Renderer code checkpoint:** `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` — experimental SSR-sampling69525 application source; Release/smoke/mounted-package checks pass; all three iCloud uploads confirmed01:28:25UTC. Preserved69523/sourcec72fafcd3b remains verified and unchanged.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.

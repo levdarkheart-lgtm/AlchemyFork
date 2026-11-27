@@ -121,6 +121,12 @@ struct WaterPixels
     std::uint64_t aurora_ticket = 0;
     unsigned aurora_write_parity = 0, aurora_read_parity = 0;
     double presented_same_row_max_error=0,presented_flipped_row_mae=0;
+    std::uint64_t ssr_generation_used=0,ssr_source_world_used=0,ssr_generation_after=0,ssr_source_world_after=0;
+    bool ssr_history_published=false,ssr_history_skipped=false;
+    std::vector<std::uint32_t> ssr_source_color_packed;
+    std::vector<float> ssr_source_depth;
+    std::vector<std::uint8_t> ssr_water_coverage_used;
+    ALMetalWorldScreenSpaceReflectionCoordinates ssr_used_coordinates;
 };
 struct WaterFixture : Fixture
 {
@@ -135,6 +141,9 @@ struct WaterFixture : Fixture
     ALMetalWorldReflectionProbes ssr_probes;
     ALMetalWorldScreenSpaceReflectionHistory ssr_history;
     float authored_fresnel_offset = .1f; // Existing arms retain their original water material.
+    ALMetalWorldSimpleBatch ssr_reflector;
+    bool ssr_reflector_in_main=false,advance_ssr_history=false,skip_ssr_publication=false;
+    std::vector<std::uint8_t> last_published_water_coverage; // Fixture provenance only, never an algorithm input.
     const ALMetalTexture *cells = nullptr, *empty_cells = nullptr, *normal = nullptr, *legacy_cube = nullptr;
     ALMetalWorldSimpleBatch floor, foreground;
     std::uint64_t world = 0;
@@ -310,6 +319,7 @@ struct WaterFixture : Fixture
         draw.vertices=buffer(&geometry,sizeof(geometry));draw.indices=buffer(indices,sizeof(indices));
         draw.vertex_count=4;draw.index_count=6;draw.texture_count=1;draw.diffuse_textures[0]=detail;draw.impostor_fullbright=true;
         std::copy(v.begin(),v.end(),draw.modelview);std::copy(pv.begin(),pv.end(),draw.modelview_projection);identity(draw.texture_matrix);
+        draw.temporal_instance_id=704;draw.temporal_generation=1;ssr_reflector=draw;
         data->beginFrame(++world);auto lit=renderer->prepareTemporalTarget(WW,WH,false,&error);REQUIRE(lit);
         REQUIRE(renderer->beginCommandBatch("Water SSR genuine bright source",&error));
         auto empty=scene();empty.width=WW;empty.height=WH;empty.hdr=empty.normal_hdr=empty.reverse_z=true;
@@ -337,6 +347,7 @@ struct WaterFixture : Fixture
         const auto source_pixels=waterRead(*source->colorTexture(0),*device,error);
         float brightest=0;for(const auto& value:source_pixels)brightest=std::max(brightest,value[0]);
         REQUIRE(brightest>2.f);
+        last_published_water_coverage.assign(WW*WH,0); // Seed is only the genuine reflector, not water.
     }
     ALMetalWorldScreenSpaceReflections waterSsr(float camera_x,unsigned budget)
     {
@@ -372,11 +383,17 @@ struct WaterFixture : Fixture
         auto haze = surface.field;
         surface.big_phase[0] = animation;
         surface.little_phase[1] = animation * .7f;
-        std::array<ALMetalWorldSimpleBatch, 3> markers{};
+        std::array<ALMetalWorldSimpleBatch, 4> markers{};
+        unsigned forward_count=0;
+        if(ssr_reflector_in_main)
+        {
+            REQUIRE(ssr_history.valid());
+            auto& reflector=markers[forward_count++];reflector=ssr_reflector;
+            std::copy(v.begin(),v.end(),reflector.modelview);std::copy(camera.begin(),camera.end(),reflector.modelview_projection);
+        }
         // Match the production above-water refraction ordering: fog what is
         // behind the field before copying it for the surface's refraction.
-        markers[0].water_haze = true; markers[1].water_surface = true;
-        unsigned forward_count = include_water ? 2 : 0;
+        if(include_water){markers[forward_count++].water_haze=true;markers[forward_count++].water_surface=true;}
         if (transparent_pane)
         {
             auto& pane = markers[forward_count++];
@@ -396,6 +413,7 @@ struct WaterFixture : Fixture
         f.legacy_environment = ssr_history.valid() ? nullptr : legacy_cube;
         f.reflection_probes = ssr_history.valid() ? &ssr_probes : nullptr;
         f.screen_space_reflections = screen_space_reflections;
+        f.publish_screen_space_reflection_history=advance_ssr_history;
 #if ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR
         f.temporal_water_inputs = use_surface_inputs ? water_inputs.get() : nullptr;
 #endif
@@ -405,6 +423,17 @@ struct WaterFixture : Fixture
         std::copy(camera.begin(), camera.end(), h.camera_mvp);
         REQUIRE(history.beginFrame(h, &error)); REQUIRE(history.stage(g, f, &error));
         WaterPixels pixels; pixels.jitter = history.jitterPixels(); pixels.phase = history.stats().jitter_phase;
+        if(advance_ssr_history)
+        {
+            REQUIRE(ssr_history.valid());REQUIRE(ssr_history.coordinates());
+            pixels.ssr_generation_used=ssr_history.generation();pixels.ssr_source_world_used=ssr_history.coordinates()->source_world;
+            pixels.ssr_used_coordinates=*ssr_history.coordinates();
+            if(screen_space_reflections)
+            {
+                REQUIRE(screen_space_reflections->scene_color==ssr_history.target()->colorTexture(0));
+                REQUIRE(screen_space_reflections->scene_depth==ssr_history.target()->colorTexture(1));
+            }
+        }
         if (transparent_pane && !history.previousForward().empty())
             pixels.pane_previous_valid = history.previousForward().back().valid && !invalid_pane_previous;
         std::copy(pixels.jitter.begin(), pixels.jitter.end(), g.temporal_jitter_pixels);
@@ -432,11 +461,13 @@ struct WaterFixture : Fixture
         f.gbuffer = gbuffer.get(); f.composed_lighting = continuation.get(); f.reconstruction_opaque = opaque_color.get();
         auto color_scene = f;
         auto color_batches = markers;
-        if (transparent_pane)
+        if (transparent_pane || ssr_reflector_in_main)
         {
-            // History/motion retain the authoritative unjittered pose. Color
-            // uses the same raster jitter as the opaque and water producers.
-            alMetalApplyTemporalJitter(color_batches[forward_count-1].modelview_projection,
+            // History/motion retain authoritative unjittered poses. Color
+            // uses exactly the opaque/water producer's current raster jitter.
+            if(ssr_reflector_in_main)alMetalApplyTemporalJitter(color_batches[0].modelview_projection,
+                pixels.jitter[0],pixels.jitter[1],WW,WH);
+            if(transparent_pane)alMetalApplyTemporalJitter(color_batches[forward_count-1].modelview_projection,
                 pixels.jitter[0], pixels.jitter[1], WW, WH);
             color_scene.batches = color_batches.data();
         }
@@ -556,6 +587,32 @@ struct WaterFixture : Fixture
 #else
         static_cast<void>(capture_diagnostics);
 #endif
+        if(advance_ssr_history)
+        {
+            // Observe the exact packet consumed by this completed world before
+            // the normal publisher may overwrite its compatible history target.
+            if(capture_diagnostics)
+            {
+                pixels.ssr_source_color_packed.resize(WW*WH);pixels.ssr_source_depth.resize(WW*WH);
+                REQUIRE(ssr_history.target()->colorTexture(0)->readback(*device,0,0,{},pixels.ssr_source_color_packed.data(),WW*4,&error));
+                REQUIRE(ssr_history.target()->colorTexture(1)->readback(*device,0,0,{},pixels.ssr_source_depth.data(),WW*4,&error));
+                pixels.ssr_water_coverage_used=last_published_water_coverage;
+            }
+            if(!skip_ssr_publication)
+            {
+                ALMetalWorldScreenSpaceReflectionCoordinates c;
+                auto raster=p;alMetalApplyTemporalJitter(raster.data(),pixels.jitter[0],pixels.jitter[1],WW,WH);
+                const auto inverse_raster=waterMatrix(simd_inverse(waterSimd(raster.data())));
+                std::copy(raster.begin(),raster.end(),c.projection);std::copy(inverse_raster.begin(),inverse_raster.end(),c.inverse_projection);
+                std::copy(v.begin(),v.end(),c.modelview);c.reverse_z=true;c.source_world=c.camera_generation=world;
+                REQUIRE(renderer->updateScreenSpaceReflectionHistory(*final,true,c,ssr_history,&error));
+                REQUIRE(ssr_history.valid());REQUIRE(ssr_history.coordinates());
+                REQUIRE(std::equal(raster.begin(),raster.end(),ssr_history.coordinates()->projection));
+                last_published_water_coverage=pixels.water_coverage;pixels.ssr_history_published=true;
+            }
+            else pixels.ssr_history_skipped=true;
+            pixels.ssr_generation_after=ssr_history.generation();pixels.ssr_source_world_after=ssr_history.coordinates()->source_world;
+        }
         return pixels;
     }
 };
@@ -1222,6 +1279,176 @@ TEST_CASE("Actual water rough SSR is compared with a fixed high-budget reference
         // Characterization only: 128 is an unchanged high-budget instance of
         // this shader, not an independent physically exact reflection oracle.
         // No new reconstruction-quality bound is invented by this fixture.
+    }
+}
+#endif
+
+#if ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR
+TEST_CASE("Water-inclusive SSR history advances with the exact submitted jittered world",
+          "[almetal][temporal][water][water-ssr-history]")
+{
+    @autoreleasepool
+    {
+        WaterFixture f,off;
+        for(auto* fixture:{&f,&off})
+        {
+            fixture->authored_fresnel_offset=.5f;fixture->ssr_reflector_in_main=true;
+            fixture->advance_ssr_history=true;fixture->publishWaterSsrSource();
+        }
+        constexpr unsigned skipped_publication_frame=261;
+        constexpr unsigned warm=72,fixed_end=180,animated_end=252,moving_end=270,end=342;
+        constexpr float stopped_camera=.02f*float(moving_end-animated_end);
+        REQUIRE(stopped_camera==.02f*float((moving_end-1)-animated_end+1));
+        std::filesystem::path directory;std::ofstream csv,coordinates_csv;
+        if(!f.directory.empty())
+        {
+            directory=f.directory/"water-ssr-history-advancing";
+            std::filesystem::create_directories(directory);csv.open(directory/"frames.csv");REQUIRE(csv.good());
+            coordinates_csv.open(directory/"used-coordinates.csv");REQUIRE(coordinates_csv.good());
+            coordinates_csv<<"index,generation,source_world,camera_generation,reverse_z,origin_x,origin_y,origin_z";
+            for(const char* matrix:{"projection","inverse_projection","modelview"})for(unsigned i=0;i<16;++i)coordinates_csv<<','<<matrix<<i;
+            coordinates_csv<<'\n';
+            csv<<"index,world,segment,cycle,phase,jitter_x,jitter_y,camera_x,animation,reset,skip_publication,source_generation_used,source_world_used,source_generation_after,source_world_after,published,skipped,raw_detail,native_detail,presented_detail,raw_same_phase_mae,native_same_phase_mae,native_consecutive_mae,generated_reactive_mean,mask_reactive_mean,mask_shading_mean,mask_accumulation_mean,history_water_fraction\n";
+        }
+        const auto detail=[](const std::vector<WColor>& a,unsigned width,bool input)
+        {
+            double sum=0;unsigned count=0;const unsigned x0=input?59:90,x1=input?66:99,y0=input?33:50,y1=input?36:54;
+            for(unsigned y=y0;y<y1;++y)for(unsigned x=x0;x<x1;++x)for(unsigned c=0;c<3;++c)
+            {sum+=std::abs(a[y*width+x][c]-a[y*width+x+1][c]);++count;}
+            return sum/count;
+        };
+        const auto mae=[](const std::vector<WColor>& a,const std::vector<WColor>& b,unsigned width,bool input)
+        {
+            REQUIRE(a.size()==b.size());double sum=0;unsigned count=0;
+            const unsigned x0=input?59:90,x1=input?66:99,y0=input?33:50,y1=input?36:54;
+            for(unsigned y=y0;y<y1;++y)for(unsigned x=x0;x<x1;++x)for(unsigned c=0;c<3;++c)
+            {sum+=std::abs(a[y*width+x][c]-b[y*width+x][c]);++count;}
+            return sum/count;
+        };
+        std::array<std::vector<WColor>,WP> previous_phase_raw,previous_phase_native;
+        std::vector<WColor> previous_native;unsigned published=0,skipped=0;double ssr_contribution=0;
+        const auto initial_generation=f.ssr_history.generation();std::uint64_t last_generation=initial_generation,last_source=f.ssr_history.coordinates()->source_world;
+        std::vector<std::uint32_t> skipped_color;std::vector<float> skipped_depth;
+        std::vector<std::uint8_t> skipped_coverage;ALMetalWorldScreenSpaceReflectionCoordinates skipped_coordinates;
+        // Frozen before the receiver-seed qualification run: the old source
+        // gives temporal luma RMS .007548; target <.003. A fixed global lobe
+        // was rejected for brightness bias. The independent retained32-ray
+        // comparison has mean .269994; preserve that appearance within3%.
+        std::array<double,36> stationary_luma_sum{},stationary_luma_square{};
+        double stationary_spatial_contrast=0;unsigned stationary_worlds=0;
+        for(unsigned frame=0;frame<end;++frame)
+        {
+            const char* segment=frame<warm?"warm":frame<fixed_end?"fixed":frame<animated_end?"animated":frame<moving_end?"moving":"stopped";
+            const unsigned begin=frame<warm?0:frame<fixed_end?warm:frame<animated_end?fixed_end:frame<moving_end?animated_end:moving_end;
+            const float animation=frame<fixed_end?0.f:.017f*(frame-fixed_end+1);
+            const float camera=frame<animated_end?0.f:frame<moving_end?.02f*(frame-animated_end+1):stopped_camera;
+            f.skip_ssr_publication=frame==skipped_publication_frame;
+            auto ssr=f.waterSsr(camera,4);
+            const auto p=f.render(false,camera,animation,true,true,true,nullptr,false,true,&ssr);
+            CAPTURE(frame,segment,p.phase,f.skip_ssr_publication,p.ssr_source_world_used,p.ssr_source_world_after);
+            REQUIRE(p.phase==frame%WP);REQUIRE(p.aurora_reset==(frame==0));
+            REQUIRE(p.ssr_generation_used==last_generation);REQUIRE(p.ssr_source_world_used==last_source);
+            if(f.skip_ssr_publication)
+            {REQUIRE(p.ssr_history_skipped);REQUIRE_FALSE(p.ssr_history_published);REQUIRE(p.ssr_generation_after==last_generation);REQUIRE(p.ssr_source_world_after==last_source);++skipped;}
+            else
+            {REQUIRE(p.ssr_history_published);REQUIRE_FALSE(p.ssr_history_skipped);REQUIRE(p.ssr_generation_after==last_generation+1);REQUIRE(p.ssr_source_world_after==f.world);++published;}
+            last_generation=p.ssr_generation_after;last_source=p.ssr_source_world_after;
+            REQUIRE(p.ssr_source_color_packed.size()==WW*WH);REQUIRE(p.ssr_source_depth.size()==WW*WH);REQUIRE(p.ssr_water_coverage_used.size()==WW*WH);
+            if(frame==skipped_publication_frame)
+            {
+                skipped_color=p.ssr_source_color_packed;skipped_depth=p.ssr_source_depth;
+                skipped_coverage=p.ssr_water_coverage_used;skipped_coordinates=p.ssr_used_coordinates;
+            }
+            if(frame==skipped_publication_frame+1)
+            {
+                // Skipping publication holds the complete paired packet, not
+                // only its serial; the next world consumes those exact texels
+                // and the original jitter/camera coordinates without a reset.
+                REQUIRE(p.ssr_source_color_packed==skipped_color);REQUIRE(p.ssr_source_depth==skipped_depth);
+                REQUIRE(p.ssr_water_coverage_used==skipped_coverage);
+                const auto& c=p.ssr_used_coordinates;
+                REQUIRE(c.source_world==skipped_coordinates.source_world);REQUIRE(c.camera_generation==skipped_coordinates.camera_generation);
+                REQUIRE(c.reverse_z==skipped_coordinates.reverse_z);
+                REQUIRE(std::equal(c.world_origin,c.world_origin+3,skipped_coordinates.world_origin));
+                REQUIRE(std::equal(c.projection,c.projection+16,skipped_coordinates.projection));
+                REQUIRE(std::equal(c.inverse_projection,c.inverse_projection+16,skipped_coordinates.inverse_projection));
+                REQUIRE(std::equal(c.modelview,c.modelview+16,skipped_coordinates.modelview));
+            }
+            for(unsigned y=33;y<36;++y)for(unsigned x=59;x<66;++x)REQUIRE(p.water_coverage[y*WW+x]==255);
+            if(frame<=warm)
+            {
+                const auto no_ssr=off.render(false,camera,animation,true,true,true,nullptr,false,false,nullptr);
+                REQUIRE(p.phase==no_ssr.phase);REQUIRE(p.jitter==no_ssr.jitter);
+                if(frame==warm){ssr_contribution=mae(p.raw,no_ssr.raw,WW,true);REQUIRE(ssr_contribution>1.e-6);}
+            }
+            if(frame>=warm && frame<fixed_end)
+            {
+                unsigned n=0;double mean=0,square=0;
+                for(unsigned y=50;y<54;++y)for(unsigned x=90;x<99;++x)
+                {
+                    const auto& c=p.presented[y*WOW+x];const double luma=.2126*c[0]+.7152*c[1]+.0722*c[2];
+                    stationary_luma_sum[n]+=luma;stationary_luma_square[n]+=luma*luma;++n;
+                    mean+=luma;square+=luma*luma;
+                }
+                REQUIRE(n==36);mean/=n;stationary_spatial_contrast+=std::sqrt(std::max(0.,square/n-mean*mean));++stationary_worlds;
+            }
+            const auto raw_detail=detail(p.raw,WW,true),native_detail=detail(p.immediate,WOW,false),presented_detail=detail(p.presented,WOW,false);
+            REQUIRE(std::isfinite(raw_detail));REQUIRE(std::isfinite(native_detail));REQUIRE(std::isfinite(presented_detail));
+            double raw_same=0,native_same=0,consecutive=0;
+            if(!previous_phase_raw[p.phase].empty())
+            {raw_same=mae(p.raw,previous_phase_raw[p.phase],WW,true);native_same=mae(p.immediate,previous_phase_native[p.phase],WOW,false);}
+            if(!previous_native.empty())consecutive=mae(p.immediate,previous_native,WOW,false);
+            previous_phase_raw[p.phase]=p.raw;previous_phase_native[p.phase]=p.immediate;previous_native=p.immediate;
+            double generated=0,reactive=0,shading=0,accumulation=0;
+            for(unsigned y=33;y<36;++y)for(unsigned x=59;x<66;++x)
+            {const auto i=y*WW+x;generated+=p.reactive[i]/255.;reactive+=p.masks[i][0]/255.;shading+=p.masks[i][2]/255.;accumulation+=p.masks[i][3]/255.;}
+            const double history_water=double(std::count_if(p.ssr_water_coverage_used.begin(),p.ssr_water_coverage_used.end(),[](auto x){return x!=0;}))/(WW*WH);
+            if(csv)csv<<std::setprecision(12)<<frame<<','<<f.world<<','<<segment<<','<<(frame-begin)/WP<<','<<p.phase<<','<<p.jitter[0]<<','<<p.jitter[1]<<','<<camera<<','<<animation<<','<<p.aurora_reset<<','<<f.skip_ssr_publication<<','
+                <<p.ssr_generation_used<<','<<p.ssr_source_world_used<<','<<p.ssr_generation_after<<','<<p.ssr_source_world_after<<','<<p.ssr_history_published<<','<<p.ssr_history_skipped<<','
+                <<raw_detail<<','<<native_detail<<','<<presented_detail<<','<<raw_same<<','<<native_same<<','<<consecutive<<','<<generated/21<<','<<reactive/21<<','<<shading/21<<','<<accumulation/21<<','<<history_water<<'\n';
+            if(coordinates_csv)
+            {
+                const auto& c=p.ssr_used_coordinates;
+                coordinates_csv<<std::setprecision(12)<<frame<<','<<p.ssr_generation_used<<','<<c.source_world<<','<<c.camera_generation<<','<<c.reverse_z;
+                for(double origin:c.world_origin)coordinates_csv<<','<<origin;
+                for(const float* matrix:{c.projection,c.inverse_projection,c.modelview})for(unsigned i=0;i<16;++i)coordinates_csv<<','<<matrix[i];
+                coordinates_csv<<'\n';
+            }
+            if(!directory.empty() && frame>=warm)
+            {
+                const auto prefix=directory/("world-"+std::to_string(frame));
+                waterRaw(prefix.string()+"-hdr.rgba32f",p.raw);waterRaw(prefix.string()+"-opaque.rgba32f",p.opaque);
+                waterRaw(prefix.string()+"-native.rgba32f",p.immediate);waterRaw(prefix.string()+"-resolved.rgba32f",p.output);waterRaw(prefix.string()+"-presented.rgba32f",p.presented);
+                waterRaw(prefix.string()+"-water-coverage.r8",p.water_coverage);waterRaw(prefix.string()+"-water-depth.r32f",p.captured_water_depth);
+                waterRaw(prefix.string()+"-depth.r32f",p.depth);waterRaw(prefix.string()+"-motion.rg16f",p.motion);waterRaw(prefix.string()+"-unsafe.r8",p.unsafe);
+                waterRaw(prefix.string()+"-reactive.r8",p.reactive);waterRaw(prefix.string()+"-masks.rgba8",p.masks);waterRaw(prefix.string()+"-accumulation.r8",p.accumulation);
+                if(frame<fixed_end)
+                {
+                    waterRaw(prefix.string()+"-ssr-used-color.rg11b10f",p.ssr_source_color_packed);waterRaw(prefix.string()+"-ssr-used-depth.r32f",p.ssr_source_depth);
+                    waterRaw(prefix.string()+"-ssr-used-water-coverage.r8",p.ssr_water_coverage_used);
+                }
+            }
+        }
+        CHECK(published==end-1);CHECK(skipped==1);
+        CHECK(f.history.stats().resets==1);CHECK(f.aurora->stats().reset_calls==1);
+        REQUIRE(stationary_worlds==108);double stationary_variance=0,stationary_mean=0;
+        for(unsigned i=0;i<36;++i)
+        {
+            const double mean=stationary_luma_sum[i]/stationary_worlds;stationary_mean+=mean;
+            stationary_variance+=std::max(0.,stationary_luma_square[i]/stationary_worlds-mean*mean);
+        }
+        const double temporal_rms=std::sqrt(stationary_variance/36);stationary_mean/=36;
+        stationary_spatial_contrast/=stationary_worlds;
+        CAPTURE(temporal_rms,stationary_mean,stationary_spatial_contrast,ssr_contribution);
+        CHECK(temporal_rms<.003);
+        CHECK(std::abs(stationary_mean/.269994-1.)<.03);
+        CHECK(stationary_spatial_contrast>.0042); // Reflected detail must not become a flat patch.
+        CHECK(ssr_contribution>.012); // Omitting/fading SSR cannot satisfy the stability bound.
+        std::cout<<"Stationary water temporal RMS="<<temporal_rms<<", mean="<<stationary_mean
+            <<", spatial contrast="<<stationary_spatial_contrast<<'\n';
+        std::cout<<"Water-inclusive SSR history342worlds: skipped-publication-index="<<skipped_publication_frame<<", publications="<<published<<", skipped="<<skipped<<", nonemptySSR MAE="<<ssr_contribution<<'\n';
+        // This detects the source SSR phase cycle; owner-scene acceptance and
+        // physically exact/high-budget reflection fidelity remain separate.
     }
 }
 #endif

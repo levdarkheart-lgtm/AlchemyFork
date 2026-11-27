@@ -7,23 +7,18 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-PPD624/628 (2026-11-27): start7c25; ownerSSRoff removes tilesinAurora+Spatial.
-Minimum4 within existingcap reduces actual finalgrain53.2–53.4%, reverseswithA1;
-controldrift<.47%, phase-matched GBuffer/depth exact, residualgrain remains.
-Water primarySSRcut under frozen normals lowers finalphasevariation79.7%, but
-omitslighting; fourraysdo notqualifynormalwatercycleasfixed. No watermask, normal,
-algorithm, mip or sharpening change ships. Sourcecoordinates audited coherent.
-20Metal suites API/GPU+4CPU pass. Originaltile/waterSSRbounds fail3/2, candidatepass.
-Synthetic BASE cost+2.438ms,0extra steadytextures; noFPS/zeroNativeregressionclaim.
-Privatehooks/completedtestcuts removed, allviewersclosed/preferencesrestored.
-Application source pinned/pushed;69525Release/full-screenlogin-onlysmoke,346ARM64,
-mounted8293entries and ZIP110hashes pass.18settingsfiles/24entries restored, viewer
-closed. All three iCloud uploads confirmed01:28:25UTC with no error and matching
-hashes; initial4355/recovery retained. Owner reviews residual tile grain and cost.
-Commit `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` is the69525 source; keep water open.
-Reviewed69523/sourcec72fafcd3b remains preserved.
-Preserve69523/69520, glass/foliage/water-coordinate fixes and originalqualityfailures.
-See [water report](../../research/temporal-water-history-20261126.md) for all evidence.
+PPD624 from4d8e/app0a94: receiver-pixel SSR seed corrects refraction-driven ray
+scrambling. Targeted342world regression catches69525 (1failedbound), candidate
+passes2cases/113240assertions API/GPU; finalRMS .007548→.002939, mean within.75%.
+Keep residual static4rayerror explicit; common32rayMAE rises. Constantglobalseed
+is rejected, frozenhistorydoesnotfixcycle. Normalanimationcontinuesmovestop;
+skippedpublication retains exactpacket. Aurora/mips/rejection/ownership unchanged.
+Next: remainingregressions, sourcepin, Release/smoke/package/upload, ownerreview.
+Actual-viewtilecost unavailable withouta live session; retain +2.438ms component
+cost and experimental sharedscope. Tileminimum4/glass/foliage remainpreserved.
+Commit `0a94aa6fe2f28e2ad544aa9cded56c8526be6278` remains verified69525 appsource;
+newcandidate islocaluncommitted, allpreviouspackages preserved.
+See [water report](../../research/temporal-water-history-20261126.md).
 
 | Item | State | Acceptance / next boundary |
 | --- | --- | --- |

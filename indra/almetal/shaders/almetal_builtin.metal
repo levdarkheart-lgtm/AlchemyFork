@@ -7001,8 +7001,9 @@ static bool almetal_ssr_trace(
     return hit;
 }
 
-static float4 almetal_sample_ssr(
-    float2 gl_screen_position, float3 position, float3 normal,
+static float4 almetal_sample_ssr_pattern(
+    float2 gl_screen_position, float2 rough_sample_seed,
+    float3 position, float3 normal,
     float3 ray_direction, float glossiness, bool transparent,
     texture2d<float> scene_color, texture2d<float> scene_depth,
     sampler color_sampler, sampler depth_sampler,
@@ -7055,9 +7056,9 @@ static float4 almetal_sample_ssr(
             cross(ray_direction, first_basis));
         const float2 coefficients = float2(
             almetal_ssr_random(
-                gl_screen_position + float2(0.0, float(index))),
+                rough_sample_seed + float2(0.0, float(index))),
             almetal_ssr_random(
-                gl_screen_position + float2(float(index), 0.5))) *
+                rough_sample_seed + float2(float(index), 0.5))) *
             2.0 - 1.0;
         const float3 randomized = ray_direction +
             (first_basis * coefficients.x +
@@ -7086,6 +7087,20 @@ static float4 almetal_sample_ssr(
     const float alpha = float(hits) / float(total_samples) * vignette *
         (transparent ? glossiness : 1.0);
     return float4(collected.rgb, alpha);
+}
+
+// Ordinary material SSR retains its existing spatially randomized pattern.
+static float4 almetal_sample_ssr(
+    float2 gl_screen_position, float3 position, float3 normal,
+    float3 ray_direction, float glossiness, bool transparent,
+    texture2d<float> scene_color, texture2d<float> scene_depth,
+    sampler color_sampler, sampler depth_sampler,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+{
+    return almetal_sample_ssr_pattern(
+        gl_screen_position, gl_screen_position, position, normal,
+        ray_direction, glossiness, transparent, scene_color, scene_depth,
+        color_sampler, depth_sampler, ssr);
 }
 
 static float3 almetal_finish_legacy_ssr(
@@ -8389,8 +8404,13 @@ fragment float4 almetal_world_above_water_fragment(
         wave_ibl, reflection, water.optics.z);
     if (water.environment_config.x == 0u)
     {
-        const float4 ssr_sample = almetal_sample_ssr(
-            refracted_uv,
+        // Refraction affects edge fading, not the rough-ray sample pattern.
+        // Its moving UV scrambled the hash even for stationary water. Seed from
+        // the unwarped receiver pixel instead: retain the spatial distribution,
+        // ray footprint/count and all trace/blend rules without a global fixed
+        // lobe. Ordinary materials and the far-rim mirror keep their paths.
+        const float4 ssr_sample = almetal_sample_ssr_pattern(
+            refracted_uv, screen_uv,
             input.eye_position, wave_ibl, dominant, glossiness, false,
             ssr_scene_color, ssr_scene_depth,
             screen_sampler, depth_sampler, ssr);

@@ -1,4 +1,82 @@
-# Water detail and rough-SSR sampling review — PPD624/628
+# Primary water SSR cycle repair — PPD624/628
+
+## Current receiver-coordinate candidate (2026-11-27)
+
+The reproduced stationary water cycle comes from **rough-ray selection**, before
+Aurora. Primary water SSR hashes refracted UV; quarter-pixel raster/normal changes
+scramble that hash, redirect the sparse lobe, and change both accepted hits and
+which part of the reflector they sample. At fixture pixel65,35 in detailed/soft
+phases2/14, the normal changes0.40degrees, but individual rays change15.7–25.3degrees;
+accepted rays fall3→2 and blend alpha.24623→.16320. Mean hits across the measured
+water region range2.38–3.10/4. Accepted rays hit the authored bright reflector,
+not water. The actual per-ray fields include coefficients, directions, terminal
+UV/depth/delta, sampled color, iterations and termination reasons, joined to the
+exact published source generation/projection/inverse/modelview. Private inspection
+preserves the original HDR/native/presented bytes across all108stationary worlds.
+
+The correction separates the coordinates in `almetal_sample_ssr_pattern()`:
+**unrefracted receiver screen UV selects the rough-ray pattern; refracted UV still
+supplies edge fading**. Ray count, lobe/roughness footprint, normal shading, hit
+validity, reflected-radiance estimator and blend weighting are unchanged. Primary
+world water uses this coherent receiver-pixel seed in all modes; ordinary material
+SSR retains its previous seed and the tile minimum-four policy. The far-rim mirror
+is unchanged. No extra pass, texture, history owner or production CPU wait is added.
+
+| Stationary rendered water,108worlds/six18-phase cycles | 69525 shader | Receiver seed | Retained original32-ray comparison |
+| --- | ---: | ---: | ---: |
+| Presented temporal luma RMS | .007548012 | **.002939398** | .002208 |
+| Presented mean luma | .270027512 | **.267975454** | .269993992 |
+| Presented adjacent RGB variation | .005079480 | .005743160 | .001489 |
+| RGB MAE against32-ray comparison | .004885823 | **.007996786** | 0 |
+
+Temporal modulation falls **61.06%**; mean brightness stays within **0.75%** of
+the common high-sample comparison and reflected green/red contrast within0.98%.
+This does not fade or blur the water: adjacent variation rises13.1%, and untouched
+background/reflector pixels are byte-identical across108worlds. It **does retain
+static low-ray error/grain**; its higher MAE against32rays is not concealed as
+exact reflection fidelity. The32-ray result is a common sampling comparison, not
+a physically perfect reflection oracle. Owner-scene acceptance remains pending.
+
+The globally constant-seed diagnostic was rejected: although steadier, it biased
+mean brightness+4.29% and changed the reflected appearance. Freezing a coherent
+color/depth/coordinate packet did not remove the original cycle. These completed
+diagnostics stay private; neither ships. Original post-water history publication
+is also present in pre-retirement Alchemy cd612d0136d1, so water-inclusive history
+alone is not diagnosed as a translation defect. Accepted paired-coordinate and
+water-depth repairs remain intact; Aurora's reconstruction/mip/rejection policies,
+normal water animation, glass, foliage and the shared tile correction are unchanged.
+
+The new production-path regression uses genuine advancing water-inclusive SSR
+history and a persistent bright reflector. Its342worlds comprise72warm,
+108fixed-animation stationary,72normally animated stationary,18moving and72stopped;
+normal animation continues through movement/stopping. One skipped publication
+during movement proves that the next world consumes exactly the retained packet,
+including color/depth/coverage and coordinate identity. No history reset is used.
+Frozen bounds require temporal RMS<.003, mean within3% of the retained comparison,
+nonflat reflected contrast and nonnegligible SSR contribution. The69525 shader
+fails exactly the temporal bound; the receiver candidate passes. It also passes
+the unchanged earlier water-SSR noise bounds (MAE.005172/RMS.009021). Both cases
+pass113,240assertions with API/GPU validation. Other regressions, final source pin,
+Release, smoke and package checks are pending.
+
+**Cost boundary:** retained owner ROI runs cannot establish a matched ordinary-view
+cost for the shared four-ray tile candidate: A0 has no qualified quiet stream;
+B/A1 contain6,480diagnostic readbacks each, and later tails lack matching controls.
+No live review session is running, so this conditional comparison is deferred.
+The existing **+2.438ms** dense target-size BASE result remains a separate component
+measurement. The tile change affects eligible rough materials across Native,
+Spatial and Temporal modes, within the configured cap, and remains experimental.
+The new water seed adds no rays or allocations; no zero-cost or liveFPS claim is made.
+
+Private raw fields, coherent source packets, source/compiler identities, failed
+counterexample, matched PNGs and clips remain under
+`artifacts/metal/water-ssr-detail-20261127/`. Clips use12exportedworlds/s deliberately,
+not viewerFPS. Normal-animation/movement qualification uses matched final342world sequences: intended
+wave motion remains nonzero and every untouched background/reflector pixel is exact
+over270savedworlds. No old frozen-animation reference is substituted for move/stop.
+Packaging follows separately.
+
+## Preserved69525 tile candidate and unresolved-water checkpoint
 
 The tile defect has a demonstrated source and reversible improvement. The sampled
 tiles are opaque PBR, around .20 roughness; the old glossy budget4 supplied one
