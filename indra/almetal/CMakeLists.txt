@@ -386,7 +386,7 @@ if(AL_BUILD_TESTS)
             tests/almetal_world_library_test.mm
             ${almetal_native_case_fragments}
 
-    LIBRARIES almetal llcommon llinventory
+    LIBRARIES almetal alrender llcommon llinventory
     # Correctness cases exercise the selected production consumer policy.
     RESOURCE_LOCK apple_gpu
   )

@@ -4,6 +4,7 @@
 #include "almetal_world_inputs_fixture.h"
 #include "../almetalauroraconventions.h"
 #include "../almetaltemporalworldhistory.h"
+#include "../../alrender/alwaterfield.h"
 #include <simd/simd.h>
 #include <cmath>
 #include <cstdlib>
@@ -16,6 +17,7 @@
 #ifndef ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR
 #define ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR 1
 #endif
+
 
 namespace
 {
@@ -52,12 +54,13 @@ WMatrix waterView(float camera_x)
     v[12] = -camera_x; v[13] = .2f; v[14] = -3.6f; v[15] = 1.f;
     return v;
 }
-void waterProductionJitter(ALMetalWorldWaterHaze& field, const std::array<float, 2>& jitter)
+void waterProductionJitter(ALMetalWorldWaterHaze& field, const std::array<float, 2>& jitter,
+    unsigned width = WW, unsigned height = WH)
 {
 #if ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR
-    alMetalApplyTemporalWaterJitter(field, jitter[0], jitter[1], WW, WH);
+    alMetalApplyTemporalWaterJitter(field, jitter[0], jitter[1], width, height);
 #else
-    alMetalApplyTemporalJitter(field.modelview_projection, jitter[0], jitter[1], WW, WH);
+    alMetalApplyTemporalJitter(field.modelview_projection, jitter[0], jitter[1], width, height);
 #endif
 }
 template<class T> void waterRaw(const std::filesystem::path& path, const std::vector<T>& values)
@@ -128,8 +131,14 @@ struct WaterPixels
     std::vector<std::uint8_t> ssr_water_coverage_used;
     ALMetalWorldScreenSpaceReflectionCoordinates ssr_used_coordinates;
 };
+template<unsigned InputWidth = WW, unsigned InputHeight = WH,
+    unsigned OutputWidth = WOW, unsigned OutputHeight = WOH>
 struct WaterFixture : Fixture
 {
+    static constexpr unsigned WW = InputWidth, WH = InputHeight;
+    static constexpr unsigned WOW = OutputWidth, WOH = OutputHeight;
+    enum class SceneConfiguration { original, grazing_reflector };
+    SceneConfiguration configuration = SceneConfiguration::original;
     ALMetalTemporalWorldHistory history;
     std::unique_ptr<ALMetalAuroraReconstructor> aurora;
     std::unique_ptr<ALMetalRenderTarget> hdr, opaque_color, opaque_depth, output;
@@ -148,6 +157,33 @@ struct WaterFixture : Fixture
     ALMetalWorldSimpleBatch floor, foreground;
     std::uint64_t world = 0;
     std::filesystem::path directory;
+
+    bool grazingReflector() const noexcept
+    {
+        return configuration == SceneConfiguration::grazing_reflector;
+    }
+    WMatrix projection() const
+    {
+        auto result = waterProjection(WW, WH);
+        if (grazingReflector())
+        {
+            constexpr float near = .1f, far = 512.f;
+            result[10] = near / (far - near);
+            result[14] = far * near / (far - near);
+        }
+        return result;
+    }
+    WMatrix view(float camera_x) const
+    {
+        auto result = waterView(camera_x);
+        if (grazingReflector())
+        {
+            // The original view scaled tenfold: authored camera at (x,-30,20).
+            result[13] = 2.f;
+            result[14] = -36.f;
+        }
+        return result;
+    }
 
     WaterFixture()
     {
@@ -237,7 +273,8 @@ struct WaterFixture : Fixture
         const auto inverse = waterMatrix(simd_inverse(waterSimd(p.data())));
         std::copy(mvp.begin(), mvp.end(), f.modelview_projection);
         std::copy(inverse.begin(), inverse.end(), f.inverse_projection);
-        f.cell_square[0] = f.cell_square[1] = -4.f; f.cell_square[2] = 8.f; f.cell_square[3] = 1.f;
+        f.cell_square[0] = f.cell_square[1] = grazingReflector() ? -200.f : -4.f;
+        f.cell_square[2] = grazingReflector() ? 400.f : 8.f; f.cell_square[3] = 1.f;
         f.rings[0] = 4.f; f.rings[1] = 1.f; f.rings[2] = 4.f;
         std::copy_n(environment.water_plane, 4, f.water_plane);
         f.fog_color[0] = .1f; f.fog_color[1] = .35f; f.fog_color[2] = .65f;
@@ -246,13 +283,17 @@ struct WaterFixture : Fixture
         std::copy(v.begin(), v.end(), w.modelview);
         for (unsigned column = 0; column < 3; ++column)
             for (unsigned row = 0; row < 3; ++row) w.normal_matrix[column][row] = v[column*4+row];
-        w.eye_position[0] = camera_x; w.eye_position[1] = -3.f; w.eye_position[2] = 2.f;
+        w.eye_position[0] = camera_x;
+        w.eye_position[1] = grazingReflector() ? -30.f : -3.f;
+        w.eye_position[2] = grazingReflector() ? 20.f : 2.f;
         w.normal_maps = { normal, normal }; w.normal_maps_mipped = true;
         w.water_far[0] = 10000.f;
         w.normal_scale_glint[0] = w.normal_scale_glint[1] = w.normal_scale_glint[2] = 2.f;
         w.normal_scale_glint[3] = .35f;
-        w.optics[0] = .2f; w.optics[1] = authored_fresnel_offset; w.optics[2] = .25f;
+        w.optics[0] = .2f; w.optics[1] = authored_fresnel_offset;
+        w.optics[2] = grazingReflector() ? .08f : .25f;
         w.parameters[1] = .1f; w.parameters[2] = 1.f;
+        w.parameters[3] = grazingReflector() ? 1.f : 0.f;
         w.light_direction[1] = -.6f; w.light_direction[2] = .8f;
         w.underwater = false; w.refracts = true;
         return w;
@@ -273,7 +314,7 @@ struct WaterFixture : Fixture
         // A real source draw with the same perspective camera as the water.
         // Author the history plane in view space, then transform its positions
         // to world space; no invented camera/projection or uploaded fake depth.
-        const auto p=waterProjection(),v=waterView(0.f);
+        const auto p=projection(),v=view(0.f);
         const auto iv=simd_inverse(waterSimd(v.data()));
         const auto pv=waterMatrix(simd_mul(waterSimd(p.data()),waterSimd(v.data())));
         const auto image=[&](ALMetalTextureDescriptor d,const void* bytes,unsigned row)
@@ -354,7 +395,7 @@ struct WaterFixture : Fixture
         ALMetalWorldScreenSpaceReflections ssr;
         ssr.constants.trace[0]=25.f;ssr.constants.trace[1]=.1f;ssr.constants.trace[2]=.04f;ssr.constants.trace[3]=.001f;
         ssr.constants.sampling[0]=float(std::max(1u,budget));ssr.constants.sampling[1]=1.6f;
-        const auto iv=waterMatrix(simd_inverse(waterSimd(waterView(camera_x).data())));const double origin[3]{};
+        const auto iv=waterMatrix(simd_inverse(waterSimd(view(camera_x).data())));const double origin[3]{};
         REQUIRE(ssr_history.bind(ssr,iv.data(),origin,&error));
         return ssr;
     }
@@ -364,7 +405,7 @@ struct WaterFixture : Fixture
         bool capture_diagnostics = false, const ALMetalWorldScreenSpaceReflections* screen_space_reflections = nullptr)
     {
         ++world; data->beginFrame(world);
-        const auto p = waterProjection(), v = waterView(camera_x);
+        const auto p = projection(), v = view(camera_x);
         const auto camera = waterMatrix(simd_mul(waterSimd(p.data()), waterSimd(v.data())));
         auto opaque_draws = std::array{ floor, foreground };
         for (auto& b : opaque_draws)
@@ -381,8 +422,22 @@ struct WaterFixture : Fixture
         auto surface = water(camera_x, p, v);
         surface.field.cell_map = drawn_cell ? cells : empty_cells;
         auto haze = surface.field;
-        surface.big_phase[0] = animation;
-        surface.little_phase[1] = animation * .7f;
+        if (grazingReflector())
+        {
+            const auto phases = ALWaterField::wavePhases(camera_x, -30., double(animation),
+                LLVector2(.4f, .7f), LLVector2(-.3f, .5f));
+            std::copy_n(phases.mBig.mV, 2, surface.big_phase);
+            std::copy_n(phases.mLittle.mV, 4, surface.little_phase);
+            std::copy_n(phases.mSweep.mV, 2, surface.sweep_phase);
+            const auto lattice = ALWaterField::latticePlaces(camera_x, -30.);
+            std::copy_n(lattice.mBase, 4, surface.lattice_base);
+            std::copy_n(lattice.mFrac.mV, 4, surface.lattice_fraction);
+        }
+        else
+        {
+            surface.big_phase[0] = animation;
+            surface.little_phase[1] = animation * .7f;
+        }
         std::array<ALMetalWorldSimpleBatch, 4> markers{};
         unsigned forward_count=0;
         if(ssr_reflector_in_main)
@@ -437,7 +492,8 @@ struct WaterFixture : Fixture
         if (transparent_pane && !history.previousForward().empty())
             pixels.pane_previous_valid = history.previousForward().back().valid && !invalid_pane_previous;
         std::copy(pixels.jitter.begin(), pixels.jitter.end(), g.temporal_jitter_pixels);
-        waterProductionJitter(surface.field, pixels.jitter); waterProductionJitter(haze, pixels.jitter);
+        waterProductionJitter(surface.field, pixels.jitter, WW, WH);
+        waterProductionJitter(haze, pixels.jitter, WW, WH);
         if (independent_inverse)
         {
             // Independent oracle inverts the whole actually rasterized
@@ -624,6 +680,78 @@ double waterError(const std::vector<WColor>& actual, const std::vector<WColor>& 
     { REQUIRE(std::isfinite(actual[p][c])); REQUIRE(std::isfinite(expected[p][c])); sum += std::abs(actual[p][c]-expected[p][c]); }
     return sum / (actual.size()*3);
 }
+
+// Authored grazing reflection case. Only its caller selects this scene;
+// the original fixture geometry, projection, animation and materials stay intact.
+template<unsigned IW, unsigned IH, unsigned OW, unsigned OH>
+void configureGrazingWaterReflector(WaterFixture<IW, IH, OW, OH>& f)
+{
+    f.configuration = WaterFixture<IW, IH, OW, OH>::SceneConfiguration::grazing_reflector;
+    f.environment.water_plane[3] = 20.f;
+    f.authored_fresnel_offset = .5f;
+    f.ssr_reflector_in_main = true;
+    f.advance_ssr_history = true;
+    f.publishWaterSsrSource();
+
+    Fixture::Geometry wall{};
+    const float positions[4][3]{
+        {-52.f, 15.f, 4.f}, {63.f, 15.f, 4.f},
+        {63.f, 15.f, 20.f}, {-52.f, 15.f, 20.f}
+    };
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        std::copy_n(positions[i], 3, wall.positions[i]);
+        wall.positions[i][3] = 1.f;
+        wall.normals[i][1] = -1.f;
+        wall.tangents[i][0] = wall.tangents[i][3] = 1.f;
+        wall.uv[i][0] = i == 1 || i == 2;
+        wall.uv[i][1] = i >= 2;
+        std::fill_n(wall.colors[i], 4, 255);
+    }
+    const std::uint16_t indices[6]{0, 1, 2, 0, 2, 3};
+    f.ssr_reflector.vertices = f.buffer(&wall, sizeof(wall));
+    f.ssr_reflector.indices = f.buffer(indices, sizeof(indices));
+    f.floor = f.card(-250.f, 250.f, -60.f, 350.f, -2.f, f.color, 9001);
+    f.foreground = f.card(500.f, 501.f, 500.f, 501.f, .5f, f.color, 9002);
+
+    // Real mip levels retain the production sampler's derivative contract.
+    ALMetalTextureDescriptor descriptor;
+    descriptor.width = descriptor.height = 32;
+    descriptor.mipmap_level_count = 6;
+    descriptor.format = ALMetalPixelFormat::rgba16_float;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    std::shared_ptr<ALMetalTexture> normals = ALMetalTexture::create(*f.device, descriptor, &f.error);
+    REQUIRE(normals);
+    auto upload = f.device->makeCommandBuffer("Authored water normal mip inputs", &f.error);
+    REQUIRE(upload);
+    std::vector<WHalf> pixels(32 * 32);
+    for (unsigned y = 0; y < 32; ++y)
+        for (unsigned x = 0; x < 32; ++x)
+            pixels[y * 32 + x] = {
+                __fp16(.5f + .12f * std::sin(.51f*x + .17f*y)),
+                __fp16(.5f + .11f * std::cos(.29f*x - .43f*y)),
+                __fp16(1.f), __fp16(1.f)
+            };
+    for (unsigned level = 0, width = 32; level < 6; ++level, width = std::max(1u, width / 2))
+    {
+        REQUIRE(normals->upload(*upload, level, 0, {}, pixels.data(), width * 8, &f.error));
+        if (width == 1) continue;
+        const unsigned next = width / 2;
+        std::vector<WHalf> mip(next * next);
+        for (unsigned y = 0; y < next; ++y)
+            for (unsigned x = 0; x < next; ++x)
+                for (unsigned c = 0; c < 4; ++c)
+                    mip[y * next + x][c] = __fp16((
+                        float(pixels[(2*y)*width + 2*x][c]) +
+                        float(pixels[(2*y)*width + 2*x + 1][c]) +
+                        float(pixels[(2*y + 1)*width + 2*x][c]) +
+                        float(pixels[(2*y + 1)*width + 2*x + 1][c])) * .25f);
+        pixels = std::move(mip);
+    }
+    REQUIRE(upload->commitAndWait(&f.error));
+    f.resources->textures.push_back(normals);
+    f.normal = normals.get();
+}
 }
 
 TEST_CASE("Temporal water pairs jittered raster and inverse perspective projection", "[almetal][temporal][water][water-jitter]")
@@ -661,7 +789,7 @@ TEST_CASE("Fixed production water haze and refraction match independent jittered
 {
     @autoreleasepool
     {
-        WaterFixture actual, expected;
+        WaterFixture<> actual, expected;
         std::ofstream stats;
         if (!actual.directory.empty())
         {
@@ -731,7 +859,7 @@ TEST_CASE("Temporal water inputs follow actual color coverage and foreground dep
 {
     @autoreleasepool
     {
-        WaterFixture visible, hole, absent;
+        WaterFixture<> visible, hole, absent;
         double maximum_water_depth_error=0,maximum_water_camera_motion_error=0;
         unsigned actual_water=0,uncovered_floor=0,protected_foreground=0;
         const auto projection=waterProjection();
@@ -800,7 +928,7 @@ TEST_CASE("Actual water coverage and depth isolate the Temporal input policy wit
 {
     @autoreleasepool
     {
-        WaterFixture plane_policy,surface_policy;
+        WaterFixture<> plane_policy,surface_policy;
         std::ofstream csv;
         if(!surface_policy.directory.empty())
         {
@@ -877,7 +1005,7 @@ TEST_CASE("Post-water transparent coverage preserves visible water and valid ful
 {
     @autoreleasepool
     {
-        WaterFixture baseline, zero, partial, full, behind, dry, behind_dry;
+        WaterFixture<> baseline, zero, partial, full, behind, dry, behind_dry;
         // The authored camera is above water. Match fillMetalAlphaEnvironment:
         // the post-water pool draws the camera side; the pre-water pool draws
         // the submerged side. The old water-only cases retain their inputs.
@@ -1025,7 +1153,7 @@ TEST_CASE("Water detail traces deterministic jitter cycles through native recons
 {
     @autoreleasepool
     {
-        WaterFixture f;
+        WaterFixture<> f;
         constexpr unsigned warm=72, fixed_end=180, animated_end=288, moving_end=306, end=414;
         // Use the exact last-moving expression for the plateau. A literal .36f
         // differs from .02f*18 by one float ULP, creating a real first-stop motion
@@ -1186,7 +1314,7 @@ TEST_CASE("Actual water rough SSR is compared with a fixed high-budget reference
 {
     @autoreleasepool
     {
-        WaterFixture low,high,off;
+        WaterFixture<> low,high,off;
         // The old .1 offset attenuates reflected radiance twice and makes
         // hits invisible at RGBA16F precision in this downward-facing view.
         // Author reflective water explicitly (the owner scene uses .5), held
@@ -1229,7 +1357,7 @@ TEST_CASE("Actual water rough SSR is compared with a fixed high-budget reference
             const float animation=frame<fixed_end?0.f:frame<animated_end?.017f*(frame-fixed_end+1):.017f*(animated_end-fixed_end);
             const float camera=frame<animated_end?0.f:frame<moving_end?.02f*(frame-animated_end+1):stopped_camera;
             auto lp=low.waterSsr(camera,4),hp=high.waterSsr(camera,128);
-            const auto render=[&](WaterFixture& f,const ALMetalWorldScreenSpaceReflections* ssr)
+            const auto render=[&](WaterFixture<>& f,const ALMetalWorldScreenSpaceReflections* ssr)
             {return f.render(false,camera,animation,true,true,true,nullptr,false,true,ssr);};
             const auto l=render(low,&lp),h=render(high,&hp),o=render(off,nullptr);
             CAPTURE(frame,segment,cycle,l.phase);
@@ -1289,7 +1417,7 @@ TEST_CASE("Water-inclusive SSR history advances with the exact submitted jittere
 {
     @autoreleasepool
     {
-        WaterFixture f,off;
+        WaterFixture<> f,off;
         for(auto* fixture:{&f,&off})
         {
             fixture->authored_fresnel_offset=.5f;fixture->ssr_reflector_in_main=true;
@@ -1449,6 +1577,177 @@ TEST_CASE("Water-inclusive SSR history advances with the exact submitted jittere
         std::cout<<"Water-inclusive SSR history342worlds: skipped-publication-index="<<skipped_publication_frame<<", publications="<<published<<", skipped="<<skipped<<", nonemptySSR MAE="<<ssr_contribution<<'\n';
         // This detects the source SSR phase cycle; owner-scene acceptance and
         // physically exact/high-budget reflection fidelity remain separate.
+    }
+}
+#endif
+
+#if ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR
+TEST_CASE("Grazing water SSR retains above-plane reflection across jitter phases",
+          "[almetal][temporal][water][water-ssr-self-depth]")
+{
+    @autoreleasepool
+    {
+        constexpr unsigned width = 384, height = 256;
+        constexpr unsigned output_width = 576, output_height = 384;
+        WaterFixture<width, height, output_width, output_height> f;
+        REQUIRE(f.projection() == waterProjection(width, height));
+        REQUIRE(f.view(0.f) == waterView(0.f));
+        configureGrazingWaterReflector(f);
+        constexpr unsigned warm = 72, stationary_end = 144, moving_end = 162, end = 198;
+        std::filesystem::path directory;
+        std::ofstream csv;
+        if (!f.directory.empty())
+        {
+            directory = f.directory / "authored-water-self-depth";
+            std::filesystem::create_directories(directory);
+            csv.open(directory / "frames.csv");
+            REQUIRE(csv.good());
+            csv << "index,world,phase,segment,source_world,history_generation,history_water_fraction,"
+                   "raw_mean,raw_contrast,raw_detail,native_mean,native_detail,presented_mean,presented_detail,reset\n";
+        }
+        const auto metrics = [](const std::vector<WColor>& image, unsigned width, bool input)
+        {
+            const unsigned x0 = input ? 232 : 348, x1 = input ? 276 : 416;
+            const unsigned y0 = input ? 124 : 184, y1 = input ? 164 : 248;
+            std::array<double, 3> result{};
+            double square = 0;
+            unsigned count = 0, pairs = 0;
+            for (unsigned y = y0; y < y1; ++y)
+                for (unsigned x = x0; x < x1; ++x)
+                {
+                    const auto& pixel = image[y * width + x];
+                    const double luma = .2126*pixel[0] + .7152*pixel[1] + .0722*pixel[2];
+                    result[0] += luma;
+                    square += luma*luma;
+                    ++count;
+                    for (unsigned c = 0; c < 3; ++c)
+                    {
+                        if (x + 1 < x1)
+                        {
+                            result[2] += std::abs(pixel[c] - image[y * width + x + 1][c]);
+                            ++pairs;
+                        }
+                        if (y + 1 < y1)
+                        {
+                            result[2] += std::abs(pixel[c] - image[(y + 1) * width + x][c]);
+                            ++pairs;
+                        }
+                    }
+                }
+            result[0] /= count;
+            result[1] = std::sqrt(std::max(0., square/count - result[0]*result[0]));
+            result[2] /= pairs;
+            return result;
+        };
+        std::array<double, WP> phase_sum{};
+        std::array<unsigned, WP> phase_count{};
+        double detail_sum = 0, mean_sum = 0;
+        unsigned stationary_worlds = 0, publications = 0;
+        for (unsigned frame = 0; frame < end; ++frame)
+        {
+            const float camera = frame < stationary_end ? 0.f
+                : frame < moving_end ? .02f * float(frame - stationary_end + 1) : .36f;
+            const float seconds = float(frame) / 30.f;
+            auto reflections = f.waterSsr(camera, 4);
+            const auto before = f.ssr_history.generation();
+            const auto pixels = f.render(false, camera, seconds, true, true, true,
+                nullptr, false, true, &reflections);
+            REQUIRE(pixels.ssr_history_published);
+            REQUIRE(pixels.ssr_generation_after == before + 1);
+            REQUIRE(pixels.ssr_source_world_after == f.world);
+            ++publications;
+            if (frame > 0) REQUIRE_FALSE(pixels.aurora_reset);
+
+            // Independently recover the authored flat water from its actual
+            // raster depth. This verifies the source geometry, not a fake depth map.
+            auto raster = f.projection();
+            alMetalApplyTemporalJitter(raster.data(), pixels.jitter[0], pixels.jitter[1], width, height);
+            const auto inverse_raster = simd_inverse(waterSimd(raster.data()));
+            const auto inverse_view = simd_inverse(waterSimd(f.view(camera).data()));
+            unsigned visible = 0;
+            for (unsigned y = 124; y < 164; ++y)
+                for (unsigned x = 232; x < 276; ++x)
+                {
+                    const auto index = y * width + x;
+                    REQUIRE(pixels.water_coverage[index] == 255);
+                    ++visible;
+                    auto eye = simd_mul(inverse_raster, simd_make_float4(
+                        2.f*(x + .5f)/width - 1.f, 2.f*(y + .5f)/height - 1.f,
+                        pixels.captured_water_depth[index], 1.f));
+                    eye /= eye.w;
+                    const auto world = simd_mul(inverse_view, eye);
+                    CHECK(std::abs(world.z / world.w) < .001f);
+                }
+            REQUIRE(visible == 1760);
+
+            const auto raw = metrics(pixels.raw, width, true);
+            const auto native = metrics(pixels.immediate, output_width, false);
+            const auto presented = metrics(pixels.presented, output_width, false);
+            for (const auto& values : {raw, native, presented})
+                for (double value : values) REQUIRE(std::isfinite(value));
+            const char* segment = frame < warm ? "warm" : frame < stationary_end ? "stationary"
+                : frame < moving_end ? "moving" : "stopped";
+            if (frame >= warm && frame < stationary_end)
+            {
+                phase_sum[pixels.phase] += raw[0];
+                ++phase_count[pixels.phase];
+                detail_sum += raw[2];
+                mean_sum += raw[0];
+                ++stationary_worlds;
+            }
+            if (csv)
+                csv << std::setprecision(12) << frame << ',' << f.world << ',' << pixels.phase << ','
+                    << segment << ',' << pixels.ssr_source_world_used << ',' << pixels.ssr_generation_used << ','
+                    << double(std::count_if(pixels.ssr_water_coverage_used.begin(),
+                           pixels.ssr_water_coverage_used.end(), [](auto value) { return value != 0; })) / (width*height)
+                    << ',' << raw[0] << ',' << raw[1] << ',' << raw[2] << ',' << native[0] << ',' << native[2]
+                    << ',' << presented[0] << ',' << presented[2] << ',' << pixels.aurora_reset << '\n';
+            const bool selected_phase = pixels.phase == 7 || pixels.phase == 8 ||
+                pixels.phase == 9 || pixels.phase == 17 || pixels.phase == 0;
+            const bool save = (frame >= stationary_end - WP && frame < stationary_end && selected_phase) ||
+                frame == 144 || frame == 152 || frame == 161 || frame == 162 ||
+                frame == 179 || frame == 180 || frame == 197;
+            if (save && !directory.empty())
+            {
+                const auto name = directory / ("frame-" + std::to_string(frame));
+                waterRaw(name.string() + "-hdr.rgba32f", pixels.raw);
+                waterRaw(name.string() + "-native.rgba32f", pixels.immediate);
+                waterRaw(name.string() + "-presented.rgba32f", pixels.presented);
+                waterRaw(name.string() + "-water-depth.r32f", pixels.captured_water_depth);
+                waterRaw(name.string() + "-water-coverage.r8", pixels.water_coverage);
+                waterRaw(name.string() + "-history-depth.r32f", pixels.ssr_source_depth);
+                waterRaw(name.string() + "-history-water.r8", pixels.ssr_water_coverage_used);
+            }
+        }
+        std::array<double, WP> phase_mean{};
+        for (unsigned phase = 0; phase < WP; ++phase)
+        {
+            REQUIRE(phase_count[phase] == 4);
+            phase_mean[phase] = phase_sum[phase] / phase_count[phase];
+        }
+        const auto [low, high] = std::minmax_element(phase_mean.begin(), phase_mean.end());
+        const double range = *high - *low;
+        const double jump_8_9 = std::abs(phase_mean[9] - phase_mean[8]);
+        const double jump_17_0 = std::abs(phase_mean[0] - phase_mean[17]);
+        const double detail = detail_sum / stationary_worlds;
+        const double mean = mean_sum / stationary_worlds;
+        CAPTURE(range, jump_8_9, jump_17_0, detail, mean);
+        // Frozen before the candidate run in the dense visible-reflector case:
+        // baseline range .0102627503255, jumps .0081304516605/.004024902264,
+        // detail .00593085859117 and mean .143027696052. Require a material
+        // pulse reduction while retaining at least 80% of detail and brightness.
+        // The earlier 96x64 lookalike is retained as failed evidence; its coarse
+        // gate and offscreen reflector did not reproduce this complete mechanism.
+        CHECK(range < .005);
+        CHECK(jump_8_9 < .004);
+        CHECK(jump_17_0 < .004);
+        CHECK(detail >= .004744686872937667);
+        CHECK(mean >= .11442215684160001);
+        CHECK(mean <= .17163323526239999);
+        std::cout << "Grazing water SSR: publications=" << publications << ", range=" << range
+            << ", jump8to9=" << jump_8_9 << ", jump17to0=" << jump_17_0
+            << ", detail=" << detail << ", mean=" << mean << '\n';
+        // This rendered counterexample does not replace owner-scene acceptance.
     }
 }
 #endif

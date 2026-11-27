@@ -6894,12 +6894,60 @@ static float almetal_ssr_linear_depth(
     return -position.z / max(position.w, 0.000001);
 }
 
+// A near-origin depth sample on the water receiver must not terminate the
+// complete reflected ray. Check the actual nearest texel against that receiver's
+// tangent plane using the tracer's existing intersection thickness. This cannot
+// identify distinct geometry inside that thickness; samples outside it retain
+// the conservative termination. Ordinary materials and mirror rays pass zero.
+static bool almetal_ssr_sample_on_receiver_plane(
+    float3 source_position, float3 history_normal, float2 sample_uv,
+    texture2d<float> scene_depth, sampler depth_sampler,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+{
+    if (!(dot(history_normal, history_normal) > 0.0) ||
+        !all(isfinite(history_normal)))
+        return false;
+    const float2 dimensions = ssr.screen.xy;
+    if (any(dimensions < 1.0) || !all(isfinite(dimensions)))
+        return false;
+    // Read at the identical UV/sampler used by almetal_ssr_linear_depth: retain
+    // its actual raw depth value. Only the unprojection XY is the sampled texel
+    // center; do not move the depth lookup to a different texel or average it.
+    const float raw_depth = scene_depth.sample(
+        depth_sampler, almetal_ssr_source_uv(sample_uv)).r;
+    const float2 texel = clamp(floor(sample_uv * dimensions),
+        float2(0.0), dimensions - 1.0);
+    const float2 center_uv = (texel + 0.5) / dimensions;
+    const float ndc_z = ssr.config.x != 0u ? raw_depth : 2.0 * raw_depth - 1.0;
+    const float4 homogeneous = ssr.inverse_projection *
+        float4(center_uv * 2.0 - 1.0, ndc_z, 1.0);
+    const float3 sampled_position = homogeneous.xyz / max(homogeneous.w, 0.000001);
+    if (!all(isfinite(sampled_position)) || !all(isfinite(source_position)))
+        return false;
+    // Use the tracer's existing axial hit thickness in this same sample's
+    // receiver-normal direction. This is an intersection-thickness policy,
+    // not proof of object identity or a guarantee about raster precision.
+    constexpr float float_epsilon = 1.1920928955078125e-7;
+    const float arithmetic_allowance = 32.0 * float_epsilon *
+        (dot(abs(history_normal), abs(sampled_position) + abs(source_position)) + 1.0);
+    const float4 derivative_h = ssr.inverse_projection[2];
+    const float3 derivative = (derivative_h.xyz - sampled_position * derivative_h.w) /
+        homogeneous.w;
+    if (!all(isfinite(derivative)) || abs(derivative.z) <= 1.e-20)
+        return false;
+    const float plane_thickness = max(ssr.trace.z, 0.0) *
+        abs(dot(history_normal, derivative) / derivative.z);
+    return abs(dot(history_normal, sampled_position - source_position)) <=
+        arithmetic_allowance + plane_thickness;
+}
+
 static bool almetal_ssr_trace(
     float3 position, float3 reflection,
     thread float4& hit_color, thread float& hit_depth,
     texture2d<float> scene_color, texture2d<float> scene_depth,
     sampler color_sampler, sampler depth_sampler,
-    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr,
+    float3 receiver_geometric_normal)
 {
     reflection += position;
     position = (ssr.inverse_modelview_delta *
@@ -6908,6 +6956,11 @@ static bool almetal_ssr_trace(
                   float4(reflection, 1.0)).xyz;
     reflection -= position;
 
+    const float3 normal_in_history = (ssr.inverse_modelview_delta *
+        float4(receiver_geometric_normal, 0.0)).xyz;
+    const float normal_length_squared = dot(normal_in_history, normal_in_history);
+    const float3 history_normal = normal_length_squared > 0.0 && isfinite(normal_length_squared)
+        ? normal_in_history * rsqrt(normal_length_squared) : float3(0.0);
     const float source_depth = -position.z;
     float3 step = ssr.trace.y * reflection;
     float3 marching_position = position + step;
@@ -6938,6 +6991,17 @@ static bool almetal_ssr_trace(
             if (source_depth < depth_from_screen + 0.1 &&
                 source_depth > depth_from_screen - 0.1)
             {
+                if (almetal_ssr_sample_on_receiver_plane(
+                        position, history_normal, screen_position,
+                        scene_depth, depth_sampler, ssr))
+                {
+                    // Reject this receiver sample, not the rest of the ray.
+                    // Spend the ordinary coarse step and iteration budget;
+                    // subsequent geometry still uses the existing hit tests.
+                    marching_position += step;
+                    step *= ssr.sampling.y;
+                    continue;
+                }
                 break;
             }
             if (abs(delta) < ssr.trace.z)
@@ -7007,7 +7071,8 @@ static float4 almetal_sample_ssr_pattern(
     float3 ray_direction, float glossiness, bool transparent,
     texture2d<float> scene_color, texture2d<float> scene_depth,
     sampler color_sampler, sampler depth_sampler,
-    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr,
+    float3 receiver_geometric_normal)
 {
     constexpr float minimum_opaque_glossiness = 1.7 / 3.0;
     if (ssr.config.y < 1u ||
@@ -7068,7 +7133,7 @@ static float4 almetal_sample_ssr_pattern(
         if (almetal_ssr_trace(
                 position, normalize(randomized), hit_color, hit_depth,
                 scene_color, scene_depth, color_sampler, depth_sampler,
-                ssr))
+                ssr, receiver_geometric_normal))
         {
             ++hits;
             hit_color.a = 0.0;
@@ -7100,7 +7165,7 @@ static float4 almetal_sample_ssr(
     return almetal_sample_ssr_pattern(
         gl_screen_position, gl_screen_position, position, normal,
         ray_direction, glossiness, transparent, scene_color, scene_depth,
-        color_sampler, depth_sampler, ssr);
+        color_sampler, depth_sampler, ssr, float3(0.0));
 }
 
 static float3 almetal_finish_legacy_ssr(
@@ -8413,7 +8478,7 @@ fragment float4 almetal_world_above_water_fragment(
             refracted_uv, screen_uv,
             input.eye_position, wave_ibl, dominant, glossiness, false,
             ssr_scene_color, ssr_scene_depth,
-            screen_sampler, depth_sampler, ssr);
+            screen_sampler, depth_sampler, ssr, normalize(cross(position_dx, position_dy)));
         radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
         radiance = almetal_finish_hero_probe(
             radiance, input.eye_position, wave_ibl, glossiness,
