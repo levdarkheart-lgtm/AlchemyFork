@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-629 -->
+<!-- next-defect-id: PPD-631 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15149,6 +15149,8 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 - 2026-11-26: Retained repeated recovery logs and corrected the earlier concurrency-only attribution. A clean completed rebuild is the delivery route; no shader or scheduling workaround is introduced.
 
+- 2026-11-27 water candidate build: an attempted process filter did not stop the first Ninja before a second build was started. Both were explicitly interrupted (exit130); the overlap and aborted logs are retained privately. The final source-pinned Release build is restarted with one root-owned Ninja. This is an operator error, not evidence that all earlier premature-EOF incidents share that cause; it does not authorize reusing an unverified executable.
+
 ## PPD-616 — Drawable fixture mistakes canonical device wrappers for different owners
 
 - Status: ready_for_owner
@@ -15346,15 +15348,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-624 — Background water fine pattern shimmers in Temporal output
 
-- Status: ready_for_owner
+- Status: investigating
 - Confirmation: reproduced
 - Owner: Water Temporal integration
 - Discovered: 2026-11-26
 - Original reference: The captured background ROI is confirmed dedicated world water by actual passed coverage/depth, distinct from pool/object surfaces.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner explicitly identifies blue background water beyond terrace/palms outside the pool. Keep this separate from pool highlights and preserve natural animation.
-- Next action: Owner reviews confirmed-uploaded69527 in the original scene. Retain static four-ray grain/high-budget-error tradeoff; do not claim exact reflection fidelity or owner acceptance.
-- Verification: Dedicated-water SSR refracted-UV hashing is isolated in a342-world production-path fixture. Private inspection matches ordinary HDR/native/presented across108stationary worlds. Rays change15.7–25.3degrees versus.40degree normal change; hit coverage and sampled reflector locations vary. Receiver-pixel seeding lowers presented temporalRMS .007548012→.002939398 (61.06%), mean within.75% of unchanged32-ray comparison. Static low-ray RGB error remains (.004886→.007997 vs reference); do not equate stability with high-sample fidelity. Original69525shader fails exactly1newbound; corrected342world plus unchanged252worldSSRcase pass113240assertions API/GPU. Animation continues throughmovement/stop; one skipped publication retains exactpacket, no reset. Source5d44/69527 Release,20MetalAPI/GPU+4CPU suites and full-screenlogin-onlysmoke pass; alloriginalsettings restored and viewerclosed. Mounted8293entry/signature/346ARM64 and ZIP127-file checks pass; all threecloud uploads confirmed08:01:28UTC, no error and matching hashes. Earlier69523 coordinate/input repairs alone did not qualify the complaint; original owner-scene acceptance remains unverified.
-- Owner verification: pending
+- Next action: Qualify the revised outgoing-ray/all-step receiver exclusion against the retained exact-view pulse and unchanged reflection-detail bounds. Build69530 is withheld for PPD630; preserve it as failed evidence. Only a new source-pinned candidate can proceed to owner review. Actual-view cost remains unqualified; PPD624 stays open until owner acceptance.
+- Verification: Owner rejects69527 water quality: repeated synchronous flashes remain in backgroundwater outsidepool behindumbrella/palms. The previous61%fixture improvement does not qualify this live symptom. Retained movie pulse every9decodedframes is recording timing, not a proved world/phasecount. Historical source finding: dedicated-water SSR refracted-UV hashing is isolated in a342-world production-path fixture. Private inspection matches ordinary HDR/native/presented across108stationary worlds. Rays change15.7–25.3degrees versus.40degree normal change; hit coverage and sampled reflector locations vary. Receiver-pixel seeding lowers presented temporalRMS .007548012→.002939398 (61.06%), mean within.75% of unchanged32-ray comparison. Static low-ray RGB error remains (.004886→.007997 vs reference); do not equate stability with high-sample fidelity. Original69525shader fails exactly1newbound; corrected342world plus unchanged252worldSSRcase pass113240assertions API/GPU. Animation continues throughmovement/stop; one skipped publication retains exactpacket, no reset. Source5d44/69527 Release,20MetalAPI/GPU+4CPU suites and full-screenlogin-onlysmoke pass; alloriginalsettings restored and viewerclosed. Mounted8293entry/signature/346ARM64 and ZIP127-file checks pass; all threecloud uploads confirmed08:01:28UTC, no error and matching hashes. Earlier69523 coordinate/input repairs alone did not qualify the complaint; original owner-scene acceptance remains unverified.
+- Owner verification: failed
 - Push approval: granted
 
 ### History
@@ -15371,6 +15373,16 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 receiver candidate: globally fixed seed rejected forbrightnessbias; unwarpedreceiverpixel retains original spatial distribution with61.06%less fixturecycling and reflecteddetail/brightness retained. Private afterinspection shows perreceiver/perray coefficients exactlyconstant across18phases and HDR-exact to candidate. Finalmovement/stop keepsnaturalwaves; originalsceneconfirmation and actual-viewtilecost remain owner-review boundaries.
 
 - 2026-11-27 final69527/source5d44:24selectedtests (20MetalAPI/GPU+4CPU) pass, fullRelease/login-onlysmoke/18settingsfile restoration pass, mounted8293entries/signature/346ARM64 and ZIP127hashes pass. All threecloud uploads confirmed08:01:28UTC. No owner-scene acceptance or actual-viewFPS claim; retained static4rayerror is explicit.
+
+- 2026-11-27 owner69527 retest FAILED forwater. water-blinking.mov shows separated waterpatches brighten together around2.033→2.075s then decay, with nearbytrunks/wallsteady. ContinueprimarySSR quantities withstable receivercoefficients verified; do not assume the oldhashcause persists. Registerremainsopen and requiresactual-event regression/worst-phasebounds.
+
+- 2026-11-27 actual69527 owner-positioned pulse reproduced:64 successful-world ROI/observer pairs, no resets, fixed camera. Stable ray coefficients; primary SSR coverage changes at phases8/17. Exact first-step cross-check against previous captured water depth shows the inherited ±0.1 eye-depth branch terminates whole rays on their own water neighborhood in other phases, withholding later above-water reflected geometry. Example world2780→2781, ray1 at886,911: gap−.059753 (terminate at1eval)→−.208549 (continue to reflected depth91.753). This establishes a concrete boundary; a primary-water-only skip/advance diagnostic is next, not yet a qualified fix. Private evidence: `artifacts/metal/water-pulse-20261127/owner-session-03/` and `boundary-analysis/first-step-depth-results.json`.
+
+- 2026-11-27 directed live03→04→05: primary-water-only coarse self-sample advance reduces the raw/Aurora phase-fold pulse; restoring baseline restores it. Camera and raster dimensions match; normal animation and probe populations differ, so absolute brightness/detail changes are not isolated estimates. Far-rim/glint are inactive in sampled patches. A narrowed receiver-plane candidate uses the existing intersection thickness, preserving ordinary material/far-rim/refinement behavior; live06 is captured with64ROI/observer pairs,0drops, and is under analysis. No production policy has been changed or packaged.
+
+- 2026-11-27 regression gate: the96×64 authored scene reproduces phase8/17 brightness drops, but even an unconditional coarse skip leaves it identical. Independent census proves the critical receivers never approach any stored water depth within±.1m. This is a different failure mechanism and cannot qualify the owner repair. Original results/frozen bounds remain private; a384×256 version preserves physical geometry/material/camera while testing the actual near-source branch. The strict plane guard and its unsuccessful small-fixture interpretation are retained, not counted as a successful fix.
+
+- 2026-11-27 exact-input replay limit: observed terminal-UV color sampling matches72951RGB components exactly, but independent retracing has55pixel RGB differences (max.0017395), despite24317exact alpha values. The original strict replay parity gate remains failed; no candidate counterfactual is accepted from it. Live causal intervention and the rendered production-path regression remain the qualification route. All diagnostic viewers are closed and18settingsfiles/24entries restored after each session.
 
 ## PPD-625 — Warm pool highlight streaks visibly jitter
 
@@ -15441,15 +15453,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-628 — Terrace tiles show conspicuous angle-dependent grain
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Main-world material/reflection/presentation integration
 - Discovered: 2026-11-26
 - Original reference: Original rough SSR uses randomized glossy rays; PBR roughness filtering and final grain/dither controls must be traced before attributing speckles to reconstruction.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner supplies Aurora and Spatial75% recordings, reports steady peppering on foreground tiles/lounger strip and possible camera-angle dependence. The owner-scene ROI is opaque PBR (median roughness .20075); pepper is present in opaque HDR before reconstruction. Owner SSR-off observation removes the grain.
-- Next action: Owner reviews preserved minimum-four candidate in69527. Obtain one ROI-disabled matched actual-view cost comparison when an existing authorized live session is available; current retained ROI runs do not qualify. Preserve accepted glass/foliage.
+- Next action: Preserve owner-accepted69527 tile result and sharedminimum-four sampling. Its performance-cost boundary remains documented separately; do not reopen the resolved visual incident.
 - Verification: Owner SSR-off removes grain in Aurora and Spatial75%. Actual-scene A0/four-ray/restored A1 final high-pass RMS .03139691/.01462076/.03125021, 53.2–53.4% reduction versus <.47% control drift. All phase-matched G-buffer/depth inputs exact; mean final luminance within .54%. Residual grain remains. Original tile regression fails three bounds, candidate passes; material target-sized BASE cost is +2.438ms, not viewer FPS. Twenty affected Metal suites with API/GPU validation and four CPU suites pass at the pinned code state. Final69525 Release/full-screenlogin-onlysmoke,346ARM64, mounted8293-entry/signature and ZIP110-file checks pass. All18settingsfiles/24entries restored; viewerclosed. All three iCloud uploads confirmed01:28:25UTC; no owner quality acceptance is claimed.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: granted
 
 ### History
@@ -15465,3 +15477,41 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 01:28:25UTC: experimental69525 DMG/source-evidence ZIP/checksums are confirmed uploaded and hash-matched. Source0a94/shader361b remain exact; owner review of tile quality/performance is pending. Water PPD624/625 remain open.
 
 - 2026-11-27 follow-up69527 preserves the sharedminimum-four rule acrossrenderingmodes/materials. Retainedactual-viewA0/B/A1cost isunqualified (A0quietinvalid, B/A1ROIreadbacks; no matchingordinarycontrol), and no live session was running. Dense+2.438ms component result remains separate.24regressions and69527package checks pass; this is not a new live tile-performance measurement.
+
+- 2026-11-27 owner confirms69527 pepperedtiles are resolved andaccepted. Preserve the result while PPD624 water remains open. This closes the tilevisualincident, not a newly measured actual-view performance claim.
+
+
+## PPD-629 — Runtime builtin source compilation does not pin the offline MSL dialect
+
+- Status: open
+- Confirmation: reproduced
+- Owner: Native shader compilation
+- Discovered: 2026-11-27
+- Original reference: The shipped builtin compiles with `-std=metal3.1`; source compilation should use a compatible explicit language contract.
+- Evidence: [Water receiver-band verification](research/temporal-water-history-20261126.md) retains the initial compilation failure. The new receiver-band test initially passed the complete current builtin to `ALMetalShaderLibrary::compileSource()`. SDK-default compilation rejects the existing local identifier `coherent` in the blended Temporal fragment (two diagnostics). The same full source compiles with the offline Metal3.1 options. Private failed receipt: `artifacts/metal/water-pulse-20261127/production-water-tests/new-cases.log`.
+- Next action: Pin/verify the runtime language contract against the supported builtin and translated source consumers in a focused follow-up. Do not change shader quality or relax source validation. The water predicate fixture explicitly uses the production offline Metal3.1 dialect.
+- Verification: `compileSource()` sets fast math and invariance but no languageVersion. The current candidate is delivered with its compiled metallib; ordinary source-loaded fallback behavior is a separate limitation. No water-quality failure is attributed to this compiler-dialect mismatch.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-27: Registered during the automatic receiver-band test extension. Preserve the initial failure; align that test's compilation with the packaged builtin dialect instead of modifying unrelated glass shader semantics during the focused water repair.
+
+
+## PPD-630 — Water SSR continuation admits receiver-water feedback
+
+- Status: investigating
+- Confirmation: reproduced
+- Owner: Primary water SSR
+- Discovered: 2026-11-27
+- Original reference: A reflected ray must not accept the receiver water itself; valid above-water reflected geometry must remain available.
+- Evidence: [Water continuation investigation](research/temporal-water-history-20261126.md). Final private live07 analysis at source136ce finds4266coplanar accepted hits, including2077associated with downward randomized rays. Of these3190land within the exact named previous world's captured water ROI, have actual coverage255 and match its water depth within4.38µm. Other locations remain unassigned; coplanarity alone is not semantic identity. Private proof: `regression-dense/live-water-feedback-proof.json`.
+- Next action: Verify the revised outgoing-only/all-step receiver rule in the complete water suites and exact saved owner view, then create a new pinned build. Preserve existing thresholds and genuine reflected geometry;69530 remains withheld.
+- Verification: The exact-source water-only production counterexample fails69530 in32of36measured worlds (64RGB assertions), maximum MAE.00577471/maxRGB.0995483. No eligible above-water source geometry is submitted; the independently frozen expectation is zero difference versus inactive SSR. Actual history/reset counters remain continuous. Build69530is WITHHELD in the labelled iCloud subfolder; original69527is preserved. Revised candidate passes the same water-only case with exact zero RGB/alpha error (1,532,232 assertions). The198-world genuine-reflector case retains all frozen bounds: range.000673403, jumps.000170559/.000257832, detail.008124224 and mean.140210183. Full-suite/exact-view/new-package qualification is pending.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-27: Registered the unreleased candidate defect before its next correction. Do not equate its passing pulse bounds with complete reflection validity. Retain all69530source/results and failed-quality limits.

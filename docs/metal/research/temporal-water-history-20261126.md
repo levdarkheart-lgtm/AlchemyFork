@@ -516,3 +516,208 @@ viewer FPS. All arms add zero steady textures and reuse300 pooled targets.
 Source observations, invalid no-hit water-SSR attempts, composition-only and
 reactivity-only diagnostics remain distinct from accepted fixes. Only a valid
 rendered signal and controlled response can justify another water policy.
+
+## Current owner-pulse correction — PPD624, 2026-11-27
+
+**Current disposition:** the owner rejected build69527/source`5d44ab6411a47bad3e437ed2da78179b7121e978`:
+background water still flashed. The tile repair is owner-accepted (PPD628 verified),
+and the glass/foliage repairs remain preserved. The local corrective source is
+`136ce1849331f968d7808ae18eaf0f2e95145b19`. Release, regression and packaging gates
+are pending; this section does not declare another review application ready.
+
+### Actual contributing operation and controlled response
+
+Owner-session03 joins64 submitted worlds to raw HDR, immediate Aurora, final-world
+ROIs and the executed water shader's per-ray records. Camera matrices are fixed,
+coefficients remain stable and no history reset occurs. The inherited coarse SSR
+condition `abs(source_depth - sampled_depth) < .1` terminates the entire ray before
+its hit test. Same-world/history-generation checks and previous actual-water depth
+readbacks identify the rejected first samples as the receiver's water neighborhood.
+Observed one-evaluation depths agree with those readbacks within5.15e-6 eye units.
+One phase7→8 example changes from gap−.059753/one-evaluation termination to
+first-water gap−.208549 followed by a21-evaluation reflected-geometry hit. This is
+an executed traversal boundary, not an inference from the video's nine-frame pulse.
+
+A primary-water-only coarse advance in live04 reduces the pulse; restoring the
+original library in live05 restores it. The narrowed candidate in live07 uses a
+receiver-normal band derived from the tracer's existing axial intersection
+thickness. Within the near-source branch, only a qualifying sample advances the
+existing step and spends its ordinary iteration budget. Refinement rejection,
+25-iteration cap, ray count,
+receiver seed, ordinary material/far-rim SSR and Aurora reconstruction are retained.
+The policy also applies to primary water at exact gloss; the far-rim mirror is separate.
+There is no new CPU wait, submission queue, scaler history or resource owner.
+
+The band is **not exact surface identity**. Geometry inside the existing SSR
+thickness can be indistinguishable;32epsilon accounts for arithmetic allowance,
+not a claimed Metal raster-precision guarantee. Private GPU controls execute the
+production helper against rasterized depth: on-plane acceptance, a separate4cm
+surface outside the band rejected, zero normal rejected, and a separate1cm surface
+inside the configured band accepted. The last case is a documented limitation,
+not a hidden passing occlusion claim. Water MVP/inverse-projection jitter was also
+checked: the production color-scene copy already applies both. Earlier original-
+scene metadata was unjittered; adding jitter again was rejected without an edit.
+
+### Rendered regression and retained negative evidence
+
+The valid authored case uses384×256→576×384, real production water, an above-water
+reflector visible in the published scene history, production normal phases/mips,
+and continuous history. It records112,520 rays changing from first-water rejection
+to later wall hits; source inputs and random coefficients are exact across arms.
+The six frozen quality bounds retain detail and brightness alongside phase metrics.
+
+| Authored raw-HDR water ROI | Original69527 shader | Guarded candidate |
+| --- | ---: | ---: |
+| Phase-fold luminance range | .01026275 | .00343221 |
+| Mean RGB gradient detail | .00593086 | .00783284 |
+| Mean luminance | .143028 | .139605 |
+
+The original fails the pulse bounds; the candidate passes all six. This demonstrates
+a rendered fixture correction, not confirmation of the owner's final image quality.
+The original96×64 lookalike did not enter the same self-depth branch, and an earlier
+distant reflector was outside the sampled scene image. Both remain failed
+counterexamples, not qualification. Strict independent input retracing also remains
+unqualified: recorded-UV sampling matches72,951 RGB components exactly, but retracing
+differs at55 pixels, maximum.0017395. That diagnostic parity gate is not waived or
+used to supply a counterfactual image. Live intervention and production rendering
+provide the separate causal evidence.
+
+### Narrowed live07 result and limits
+
+Live07 has64/64 native main-post and observer joins,2,560 collected ROI copies,
+zero drops/resets and a fixed camera. The balanced54-world, always-water interior
+comparison has these immediate-Aurora phase-fold ranges:
+
+| Water patch | Restored live05 | Guarded live07 | Reduction |
+| --- | ---: | ---: | ---: |
+| A | .002751 | .002010 | 27% |
+| B | .008373 | .001822 | 78% |
+| C | .005733 | .002113 | 63% |
+
+This is an observational comparison with confounds: live07 has48 configured probes
+in52 recorded frames and49 in11, versus37 in live05 (one07 BASE metric is missing).
+Normal animation times also differ. Water mean luminance changes−7.50/−9.35/−12.35%
+for A/B/C versus control+.54%; gradient detail changes+19.38/−9.57/−7.87%, control−.93%.
+Neither a brightness-preserving live gain nor equal whole-scene inputs is claimed.
+The remaining worst positive native transitions are.000720(A6→7),.000706(B0→1),
+and.001052(C16→17). A16→17 still falls−.001503, essentially unchanged from live05's
+−.001508; the lower overall range does not establish removal of every pulse.
+More coarse evaluations may cost GPU time; actual-view cost is unqualified. The tile's separate+2.44ms synthetic BASE result is not this repair's cost.
+
+Private evidence: `artifacts/metal/water-pulse-20261127/owner-session-03/` through
+`owner-session-07/`, `boundary-analysis/first-step-depth-results.json`,
+`boundary-analysis/retained-arm-comparison-with07.json`, its review Markdown/per-world
+CSV, `receiver-guard-control/`, and the authored visible/dense fixture outputs.
+Live07 clips use64-world UI-selection timing spanning4.305443333s; they are texture
+exports with a current-world UI association, not monitor recordings. Final source,
+full validation, cost disposition and package identities must be added after their
+gates complete. PPD624 stays open for owner-scene quality review.
+
+
+The new permanent receiver-band GPU test first exposed PPD629: compiling the
+complete builtin through the SDK-default runtime dialect rejects the existing
+`coherent` local identifier, although the packaged Metal3.1 library compiles.
+The test now explicitly uses Metal3.1, fast math and invariant preservation,
+matching the shipping compiler contract; no unrelated production shader or
+runtime-compiler policy changes are made here. A test-only crash formatting a
+nil NSError string was independently identified from its `strlen`/Catch stack
+and corrected with non-null diagnostic strings. Initial failures remain private.
+The original library now fails exactly three pulse bounds in the permanent
+production test; the candidate passes all six unchanged bounds (range.00343185,
+detail.00783295, mean.139605). Additional receiver-control/regression checks and
+final delivery gates remain in progress.
+
+
+### Release69530 verification checkpoint
+
+Application source is `136ce1849331f968d7808ae18eaf0f2e95145b19`; later test and
+report changes do not change shipping renderer code. The normal Release build
+completes, all20 selected Native/Spatial/Temporal/SSR/resource/shader regressions
+pass with API/GPU validation, and all ten focused water cases pass across split
+runs (21,051,715 assertions). The permanent receiver-band test now passes after
+matching the offline dialect and guarding optional NSError messages. Original
+failed diagnostics remain retained; no image-quality bound was relaxed.
+
+The full-screen login-only smoke reaches the login screen with automatic login
+disabled, then closes. All18original preference files/24entries and restorable
+metadata match the initial snapshot. Architecture verification passes346Mach-O
+checks. Ad-hoc signatures are used; the application is not notarized.
+
+- Executable SHA256: `d2c727d7f67466b4ff99847817d0c10f2c2134bdcc23666400064eec0db26565`.
+- Builtin library SHA256: `12c1041744f8947d4967bdf3d79a92685abc63e071c1524ea5f450b922b2f789`.
+- Embedded Aurora compiler-input SHA256: `9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070`.
+
+The experimental review package retains69527 for comparison. Select Advanced
+Graphics → World resolution → **67% (Aurora Temporal · Experimental)** and verify
+that the effective status names Aurora rather than a fallback. Keep combined
+main lighting OFF. Review Midday water detail/brightness, normal animation,
+camera movement/stop and the accepted glass/foliage/tile controls using macOS
+window capture; the independent viewer snapshot is not displayed-output evidence.
+Mounted package/content and upload receipts are kept with the private delivery.
+PPD624 remains open, including the remaining A transition and actual-view cost
+qualification; no whole-viewer FPS improvement is claimed.
+
+
+The normal Release `almetal_tests` module also passes the198-world pulse case
+with API/GPU validation (716321assertions); its builtin library is byte-identical
+to the delivered application's `12c10417…` asset. Separate matched media export
+uses the identical renderer and only CPU crop writes after the existing completion
+wait:72warm →72stationary →18moving →36stopped worlds. Both normal-animation
+sequences are retained at18worlds/s preview (0.6× authored time), not live FPS.
+
+
+### Final safety rejection — 69530 WITHHELD
+
+The uploaded69530candidate is **withheld**, not ready for owner review. A final
+ray-safety check finds4266coplanar accepted hits, including2077from downward rough
+rays. Coplanarity alone is not identity, but3190of those samples fall within the
+exact named preceding world's retained water ROI: all have coverage255 and match
+actual water depth within4.38µm. This proves receiver-water feedback for that
+subset. Other positions remain unassigned. The previous pulse/detail bounds did
+not catch this validity defect (PPD630).
+
+The69530files are preserved in the clearly labelled private iCloud Desktop folder
+`WITHHELD-69530-DO-NOT-TEST`; original69527is unchanged. Continue only after a
+water-only production counterexample and a correction that rejects wrong-side
+rays/receiver samples while retaining genuine reflected geometry. No successful
+handoff or owner acceptance is claimed. The final current state supersedes the
+earlier Release/package checkpoint above.
+
+
+The PPD630 water-only counterexample now fails69530 in32of36measured worlds,
+with64RGB checks failing, maximum per-world MAE.00577471 and maximum channel
+error.0995483. Both arms use72warm worlds, advancing genuine water-inclusive
+history and the same normal animation/geometry/probes; neither submits the
+above-water reflector. Zero RGB/alpha difference from inactive SSR is an
+independent validity oracle, fixed before the revised candidate. Reset checks
+use authoritative counters (the initial sparse-snapshot default was not a real
+reset and its invalid assertion is retained). The public regression preserves
+that oracle; the existing genuine-reflector quality bounds remain unchanged.
+
+
+### Revised receiver validity — component qualification
+
+PPD630 is corrected in the candidate by treating receiver-surface samples as
+empty throughout coarse and refined tracing, and rejecting primary reflection
+directions that leave toward the wrong side of the receiver. Camera side is
+cached in current eye coordinates before history reprojection; the sign test
+is unchanged if the geometric normal is reversed. The same nearest depth fetch
+feeds ordinary linear-depth reconstruction and the receiver-band test. Existing
+trace thresholds, total iteration/ray budgets, receiver seed, material paths,
+far-rim mirror and Aurora algorithm remain unchanged. Separate geometry inside
+the existing intersection-thickness band is still ambiguous, not exact water
+identity. No CPU wait, new render pass or resource is introduced.
+
+The exact water-only counterexample now passes all1,532,232 assertions with
+API/GPU validation: maximum RGB MAE and maximum channel difference are both0,
+versus69530's.00577471/.0995483 (64failed RGB assertions in32of36worlds).
+The independent zero oracle and original failed baseline remain unchanged.
+The genuine-reflector198-world sequence passes its frozen bounds with normal
+animation and moving/stopped camera: range.000673403, jumps8→9.000170559 and
+17→0.000257832, detail.008124224, mean.140210183. Original69527 values were
+.010262750/.008130452/.004024902/.005930859/.143027696 respectively.
+These are fixture results, not owner-scene acceptance or a performance result.
+Private receipts: `receiver-validity/compile-frozen-receipt.json`,
+`water-only-candidate.log`, `visible-quality-result.json` under the retained
+`artifacts/metal/water-pulse-20261127/` root. Complete production water suite and
+exact-view candidate safety/quality joins are the next gates.

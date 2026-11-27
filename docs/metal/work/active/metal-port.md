@@ -7,24 +7,18 @@ output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures rem
 
 ## Immediate executable action
 
-PPD624 from4d8e/app0a94: receiver-pixel SSR seed corrects refraction-driven ray
-scrambling. Targeted342world regression catches69525 (1failedbound), candidate
-passes2cases/113240assertions API/GPU; finalRMS .007548→.002939, mean within.75%.
-Keep residual static4rayerror explicit; common32rayMAE rises. Constantglobalseed
-is rejected, frozenhistorydoesnotfixcycle. Normalanimationcontinuesmovestop;
-skippedpublication retains exactpacket. Aurora/mips/rejection/ownership unchanged.
-69527Release/24selectedregressions/full-screenlogin-onlysmoke pass. Settings
-restored, viewerclosed. Mounted8293/signatures/346ARM64 and ZIP127hashes pass;
-all threecloud uploads confirmed08:01:28UTC, noerror/matchinghashes. Owner
-reviewsoriginalwater/detail/grain next; actual-viewtilecost remainsconditional.
-Actual-viewtilecost unavailable withouta live session; retain +2.438ms component
-cost and experimental sharedscope. Tileminimum4/glass/foliage remainpreserved.
-Commit `5d44ab6411a47bad3e437ed2da78179b7121e978` is pinned69527 appsource;
-source/docspush followsfinaldeliveryrecord. Allpreviouspackages preserved.
+PPD630 blocks69530handoff; that package is WITHHELD. Revised outgoing-ray and
+all-step receiver exclusion passes the exact-zero water-only case and unchanged
+real-reflector bounds. Run full water/API+GPU and exact saved-view ray checks,
+then create a new pinned Release package. No owner-ready claim yet. Root owns
+shader/build; original settings are restored. PPD624 stays open; preserve accepted
+tiles/glass/foliage and coordinate/ownership fixes.
+Commit `5d44ab6411a47bad3e437ed2da78179b7121e978` remains69527 appsource.
 See [water report](../../research/temporal-water-history-20261126.md).
 
 | Item | State | Acceptance / next boundary |
 | --- | --- | --- |
+| PPD629 runtime MSL dialect | open | Complete builtin rejects `coherent` under SDK-default compileSource; pin/verify runtime dialect separately. Water test uses offline Metal3.1; packaged metallib remains required. |
 | Native pinnedAuroraOFF graph + mainID8 | complete | Realopaque/final/depth/motion/glow, existingworldownership, no wgpu runtime. |
 | PPD614 missingtranslatedpyramidfunctions | ready_for_owner | Reflectednames+functionvalidation;882worlds/195MRGBexact. |
 | Submission/resource safety | complete |12componentcases +2actualrenderer cases/204assertions API/GPU pass. |

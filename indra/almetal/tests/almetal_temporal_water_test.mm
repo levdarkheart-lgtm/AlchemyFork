@@ -5,12 +5,15 @@
 #include "../almetalauroraconventions.h"
 #include "../almetaltemporalworldhistory.h"
 #include "../../alrender/alwaterfield.h"
+#import <Metal/Metal.h>
+#import <Foundation/Foundation.h>
 #include <simd/simd.h>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 
 // Frozen-source characterization can compile this fixture against the old
 // libraries. The ordinary test must always exercise the production helper.
@@ -1749,6 +1752,297 @@ TEST_CASE("Grazing water SSR retains above-plane reflection across jitter phases
             << ", jump8to9=" << jump_8_9 << ", jump17to0=" << jump_17_0
             << ", detail=" << detail << ", mean=" << mean << '\n';
         // This rendered counterexample does not replace owner-scene acceptance.
+    }
+}
+#endif
+
+TEST_CASE("Water SSR receiver band preserves a distinct nearby opaque surface",
+          "[almetal][temporal][water][water-ssr-receiver-band]")
+{
+    @autoreleasepool
+    {
+        // Compile the current production helper, not a CPU mirror or copied
+        // predicate. Only these small test entry points are appended to it.
+        constexpr const char* entry_points = R"metal(
+struct ReceiverBandPlane { float4 positions[4]; };
+struct ReceiverBandVertex { float4 position [[position]]; };
+vertex ReceiverBandVertex regression_receiver_plane(
+    constant ReceiverBandPlane& plane [[buffer(0)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(1)]],
+    uint index [[vertex_id]])
+{
+    ReceiverBandVertex output;
+    output.position = ssr.projection * plane.positions[index];
+    output.position.y = -output.position.y;
+    return output;
+}
+fragment float regression_receiver_depth(ReceiverBandVertex input [[stage_in]])
+{
+    return input.position.z;
+}
+struct ReceiverBandParameters {
+    float4 source; float4 normal; float2 uv; uint result_index; uint unused;
+};
+kernel void regression_receiver_band(
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(0)]],
+    constant ReceiverBandParameters& parameters [[buffer(1)]],
+    device float4* results [[buffer(2)]], texture2d<float> depth [[texture(0)]],
+    sampler depth_sampler [[sampler(0)]], uint index [[thread_position_in_grid]])
+{
+    if (index != 0u) return;
+    const float raw_depth = depth.sample(
+        depth_sampler, almetal_ssr_source_uv(parameters.uv)).r;
+    const bool accepted = almetal_ssr_sample_matches_receiver_band(
+        parameters.source.xyz, parameters.normal.xyz, parameters.uv,
+        raw_depth, ssr);
+    results[parameters.result_index] = float4(accepted ? 1.0 : 0.0,
+        almetal_ssr_linear_depth(parameters.uv, raw_depth, ssr),
+        -parameters.source.z, 0.0);
+}
+)metal";
+        std::string error;
+        auto owner = ALMetalDevice::create(&error); INFO(error); REQUIRE(owner);
+        const auto path = std::filesystem::path(__FILE__).parent_path().parent_path() /
+            "shaders" / "almetal_builtin.metal";
+        std::ifstream stream(path); REQUIRE(stream.good());
+        const std::string production{std::istreambuf_iterator<char>(stream), {}};
+        auto device = (__bridge id<MTLDevice>)owner->nativeHandle();
+        // Match the production offline library's explicit language contract.
+        // An unspecified current-SDK default reserves existing shader names;
+        // changing production code to accommodate that separate issue is not
+        // part of this receiver-band regression.
+        auto options = [[MTLCompileOptions alloc] init];
+        options.languageVersion = MTLLanguageVersion3_1;
+        options.mathMode = MTLMathModeFast;
+        options.preserveInvariance = YES;
+        NSError* native_error = nil;
+        const auto program_source = production + entry_points;
+        auto library = [device newLibraryWithSource:[NSString stringWithUTF8String:program_source.c_str()]
+            options:options error:&native_error];
+        INFO((native_error ? native_error.localizedDescription.UTF8String : "No native error")); REQUIRE(library);
+        auto vertex = [library newFunctionWithName:@"regression_receiver_plane"];
+        auto fragment = [library newFunctionWithName:@"regression_receiver_depth"];
+        auto compute = [library newFunctionWithName:@"regression_receiver_band"];
+        REQUIRE(vertex); REQUIRE(fragment); REQUIRE(compute);
+        auto descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+        descriptor.vertexFunction = vertex; descriptor.fragmentFunction = fragment;
+        descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatR32Float;
+        auto raster = [device newRenderPipelineStateWithDescriptor:descriptor error:&native_error];
+        INFO((native_error ? native_error.localizedDescription.UTF8String : "No native error")); REQUIRE(raster);
+        auto predicate = [device newComputePipelineStateWithFunction:compute error:&native_error];
+        INFO((native_error ? native_error.localizedDescription.UTF8String : "No native error")); REQUIRE(predicate);
+        auto sampler_descriptor = [[MTLSamplerDescriptor alloc] init];
+        sampler_descriptor.minFilter = sampler_descriptor.magFilter = MTLSamplerMinMagFilterNearest;
+        sampler_descriptor.sAddressMode = sampler_descriptor.tAddressMode = MTLSamplerAddressModeClampToEdge;
+        auto sampler = [device newSamplerStateWithDescriptor:sampler_descriptor]; REQUIRE(sampler);
+
+        constexpr unsigned size = 64;
+        auto projection = waterProjection(size, size);
+        constexpr float near = .1f, far = 100.f;
+        projection[0] = projection[5] = 2.f;
+        projection[10] = near / (far - near); projection[14] = far*near / (far - near);
+        const auto inverse = waterMatrix(simd_inverse(waterSimd(projection.data())));
+        ALMetalWorldScreenSpaceReflectionConstants constants;
+        std::copy(projection.begin(), projection.end(), constants.projection);
+        std::copy(inverse.begin(), inverse.end(), constants.inverse_projection);
+        identity(constants.inverse_modelview_delta);
+        constants.screen[0] = constants.screen[1] = constants.screen[2] = size;
+        constants.trace[0] = 25.f; constants.trace[1] = .1f; constants.trace[2] = .04f;
+        constants.config[0] = constants.config[1] = 1u;
+        struct Plane { simd_float4 positions[4]; };
+        std::array<id<MTLTexture>, 3> depths{};
+        const std::array<float, 3> offsets{0.f, .04f, .01f};
+        auto queue = [device newCommandQueue]; REQUIRE(queue);
+        auto command = [queue commandBuffer]; REQUIRE(command);
+        for (unsigned i = 0; i < depths.size(); ++i)
+        {
+            auto texture = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR32Float
+                width:size height:size mipmapped:NO];
+            texture.storageMode = MTLStorageModePrivate;
+            texture.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+            depths[i] = [device newTextureWithDescriptor:texture]; REQUIRE(depths[i]);
+            // Independently authored n·eye + (6+offset)=0 planes, n=(0,.8,.6).
+            // Perspective-ray intersections author geometry; they do not copy
+            // the receiver-band predicate or manufacture its returned result.
+            Plane plane;
+            for (unsigned corner = 0; corner < 4; ++corner)
+            {
+                const float x = (corner & 1u) ? .5f : -.5f;
+                const float y = (corner & 2u) ? .5f : -.5f;
+                const float distance = (6.f + offsets[i]) / (.6f - .8f*y);
+                plane.positions[corner] = {x*distance, y*distance, -distance, 1.f};
+            }
+            auto pass = [MTLRenderPassDescriptor renderPassDescriptor];
+            pass.colorAttachments[0].texture = depths[i];
+            pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+            pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+            auto encoder = [command renderCommandEncoderWithDescriptor:pass]; REQUIRE(encoder);
+            [encoder setRenderPipelineState:raster]; [encoder setCullMode:MTLCullModeNone];
+            [encoder setViewport:MTLViewport{0, 0, size, size, 0, 1}];
+            [encoder setVertexBytes:&plane length:sizeof(plane) atIndex:0];
+            [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
+            [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+            [encoder endEncoding];
+        }
+        struct Parameters {
+            simd_float4 source, normal; simd_float2 uv; std::uint32_t result_index, unused;
+        };
+        static_assert(sizeof(Parameters) == 48);
+        auto results = [device newBufferWithLength:4*sizeof(simd_float4) options:MTLResourceStorageModeShared];
+        REQUIRE(results);
+        const simd_float2 uv{32.5f/size, 32.5f/size};
+        const simd_float3 normal{0.f, .8f, .6f}, ray{(uv.x*2-1)/2, (uv.y*2-1)/2, -1.f};
+        const auto source = ray * (6.f / -simd_dot(normal, ray));
+        auto encoder = [command computeCommandEncoder]; REQUIRE(encoder);
+        [encoder setComputePipelineState:predicate];
+        [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
+        [encoder setBuffer:results offset:0 atIndex:2]; [encoder setSamplerState:sampler atIndex:0];
+        const std::array<unsigned, 4> texture_indices{0, 1, 0, 2};
+        for (unsigned i = 0; i < texture_indices.size(); ++i)
+        {
+            Parameters parameters{};
+            parameters.source = {source.x, source.y, source.z, 1.f};
+            parameters.normal = i == 2 ? simd_float4{0, 0, 0, 0} : simd_float4{0, .8f, .6f, 0};
+            parameters.uv = uv; parameters.result_index = i;
+            [encoder setBytes:&parameters length:sizeof(parameters) atIndex:1];
+            [encoder setTexture:depths[texture_indices[i]] atIndex:0];
+            [encoder dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+        }
+        [encoder endEncoding]; [command commit]; [command waitUntilCompleted];
+        INFO((command.error ? command.error.localizedDescription.UTF8String : "No command error"));
+        REQUIRE(command.status == MTLCommandBufferStatusCompleted);
+        const auto* output = static_cast<const simd_float4*>(results.contents);
+        const std::array<bool, 4> expected{true, false, false, true};
+        const std::array<const char*, 4> names{"receiver plane", "distinct opaque outside band",
+            "ordinary zero normal", "distinct plane inside band: not semantic identity"};
+        for (unsigned i = 0; i < expected.size(); ++i)
+        {
+            CAPTURE(names[i], output[i].x, output[i].y, output[i].z);
+            CHECK(std::isfinite(output[i].y));
+            CHECK((output[i].x == 1.f) == expected[i]);
+            CHECK(std::abs(output[i].y - output[i].z) < .1f);
+        }
+    }
+}
+
+#if ALCHEMY_TEMPORAL_WATER_JITTER_REPAIR
+TEST_CASE("Water-only history does not reflect the receiver surface",
+          "[almetal][temporal][water][water-ssr-no-feedback]")
+{
+    @autoreleasepool
+    {
+        constexpr unsigned width = 384, height = 256, output_width = 576, output_height = 384;
+        WaterFixture<width, height, output_width, output_height> enabled, disabled;
+        configureGrazingWaterReflector(enabled);
+        configureGrazingWaterReflector(disabled);
+        // Both arms replace their seed with genuinely advancing water-only
+        // history. No above-water reflector or foreground geometry is submitted;
+        // the floor remains below the actual surface.
+        enabled.ssr_reflector_in_main = disabled.ssr_reflector_in_main = false;
+        constexpr unsigned warm = 72, end = 108;
+        std::filesystem::path directory;
+        std::ofstream csv;
+        if (!enabled.directory.empty())
+        {
+            directory = enabled.directory / "water-only-feedback";
+            std::filesystem::create_directories(directory);
+            csv.open(directory / "frames.csv");
+            REQUIRE(csv.good());
+            csv << "index,world,phase,segment,on_source_world,off_source_world,on_generation,"
+                   "off_generation,raw_rgb_mae,raw_rgb_max,raw_alpha_max,water_pixels\n";
+        }
+        unsigned measured = 0;
+        double maximum_mae = 0, maximum_error = 0;
+        for (unsigned frame = 0; frame < end; ++frame)
+        {
+            auto reflections = enabled.waterSsr(0.f, 4);
+            const auto enabled_generation = enabled.ssr_history.generation();
+            const auto disabled_generation = disabled.ssr_history.generation();
+            const bool save = frame >= warm && (frame % WP == 0 || frame % WP == 8 || frame % WP == 17);
+            const float seconds = float(frame) / 30.f;
+            const auto actual = enabled.render(false, 0.f, seconds, true, true, true,
+                nullptr, false, save, &reflections);
+            const auto reference = disabled.render(false, 0.f, seconds, true, true, true,
+                nullptr, false, save, nullptr);
+            REQUIRE(actual.phase == reference.phase);
+            REQUIRE(actual.jitter == reference.jitter);
+            REQUIRE(actual.ssr_history_published);
+            REQUIRE(reference.ssr_history_published);
+            REQUIRE(actual.ssr_generation_after == enabled_generation + 1);
+            REQUIRE(reference.ssr_generation_after == disabled_generation + 1);
+            REQUIRE(actual.ssr_source_world_after == enabled.world);
+            REQUIRE(reference.ssr_source_world_after == disabled.world);
+            REQUIRE(enabled.world == disabled.world);
+            // Sparse diagnostic snapshots are absent on most frames. These
+            // authoritative counters verify continuous history without reading
+            // default snapshot fields as though they were observations.
+            REQUIRE(enabled.history.stats().resets == 1);
+            REQUIRE(disabled.history.stats().resets == 1);
+            REQUIRE(enabled.aurora->stats().reset_calls == 1);
+            REQUIRE(disabled.aurora->stats().reset_calls == 1);
+            REQUIRE(actual.raw.size() == width * height);
+            REQUIRE(actual.raw.size() == reference.raw.size());
+            double sum = 0, largest = 0, alpha = 0;
+            unsigned count = 0, water = 0;
+            for (unsigned y = 124; y < 164; ++y)
+                for (unsigned x = 232; x < 276; ++x)
+                {
+                    const auto i = y * width + x;
+                    REQUIRE(actual.water_coverage[i] == 255);
+                    REQUIRE(reference.water_coverage[i] == 255);
+                    ++water;
+                    for (unsigned c = 0; c < 3; ++c)
+                    {
+                        REQUIRE(std::isfinite(actual.raw[i][c]));
+                        REQUIRE(std::isfinite(reference.raw[i][c]));
+                        const double error = std::abs(double(actual.raw[i][c]) - reference.raw[i][c]);
+                        sum += error;
+                        largest = std::max(largest, error);
+                        ++count;
+                    }
+                    alpha = std::max(alpha,
+                        std::abs(double(actual.raw[i][3]) - reference.raw[i][3]));
+                }
+            const double mae = sum / count;
+            if (frame >= warm)
+            {
+                ++measured;
+                maximum_mae = std::max(maximum_mae, mae);
+                maximum_error = std::max(maximum_error, largest);
+                CAPTURE(frame, actual.phase, mae, largest);
+                // Independent image oracle, frozen before the correction:
+                // without eligible reflected geometry, SSR must contribute
+                // nothing. Same shader, material, probes and history sequence
+                // make the raw RGB/alpha difference exactly zero.
+                CHECK(mae == 0.);
+                CHECK(largest == 0.);
+                CHECK(alpha == 0.);
+            }
+            if (csv)
+                csv << std::setprecision(12) << frame << ',' << enabled.world << ',' << actual.phase << ','
+                    << (frame < warm ? "warm" : "measured") << ',' << actual.ssr_source_world_used << ','
+                    << reference.ssr_source_world_used << ',' << actual.ssr_generation_used << ','
+                    << reference.ssr_generation_used << ',' << mae << ',' << largest << ',' << alpha << ',' << water << '\n';
+            if (save && !directory.empty())
+            {
+                const auto name = directory / ("frame-" + std::to_string(frame));
+                for (unsigned arm = 0; arm < 2; ++arm)
+                {
+                    const auto& pixels = arm ? reference : actual;
+                    const auto prefix = name.string() + (arm ? "-off" : "-on");
+                    waterRaw(prefix + "-hdr.rgba32f", pixels.raw);
+                    waterRaw(prefix + "-native.rgba32f", pixels.immediate);
+                    waterRaw(prefix + "-history-depth.r32f", pixels.ssr_source_depth);
+                    waterRaw(prefix + "-history-color.rg11b10f", pixels.ssr_source_color_packed);
+                    waterRaw(prefix + "-history-water.r8", pixels.ssr_water_coverage_used);
+                    waterRaw(prefix + "-water-depth.r32f", pixels.captured_water_depth);
+                    waterRaw(prefix + "-water-coverage.r8", pixels.water_coverage);
+                }
+            }
+        }
+        REQUIRE(measured == 36);
+        std::cout << "Water-only feedback: worlds=" << end << ", measured=" << measured
+            << ", maximum raw RGB MAE=" << maximum_mae << ", maximum raw RGB error=" << maximum_error << '\n';
     }
 }
 #endif

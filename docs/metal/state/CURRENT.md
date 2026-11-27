@@ -9,7 +9,16 @@ Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Current task — PPD624 primary-waterSSR (2026-11-27):** start4d8e, app0a94/69525.
+**Active PPD624/630 correction:**69530/source136ce remains WITHHELD in the
+labelled iCloud folder. Revised outgoing-ray/all-step receiver exclusion passes
+the water-only exact-zero counterexample and198-world real-reflector frozen
+bounds (range.000673403, detail.008124224, mean.140210183). Full-suite/exact-view
+verification and a new pinned build remain pending. No owner-ready claim yet.
+Original settings restored; preserve accepted tiles/glass/foliage and PPD629
+runtime dialect follow-up. PPD624 remains open for original-scene acceptance.
+
+
+**Preserved69527 receiver-seed investigation (2026-11-27):** start4d8e, app0a94/69525.
 Per-ray inspection is HDR/native/presented-exact for108stationary fixtureworlds:
 refracted-UV hashing redirects rays15.7–25.3degrees while normal changes.40degrees,
 changing hit coverage and sampled reflector colors. No acceptedwaterfeedbackhit.

@@ -6883,25 +6883,23 @@ static float2 almetal_ssr_source_uv(float2 gl_uv)
 }
 
 static float almetal_ssr_linear_depth(
-    float2 gl_uv, texture2d<float> scene_depth, sampler depth_sampler,
+    float2 gl_uv, float depth,
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
 {
-    const float depth = scene_depth.sample(
-        depth_sampler, almetal_ssr_source_uv(gl_uv)).r;
     const float ndc_z = ssr.config.x != 0u ? depth : 2.0 * depth - 1.0;
     const float4 position = ssr.inverse_projection *
         float4(gl_uv * 2.0 - 1.0, ndc_z, 1.0);
     return -position.z / max(position.w, 0.000001);
 }
 
-// A near-origin depth sample on the water receiver must not terminate the
-// complete reflected ray. Check the actual nearest texel against that receiver's
-// tangent plane using the tracer's existing intersection thickness. This cannot
-// identify distinct geometry inside that thickness; samples outside it retain
-// the conservative termination. Ordinary materials and the far-rim mirror pass zero.
+// Do not accept the primary water receiver as a reflected object. Check its
+// nearest depth sample against the receiver tangent plane using the existing
+// intersection thickness. This is not semantic object identity: distinct
+// geometry inside that band is indistinguishable. Zero-normal callers retain
+// their existing behavior.
 static bool almetal_ssr_sample_matches_receiver_band(
     float3 source_position, float3 history_normal, float2 sample_uv,
-    texture2d<float> scene_depth, sampler depth_sampler,
+    float raw_depth,
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
 {
     if (!(dot(history_normal, history_normal) > 0.0) ||
@@ -6910,11 +6908,8 @@ static bool almetal_ssr_sample_matches_receiver_band(
     const float2 dimensions = ssr.screen.xy;
     if (any(dimensions < 1.0) || !all(isfinite(dimensions)))
         return false;
-    // Read at the identical UV/sampler used by almetal_ssr_linear_depth: retain
-    // its actual raw depth value. Only the unprojection XY is the sampled texel
-    // center; do not move the depth lookup to a different texel or average it.
-    const float raw_depth = scene_depth.sample(
-        depth_sampler, almetal_ssr_source_uv(sample_uv)).r;
+    // Share the exact raw nearest-depth value used by the march. Only the
+    // unprojection XY is the clamped sampled texel center.
     const float2 texel = clamp(floor(sample_uv * dimensions),
         float2(0.0), dimensions - 1.0);
     const float2 center_uv = (texel + 0.5) / dimensions;
@@ -6949,6 +6944,9 @@ static bool almetal_ssr_trace(
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr,
     float3 receiver_geometric_normal)
 {
+    const float receiver_camera_side = dot(position, receiver_geometric_normal);
+    const bool constrain_receiver = any(receiver_geometric_normal != float3(0.0));
+    hit_color = 0.0;
     reflection += position;
     position = (ssr.inverse_modelview_delta *
                 float4(position, 1.0)).xyz;
@@ -6962,13 +6960,18 @@ static bool almetal_ssr_trace(
     const float3 history_normal = normal_length_squared > 0.0 && isfinite(normal_length_squared)
         ? normal_in_history * rsqrt(normal_length_squared) : float3(0.0);
     const float source_depth = -position.z;
+    // A reflection must leave the receiver toward the current camera's
+    // side of its plane. Flipping the geometric normal flips both factors.
+    if (constrain_receiver &&
+        !(dot(reflection, history_normal) * receiver_camera_side < 0.0))
+    {
+        return false;
+    }
     float3 step = ssr.trace.y * reflection;
     float3 marching_position = position + step;
     float delta = 0.0;
     bool hit = false;
     bool crossed = false;
-    hit_color = 0.0;
-
     int iteration = 0;
     const int iteration_count = max(int(ssr.trace.x), 0);
     if (source_depth > ssr.trace.w)
@@ -6985,23 +6988,23 @@ static bool almetal_ssr_trace(
             {
                 break;
             }
+            const float raw_depth = scene_depth.sample(
+                depth_sampler, almetal_ssr_source_uv(screen_position)).r;
             const float depth_from_screen = almetal_ssr_linear_depth(
-                screen_position, scene_depth, depth_sampler, ssr);
+                screen_position, raw_depth, ssr);
             delta = abs(marching_position.z) - depth_from_screen;
+            if (almetal_ssr_sample_matches_receiver_band(
+                    position, history_normal, screen_position, raw_depth, ssr))
+            {
+                // Receiver samples are empty space for this outgoing ray.
+                // Use the unchanged coarse step and iteration budget.
+                marching_position += step;
+                step *= ssr.sampling.y;
+                continue;
+            }
             if (source_depth < depth_from_screen + 0.1 &&
                 source_depth > depth_from_screen - 0.1)
             {
-                if (almetal_ssr_sample_matches_receiver_band(
-                        position, history_normal, screen_position,
-                        scene_depth, depth_sampler, ssr))
-                {
-                    // Reject this receiver sample, not the rest of the ray.
-                    // Spend the ordinary coarse step and iteration budget;
-                    // subsequent geometry still uses the existing hit tests.
-                    marching_position += step;
-                    step *= ssr.sampling.y;
-                    continue;
-                }
                 break;
             }
             if (abs(delta) < ssr.trace.z)
@@ -7041,9 +7044,19 @@ static bool almetal_ssr_trace(
                 {
                     break;
                 }
+                const float raw_depth = scene_depth.sample(
+                    depth_sampler, almetal_ssr_source_uv(screen_position)).r;
                 const float depth_from_screen = almetal_ssr_linear_depth(
-                    screen_position, scene_depth, depth_sampler, ssr);
+                    screen_position, raw_depth, ssr);
                 delta = abs(marching_position.z) - depth_from_screen;
+                if (almetal_ssr_sample_matches_receiver_band(
+                        position, history_normal, screen_position, raw_depth, ssr))
+                {
+                    // The receiver is not a hit. Search ahead on the next
+                    // ordinary bisection step, without changing its budget.
+                    delta = -1.0;
+                    continue;
+                }
                 if (source_depth < depth_from_screen + 0.1 &&
                     source_depth > depth_from_screen - 0.1)
                 {
