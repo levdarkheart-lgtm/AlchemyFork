@@ -15547,3 +15547,5 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27: Registered before metadata repair during owner-authorized acceptance/merge/release qualification. No rendering change or new review build is needed.
 
 - 2026-11-27 corrective qualification: focused newtest fails before the two-entry manifest refresh and passes afterward; original3translation checks unchanged. Initial standardtool run cannot import PyYAML in the base interpreter (196tests/error1); isolated qualification environment provides the same required CIdependency and passes198tests/1skip. This environment repair changes no runtime or shader.
+
+- 2026-11-27 release preflight now invokes the real manifest verifier and the existing translation/provenance suite, preventing future releases from silently carrying stale host hashes. No renderer inputs change.

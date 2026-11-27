@@ -130,6 +130,8 @@ jobs:
         run: |
           set -euo pipefail
           python tools/metal/validate_harness.py
+          python tools/metal/aurora-native/translator/manifest.py
+          python -m unittest discover -s tools/metal/aurora-native/translator -p test_translation.py -v
           python -m unittest discover -s tools/metal/tests -v
           python -m py_compile tools/metal/*.py
           bash -n tools/metal/*.sh

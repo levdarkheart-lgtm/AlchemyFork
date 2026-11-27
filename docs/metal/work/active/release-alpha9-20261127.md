@@ -69,3 +69,11 @@ build, GPU measurement, account login, settings change or visual tuning occurred
 Fresh remote reads still identify Alpha8aslatest and show no active manual
 release run. The target ref remains7911e382ce, an ancestor of this retainedfeature.
 Pin the actual preparation commit after commit/push/fast-forward; dispatch once.
+
+
+The retained chain and closure preparation2fc8133e5c were fast-forwarded/pushed
+to codex/apple-silicon-metal, preserving the acceptedf971indra tree. Before
+dispatch, a focused follow-up adds the native manifest verifier and existing
+translation/provenance suite to the release's source-preflight step. This closes
+PPD631's recurrence gap without a new runtime dependency, shader or viewer build.
+Use the actual follow-up SHA/count for Alpha9, not the earlier preparation pin.
