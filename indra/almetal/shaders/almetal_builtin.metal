@@ -6898,8 +6898,8 @@ static float almetal_ssr_linear_depth(
 // complete reflected ray. Check the actual nearest texel against that receiver's
 // tangent plane using the tracer's existing intersection thickness. This cannot
 // identify distinct geometry inside that thickness; samples outside it retain
-// the conservative termination. Ordinary materials and mirror rays pass zero.
-static bool almetal_ssr_sample_on_receiver_plane(
+// the conservative termination. Ordinary materials and the far-rim mirror pass zero.
+static bool almetal_ssr_sample_matches_receiver_band(
     float3 source_position, float3 history_normal, float2 sample_uv,
     texture2d<float> scene_depth, sampler depth_sampler,
     constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
@@ -6991,7 +6991,7 @@ static bool almetal_ssr_trace(
             if (source_depth < depth_from_screen + 0.1 &&
                 source_depth > depth_from_screen - 0.1)
             {
-                if (almetal_ssr_sample_on_receiver_plane(
+                if (almetal_ssr_sample_matches_receiver_band(
                         position, history_normal, screen_position,
                         scene_depth, depth_sampler, ssr))
                 {

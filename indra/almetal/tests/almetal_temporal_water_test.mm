@@ -1594,6 +1594,7 @@ TEST_CASE("Grazing water SSR retains above-plane reflection across jitter phases
         REQUIRE(f.view(0.f) == waterView(0.f));
         configureGrazingWaterReflector(f);
         constexpr unsigned warm = 72, stationary_end = 144, moving_end = 162, end = 198;
+        const float stopped_camera = .02f * float(moving_end - stationary_end);
         std::filesystem::path directory;
         std::ofstream csv;
         if (!f.directory.empty())
@@ -1646,7 +1647,7 @@ TEST_CASE("Grazing water SSR retains above-plane reflection across jitter phases
         for (unsigned frame = 0; frame < end; ++frame)
         {
             const float camera = frame < stationary_end ? 0.f
-                : frame < moving_end ? .02f * float(frame - stationary_end + 1) : .36f;
+                : frame < moving_end ? .02f * float(frame - stationary_end + 1) : stopped_camera;
             const float seconds = float(frame) / 30.f;
             auto reflections = f.waterSsr(camera, 4);
             const auto before = f.ssr_history.generation();
