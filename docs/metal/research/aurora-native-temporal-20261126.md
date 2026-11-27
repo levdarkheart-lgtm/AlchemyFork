@@ -243,3 +243,24 @@ dense leaf interiors and grass against rigid edges, then move and stop; check
 settling, avatars/hair, transparency, resizing and mode changes. Use macOS window
 screenshots/recording, not the independent viewer snapshot route. No live quality
 acceptance or whole-viewer FPS improvement is claimed. PPD610 remains open.
+
+
+## Alpha9 metadata qualification — PPD631
+
+The provenance verifier discovers only two stale host hashes before integration:
+PROVENANCE.json retains initial69516/b6f18c24f4 identities for almetalaurora.h/.mm.
+Accepted glassbf90c0dd72 clarified history-unsafe adapter semantics; accepted
+0a94aa6fe2 added read-only diagnostic snapshots. These host files are unchanged
+from owner-accepted69531/sourcef971through this qualification. All upstreamWGSL,
+generatedMSL/embeddedsource and translator/dependency hashes already match.
+Refresh only the two accepted-host identities and add a verifier regression;
+no runtime, shader generation, reconstruction policy or new viewer build.
+The prior manifest failure is retained privately in release-alpha9-20261127.
+
+The metadata-only repair is qualified: only two PROVENANCE.jsonhost hash entries
+change. The new verifier regression fails before repair and passes afterward;
+all4translation checks,198tool tests (oneexisting skip), ordinary harness and
+strictGL source audit pass. Initial base-Python tool execution lacked PyYAML;
+an isolated environment supplies the existing CIdependency without changing
+viewer dependencies. The acceptedf971indra tree is unchanged. PPD631is
+ready_for_owner/source-review, not a new visual correctness claim or build.

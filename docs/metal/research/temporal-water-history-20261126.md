@@ -1,6 +1,43 @@
 # Primary water SSR cycle repair — PPD624/628
 
-## Current receiver-coordinate candidate (2026-11-27)
+## Current disposition — owner accepted69531 (2026-11-27)
+
+The owner reviewed69531in the affected scene and explicitly accepted the reported
+water blinking as fixed. PPD624and its receiver-feedback correction PPD630are
+verified for that accepted reference. This establishes appearance in the tested
+scene, not correctness for every possible water scene or a performance result.
+
+- Application source: `f971d11de29daf60233f9f5875cf957ca069e95c`.
+- Executable SHA256: `fd5228bbce87246903e631ed6570d77059f393dc453fedc58668d0a864f4f999`.
+- Builtin library SHA256: `86ebf38d847cd9ef9b37afbbaff5981d1bdf57309e8e195f6ff83da0765e12a5`.
+- Aurora embedded-source SHA256: `9dd3a205ff55b2e401f7d3c4b4faba17c62051bd94f39401806b65c95d9f8070`.
+
+These identities also match the owner's running mounted69531app. Keep accepted
+tiles, glass, foliage, normal water animation and reflections unchanged. The
+previous mixed/confounded comparison and receiver-band approximation below remain
+limitations. The owner explicitly instructs **no further patchA investigation or
+visual changes solely to improve its metric**. Revisit only after a reproducible
+visual defect. Earlier open/pending/rejected checkpoints below are historical;
+this scoped owner acceptance supersedes their current disposition.69530remains
+withheld and preserved, not an accepted reference.
+
+A brief readback-free controlled GPU cost comparison is not possible using the
+existing setup: the owner's mounted69531is running without a timing/control
+connection, earlier sessions used ROI readbacks, the existing target-size cost
+harness measures BASE rather than water, and the production water fixture reads
+color/depth/motion/masks every world even when export is disabled. A new harness
+or disruptive relaunch is outside this conditional check. No measurement was run,
+no settings/rendering changed, and no concurrent build occurred. **Actual GPU
+cost stays unmeasured**, distinct from the prior+25.1%depth-fetch work count.
+No material GPU cost or FPS claim follows from that count. Owner visual acceptance
+is unaffected. Future measurements must explain any concrete material impact
+before replacing the accepted implementation.
+
+Owner authorizes fast-forward integration of the retained reconstruction chain
+into `codex/apple-silicon-metal` and the existing Alpha prerelease workflow.
+The immutable69531reference is not relabelled as the future hosted artifact.
+
+## Historical69527 receiver-coordinate candidate (2026-11-27)
 
 The reproduced stationary water cycle comes from **rough-ray selection**, before
 Aurora. Primary water SSR hashes refracted UV; quarter-pixel raster/normal changes

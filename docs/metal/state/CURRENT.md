@@ -1,23 +1,30 @@
 # Current engineering state — experimental native Aurora prototype
 
 Observed 2026-11-27 on Apple M1 Max /64 GiB /macOS26.5.2 /Xcode26.6.
-Branch `codex/aurora-native-temporal-20261126` starts at evaluation checkpoint
+Integrated feature `codex/aurora-native-temporal-20261126` starts at evaluation checkpoint
 `318f0ac8b6a8073fe8d22d0848c84c282ad8b212`. The owner authorizes implementation,
-offline qualification, feature-branch push and private iCloud delivery. The later
+offline qualification, feature-branch push and private iCloud delivery; the later
+69531acceptance authorizes integration into codex/apple-silicon-metal and Alpha9. The later
 owner-authorized targeted scene login is recorded below; no whole-viewer FPS claim.
 Native remains default; combined lighting OFF.
 
 ## Active implementation and qualification
 
-**Active correction sourcef971 /69531:**11water cases pass22,609,127assertions
-with API/GPU validation. Exact saved-view09joins64worlds, noROI/observerdrops;
-all2333wrong-side rays reject before tracing, no68796accepted hit is coplanar
-with receiver water.69530remainsWITHHELD. PPD630ready_for_owner; PPD624open:
-B/Cfinal brightness range improves65/75%, A worsens9.57%; mean/detail tradeoffs
-and37→49probe confound remain explicit. No all-pulse/FPS claim. Release build,21affected
-API/GPU modules,346ARM64/signatures and full-screen login-onlysmoke pass. Mounted8293entries,50ZIPfiles and allthreeiCloud uploads are verified
-22:22:18UTC;69531is available for owner review, not a complete water-qualityfix. Original
-settings restored; preserve accepted tiles/glass/foliage and PPD629 follow-up.
+**Owner-accepted water reference69531:** sourcef971; exact executable/builtin
+identities are retained in the water report. PPD624and630are verified after owner
+review in the affected scene. Preserve accepted tile/glass/foliage corrections.
+Acceptance is scene-specific; mixed/confounded measurements, receiver-band
+approximation and patchAmetric remain limitations, not active tuning work.
+No visual changes or patchAinvestigation without a reproducible visual defect.
+Actual GPU cost remains unmeasured: no existing readback-free/timed water arm
+is available alongside the owner's uninstrumented active69531session. Do not
+disturb it or infer GPUtime from+25.1%depth-fetch work.
+Release69531/21API+GPU modules,346ARM64/signatures/login-onlysmoke, mounted
+8293entries/50ZIPfiles and allthreeiCloud uploads remain verified.
+Owner authorizes integration into codex/apple-silicon-metal and Alpha9build.
+PPD631metadata-only host-provenance repair is qualified:4translation checks,
+198tool tests/1skip, strictGL source and ordinary harness pass. Runtime/shaders
+remain identical to acceptedf971; no new local viewer is built. PPD629/runtime dialect and PPD615/cache remain separate.
 
 
 **Preserved69527 receiver-seed investigation (2026-11-27):** start4d8e, app0a94/69525.
@@ -41,7 +48,7 @@ texture/wait. Tileminimum4 and owneracceptedglass/foliage are preserved.
 Actual-viewtilecost isunqualified: ROIcaptures perturbcost, A0quietinvalid, no live
 sessionavailable. Keep +2.438ms syntheticcost separate; no liveFPSclaim.
 
-**Renderer code checkpoint:** `f971d11de29daf60233f9f5875cf957ca069e95c` —69531water receiver-validity candidate; Release,21API/GPU modules, login-onlysmoke, mountedpackage and allthreeiCloud uploads pass22:22:18UTC. Preserved69527/source5d44,69525/source0a94 and69523/sourcec72fafcd3b remain unchanged.
+**Renderer code checkpoint:** `f971d11de29daf60233f9f5875cf957ca069e95c` —owner-accepted69531water receiver-validity reference; Release,21API/GPU modules, login-onlysmoke, mountedpackage and allthreeiCloud uploads pass22:22:18UTC. Preserved69527/source5d44,69525/source0a94 and69523/sourcec72fafcd3b remain unchanged.
 Preserved glass69520 source `2af7ebba82b6bfd15886069f1eb9613f34fcef18` remains owner-accepted.
 Preserved69516 source remains `b6f18c24f4e32e5e8897f782c0e4b65bda521f8f`.
 The [native report](../research/aurora-native-temporal-20261126.md) records the preserved69516 port;
@@ -110,7 +117,7 @@ branch is published; only final delivery documentation follows application b6f.
 - Spatial remains `codex/metalfx-spatial-20261124` at41e90aaadb. Build69464 source was
   a5142ae5c2. Its [quality review](../research/metalfx-quality-20261124.md) retains
   historical live results; those are not measurements of this new executable.
-- The usual branch and all existing viewer packages remain unchanged.
+- Existing viewer packages are preserved. Owner now authorizes integration into the usual Metal branch; the Alpha9build receives its own source/package identity.
 
 Submission-only pose history, semantic material equality, blended foreground depth/
 motion, visibility-aware rejection, sky motion, cancellation and pooled-target
@@ -143,10 +150,10 @@ Required independent build/review evidence and release gates remain open.
 
 ## Exact next actions
 
-Owner reviews69531in the originalMidday water view: residualpatchAfluctuation,
-brightness/reflecteddetail, movement–stop and acceptedglass/foliage/tile controls.
-PPD624remainsopen; do not treat passed rayvalidity as complete visible acceptance.
-PPD630ready_for_owner; PPD629runtimeMSLdialect and PPD615buildcache remain
-actionable follow-ups. No more livecapture/generalFPS work is authorized by this
-bounded repair. Preserve69530WITHHELD and priorpackages. Actual-view cost remains
-unqualified, with measured depth-fetch work+25.1%, not GPUmilliseconds.
+Metadata-only provenance and ordinary release-source qualification pass;
+fast-forward codex/apple-silicon-metal to the accepted reconstruction chain plus
+closure/release notes, then dispatch exactly one Alpha9workflow at an immutable
+source SHA and verify the run identity. No new local review build or visual tuning.
+Preserve69531reference and69530WITHHELD; no patchAwork absent a visual regression.
+Hosted artifact build/signature/publication is a distinct observation from owner
+acceptance and must not be claimed before its workflow completes.

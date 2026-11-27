@@ -1,19 +1,22 @@
 # Active Metal work — optional native Aurora review prototype
 
-Current branch `codex/aurora-native-temporal-20261126`, parent318f0ac8b6. Owner explicitly
-authorizes implementation, offline tests, packaging and feature-branch push. Evaluation,
-Temporal, Spatial and usual branches remain unchanged. Native default, existingmodes,
+Accepted feature `codex/aurora-native-temporal-20261126`, parent318f0ac8b6. Owner explicitly
+authorizes implementation, offline tests, packaging and feature-branch push. Owner now authorizes merging
+this retained chain into codex/apple-silicon-metal and triggering Alpha9. Evaluation,
+Temporal and Spatial branches/packages remain preserved. Native default, existingmodes,
 output-basedshadows, nativeUI, combinedlightingOFF and PPD610qualityfailures remain.
 
 ## Immediate executable action
 
-Sourcef971/build69531passes11water cases and exact-view ray safety;69530remains
-WITHHELD. PPD630ready_for_owner. PPD624quality remains open: B/Cfinal range
-improves65/75%, A worsens9.57%, brightness/detail and37→49probe differences are
-retained. Release,21API/GPU tests/login-onlysmoke, mounted8293entries/50ZIPfiles and allthree
-iCloud uploads verified22:22:18UTC.69531availableforownerreview; notallwaterfixed.
-No more livecapture is needed. Settings restored, viewerclosed; rootsoleNinjaowner.
-Preserve accepted tiles/glass/foliage and coordinate/ownership corrections.
+Owner accepts69531reported water blinking in the tested scene: PPD624/630verified.
+Preserve exact source/executable/shader identities and accepted tile/glass/foliage.
+No further patchAinvestigation or visual changes solely for that metric. Mixed
+comparison and receiver-band limitations remain; reopen only on visual regression.
+GPU cost stays unmeasured because no existing readback-free/timed arm is available;
+do not interrupt the owner's running69531or create another profiling campaign.
+PPD631metadata-only repair and source gates pass. Fast-forward the usual Metal
+branch, dispatch one immutable-source Alpha9build and verify run identity.
+No new local viewer build needed; root owns integration, docs and release dispatch.
 Commit `f971d11de29daf60233f9f5875cf957ca069e95c` is69531appsource.
 Preserved69527source is5d44ab6411a47bad3e437ed2da78179b7121e978.
 See [water report](../../research/temporal-water-history-20261126.md).

@@ -1,6 +1,8 @@
 """Regression for Naga's renamed entry points and exact embedded source bytes."""
 from pathlib import Path
 import re
+import subprocess
+import sys
 import unittest
 ROOT = Path(__file__).resolve().parents[4]
 GENERATED = ROOT / "indra/almetal/shaders/aurora"
@@ -8,6 +10,15 @@ VENDOR = ROOT / "tools/metal/aurora-evaluation/vendor/aurora/shaders/fsr"
 MODULES = ("prepare_inputs", "pyramids", "reactivity", "accumulate")
 
 class TranslationTests(unittest.TestCase):
+    def test_recorded_provenance_identifies_current_inputs_and_native_host(self):
+        # Exercise the shipping provenance verifier: the original manifest
+        # missed the accepted glass contract and diagnostic host changes.
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("manifest.py"))],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_every_reflected_entry_names_a_real_metal_function(self):
         embedded = (GENERATED / "sources.h").read_text()
         common = (VENDOR / "common.wgsl").read_text()

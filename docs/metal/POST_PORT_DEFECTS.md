@@ -50,7 +50,7 @@ Their successful tests/measurements in retained histories do not claim installat
 on the usual branch. PPD-583 records that explicit tooling exclusion; accepted
 Maintenance69445/Scheduling69450 closures and all historical failures remain.
 
-<!-- next-defect-id: PPD-631 -->
+<!-- next-defect-id: PPD-632 -->
 
 ## PPD-001 — Projector preflight can block the entire world frame
 
@@ -15348,15 +15348,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-624 — Background water fine pattern shimmers in Temporal output
 
-- Status: investigating
+- Status: verified
 - Confirmation: reproduced
 - Owner: Water Temporal integration
 - Discovered: 2026-11-26
 - Original reference: The captured background ROI is confirmed dedicated world water by actual passed coverage/depth, distinct from pool/object surfaces.
 - Evidence: [Water/history investigation](research/temporal-water-history-20261126.md). Owner explicitly identifies blue background water beyond terrace/palms outside the pool. Keep this separate from pool highlights and preserve natural animation.
-- Next action: Owner reviews experimental69531/sourcef971 in the original Midday view, preserving69527 and keeping69530WITHHELD. Assess residualAfluctuation, reflectedbrightness/detail and movement–stop. Actual-view rendering cost remains unqualified (+25.1%observeddepth-fetch work is not GPUtime); do not close from fixture success.
-- Verification: Owner rejects69527 water quality: repeated synchronous flashes remain in backgroundwater outsidepool behindumbrella/palms. The previous61%fixture improvement does not qualify this live symptom. Retained movie pulse every9decodedframes is recording timing, not a proved world/phasecount. Historical source finding: dedicated-water SSR refracted-UV hashing is isolated in a342-world production-path fixture. Private inspection matches ordinary HDR/native/presented across108stationary worlds. Rays change15.7–25.3degrees versus.40degree normal change; hit coverage and sampled reflector locations vary. Receiver-pixel seeding lowers presented temporalRMS .007548012→.002939398 (61.06%), mean within.75% of unchanged32-ray comparison. Static low-ray RGB error remains (.004886→.007997 vs reference); do not equate stability with high-sample fidelity. Original69525shader fails exactly1newbound; corrected342world plus unchanged252worldSSRcase pass113240assertions API/GPU. Animation continues throughmovement/stop; one skipped publication retains exactpacket, no reset. Source5d44/69527 Release,20MetalAPI/GPU+4CPU suites and full-screenlogin-onlysmoke pass; alloriginalsettings restored and viewerclosed. Mounted8293entry/signature/346ARM64 and ZIP127-file checks pass; all threecloud uploads confirmed08:01:28UTC, no error and matching hashes. Earlier69523 coordinate/input repairs alone did not qualify the complaint; original owner-scene acceptance remains unverified.
-- Owner verification: failed
+- Next action: Preserve accepted69531rendering and exact identities. Monitor only for a reproducible visual regression; do not pursue patchA or change rendering solely to improve the retained metric. Actual GPU cost remains a separate unmeasured qualification item.
+- Verification: Owner explicitly reviewed69531in the affected outside-pool water scene and accepts the reported blinking as fixed. Accepted appsourcef971d11de29daf60233f9f5875cf957ca069e95c; executablefd5228bbce87246903e631ed6570d77059f393dc453fedc58668d0a864f4f999; builtin86ebf38d847cd9ef9b37afbbaff5981d1bdf57309e8e195f6ff83da0765e12a5. Acceptance is scene-specific, not correctness for every water scene.21affected API/GPU modules and exact-source receiver/real-reflector regressions support the correction. Mixed37→49probe comparison, worse finalAmetric and receiver-band ambiguity remain documented limitations, not active tuning goals. Earlier69527failure and69530withholding remain in history/Git79ca22ba58.
+- Owner verification: passed
 - Push approval: granted
 
 ### History
@@ -15386,6 +15386,9 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 
 - 2026-11-27 sourcef971/build69531: outgoing/all-step SSRreceiver validity passes exact-zero feedback and genuine-reflector frozen bounds. Saved-view B/Cfinalrange improves65.3/74.7%, A worsens9.57%;37→49probe/animation and brightness/detail differences remain explicit.21Release API/GPU modules, login-onlysmoke, mounted8293entry/50ZIPfile checks and allthreeiCloud uploads verified22:22:18UTC. Candidate availableforownerreview, not complete PPD624acceptance or FPSgain.
+
+- 2026-11-27: Owner states: “I have reviewed build 69531 in the affected scene. The water blinking now looks fixed to me. Record this as owner acceptance of the reported visual problem.” Close the reported appearance incident at69531; preserve tile/glass/foliage and do not tune patchA without a new reproducible visual defect. Owner authorizes merge into codex/apple-silicon-metal and a GitHub release build; no universal-water or cost/FPS claim.
+
 
 ## PPD-625 — Warm pool highlight streaks visibly jitter
 
@@ -15504,15 +15507,15 @@ or claim a runtime speedup from correcting conservative accounting alone.
 
 ## PPD-630 — Water SSR continuation admits receiver-water feedback
 
-- Status: ready_for_owner
+- Status: verified
 - Confirmation: reproduced
 - Owner: Primary water SSR
 - Discovered: 2026-11-27
 - Original reference: A reflected ray must not accept the receiver water itself; valid above-water reflected geometry must remain available.
 - Evidence: [Water continuation investigation](research/temporal-water-history-20261126.md). Final private live07 analysis at source136ce finds4266coplanar accepted hits, including2077associated with downward randomized rays. Of these3190land within the exact named previous world's captured water ROI, have actual coverage255 and match its water depth within4.38µm. Other locations remain unassigned; coplanarity alone is not semantic identity. Private proof: `regression-dense/live-water-feedback-proof.json`.
-- Next action: Owner reviews69531in the original scene; retain PPD624residualquality separately. Preserve the exact-zero/no-feedback and genuine-reflector regressions, source pin and withheld69530history. No further live/profile campaign is needed for this source repair.
+- Next action: Preserve accepted69531receiver validity and its water-only/genuine-reflector regressions. Reopen only on a reproduced correctness regression; keep general receiver-band limitations documented.
 - Verification: The exact-source water-only production counterexample fails69530 in32of36measured worlds (64RGB assertions), maximum MAE.00577471/maxRGB.0995483. No eligible above-water source geometry is submitted; the independently frozen expectation is zero difference versus inactive SSR. Actual history/reset counters remain continuous. Build69530is WITHHELD in the labelled iCloud subfolder; original69527is preserved. Revised candidate passes the same water-only case with exact zero RGB/alpha error (1,532,232 assertions). The198-world genuine-reflector case retains all frozen bounds: range.000673403, jumps.000170559/.000257832, detail.008124224 and mean.140210183. All11water cases pass22,609,127assertions API/GPU. Saved-view09 joins64/64worlds, noROI/observerdrops; all2333wrong-side rays reject before stepping, no68796acceptedhit lies within1mm of receiver water or below it. Exact source-ROI checks find no water-covered accepted hit; out-of-ROI locations remain unassigned. Original owner-quality PPD624 remains open, including worse final-rangeA. Sourcef971Release,21API/GPU modules and full-screen login-onlysmoke pass. Mounted8293entries/50ZIPfiles and allthreeiCloud uploads verified22:22:18UTC; originalsettings restored and viewerclosed.
-- Owner verification: pending
+- Owner verification: passed
 - Push approval: granted
 
 ### History
@@ -15522,3 +15525,25 @@ or claim a runtime speedup from correcting conservative accounting alone.
 - 2026-11-27 sourcef971/build69531: outgoing/all-step receiver validity passes independent water-only zero oracle, genuine-reflector frozen bounds and targeted saved-view ray checks. Prior69530remainswithheld. PPD624ownerimagequality is separate; neither exact-view variation reduction in allregions nor livecost is claimed.
 
 - 2026-11-27 final69531delivery: appsourcef971, executablefd5228bb…, builtin86ebf38d…; source/options and actualshippedlibrary tests verified. AllthreeprivateiCloud files uploaded/hashmatched22:22:18UTC. Finalbranchpublication is docs-only after appsource; PPD624remainsopen and ownerreviewpending.
+
+- 2026-11-27: Owner accepts the69531water correction in the tested scene. Together with exact-zero receiver-feedback and actual-ray verification, this closes the corrected69530implementation defect for the accepted reference. This does not assert universal scene correctness; PPD624scene-specific acceptance and retained limitations remain explicit.
+
+
+## PPD-631 — Native Aurora host provenance hashes retain the initial prototype
+
+- Status: ready_for_owner
+- Confirmation: reproduced
+- Owner: Native Aurora provenance
+- Discovered: 2026-11-27
+- Original reference: The checked-in provenance manifest must identify the accepted native host files as well as unchanged algorithm/shader inputs.
+- Evidence: [Native Aurora report](research/aurora-native-temporal-20261126.md). The manifest verifier exits1 before Alpha9preparation: almetalaurora.h/.mm hashes still match69516/sourceb6f18c24f4, while accepted glass/sourcebf90c0dd72 and read-only diagnostic/source0a94aa6fe2 changed those host files. UpstreamWGSL/generatedMSL/embeddedsource/translator hashes match.
+- Next action: Retain the new verifier regression and refresh provenance intentionally whenever accepted host inputs change. Metadata repair is qualified; no new viewer or visual test is required. Owner/source-review acknowledgement remains separate from PPD624appearance acceptance.
+- Verification: Before-repair verifier/new-regression failures are retained in private release-alpha9-20261127. Only the almetalaurora.h/.mm SHAentries change; all algorithm/generatedsource/toolchain hashes remain identical. The actual verifier and all4translation tests now pass.198tool tests pass with1existing skip; ordinary harness, syntax/whitespace and strictGL source gate pass. Entire indra tree remains identical to accepted appsourcef971; no new visual/rendering claim.
+- Owner verification: pending
+- Push approval: granted
+
+### History
+
+- 2026-11-27: Registered before metadata repair during owner-authorized acceptance/merge/release qualification. No rendering change or new review build is needed.
+
+- 2026-11-27 corrective qualification: focused newtest fails before the two-entry manifest refresh and passes afterward; original3translation checks unchanged. Initial standardtool run cannot import PyYAML in the base interpreter (196tests/error1); isolated qualification environment provides the same required CIdependency and passes198tests/1skip. This environment repair changes no runtime or shader.
